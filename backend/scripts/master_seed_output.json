@@ -1,0 +1,487 @@
+{
+  "personnel": [],
+  "warehouses": [],
+  "projects": [
+    {
+      "projectId": "PRJ001",
+      "title": "Pembangunan Jaringan FTTH Rancamanyar",
+      "clusterId": "CL001",
+      "projectName": "FTTH Rancamanyar Tahap 1",
+      "kecamatan": "Baleendah",
+      "desaKelurahan": "Rancamanyar",
+      "kotaKabupaten": "Kabupaten Bandung",
+      "provinsi": "Jawa Barat"
+    },
+    {
+      "projectId": "PRJ002",
+      "title": "Pengembangan Jaringan Fiber Optik Ciamis",
+      "clusterId": "CL002",
+      "projectName": "FTTH Ciamis Area Utara",
+      "kecamatan": "Ciamis",
+      "desaKelurahan": "Ciamis",
+      "kotaKabupaten": "Kabupaten Ciamis",
+      "provinsi": "Jawa Barat"
+    },
+    {
+      "projectId": "PRJ003",
+      "title": "Modernisasi Infrastruktur Telekomunikasi Garut",
+      "clusterId": "CL003",
+      "projectName": "Backbone Garut Selatan",
+      "kecamatan": "Tarogong Kidul",
+      "desaKelurahan": "Haurpanggung",
+      "kotaKabupaten": "Kabupaten Garut",
+      "provinsi": "Jawa Barat"
+    },
+    {
+      "projectId": "PRJ004",
+      "title": "Instalasi Fiber Optik Sumedang",
+      "clusterId": "CL004",
+      "projectName": "FTTH Sumedang Kota",
+      "kecamatan": "Sumedang Utara",
+      "desaKelurahan": "Kotakulon",
+      "kotaKabupaten": "Kabupaten Sumedang",
+      "provinsi": "Jawa Barat"
+    },
+    {
+      "projectId": "PRJ005",
+      "title": "Perluasan Jaringan Internet Tasikmalaya",
+      "clusterId": "CL005",
+      "projectName": "FTTH Tasikmalaya Timur",
+      "kecamatan": "Cibeureum",
+      "desaKelurahan": "Setiajaya",
+      "kotaKabupaten": "Kota Tasikmalaya",
+      "provinsi": "Jawa Barat"
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicleId": "VHC001",
+      "type": "Truk Box",
+      "brand": "Mitsubishi Canter",
+      "plateNumber": "Z 8123 AB",
+      "description": "Kendaraan distribusi barang ke pelanggan"
+    },
+    {
+      "vehicleId": "VHC002",
+      "type": "Pickup",
+      "brand": "Suzuki Carry",
+      "plateNumber": "D 8345 CD",
+      "description": "Kendaraan operasional pengiriman dalam kota"
+    },
+    {
+      "vehicleId": "VHC003",
+      "type": "Forklift",
+      "brand": "Toyota",
+      "plateNumber": "FL-001",
+      "description": "Digunakan untuk bongkar muat dan pemindahan pallet di gudang"
+    },
+    {
+      "vehicleId": "VHC004",
+      "type": "Truk Engkel",
+      "brand": "Hino Dutro",
+      "plateNumber": "Z 8567 EF",
+      "description": "Distribusi barang antargudang dan antarkota"
+    },
+    {
+      "vehicleId": "VHC005",
+      "type": "Mobil Operasional",
+      "brand": "Toyota Avanza",
+      "plateNumber": "D 1234 GH",
+      "description": "Kendaraan supervisor untuk inspeksi gudang dan operasional"
+    }
+  ],
+  "items": [
+    {
+      "code": "[01-013-13103]",
+      "name": "TIANG 7 METER - 3\" OD.90 X 2.8 X 7000",
+      "quantity": 1,
+      "unit": "120 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "[01-013-13104]",
+      "name": "TIANG 6 METER - 2\" OD.57 X 1.5 X 6000",
+      "quantity": 2,
+      "unit": "85 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "NWK-00468",
+      "name": "CLOSURE DACK 288 CORE FIBERTRON (LOGO)",
+      "quantity": 3,
+      "unit": "15 PCS",
+      "status": "Low Stock"
+    },
+    {
+      "code": "NWK-00466",
+      "name": "CLOSURE DACK 144 CORE FIBERTRON (LOGO)",
+      "quantity": 4,
+      "unit": "45 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "[01-013-00010]",
+      "name": "24 CORE 4 FRP MICRO CABLE",
+      "quantity": 5,
+      "unit": "250 Meter",
+      "status": "Available"
+    },
+    {
+      "code": "CBL-00043",
+      "name": "KABEL FO 48 CORE ZTT 2024",
+      "quantity": 6,
+      "unit": "80 Roll",
+      "status": "Available"
+    },
+    {
+      "code": "[01-013-00406]",
+      "name": "KABEL FO 48 CORE- 8 T 2023",
+      "quantity": 7,
+      "unit": "18 Roll",
+      "status": "Low Stock"
+    },
+    {
+      "code": "[01-013-00344]",
+      "name": "KABEL FO 48 CORE- 4 T 2023",
+      "quantity": 8,
+      "unit": "30 Roll",
+      "status": "Available"
+    },
+    {
+      "code": "CBL-00461",
+      "name": "KABEL FO 24/2T ZTT 2024",
+      "quantity": 9,
+      "unit": "60 Roll",
+      "status": "Available"
+    },
+    {
+      "code": "CBL-00465",
+      "name": "KABEL FO 144C/12T ZTT 2024",
+      "quantity": 10,
+      "unit": "12 Roll",
+      "status": "Low Stock"
+    },
+    {
+      "code": "10001296",
+      "name": "KABEL FO 96C/8T ZTT 2024",
+      "quantity": 11,
+      "unit": "90 Roll",
+      "status": "Available"
+    },
+    {
+      "code": "01-013-01273",
+      "name": "KABEL FO 96/8T ZTT 2022",
+      "quantity": 12,
+      "unit": "150 Roll",
+      "status": "Available"
+    },
+    {
+      "code": "01-013-06350",
+      "name": "KABEL FO 96C/8T Stralight 2025",
+      "quantity": 13,
+      "unit": "5 Roll",
+      "status": "Low Stock"
+    },
+    {
+      "code": "CPT-00620",
+      "name": "BRACKET TIANG DROP WIRE",
+      "quantity": 14,
+      "unit": "70 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "CPT-00623",
+      "name": "BRACKET TIANG FLEXIBEL BEHEL PER (BRACKET C)",
+      "quantity": 15,
+      "unit": "40 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "29000001",
+      "name": "Strength Clamp Buaya 50/70",
+      "quantity": 16,
+      "unit": "200 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "29000002",
+      "name": "Strength Clamp Buaya 70/95",
+      "quantity": 17,
+      "unit": "55 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "CBL-00215",
+      "name": "KABEL DROPCORE PRECON 1 CORE 3 SELING SC/UPC-SC/UPC 50 METER",
+      "quantity": 18,
+      "unit": "10 Unit",
+      "status": "Low Stock"
+    },
+    {
+      "code": "CBL-00225",
+      "name": "KABEL DROPCORE PRECON 1 CORE 3 SELING SC/UPC-SC/UPC 75 METER",
+      "quantity": 19,
+      "unit": "95 Unit",
+      "status": "Available"
+    },
+    {
+      "code": "CBL-00220",
+      "name": "KABEL DROPCORE PRECON 1 CORE 3 SELING SC/UPC-SC/UPC 100 METER",
+      "quantity": 20,
+      "unit": "0 PCS",
+      "status": "Out of Stock"
+    },
+    {
+      "code": "CBL-00223",
+      "name": "KABEL DROPCORE PRECON 1 CORE 3 SELING SC/UPC-SC/UPC 150 METER",
+      "quantity": 21,
+      "unit": "38 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "CBL-00226",
+      "name": "KABEL DROPCORE PRECON 1 CORE 3 SELING SC/UPC-SC/UPC 200 METER",
+      "quantity": 22,
+      "unit": "140 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "CBL-00229",
+      "name": "KABEL DROPCORE PRECON 1 CORE 3 SELING SC/UPC-SC/UPC 250 METER",
+      "quantity": 23,
+      "unit": "65 Meter",
+      "status": "Available"
+    },
+    {
+      "code": "CBL-00231",
+      "name": "KABEL DROPCORE PRECON 1 CORE 3 SELING SC/UPC-SC/UPC 300 METER",
+      "quantity": 24,
+      "unit": "175 Meter",
+      "status": "Available"
+    },
+    {
+      "code": "SPP-00100",
+      "name": "BRACKET X-FRAME BEHEL MINI 12X40X40 (HITAM-MERAH)",
+      "quantity": 25,
+      "unit": "22 Meter",
+      "status": "Available"
+    },
+    {
+      "code": "CPT-00655",
+      "name": "BRACKET X-FRAME BEHEL 12X65X65",
+      "quantity": 26,
+      "unit": "14 Unit",
+      "status": "Low Stock"
+    },
+    {
+      "code": "CPT-00630",
+      "name": "BRACKET COILAN X-FRAME (BESAR 4 PER)",
+      "quantity": 27,
+      "unit": "98 Unit",
+      "status": "Available"
+    },
+    {
+      "code": "90000151",
+      "name": "BRACKET SALIB BARU",
+      "quantity": 28,
+      "unit": "160 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "CPT-00718",
+      "name": "DUDUKAN CLOUSURE BRACKET COILAN X-FRAME (MODEL BARU)",
+      "quantity": 29,
+      "unit": "7 PCS",
+      "status": "Low Stock"
+    },
+    {
+      "code": "CPT-00914",
+      "name": "MUR + BAUT STENLIS M10 - 1.5 X 45",
+      "quantity": 30,
+      "unit": "44 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "01-013-03083",
+      "name": "MUR + BAUT STENLIS M08 - 1.25 X 80",
+      "quantity": 31,
+      "unit": "88 Roll",
+      "status": "Available"
+    },
+    {
+      "code": "GT0000100",
+      "name": "ODP Boxes 16 port with 1:8 PLC Splitter including accessories but without connector and adapter",
+      "quantity": 32,
+      "unit": "0 Roll",
+      "status": "Out of Stock"
+    },
+    {
+      "code": "GT0000201M",
+      "name": "Outdoor Connector with SC/UPC adapter, magenta color",
+      "quantity": 33,
+      "unit": "19 Roll",
+      "status": "Low Stock"
+    },
+    {
+      "code": "GT0000201S",
+      "name": "Outdoor Connector with SC/UPC adapter, silver color",
+      "quantity": 34,
+      "unit": "105 Roll",
+      "status": "Available"
+    },
+    {
+      "code": "NWK-00964",
+      "name": "ODP 10 PORT WITH 8PCS SC UPC ADAPTER AND OUTDOOR CONNECTOR",
+      "quantity": 35,
+      "unit": "250 Meter",
+      "status": "Available"
+    },
+    {
+      "code": "01-013-00225",
+      "name": "1:8 balanced PLC Splitter SC/UPC,G657A2,0.9mm,0.6m",
+      "quantity": 36,
+      "unit": "130 Meter",
+      "status": "Available"
+    },
+    {
+      "code": "01-013-00004",
+      "name": "1*8 PLC SPLITTER 1:8",
+      "quantity": 37,
+      "unit": "16 Meter",
+      "status": "Low Stock"
+    },
+    {
+      "code": "00-013-13404",
+      "name": "1:8 balanced PLC Splitter SC/UPC,G657A2,0.9mm,0.6m WITH CONNECTOR INPUT",
+      "quantity": 38,
+      "unit": "73 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "JTR-02242",
+      "name": "PATCHCORD LC/UPC - SC/UPC 3 METER ( Simplex )",
+      "quantity": 39,
+      "unit": "92 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "In MSP",
+      "name": "Precon 3m (Produksi in-House MSP)",
+      "quantity": 40,
+      "unit": "48 Unit",
+      "status": "Available"
+    },
+    {
+      "code": "01-013-00587",
+      "name": "Outdoor Connector With SC/UPC Adapter, green color",
+      "quantity": 41,
+      "unit": "26 Unit",
+      "status": "Available"
+    },
+    {
+      "code": "[01-013-11630]",
+      "name": "STAINLESS BELT NON MAGNET",
+      "quantity": 42,
+      "unit": "11 PCS",
+      "status": "Low Stock"
+    },
+    {
+      "code": "[01-013-01157]",
+      "name": "STOPPING BUCKLER",
+      "quantity": 43,
+      "unit": "67 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "[01-013-08487]",
+      "name": "CLAMP DROP WIRE ( S CLAMP )",
+      "quantity": 44,
+      "unit": "180 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "01-013-00033",
+      "name": "ADAPTER LC/UPC DUPLEX AUTO SHUTTER",
+      "quantity": 45,
+      "unit": "145 Roll",
+      "status": "Available"
+    },
+    {
+      "code": "JTR-02154",
+      "name": "OTB RACK PAZ 48 core LC/UPC",
+      "quantity": 46,
+      "unit": "58 Roll",
+      "status": "Available"
+    },
+    {
+      "code": "CPT-00671",
+      "name": "CABLE MANAGEMENT METAL 1U ( CCM-M1U-BLK )",
+      "quantity": 47,
+      "unit": "3 Roll",
+      "status": "Low Stock"
+    },
+    {
+      "code": "90000156",
+      "name": "KSS Spiral Wrapping Band KS-6BK Hitam 10m",
+      "quantity": 48,
+      "unit": "0 Unit",
+      "status": "Out of Stock"
+    },
+    {
+      "code": "CPT-00674",
+      "name": "CAGE NUT MUR + RING 6",
+      "quantity": 49,
+      "unit": "37 Unit",
+      "status": "Available"
+    },
+    {
+      "code": "CPT-00753",
+      "name": "FLEXIBLE WP 1/2\" INCH",
+      "quantity": 50,
+      "unit": "84 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "JTR-02401",
+      "name": "PIGTAIL LC/UPC",
+      "quantity": 51,
+      "unit": "230 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "01-013-13101",
+      "name": "TIANG 9 METER - 3\" OD.90 X 2.8 X 9000",
+      "quantity": 52,
+      "unit": "29 Meter",
+      "status": "Available"
+    },
+    {
+      "code": "29000006",
+      "name": "HOSE CLAMP/KLEM SELANG 1 1/2 INCH [25-38mm]",
+      "quantity": 53,
+      "unit": "8 Meter",
+      "status": "Low Stock"
+    },
+    {
+      "code": "90000163",
+      "name": "Nylon Cable Tie 3.6x300mm Hitam",
+      "quantity": 54,
+      "unit": "135 Meter",
+      "status": "Available"
+    },
+    {
+      "code": "CPT-00533",
+      "name": "Pipa Pralon 1,5inch",
+      "quantity": 55,
+      "unit": "56 PCS",
+      "status": "Available"
+    },
+    {
+      "code": "[01-013-03725",
+      "name": "PLC SPLITTER 1X8 SC/UPC",
+      "quantity": 56,
+      "unit": "17 PCS",
+      "status": "Low Stock"
+    }
+  ]
+}
