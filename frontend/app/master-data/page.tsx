@@ -644,6 +644,7 @@ function FormModal({
   endpoint,
   record,
   onSuccess,
+  onShowToast,
 }: {
   open: boolean;
   onClose: () => void;
@@ -653,6 +654,7 @@ function FormModal({
   endpoint: string;
   record: GenericRecord | null;
   onSuccess: () => void;
+  onShowToast: (message: string, type: "success" | "error") => void;
 }) {
   const { post, put } = useApi();
   const fields = TAB_FIELDS[tab];
@@ -794,11 +796,15 @@ function FormModal({
       }
 
       onSuccess();
+      onShowToast(
+        `${tabLabel} berhasil ${mode === "create" ? "ditambahkan" : "diperbarui"}.`,
+        "success"
+      );
       onClose();
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Terjadi kesalahan tak terduga."
-      );
+      const msg = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
+      setError(msg);
+      onShowToast(msg, "error");
     } finally {
       setSubmitting(false);
     }
@@ -964,6 +970,7 @@ function DeleteConfirmModal({
   endpoint,
   record,
   onSuccess,
+  onShowToast,
 }: {
   open: boolean;
   onClose: () => void;
@@ -971,6 +978,7 @@ function DeleteConfirmModal({
   endpoint: string;
   record: GenericRecord | null;
   onSuccess: () => void;
+  onShowToast: (message: string, type: "success" | "error") => void;
 }) {
   const { del } = useApi();
   const [submitting, setSubmitting] = useState(false);
@@ -998,11 +1006,12 @@ function DeleteConfirmModal({
       }
 
       onSuccess();
+      onShowToast(`${tabLabel} berhasil dihapus.`, "success");
       onClose();
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Terjadi kesalahan tak terduga."
-      );
+      const msg = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
+      setError(msg);
+      onShowToast(msg, "error");
     } finally {
       setSubmitting(false);
     }
@@ -1084,6 +1093,17 @@ function MasterDataPageContent() {
   } | null>(null);
   const [detailRecord, setDetailRecord] = useState<GenericRecord | null>(null);
   const [deleteRecord, setDeleteRecord] = useState<GenericRecord | null>(null);
+
+  // -------------------------------------------------------------------------
+  // Toast state
+  // -------------------------------------------------------------------------
+
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  const showToast = (message: string, type: "success" | "error") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   // -------------------------------------------------------------------------
   // Active tab config & permissions
@@ -1593,6 +1613,7 @@ function MasterDataPageContent() {
             endpoint={activeConfig.endpoint}
             record={formModal?.record ?? null}
             onSuccess={fetchMasterData}
+            onShowToast={showToast}
           />
 
           <DeleteConfirmModal
@@ -1602,8 +1623,53 @@ function MasterDataPageContent() {
             endpoint={activeConfig.endpoint}
             record={deleteRecord}
             onSuccess={fetchMasterData}
+            onShowToast={showToast}
           />
         </>
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div
+          className={[
+            "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
+            toast.type === "success"
+              ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
+              : "border-rose-200/80 bg-rose-50/95 text-rose-800",
+          ].join(" ")}
+        >
+          <div
+            className={[
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+              toast.type === "success" ? "bg-emerald-100" : "bg-rose-100",
+            ].join(" ")}
+          >
+            {toast.type === "success" ? (
+              <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+          </div>
+          <p className="flex-1 leading-snug">{toast.message}</p>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className={[
+              "ml-2 shrink-0 rounded-full p-1 transition-colors",
+              toast.type === "success"
+                ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
+                : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
+            ].join(" ")}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       )}
     </div>
   );

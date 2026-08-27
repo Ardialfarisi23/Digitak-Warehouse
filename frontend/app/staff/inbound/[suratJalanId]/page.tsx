@@ -23,7 +23,6 @@ type ApiBarang = {
 type ApiSuratJalanItem = {
   item_id: number;
   barang_id: number;
-<<<<<<< Updated upstream
   qty: number; // PENTING: field ini akan DITIMPA jadi qty aktual pas submit.
   kondisi?: string | null;
   serial_number?: string | null;
@@ -31,21 +30,6 @@ type ApiSuratJalanItem = {
   is_kelebihan?: boolean;
   barang?: ApiBarang;
 };
-=======
-  qty: number;
-  qtyDiminta: number;
-  satuan_id: number;
-  kondisi: string | null;
-  serial_number: string | null;
-  foto_url: string | null;
-  zona_id?: number | null;
-  barang?: { nama_barang: string; kode_perangkat: string };
-  satuan?: { kode_satuan: string };
-  serialNumbers?: string[];
-  kelebihan?: { qty: number; catatan: string };
-  keterangan?: string | null;
-}
->>>>>>> Stashed changes
 
 type ApiSuratJalan = {
   surat_jalan_id: number;
@@ -103,15 +87,9 @@ export default function InboundDetailPage() {
   const { get, post } = useApi();
   const { user } = useAuth();
 
-<<<<<<< Updated upstream
   const [data, setData] = useState<ApiSuratJalan | null | undefined>(undefined);
   const [items, setItems] = useState<EditableItem[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-=======
-  const [data, setData] = useState<InboundSuratJalan | null | undefined>(undefined);
-  const [items, setItems] = useState<InboundItem[]>([]);
-  const [zonas, setZonas] = useState<{ zona_id: number; nama_zona: string }[]>([]);
->>>>>>> Stashed changes
   const [submitting, setSubmitting] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
@@ -124,7 +102,6 @@ export default function InboundDetailPage() {
       setLoadError(null);
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-<<<<<<< Updated upstream
       try {
         const res = await get(`${baseUrl}/api/surat-jalan/${params.suratJalanId}`);
         if (res.status === 404) {
@@ -155,35 +132,6 @@ export default function InboundDetailPage() {
             catatanKelebihan: it.catatan || "",
           })),
         );
-=======
-        if (record?.items?.length > 0) {
-          setItems(
-            record.items.map((i: InboundItem) => ({
-              ...i,
-              qtyDiterima: Number(i.qty || 0),
-              qtyDiminta: Number(i.qty || 0),
-              serialNumbers: i.serial_number ? [i.serial_number] : [],
-              kelebihan: undefined,
-              zona_id: null,
-            }))
-          );
-        } else {
-          setItems([]);
-        }
-
-        // Fetch zones based on warehouse if possible
-        if (record?.gudang_tujuan?.nama_gudang) {
-          const gudangName = encodeURIComponent(record.gudang_tujuan.nama_gudang);
-          const layoutRes = await get(`${baseUrl}/api/warehouses/${gudangName}/layout`);
-          if (layoutRes.ok) {
-            const layoutJson = await layoutRes.json();
-            if (layoutJson?.data?.zonas) {
-              setZonas(layoutJson.data.zonas);
-            }
-          }
-        }
-
->>>>>>> Stashed changes
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : "Terjadi kesalahan mengambil data.");
       }
@@ -241,67 +189,13 @@ export default function InboundDetailPage() {
     }
   }
 
-<<<<<<< Updated upstream
   const allKondisiFilled = items.every((i) => i.qtyDiterima === 0 || i.kondisi !== "");
-=======
-  function handleSerialChange(index: number, value: string) {
-    updateItem(index, { serial_number: value || null });
-  }
-
-  function handleKondisiChange(index: number, value: string) {
-    updateItem(index, { kondisi: value || null });
-  }
-
-  function handleZonaChange(index: number, value: string | number) {
-    const numVal = Number(value);
-    updateItem(index, { zona_id: numVal > 0 ? numVal : null });
-  }
-
-  const allKondisiFilled = items.every((i) => i.qty === 0 || (i.kondisi && i.kondisi.trim() !== ""));
-  const allZonaFilled = items.every((i) => i.qty === 0 || i.zona_id);
->>>>>>> Stashed changes
   const unresolvedExcessIndexes = items
     .map((i, idx) => ({ i, idx }))
     .filter(({ i }) => i.qtyDiterima > i.qtyRencana && !i.isKelebihan)
     .map(({ idx }) => idx);
   const hasUnresolvedExcess = unresolvedExcessIndexes.length > 0;
-<<<<<<< Updated upstream
   const canSubmit = allKondisiFilled && items.some((i) => i.qtyDiterima > 0);
-=======
-  const canSubmit = allKondisiFilled && allZonaFilled && items.some((i) => (i.qty || 0) > 0);
-
-  async function doSave(finalItems: InboundItem[]) {
-    setSubmitting(true);
-    setError(null);
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const adjustments = finalItems.map((item) => ({
-        item_id: Number(item.item_id),
-        qty: Number(item.qty || 0),
-        kondisi: item.kondisi || null,
-        serial_number: item.serial_number || null,
-        catatan: item.keterangan || null,
-        // Pastikan zona_id adalah number > 0 atau null (bukan string kosong / 0)
-        zona_id: item.zona_id && Number(item.zona_id) > 0 ? Number(item.zona_id) : null,
-      }));
-
-      const response = await post(`${baseUrl}/api/surat-jalan/${params.suratJalanId}/receive-inbound`, {
-        items: adjustments,
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => null);
-        throw new Error(err?.message || "Gagal menyimpan penerimaan inbound.");
-      }
-
-      router.push("/staff/inbound");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan saat menyimpan.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
->>>>>>> Stashed changes
 
   function handleSubmitClick() {
     if (!canSubmit) return;
@@ -456,7 +350,6 @@ export default function InboundDetailPage() {
               <th className="pb-3 pr-4 font-semibold text-right">Qty Rencana</th>
               <th className="pb-3 pr-6 font-semibold text-right">Qty Diterima</th>
               <th className="pb-3 pr-4 font-semibold">Kondisi</th>
-              <th className="pb-3 pr-4 font-semibold">Zona</th>
               <th className="pb-3 font-semibold">Serial Number</th>
             </tr>
           </thead>
@@ -505,33 +398,7 @@ export default function InboundDetailPage() {
                           {k.label}
                         </option>
                       ))}
-                    </select>
-                  </td>
-                  <td className="py-3 pr-4">
-                    <select
-                      value={item.zona_id || ""}
-                      onChange={(e) => handleZonaChange(index, Number(e.target.value))}
-                      disabled={(item.qty || 0) === 0}
-                      className={`w-full rounded-md border px-2 py-1.5 text-xs font-medium focus:outline-none disabled:opacity-40 ${
-                        item.zona_id ? "border-[#E8632C] text-[#E8632C] bg-orange-50" : "border-gray-200 text-gray-500"
-                      }`}
-                    >
-                      <option value="">Pilih zona...</option>
-                      {zonas.length > 0 ? (
-                        zonas.map((z) => (
-                          <option key={z.zona_id} value={z.zona_id}>
-                            {z.nama_zona || `Zona ${z.zona_id}`}
-                          </option>
-                        ))
-                      ) : (
-                        <>
-                          <option value="1">Zona A (Indoor)</option>
-                          <option value="2">Zona B (Indoor)</option>
-                          <option value="3">Zona C (Outdoor)</option>
-                          <option value="4">Zona D (Outdoor)</option>
-                        </>
-                      )}
-                    </select>
+                     </select>
                   </td>
                   <td className="py-3">
                     {item.qtyDiterima === 0 ? (
