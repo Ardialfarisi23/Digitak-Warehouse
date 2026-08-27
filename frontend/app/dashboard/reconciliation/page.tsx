@@ -595,7 +595,7 @@ export default function ReconciliationInventoryPage() {
 
         {/* Catatan / Keterangan Rumus */}
         <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Catatan & Rumus Kalkulasi v4.5</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Catatan & Rumus Kalkulasi</p>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
               <p className="text-xs font-semibold text-amber-800">Selisih = MOS Mitra - MOS Sistem</p>

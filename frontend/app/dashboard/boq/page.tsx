@@ -277,6 +277,14 @@ export default function BoqPage() {
   const [permintaanSubmitting, setPermintaanSubmitting] = useState(false);
   const [permintaanFormError, setPermintaanFormError] = useState<string | null>(null);
 
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
   /* ---------------------------------------------------------------- */
   /* Data fetching                                                      */
   /* ---------------------------------------------------------------- */
@@ -477,8 +485,9 @@ export default function BoqPage() {
         throw new Error(json?.message || "Gagal menyetujui permintaan.");
       }
       fetchPermintaanBoqs();
+      setToast({ message: "Permintaan BOQ berhasil disetujui.", type: "success" });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Gagal menyetujui permintaan.");
+      setToast({ message: err instanceof Error ? err.message : "Gagal menyetujui permintaan.", type: "error" });
     }
   }
 
@@ -491,8 +500,9 @@ export default function BoqPage() {
       }
       fetchBoqs();
       fetchSummary();
+      setToast({ message: "BOQ berhasil dipulihkan ke draft.", type: "success" });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Gagal memulihkan BOQ.");
+      setToast({ message: err instanceof Error ? err.message : "Gagal memulihkan BOQ.", type: "error" });
     }
   }
 
@@ -505,8 +515,9 @@ export default function BoqPage() {
       }
       fetchBoqs();
       fetchSummary();
+      setToast({ message: "BOQ berhasil ditolak.", type: "success" });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Gagal menolak BOQ.");
+      setToast({ message: err instanceof Error ? err.message : "Gagal menolak BOQ.", type: "error" });
     }
   }
 
@@ -520,8 +531,9 @@ export default function BoqPage() {
         throw new Error(json?.message || "Gagal menolak permintaan.");
       }
       fetchPermintaanBoqs();
+      setToast({ message: "Permintaan BOQ berhasil ditolak.", type: "success" });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Gagal menolak permintaan.");
+      setToast({ message: err instanceof Error ? err.message : "Gagal menolak permintaan.", type: "error" });
     }
   }
 
@@ -767,9 +779,10 @@ export default function BoqPage() {
 
   async function handleActivate(boq: Boq) {
     if (boq.source === "top_down" && boq.externalVerificationStatus !== "terverifikasi") {
-      alert(
-        "BOQ ini belum ditandai terverifikasi oleh tim eksternal gudang. Konfirmasikan verifikasinya terlebih dahulu sebelum diaktifkan."
-      );
+      setToast({
+        message: "BOQ ini belum ditandai terverifikasi oleh tim eksternal gudang. Konfirmasikan verifikasinya terlebih dahulu sebelum diaktifkan.",
+        type: "error",
+      });
       return;
     }
 
@@ -783,8 +796,9 @@ export default function BoqPage() {
 
       fetchBoqs();
       fetchSummary();
+      setToast({ message: "BOQ berhasil diaktifkan.", type: "success" });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Gagal mengaktifkan BOQ.");
+      setToast({ message: err instanceof Error ? err.message : "Gagal mengaktifkan BOQ.", type: "error" });
     }
   }
 
@@ -803,8 +817,9 @@ export default function BoqPage() {
       if (detailBoq?.id === boq.id) {
         setDetailBoq({ ...detailBoq, externalVerificationStatus: "terverifikasi" });
       }
+      setToast({ message: "BOQ berhasil ditandai terverifikasi.", type: "success" });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Gagal menandai verifikasi.");
+      setToast({ message: err instanceof Error ? err.message : "Gagal menandai verifikasi.", type: "error" });
     }
   }
 
@@ -828,8 +843,9 @@ export default function BoqPage() {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+      setToast({ message: "Laporan BOQ berhasil diekspor.", type: "success" });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Gagal mengekspor laporan BOQ.");
+      setToast({ message: err instanceof Error ? err.message : "Gagal mengekspor laporan BOQ.", type: "error" });
     }
   }
 
@@ -2340,6 +2356,49 @@ export default function BoqPage() {
           </div>
         )}
       </div>
+
+      {toast && (
+        <div
+          className={[
+            "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
+            toast.type === "success"
+              ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
+              : "border-rose-200/80 bg-rose-50/95 text-rose-800",
+          ].join(" ")}
+        >
+          <div
+            className={[
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+              toast.type === "success" ? "bg-emerald-100" : "bg-rose-100",
+            ].join(" ")}
+          >
+            {toast.type === "success" ? (
+              <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+          </div>
+          <p className="flex-1 leading-snug">{toast.message}</p>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className={[
+              "ml-2 shrink-0 rounded-full p-1 transition-colors",
+              toast.type === "success"
+                ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
+                : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
+            ].join(" ")}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -198,6 +198,7 @@ const update = async (id, data, userId) => {
     ...boqData,
     updated_by: userId,
     status: boqData.status ? normalizeStatus(boqData.status) : undefined,
+    source: boqData.source ? normalizeSource(boqData.source) : undefined,
   };
 
   if (boqData.externalVerificationStatus) {
