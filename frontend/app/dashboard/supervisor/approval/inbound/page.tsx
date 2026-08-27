@@ -2,16 +2,8 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Search,
-  Filter,
-  Clock,
-  AlertTriangle,
-  Layers,
-  FileText,
-  ArrowLeft,
-  ArrowDownLeft,
-} from "lucide-react";
+import { Search, Filter, Clock, AlertTriangle, Layers, FileText, ArrowLeft, ArrowDownLeft } from "lucide-react";
+import { useApi } from "@/lib/api";
 
 // Interface disesuaikan dengan struktur data proyek
 interface GudangTujuan {
@@ -35,7 +27,13 @@ interface InboundRequest {
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export default function SupervisorApprovalPage() {
-  const router = useRouter(); // Hook untuk navigasi halaman
+  const router = useRouter();
+  // FIX: sebelumnya halaman ini pakai fetch() polos, nggak nyertain token
+  // auth sama sekali -> endpoint yang dilindungi authenticate middleware
+  // (GET /api/surat-jalan/inbound) selalu balikin 401. useApi() otomatis
+  // nempelin header Authorization: Bearer <token>, sama kayak semua
+  // halaman Staf yang udah connect ke API.
+  const { get, put } = useApi();
 
   const [requests, setRequests] = useState<InboundRequest[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -46,18 +44,20 @@ export default function SupervisorApprovalPage() {
   const fetchInboundList = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/surat-jalan/inbound`);
+      const res = await get(`${API_BASE_URL}/api/surat-jalan/inbound`);
       const data = await res.json();
 
-      const listData = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.data)
-        ? data.data
-        : Array.isArray(data?.result)
-        ? data.result
-        : [];
+      const rawList = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : Array.isArray(data?.result) ? data.result : [];
 
-      setRequests(listData);
+      // API asli balikin field "surat_jalan_id" (angka), bukan "id".
+      // Tanpa normalisasi ini, key React & pemanggilan approve/detail bakal
+      // dapet id undefined.
+      const normalized: InboundRequest[] = rawList.map((r: any) => ({
+        ...r,
+        id: String(r.surat_jalan_id ?? r.id),
+      }));
+
+      setRequests(normalized);
     } catch (error) {
       console.error("Gagal mengambil data inbound:", error);
       setRequests([]);
@@ -68,14 +68,18 @@ export default function SupervisorApprovalPage() {
 
   useEffect(() => {
     fetchInboundList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Filter Data (Hanya yang berstatus draft_diajukan)
+  // Filter Data
   const filteredRequests = useMemo(() => {
     if (!Array.isArray(requests)) return [];
 
     return requests.filter((r) => {
-      const isPending = r.status === "draft_diajukan";
+      // Surat Jalan Inbound yang staf submit statusnya "menunggu_verifikasi"
+      // (di-set di createStaffInbound() backend) — "draft_diajukan" itu
+      // status default buat Outbound, bukan Inbound.
+      const isPending = r.status === "menunggu_verifikasi";
 
       const matchSearch =
         !query.trim() ||
@@ -83,9 +87,7 @@ export default function SupervisorApprovalPage() {
         (r.pengirim_or_vendor || "").toLowerCase().includes(query.toLowerCase()) ||
         (r.gudang_tujuan?.nama_gudang || "").toLowerCase().includes(query.toLowerCase());
 
-      const matchCat =
-        selectedCategory === "all" ||
-        (r.kategori_approval || "inbound_di_luar_po") === selectedCategory;
+      const matchCat = selectedCategory === "all" || (r.kategori_approval || "inbound_di_luar_po") === selectedCategory;
 
       return isPending && matchSearch && matchCat;
     });
@@ -96,9 +98,7 @@ export default function SupervisorApprovalPage() {
     const totalAntrean = filteredRequests.length;
     const fisikRusak = filteredRequests.filter((r) => r.ada_fisik_rusak).length;
     const selisihPo = filteredRequests.filter((r) => r.selisih_po).length;
-    const diLuarPo = filteredRequests.filter(
-      (r) => (r.kategori_approval || "inbound_di_luar_po") === "inbound_di_luar_po"
-    ).length;
+    const diLuarPo = filteredRequests.filter((r) => (r.kategori_approval || "inbound_di_luar_po") === "inbound_di_luar_po").length;
 
     return { totalAntrean, fisikRusak, selisihPo, diLuarPo };
   }, [filteredRequests]);
@@ -106,15 +106,14 @@ export default function SupervisorApprovalPage() {
   // Handler Approve
   const handleApprove = async (id: string) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/surat-jalan/inbound/${id}/approve`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-      });
+      // Endpoint asli di surat-jalan.routes.js: PUT /api/surat-jalan/:id/approve-inbound
+      const res = await put(`${API_BASE_URL}/api/surat-jalan/${id}/approve-inbound`, {});
 
       if (res.ok) {
         setRequests((prev) => (Array.isArray(prev) ? prev.filter((item) => item.id !== id) : []));
       } else {
-        alert("Gagal menyetujui dokumen.");
+        const err = await res.json().catch(() => null);
+        alert(err?.message || "Gagal menyetujui dokumen.");
       }
     } catch (error) {
       console.error("Error approving request:", error);
@@ -125,11 +124,7 @@ export default function SupervisorApprovalPage() {
     <div className="p-8 max-w-7xl mx-auto space-y-6 bg-[#FAFAFA] min-h-screen text-slate-800">
       {/* Header & Navigasi Kembali */}
       <div className="flex items-center gap-4">
-        <button
-          onClick={() => router.back()}
-          className="p-2.5 bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-colors shadow-sm text-slate-600 cursor-pointer"
-          title="Kembali ke halaman sebelumnya"
-        >
+        <button onClick={() => router.back()} className="p-2.5 bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-colors shadow-sm text-slate-600 cursor-pointer" title="Kembali ke halaman sebelumnya">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
@@ -138,9 +133,7 @@ export default function SupervisorApprovalPage() {
             <span className="text-slate-300">•</span>
             <span className="text-slate-400 font-normal capitalize">Validasi Penerimaan</span>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-            Approval Penerimaan Barang (Inbound)
-          </h1>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Approval Penerimaan Barang (Inbound)</h1>
         </div>
       </div>
 
@@ -149,9 +142,7 @@ export default function SupervisorApprovalPage() {
         {/* Total Antrean */}
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex justify-between items-start">
           <div>
-            <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">
-              TOTAL ANTREAN
-            </p>
+            <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">TOTAL ANTREAN</p>
             <h3 className="text-3xl font-bold text-slate-900 mb-1">{stats.totalAntrean}</h3>
             <p className="text-xs text-slate-400">Barang masuk antrean</p>
           </div>
@@ -163,9 +154,7 @@ export default function SupervisorApprovalPage() {
         {/* Ada Fisik Rusak */}
         <div className="bg-rose-50/40 border border-rose-100 rounded-2xl p-5 shadow-sm flex justify-between items-start">
           <div>
-            <p className="text-xs font-bold tracking-wider text-rose-600 uppercase mb-2">
-              ADA FISIK RUSAK
-            </p>
+            <p className="text-xs font-bold tracking-wider text-rose-600 uppercase mb-2">ADA FISIK RUSAK</p>
             <h3 className="text-3xl font-bold text-rose-600 mb-1">{stats.fisikRusak}</h3>
             <p className="text-xs text-rose-500 font-medium">Butuh berita acara</p>
           </div>
@@ -177,9 +166,7 @@ export default function SupervisorApprovalPage() {
         {/* Selisih Qty / PO */}
         <div className="bg-amber-50/40 border border-amber-100 rounded-2xl p-5 shadow-sm flex justify-between items-start">
           <div>
-            <p className="text-xs font-bold tracking-wider text-amber-600 uppercase mb-2">
-              SELISIH QTY / PO
-            </p>
+            <p className="text-xs font-bold tracking-wider text-amber-600 uppercase mb-2">SELISIH QTY / PO</p>
             <h3 className="text-3xl font-bold text-amber-600 mb-1">{stats.selisihPo}</h3>
             <p className="text-xs text-amber-500 font-medium">Verifikasi pengirim</p>
           </div>
@@ -191,9 +178,7 @@ export default function SupervisorApprovalPage() {
         {/* Di Luar PO */}
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex justify-between items-start">
           <div>
-            <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">
-              DI LUAR PO
-            </p>
+            <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">DI LUAR PO</p>
             <h3 className="text-3xl font-bold text-slate-900 mb-1">{stats.diLuarPo}</h3>
             <p className="text-xs text-slate-400">Manual / Retur</p>
           </div>
@@ -232,25 +217,16 @@ export default function SupervisorApprovalPage() {
 
       {/* List Antrean Inbound */}
       {loading ? (
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400 font-medium">
-          Memuat data antrean...
-        </div>
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400 font-medium">Memuat data antrean...</div>
       ) : filteredRequests.length > 0 ? (
         <div className="space-y-4">
           {filteredRequests.map((req) => (
-            <div
-              key={req.id}
-              className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col md:flex-row justify-between md:items-center gap-4"
-            >
+            <div key={req.id} className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col md:flex-row justify-between md:items-center gap-4">
               {/* Detail Informasi */}
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold text-slate-900 text-lg">
-                    {req.nomor_surat_jalan}
-                  </span>
-                  <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-semibold border border-emerald-100">
-                    Pengirim: {req.pengirim_or_vendor || "Vendor / Internal"}
-                  </span>
+                  <span className="font-bold text-slate-900 text-lg">{req.nomor_surat_jalan}</span>
+                  <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-semibold border border-emerald-100">Pengirim: {req.pengirim_or_vendor || "Vendor / Internal"}</span>
                   <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-medium flex items-center gap-1.5">
                     <FileText className="w-3.5 h-3.5 text-slate-400" />
                     Di Luar PO / Unscheduled
@@ -260,30 +236,24 @@ export default function SupervisorApprovalPage() {
                 <div className="flex items-center gap-1.5 text-slate-700 text-sm font-medium">
                   <ArrowDownLeft className="w-4 h-4 text-emerald-600" />
                   <span>
-                    Gudang Tujuan:{" "}
-                    <strong className="text-slate-900">
-                      {req.gudang_tujuan?.nama_gudang || "Gudang Rancamanyar"}
-                    </strong>
+                    Gudang Tujuan: <strong className="text-slate-900">{req.gudang_tujuan?.nama_gudang || "Gudang Rancamanyar"}</strong>
                   </span>
                 </div>
 
                 <p className="text-xs text-slate-400">
-                  Total Masuk ({req.total_tipe || 1} tipe):{" "}
-                  <span className="text-slate-600 font-medium">
-                    Perangkat ({req.total_unit || 8} unit)
-                  </span>
+                  Total Masuk ({req.total_tipe || 1} tipe): <span className="text-slate-600 font-medium">Perangkat ({req.total_unit || 8} unit)</span>
                 </p>
               </div>
 
               {/* Tombol Aksi */}
               <div className="flex items-center gap-3 self-end md:self-center">
-                <button className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200/80 rounded-xl text-xs font-semibold transition-colors">
+                <button
+                  onClick={() => router.push(`/dashboard/supervisor/approval/inbound/${req.id}`)}
+                  className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200/80 rounded-xl text-xs font-semibold transition-colors"
+                >
                   Review Detail
                 </button>
-                <button
-                  onClick={() => handleApprove(req.id)}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm shadow-emerald-600/20"
-                >
+                <button onClick={() => handleApprove(req.id)} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm shadow-emerald-600/20">
                   Setujui & Tambah Stok
                 </button>
               </div>
@@ -291,9 +261,7 @@ export default function SupervisorApprovalPage() {
           ))}
         </div>
       ) : (
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400 font-medium shadow-sm">
-          Tidak ada pengajuan inbound yang menunggu persetujuan.
-        </div>
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400 font-medium shadow-sm">Tidak ada pengajuan inbound yang menunggu persetujuan.</div>
       )}
     </div>
   );
