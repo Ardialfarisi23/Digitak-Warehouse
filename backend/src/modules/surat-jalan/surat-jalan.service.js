@@ -46,6 +46,21 @@ const receiveInbound = async (id, items, actorId) => {
   }
 
   await prisma.$transaction(async (tx) => {
+    // Mapping label UI → enum Prisma kondisi_barang
+    const KONDISI_MAP = {
+      "Baik": "baik",
+      "Rusak Ringan": "rusak_ringan",
+      "Rusak Berat": "rusak_berat",
+      "Tidak Sesuai Spek": "tidak_sesuai_spek",
+      "DOA": "doa",
+      // Sudah lowercase (dari sumber lain)
+      "baik": "baik",
+      "rusak_ringan": "rusak_ringan",
+      "rusak_berat": "rusak_berat",
+      "tidak_sesuai_spek": "tidak_sesuai_spek",
+      "doa": "doa",
+    };
+
     for (const item of items) {
       const updateData = {};
 
@@ -53,7 +68,11 @@ const receiveInbound = async (id, items, actorId) => {
         updateData.qty = item.qty;
       }
       if (typeof item.kondisi === "string") {
-        updateData.kondisi = item.kondisi;
+        // Konversi ke format enum Prisma (lowercase_underscore)
+        const kondisiMapped = KONDISI_MAP[item.kondisi];
+        if (kondisiMapped) {
+          updateData.kondisi = kondisiMapped;
+        }
       }
       if (typeof item.serial_number === "string") {
         updateData.serial_number = item.serial_number;
@@ -61,8 +80,17 @@ const receiveInbound = async (id, items, actorId) => {
       if (typeof item.catatan === "string") {
         updateData.catatan = item.catatan;
       }
-      if (typeof item.is_kelebihan === "boolean") {
-        updateData.is_kelebihan = item.is_kelebihan;
+      if (typeof item.zona_id === "number" && item.zona_id > 0) {
+        // zona_id mengacu ke zona_gudang, tapi bin_lokasi_id mengacu ke bin_lokasi
+        // Ambil bin pertama dari rak pertama di zona tersebut
+        const firstRak = await tx.rak.findFirst({
+          where: { zona_id: item.zona_id },
+          include: { bins: { take: 1 } },
+        });
+        const firstBin = firstRak?.bins?.[0];
+        if (firstBin) {
+          updateData.bin_lokasi_id = firstBin.bin_id;
+        }
       }
 
       if (Object.keys(updateData).length > 0) {
@@ -140,11 +168,9 @@ const approveInbound = async (id, itemAdjustments = [], actorId) => {
 
   await prisma.$transaction(async (tx) => {
     await suratJalanRepository.addInboundStock(shipment, tx);
-    // FIX (bug #5/#6 looping): sebelumnya di-set "disetujui" — status yang
-    // SAMA dipakai lagi nanti di akhir putaway(), jadi sistem nggak bisa
-    // bedain "baru di-ACC, siap putaway" vs "udah selesai ditempatkan".
-    // Sekarang pakai status "ready_putaway" yang emang udah ada di enum
-    // Prisma tapi belum pernah dipakai.
+    // Ubah status menjadi 'ready_putaway' setelah approval supervisor,
+    // bukan 'disetujui'. Status 'disetujui' akan dicapai setelah putaway.
+    // Ini akan menghilangkannya dari antrean verifikasi.
     await suratJalanRepository.updateStatus(id, "ready_putaway", tx);
 
     if (shipment.boq_id && shipment.boq?.tiket_id) {
@@ -232,7 +258,9 @@ const approveOutbound = async (id, actorId) => {
     }
   });
 
-  return await suratJalanRepository.findById(id);
+  // Ambil data terbaru setelah transaksi berhasil untuk dikembalikan ke controller
+  const updatedShipment = await suratJalanRepository.findById(id);
+  return updatedShipment;
 };
 
 const confirmDistributed = async (id, actorId) => {

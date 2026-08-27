@@ -322,8 +322,9 @@ export default function SupervisorDeliveryPage() {
         </div>
       </div>
 
-      {/* MODAL DETAIL TRACKING */}
+      {/* MODAL DETAIL TRACKING — Berbentuk Surat */}
       {selectedDetail && (
+<<<<<<< Updated upstream
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 sm:p-6"
           onClick={closeDetail}
@@ -369,11 +370,28 @@ export default function SupervisorDeliveryPage() {
                 onClick={closeDetail}
                 className="p-2 rounded-2xl bg-white border border-stone-200/80 hover:bg-stone-100 text-slate-500 hover:text-slate-800 transition shadow-sm"
                 title="Tutup Modal (ESC)"
+=======
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="relative w-full max-w-3xl max-h-[92vh] overflow-hidden rounded-3xl bg-white shadow-2xl flex flex-col my-8">
+
+            {/* Toolbar */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 print:hidden">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">
+                  {selectedDetail.tipe.toLowerCase() === "outbound" ? "Surat Jalan" : "Bukti Penerimaan Barang"}
+                </h3>
+                <p className="text-xs text-slate-500">{selectedDetail.nomor_surat_jalan}</p>
+              </div>
+              <button
+                onClick={closeDetail}
+                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+>>>>>>> Stashed changes
               >
                 <X size={18} />
               </button>
             </div>
 
+<<<<<<< Updated upstream
             {/* MODAL BODY (SCROLLABLE AREA) */}
             <div className="p-6 overflow-y-auto space-y-6 flex-1">
               {detailError && (
@@ -385,9 +403,208 @@ export default function SupervisorDeliveryPage() {
                   >
                     Coba Lagi
                   </button>
+=======
+            {detailError && (
+              <div className="mx-6 mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 print:hidden">
+                {detailError}
+                <button
+                  onClick={() => openDetail(selectedDetail)}
+                  className="ml-3 rounded-lg border border-rose-300 px-3 py-1 text-xs font-semibold text-rose-800 hover:bg-rose-100"
+                >
+                  Coba Lagi
+                </button>
+              </div>
+            )}
+
+            {isDetailLoading ? (
+              <div className="py-12 text-center text-slate-500">
+                <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
+                <p className="mt-2 text-sm">Memuat detail...</p>
+              </div>
+            ) : (
+              <>
+                {/* Scrollable Body */}
+                <div className="overflow-y-auto p-6">
+                  {(() => {
+                    const isOutbound = selectedDetail.tipe.toLowerCase() === "outbound";
+                    const accentBorderTop = isOutbound ? "border-[#E8632C]" : "border-emerald-600";
+                    const docBorder = isOutbound ? "border-[#F3D9C7]" : "border-[#C7E8D9]";
+                    const headBg = isOutbound ? "bg-[#FFF7ED]" : "bg-emerald-50";
+                    const headBorder = isOutbound ? "border-[#F3D9C7]" : "border-[#C7E8D9]";
+                    const headText = isOutbound ? "text-[#9a3412]" : "text-emerald-900";
+                    const accentText = isOutbound ? "text-[#E8632C]" : "text-emerald-700";
+                    const titleDoc = isOutbound ? "SURAT JALAN" : "BUKTI PENERIMAAN BARANG";
+                    const subtitleDoc = isOutbound
+                      ? "Surat Jalan Internal — Digitak Studio"
+                      : "Inbound Receipt — Digitak Studio";
+
+                    return (
+                      <div
+                        id="delivery-document"
+                        className={`mx-auto max-w-3xl rounded-2xl border ${docBorder} bg-white p-10 print:rounded-none print:border-0 print:p-0`}
+                      >
+                        {/* Kop Surat */}
+                        <div className={`mb-8 flex items-start justify-between border-b-2 ${accentBorderTop} pb-6`}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src="/logo digitak grdasi.png"
+                            alt="Digitak Studio — PT Metanouva Informatika"
+                            className="h-16 w-auto object-contain"
+                          />
+                          <div className="flex flex-col items-end">
+                            <h2 className="text-3xl font-bold tracking-wide text-gray-900">{titleDoc}</h2>
+                            <p className="mt-1 text-xs text-gray-500">{subtitleDoc}</p>
+                            <div className="mt-2 text-right">
+                              <p className={`text-xs font-bold ${accentText}`}>PT Metanouva Informatika</p>
+                              <p className="text-[10px] text-gray-400">Digitak Studio</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Info Grid — 2 kolom */}
+                        <div className="mb-8 grid grid-cols-2 gap-x-12 gap-y-3 text-sm">
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-[140px_10px_1fr] items-start leading-snug">
+                              <span className="text-gray-500">No. Dokumen</span>
+                              <span className="text-gray-500">:</span>
+                              <span className="font-semibold text-gray-900">{selectedDetail.nomor_surat_jalan || "-"}</span>
+                            </div>
+                            <div className="grid grid-cols-[140px_10px_1fr] items-start leading-snug">
+                              <span className="text-gray-500">Tipe</span>
+                              <span className="text-gray-500">:</span>
+                              <span className="font-semibold text-gray-900">{isOutbound ? "Outbound" : "Inbound"}</span>
+                            </div>
+                            <div className="grid grid-cols-[140px_10px_1fr] items-start leading-snug">
+                              <span className="text-gray-500">Gudang Asal</span>
+                              <span className="text-gray-500">:</span>
+                              <span className="font-semibold text-gray-900">{selectedDetail.gudang_asal?.nama_gudang || "-"}</span>
+                            </div>
+                            <div className="grid grid-cols-[140px_10px_1fr] items-start leading-snug">
+                              <span className="text-gray-500">Gudang Tujuan</span>
+                              <span className="text-gray-500">:</span>
+                              <span className="font-semibold text-gray-900">{selectedDetail.gudang_tujuan?.nama_gudang || "-"}</span>
+                            </div>
+                          </div>
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-[140px_10px_1fr] items-start leading-snug">
+                              <span className="text-gray-500">Tanggal</span>
+                              <span className="text-gray-500">:</span>
+                              <span className="font-semibold text-gray-900">{formatDate(selectedDetail.tanggal_disetujui || selectedDetail.tanggal)}</span>
+                            </div>
+                            <div className="grid grid-cols-[140px_10px_1fr] items-start leading-snug">
+                              <span className="text-gray-500">Project</span>
+                              <span className="text-gray-500">:</span>
+                              <span className="font-semibold text-gray-900">{selectedDetail.project?.nama_project || "-"}</span>
+                            </div>
+                            <div className="grid grid-cols-[140px_10px_1fr] items-start leading-snug">
+                              <span className="text-gray-500">Driver</span>
+                              <span className="text-gray-500">:</span>
+                              <span className="font-semibold text-gray-900">{selectedDetail.personil_pengantar?.nama || "-"}</span>
+                            </div>
+                            <div className="grid grid-cols-[140px_10px_1fr] items-start leading-snug">
+                              <span className="text-gray-500">Kendaraan</span>
+                              <span className="text-gray-500">:</span>
+                              <span className="font-semibold text-gray-900">
+                                {selectedDetail.kendaraan?.jenis_kendaraan || "-"}
+                                {selectedDetail.kendaraan?.no_polisi && (
+                                  <span className="ml-1 text-gray-400 font-normal">({selectedDetail.kendaraan.no_polisi})</span>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Catatan */}
+                        {selectedDetail.catatan && (
+                          <div className="mb-6 rounded-xl bg-amber-50 border border-amber-200 p-4 flex gap-3">
+                            <div className="text-xs text-amber-900">
+                              <span className="font-semibold block mb-0.5">Catatan:</span>
+                              {selectedDetail.catatan}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Tabel Barang */}
+                        <table className="mb-10 w-full border-collapse text-sm">
+                          <thead>
+                            <tr className={headBg}>
+                              <th className={`border ${headBorder} px-3 py-2 text-left font-semibold ${headText}`}>No</th>
+                              <th className={`border ${headBorder} px-3 py-2 text-left font-semibold ${headText}`}>Kode Barang</th>
+                              <th className={`border ${headBorder} px-3 py-2 text-left font-semibold ${headText}`}>Nama Barang</th>
+                              <th className={`border ${headBorder} px-3 py-2 text-center font-semibold ${headText}`}>QTY</th>
+                              <th className={`border ${headBorder} px-3 py-2 text-center font-semibold ${headText}`}>UOM</th>
+                              <th className={`border ${headBorder} px-3 py-2 text-left font-semibold ${headText}`}>Serial Number</th>
+                              <th className={`border ${headBorder} px-3 py-2 text-left font-semibold ${headText}`}>Kondisi / Catatan</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedDetail.items && selectedDetail.items.length > 0 ? (
+                              selectedDetail.items.map((it, idx) => (
+                                <tr key={it.item_id || idx} className="even:bg-gray-50">
+                                  <td className="border border-gray-200 px-3 py-2.5 text-gray-600">{idx + 1}</td>
+                                  <td className="border border-gray-200 px-3 py-2.5 font-medium text-gray-900">
+                                    {it.barang?.kode_perangkat || "-"}
+                                  </td>
+                                  <td className="border border-gray-200 px-3 py-2.5">{it.barang?.nama_barang || "-"}</td>
+                                  <td className="border border-gray-200 px-3 py-2.5 text-center font-semibold">{it.qty}</td>
+                                  <td className="border border-gray-200 px-3 py-2.5 text-center">
+                                    {it.satuan?.kode_satuan || it.barang?.satuan_default?.kode_satuan || "-"}
+                                  </td>
+                                  <td className="border border-gray-200 px-3 py-2.5 font-mono text-xs text-gray-500">
+                                    {it.serial_number || "-"}
+                                  </td>
+                                  <td className="border border-gray-200 px-3 py-2.5 text-gray-500">
+                                    {[it.kondisi, it.catatan].filter(Boolean).join(" / ") || "-"}
+                                  </td>
+                                </tr>
+                              ))
+                            ) : (
+                              <tr>
+                                <td colSpan={7} className="border border-gray-200 px-3 py-6 text-center text-gray-400">
+                                  Tidak ada rincian barang.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+
+                        {/* Tanda Tangan */}
+                        <div className="mb-8 grid grid-cols-3 gap-6 text-center text-sm">
+                          <div>
+                            <p className="mb-16 font-medium text-gray-700">Material Handler</p>
+                            <div className="border-t border-gray-400 pt-1">
+                              <p className="font-semibold text-gray-900">-</p>
+                            </div>
+                          </div>
+                          <div>
+                            <p className="mb-16 font-medium text-gray-700">Driver</p>
+                            <div className="border-t border-gray-400 pt-1">
+                              <p className="font-semibold text-gray-900">
+                                {selectedDetail.personil_pengantar?.nama || "-"}
+                              </p>
+                            </div>
+                          </div>
+                          <div>
+                            <p className="mb-16 font-medium text-gray-700">Penerima</p>
+                            <div className="border-t border-gray-400 pt-1">
+                              <p className="font-semibold text-gray-900">-</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Footer Dokumen */}
+                        <div className="border-t border-gray-200 pt-3 flex items-center justify-between text-[10px] text-gray-400">
+                          <span>{selectedDetail.nomor_surat_jalan} | {formatDate(selectedDetail.tanggal_disetujui || selectedDetail.tanggal)}</span>
+                          <span>Sistem Manajemen Gudang — Digitak Studio</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+>>>>>>> Stashed changes
                 </div>
               )}
 
+<<<<<<< Updated upstream
               {isDetailLoading ? (
                 <div className="py-16 text-center text-slate-500">
                   <div className="inline-block h-8 w-8 animate-spin rounded-full border-3 border-stone-300 border-t-[#FF5500]" />
@@ -573,9 +790,55 @@ export default function SupervisorDeliveryPage() {
                 Tutup
               </button>
             </div>
+=======
+                {/* Action Bar */}
+                <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3 print:hidden">
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${getStatusBadge(selectedDetail.status)}`}>
+                      {getStatusLabel(selectedDetail.status)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-xs font-semibold shadow-sm transition ${
+                        selectedDetail.tipe.toLowerCase() === "outbound"
+                          ? "border-[#E8632C] bg-white text-[#E8632C] hover:bg-[#E8632C] hover:text-white"
+                          : "border-emerald-600 bg-white text-emerald-700 hover:bg-emerald-600 hover:text-white"
+                      }`}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="6 9 6 2 18 2 18 9" />
+                        <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                        <rect x="6" y="14" width="12" height="8" />
+                      </svg>
+                      Cetak / PDF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={closeDetail}
+                      className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                    >
+                      Tutup
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+>>>>>>> Stashed changes
           </div>
         </div>
       )}
+
+      <style jsx global>{`
+        @media print {
+          aside, header, nav { display: none !important; }
+          main { margin-left: 0 !important; margin-top: 0 !important; }
+          body { background: white !important; }
+          .print\\:hidden { display: none !important; }
+        }
+      `}</style>
     </div>
   );
 }

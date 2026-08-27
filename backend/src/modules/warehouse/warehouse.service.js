@@ -1,4 +1,4 @@
-﻿const warehouseRepository = require("./warehouse.repository");
+const warehouseRepository = require("./warehouse.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
 
@@ -75,12 +75,14 @@ const restore = async (gudang_id) => {
   return await warehouseRepository.restore(gudang_id);
 };
 
-const getLayout = async (gudang_id) => {
-  const warehouse = await warehouseRepository.findById(gudang_id);
+const getLayout = async (nama_gudang) => {
+  const warehouse = await warehouseRepository.findByNama(nama_gudang);
 
   if (!warehouse) {
     throw new AppError("Warehouse tidak ditemukan.", 404);
   }
+
+  const gudang_id = warehouse.gudang_id;
 
   const zonas = await prisma.zona_gudang.findMany({
     where: { gudang_id: Number(gudang_id) },

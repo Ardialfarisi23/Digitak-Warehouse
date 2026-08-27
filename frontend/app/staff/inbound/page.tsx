@@ -24,6 +24,24 @@ interface InboundItem {
   qty: number;
 }
 
+interface ProjectOption {
+  project_id: string | number;
+  nama_project: string;
+}
+
+interface VehicleOption {
+  kendaraan_id: string | number;
+  jenis_kendaraan: string;
+  merk: string;
+  no_polisi: string;
+}
+
+interface PersonnelOption {
+  personil_id: string | number;
+  nama: string;
+  posisi?: string;
+}
+
 interface InboundSuratJalan {
   surat_jalan_id: number;
   nomor_surat_jalan: string;
@@ -120,12 +138,20 @@ export default function InboundListPage() {
   const [submitting, setSubmitting] = useState(false);
   const [barangOptions, setBarangOptions] = useState<BarangOption[]>([]);
   const [warehouseOptions, setWarehouseOptions] = useState<WarehouseOption[]>([]);
+  const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
+  const [vehicleOptions, setVehicleOptions] = useState<VehicleOption[]>([]);
+  const [personnelOptions, setPersonnelOptions] = useState<PersonnelOption[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
 
   const [nomorTiket, setNomorTiket] = useState("");
   const [nomorSuratJalan, setNomorSuratJalan] = useState("");
   const [selectedGudangTujuanId, setSelectedGudangTujuanId] = useState("");
   const [tanggalMasuk, setTanggalMasuk] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [asalPengiriman, setAsalPengiriman] = useState("");
+  const [selectedKendaraanId, setSelectedKendaraanId] = useState("");
+  const [selectedDriverId, setSelectedDriverId] = useState("");
+  const [picPemohon, setPicPemohon] = useState("");
   const [modalItems, setModalItems] = useState<ModalItemRow[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [suratJalanPdf, setSuratJalanPdf] = useState<File | null>(null);
@@ -160,21 +186,33 @@ export default function InboundListPage() {
     setLoadingOptions(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const [itemRes, warehouseRes] = await Promise.all([
+      const [itemRes, warehouseRes, projectRes, vehicleRes, personnelRes] = await Promise.all([
         get(`${baseUrl}/api/items?limit=200`),
         get(`${baseUrl}/api/warehouses`),
+        get(`${baseUrl}/api/projects`),
+        get(`${baseUrl}/api/vehicles`),
+        get(`${baseUrl}/api/personnels`),
       ]);
       if (!itemRes.ok) throw new Error("Gagal mengambil daftar barang.");
       if (!warehouseRes.ok) throw new Error("Gagal mengambil daftar gudang.");
+      if (!projectRes.ok) throw new Error("Gagal mengambil daftar project.");
+      if (!vehicleRes.ok) throw new Error("Gagal mengambil daftar kendaraan.");
+      if (!personnelRes.ok) throw new Error("Gagal mengambil daftar personil.");
 
-      const [itemJson, warehouseJson] = await Promise.all([
+      const [itemJson, warehouseJson, projectJson, vehicleJson, personnelJson] = await Promise.all([
         itemRes.json(),
         warehouseRes.json(),
+        projectRes.json(),
+        vehicleRes.json(),
+        personnelRes.json(),
       ]);
 
       const unwrap = (json: any) => Array.isArray(json?.data) ? json.data : json?.data?.data || [];
       setBarangOptions(unwrap(itemJson));
       setWarehouseOptions(unwrap(warehouseJson));
+      setProjectOptions(unwrap(projectJson));
+      setVehicleOptions(unwrap(vehicleJson));
+      setPersonnelOptions(unwrap(personnelJson));
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Gagal memuat data master.");
     } finally {
@@ -187,6 +225,11 @@ export default function InboundListPage() {
     setNomorSuratJalan("");
     setSelectedGudangTujuanId("");
     setTanggalMasuk("");
+    setSelectedProjectId("");
+    setAsalPengiriman("");
+    setSelectedKendaraanId("");
+    setSelectedDriverId("");
+    setPicPemohon("");
     setModalItems([]);
     setFormError(null);
     setSuratJalanPdf(null);
@@ -272,6 +315,7 @@ export default function InboundListPage() {
     nomorSuratJalan.trim().length > 0 &&
     selectedGudangTujuanId &&
     tanggalMasuk &&
+    selectedProjectId &&
     modalItems.length > 0 &&
     modalItems.every((row) => row.barang_id && Number(row.qty) > 0 && row.satuan_id);
 
@@ -286,6 +330,11 @@ export default function InboundListPage() {
         nomor_surat_jalan: nomorSuratJalan.trim(),
         gudang_tujuan_id: selectedGudangTujuanId,
         tanggal: tanggalMasuk,
+        project_id: selectedProjectId || null,
+        pengirim_or_vendor: asalPengiriman.trim() || null,
+        kendaraan_id: selectedKendaraanId || null,
+        personil_pengantar_id: selectedDriverId || null,
+        pic_pemohon_nama: picPemohon.trim() || null,
         nomor_tiket: nomorTiket.trim() || null,
         notes: null,
         kategori_approval: "manual_override",
@@ -428,15 +477,14 @@ export default function InboundListPage() {
         onClose={() => setModalOpen(false)}
         title="Input Inbound"
         subtitle="Isi detail barang masuk untuk diajukan ke Supervisor"
-        widthClass="max-w-3xl"
+        widthClass="max-w-4xl"
       >
         {formError && (
           <div className="mb-4 flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">
             {formError}
           </div>
         )}
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-600">Nomor Tiket Gudang</label>
             <input
@@ -459,7 +507,7 @@ export default function InboundListPage() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Gudang Tujuan</label>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Gudang Tujuan <span className="text-rose-500">*</span></label>
             <div className="relative">
               <select
                 value={selectedGudangTujuanId}
@@ -479,7 +527,7 @@ export default function InboundListPage() {
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Tanggal Masuk</label>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Tanggal Masuk <span className="text-rose-500">*</span></label>
             <input
               type="date"
               value={tanggalMasuk}
@@ -487,6 +535,84 @@ export default function InboundListPage() {
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
             />
           </div>
+
+          <div className="sm:col-span-2 border-t border-gray-100 pt-4 mt-2">
+            <label className="mb-1 block text-xs font-medium text-gray-600">Project <span className="text-rose-500">*</span></label>
+            <div className="relative">
+              <select
+                value={selectedProjectId}
+                onChange={(e) => setSelectedProjectId(e.target.value)}
+                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+              >
+                <option value="" disabled>Pilih Project...</option>
+                {projectOptions.map((p) => (
+                  <option key={p.project_id} value={String(p.project_id)}>
+                    {p.nama_project}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Asal Gudang / Pengirim</label>
+            <input
+              type="text"
+              value={asalPengiriman}
+              onChange={(e) => setAsalPengiriman(e.target.value)}
+              placeholder="Contoh: Gudang Pusat / Nama Vendor"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">PIC / Pemohon</label>
+            <input
+              type="text"
+              value={picPemohon}
+              onChange={(e) => setPicPemohon(e.target.value)}
+              placeholder="Nama pemohon barang"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Kendaraan</label>
+            <div className="relative">
+              <select
+                value={selectedKendaraanId}
+                onChange={(e) => setSelectedKendaraanId(e.target.value)}
+                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+              >
+                <option value="">Pilih Kendaraan...</option>
+                {vehicleOptions.map((v) => (
+                  <option key={v.kendaraan_id} value={String(v.kendaraan_id)}>
+                    {v.no_polisi} - {v.merk} {v.jenis_kendaraan}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Driver</label>
+            <div className="relative">
+              <select
+                value={selectedDriverId}
+                onChange={(e) => setSelectedDriverId(e.target.value)}
+                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+              >
+                <option value="">Pilih Driver...</option>
+                {personnelOptions.map((p) => (
+                  <option key={p.personil_id} value={String(p.personil_id)}>{p.nama}</option>
+                ))}
+              </select>
+              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
+          </div>
+
           <div className="sm:col-span-2">
             <label className="mb-1 block text-xs font-medium text-gray-600">Upload Surat Jalan Inbound (PDF)</label>
             <input

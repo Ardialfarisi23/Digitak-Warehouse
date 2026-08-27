@@ -337,16 +337,20 @@ const updateStatus = async (id, status, userId) => {
 
   const result = await boqRepository.updateStatus(id, normalizedStatus, userId);
 
-  await prisma.audit_log.create({
-    data: {
-      entity_type: "boq",
-      entity_id: BigInt(id),
-      aksi: "update_status",
-      actor_id: BigInt(userId),
-      data_sebelum: { status: boq.status },
-      data_sesudah: { status: result.status, boq_id: id },
-    },
-  });
+  try {
+    await prisma.audit_log.create({
+      data: {
+        entity_type: "boq",
+        entity_id: BigInt(Number(id)),
+        aksi: "update",
+        actor_id: BigInt(Number(userId)),
+        data_sebelum: { status: boq.status },
+        data_sesudah: { status: result.status, boq_id: Number(id) },
+      },
+    });
+  } catch (auditErr) {
+    console.error("Gagal mencatat audit log aktivasi BOQ:", auditErr);
+  }
 
   return result;
 };

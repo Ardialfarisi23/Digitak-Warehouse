@@ -1,7 +1,7 @@
 const validate = (schema) => {
     return (req, res, next) => {
 
-        const result = schema.safeParse(req.body);
+        const result = schema.safeParse(req.body); if (!result.success) console.error('VALIDATION FAILED:\n', JSON.stringify(result.error.flatten().fieldErrors, null, 2));
 
         if (!result.success) {
 

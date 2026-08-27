@@ -2,7 +2,7 @@ const { z } = require("zod");
 
 const createSuratJalanSchema = z.object({
   tipe: z.enum(["inbound", "outbound"]),
-  nomor_surat_jalan: z.string().min(1, "Nomor Surat Jalan wajib diisi."),
+  nomor_surat_jalan: z.string().optional().nullable(),
   gudang_asal_id: z.string().optional().nullable(),
   gudang_tujuan_id: z.string().optional().nullable(),
   kendaraan_id: z.string().optional().nullable(),
@@ -31,21 +31,19 @@ const createSuratJalanSchema = z.object({
 });
 
 const receiveInboundSchema = z.object({
-  items: z
-    .array(
-      z.object({
-        item_id: z.coerce.number(),
-        qty: z.number().nonnegative("Qty tidak boleh negatif.").optional(),
-        kondisi: z.string().optional().nullable(),
-        serial_number: z.string().optional().nullable(),
-        catatan: z.string().max(500).optional().nullable(),
-        // Ditambahkan: sebelumnya field ini cuma ada di createSuratJalanSchema,
-        // jadi item yang kelebihan qty pas proses "cocokkan barang" (inbound)
-        // nggak bisa ditandai lewat endpoint receive-inbound.
-        is_kelebihan: z.boolean().optional(),
-      }),
-    )
-    .min(1, "Minimal satu item harus diupdate."),
+  items: z.array(
+    z.object({
+      item_id: z.coerce.number(),
+      qty: z.coerce.number().nonnegative("Qty tidak boleh negatif.").optional(),
+      kondisi: z.string().optional().nullable(),
+      serial_number: z.string().optional().nullable(),
+      catatan: z.string().max(500).optional().nullable(),
+      zona_id: z.preprocess(
+        (val) => (val === null || val === undefined || val === "" || val === 0 ? null : Number(val)),
+        z.number().positive().nullable().optional()
+      ),
+    })
+  ).min(1, "Minimal satu item harus diupdate."),
 });
 
 const approveInboundSchema = z.object({
@@ -69,15 +67,61 @@ const rejectOutboundSchema = z.object({
 });
 
 const putawaySchema = z.object({
-  items: z
-    .array(
-      z.object({
-        item_id: z.coerce.number(),
-        bin_lokasi_id: z.coerce.number().positive("Bin lokasi wajib diisi."),
-        qty: z.number().positive("Qty harus lebih dari 0."),
-      }),
-    )
-    .min(1, "Minimal satu item harus di-putaway."),
+  tahap: z.coerce.number().optional().default(2),
+  items: z.array(
+    z.object({
+      item_id: z.coerce.number(),
+      // Tahap 1 fields
+      qty_fisik: z.number().nonnegative().optional(),
+      status_kesesuaian: z.string().optional(),
+      // Tahap 2 fields
+      zona_id: z.coerce.number().positive().optional(),
+      gudang_id: z.coerce.number().positive().optional(),
+      qty_ditempatkan: z.number().positive().optional(),
+      // Legacy fields
+      bin_lokasi_id: z.coerce.number().positive().optional(),
+      qty: z.number().positive().optional(),
+    })
+  ).min(1, "Minimal satu item harus di-putaway."),
+}).superRefine((data, ctx) => {
+  const isTahap1 = data.tahap === 1;
+
+  data.items.forEach((item, index) => {
+    if (isTahap1) {
+      if (item.qty_fisik === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "qty_fisik wajib diisi pada Tahap 1.",
+          path: ["items", index, "qty_fisik"],
+        });
+      }
+      if (!item.status_kesesuaian) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "status_kesesuaian wajib diisi pada Tahap 1.",
+          path: ["items", index, "status_kesesuaian"],
+        });
+      }
+    } else {
+      const hasLokasi = item.zona_id !== undefined || item.bin_lokasi_id !== undefined;
+      const hasQty = item.qty_ditempatkan !== undefined || item.qty !== undefined;
+
+      if (!hasLokasi) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "zona_id atau bin_lokasi_id wajib diisi pada Tahap 2.",
+          path: ["items", index, "zona_id"],
+        });
+      }
+      if (!hasQty) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "qty_ditempatkan atau qty wajib diisi pada Tahap 2.",
+          path: ["items", index, "qty_ditempatkan"],
+        });
+      }
+    }
+  });
 });
 
 const retrieveSchema = z.object({

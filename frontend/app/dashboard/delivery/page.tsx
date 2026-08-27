@@ -86,7 +86,7 @@ export default function AdminDeliveryPage() {
 
   const [activeTab, setActiveTab] = useState<TabType>("SEMUA");
   const [searchQuery, setSearchQuery] = useState("");
-  const [records, setRecords] = useState<SuratJalanRecord[]>([]);
+  const [allRecords, setAllRecords] = useState<SuratJalanRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<SuratJalanRecord | null>(null);
@@ -104,9 +104,10 @@ export default function AdminDeliveryPage() {
     setError(null);
 
     try {
-      // PERBAIKAN: Langsung ambil kedua endpoint agar state records penuh
-      const endpoints: string[] = [`${API_BASE}/api/surat-jalan/outbound/queue`, `${API_BASE}/api/surat-jalan/inbound`];
-
+      const endpoints = [
+        `${API_BASE}/api/surat-jalan/outbound/queue`,
+        `${API_BASE}/api/surat-jalan/inbound`,
+      ];
       const responses = await Promise.all(endpoints.map((url) => get(url)));
       const jsonResults = await Promise.all(responses.map((r) => r.json()));
 
@@ -119,7 +120,7 @@ export default function AdminDeliveryPage() {
         }
       }
 
-      setRecords(allRecords);
+      setAllRecords(allRecords);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal mengambil data surat jalan.");
     } finally {
@@ -130,7 +131,6 @@ export default function AdminDeliveryPage() {
   useEffect(() => {
     if (!user) return;
     fetchData();
-    // PERBAIKAN: Menghapus activeTab dari dependency array
   }, [user]);
 
   useEffect(() => {
@@ -142,7 +142,7 @@ export default function AdminDeliveryPage() {
 
   const filteredRecords = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    return records.filter((record) => {
+    return allRecords.filter((record) => {
       const tipe = (record.tipe || "").toLowerCase();
       const matchesSearch =
         !q || record.nomor_surat_jalan.toLowerCase().includes(q) || (record.project?.nama_project || "").toLowerCase().includes(q) || (record.gudang_tujuan?.nama_gudang || record.gudang_asal?.nama_gudang || "").toLowerCase().includes(q);
@@ -151,10 +151,47 @@ export default function AdminDeliveryPage() {
 
       return matchesSearch && matchesTab;
     });
-  }, [records, searchQuery, activeTab]);
+  }, [allRecords, searchQuery, activeTab]);
 
-  const inboundCount = useMemo(() => records.filter((r) => (r.tipe || "").toLowerCase() === "inbound").length, [records]);
-  const outboundCount = useMemo(() => records.filter((r) => (r.tipe || "").toLowerCase() === "outbound").length, [records]);
+  const inboundCount = useMemo(
+    () => allRecords.filter((r) => (r.tipe || "").toLowerCase() === "inbound").length,
+    [allRecords]
+  );
+  const outboundCount = useMemo(
+    () => allRecords.filter((r) => (r.tipe || "").toLowerCase() === "outbound").length,
+    [allRecords]
+  );
+
+  const totalInbound = inboundCount;
+  const totalOutbound = outboundCount;
+  const totalDelivery = allRecords.length;
+
+  const stats = [
+    {
+      label: "Total Surat Jalan",
+      value: totalDelivery,
+      icon: FileText,
+      bg: "bg-slate-50",
+      text: "text-slate-700",
+      iconColor: "text-slate-500",
+    },
+    {
+      label: "Inbound",
+      value: totalInbound,
+      icon: ArrowDownLeft,
+      bg: "bg-blue-50",
+      text: "text-blue-700",
+      iconColor: "text-blue-500",
+    },
+    {
+      label: "Outbound",
+      value: totalOutbound,
+      icon: ArrowUpRight,
+      bg: "bg-amber-50",
+      text: "text-amber-700",
+      iconColor: "text-amber-500",
+    },
+  ];
 
   return (
     <div className={`${plusJakartaSans.className}`}>

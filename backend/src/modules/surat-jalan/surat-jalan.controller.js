@@ -129,7 +129,20 @@ const rejectOutbound = async (req, res, next) => {
 
 const putaway = async (req, res, next) => {
   try {
-    const result = await suratJalanService.putaway(req.params.id, req.body.items, req.user.id);
+    const { tahap, items } = req.body;
+
+    if (tahap === 1 || tahap === "1") {
+      return response.success(res, "Pengecekan fisik berhasil divalidasi. Lanjutkan ke pemilihan zona.", { items });
+    }
+
+    // Normalisasi properti untuk service (backward compatibility untuk zona_id -> bin_lokasi_id)
+    const normalizedItems = items.map(item => ({
+      ...item,
+      bin_lokasi_id: item.bin_lokasi_id || item.zona_id,
+      qty: item.qty || item.qty_ditempatkan,
+    }));
+
+    const result = await suratJalanService.putaway(req.params.id, normalizedItems, req.user.id);
     return response.success(res, "Putaway berhasil diproses.", result);
   } catch (err) {
     next(err);
