@@ -26,7 +26,7 @@ export function useApi() {
       }
 
       if (!skipAuth && token) {
-        (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+        headers["Authorization"] = `Bearer ${token}`;
       }
 
       const response = await fetch(url, {
@@ -34,11 +34,21 @@ export function useApi() {
         headers,
       });
 
-      if (response.status === 401 || response.status === 403) {
+      // 1. Sesi kadaluarsa / Token invalid -> Redirect ke login
+      if (response.status === 401) {
         logout();
-        sessionStorage.setItem("flash:session_expired", "Sesi Anda telah berakhir, silakan login kembali.");
+        sessionStorage.setItem(
+          "flash:session_expired",
+          "Sesi Anda telah berakhir, silakan login kembali."
+        );
         router.replace("/");
         throw new Error("Sesi berakhir. Silakan login kembali.");
+      }
+
+      // 2. Akses ditolak (Role tidak diizinkan) -> Jangan logout, biarkan UI menangani
+      if (response.status === 403) {
+        console.warn(`[403 Forbidden] Akses ditolak untuk endpoint: ${url}`);
+        return response;
       }
 
       return response;

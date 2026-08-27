@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
+import { CheckCircle2 } from "lucide-react";
 
 const STATUS_BADGES: Record<string, string> = {
   draft_diajukan: "bg-slate-100 text-slate-700",
@@ -20,6 +21,7 @@ export default function SupervisorApprovalInboundDetailPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [notes, setNotes] = useState("");
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
@@ -60,8 +62,7 @@ export default function SupervisorApprovalInboundDetailPage() {
         const err = await resp.json().catch(() => null);
         throw new Error(err?.message || "Gagal approve inbound.");
       }
-      alert("Surat Jalan inbound berhasil disetujui.");
-      router.push("/dashboard/supervisor/approval/inbound");
+      setShowSuccessModal(true);
     } catch (error) {
       console.error(error);
       alert((error as Error).message || "Gagal approve inbound.");
@@ -257,6 +258,31 @@ export default function SupervisorApprovalInboundDetailPage() {
           </div>
         </aside>
       </div>
+
+      {/* Pop-up Modal Sukses Custom */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm rounded-3xl border border-slate-100 bg-white p-6 text-center shadow-xl space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-inner">
+              <CheckCircle2 className="h-9 w-9" />
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-xl font-bold text-slate-900">Approval Berhasil!</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Surat Jalan inbound berhasil disetujui dan stok barang telah ditambahkan.
+              </p>
+            </div>
+
+            <Button
+              onClick={handleBack}
+              className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white hover:bg-emerald-700 shadow-sm shadow-emerald-600/20"
+            >
+              Kembali ke Daftar Antrean
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

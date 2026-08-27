@@ -50,6 +50,28 @@ type Warehouse = {
   alamat?: string;
 };
 
+// ---------------------------------------------------------------------------
+// Generate nomor Surat Jalan di frontend — backend (surat-jalan.validation.js)
+// mewajibkan field `nomor_surat_jalan` diisi dari client, TIDAK ada
+// auto-generate di service/controller-nya (sudah dicek langsung ke
+// surat-jalan.service.js). Format mengikuti pola Inbound (roman month +
+// tahun), dibedakan segmen "SJ/OUT" biar gampang dibedain dari Inbound.
+//
+// TODO(backend): idealnya nomor ini digenerate di backend (dalam transaksi
+// yang sama pas create), supaya tidak ada risiko dua staf dapat nomor sama
+// kalau submit hampir bersamaan. Timestamp di sini cuma practically-unique,
+// bukan jaminan atomic seperti sequence di database.
+// ---------------------------------------------------------------------------
+const ROMAN_MONTH = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+
+function generateNomorSuratJalanOutbound(): string {
+  const now = new Date();
+  const bulanRomawi = ROMAN_MONTH[now.getMonth()];
+  const tahun = now.getFullYear();
+  const unik = String(now.getTime()).slice(-6);
+  return `${unik}/SJ/OUT/DIGITAK/${bulanRomawi}/${tahun}`;
+}
+
 export default function AjukanSuratJalanPage() {
   const router = useRouter();
   const { get, post } = useApi();
@@ -96,16 +118,9 @@ export default function AjukanSuratJalanPage() {
         if (!vehicleRes.ok) throw new Error("Gagal mengambil daftar Kendaraan.");
         if (!warehouseRes.ok) throw new Error("Gagal mengambil daftar Gudang.");
 
-        const [projectJson, itemJson, personnelJson, vehicleJson, warehouseJson] = await Promise.all([
-          projectRes.json(),
-          itemRes.json(),
-          personnelRes.json(),
-          vehicleRes.json(),
-          warehouseRes.json(),
-        ]);
+        const [projectJson, itemJson, personnelJson, vehicleJson, warehouseJson] = await Promise.all([projectRes.json(), itemRes.json(), personnelRes.json(), vehicleRes.json(), warehouseRes.json()]);
 
-        const unwrap = (json: any) =>
-          Array.isArray(json?.data) ? json.data : json?.data?.data || [];
+        const unwrap = (json: any) => (Array.isArray(json?.data) ? json.data : json?.data?.data || []);
 
         setProjects(unwrap(projectJson));
         setItems(unwrap(itemJson));
@@ -113,9 +128,7 @@ export default function AjukanSuratJalanPage() {
         setVehicles(unwrap(vehicleJson));
         setWarehouses(unwrap(warehouseJson));
       } catch (err) {
-        setLoadError(
-          err instanceof Error ? err.message : "Terjadi kesalahan mengambil data."
-        );
+        setLoadError(err instanceof Error ? err.message : "Terjadi kesalahan mengambil data.");
       } finally {
         setLoading(false);
       }
@@ -125,30 +138,15 @@ export default function AjukanSuratJalanPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const selectedProject = useMemo(
-    () => projects.find((p) => String(p.project_id) === selectedProjectId) || null,
-    [projects, selectedProjectId]
-  );
+  const selectedProject = useMemo(() => projects.find((p) => String(p.project_id) === selectedProjectId) || null, [projects, selectedProjectId]);
 
-  const selectedVehicle = useMemo(
-    () => vehicles.find((v) => String(v.kendaraan_id || v.id) === selectedVehicleId) || null,
-    [vehicles, selectedVehicleId]
-  );
+  const selectedVehicle = useMemo(() => vehicles.find((v) => String(v.kendaraan_id || v.id) === selectedVehicleId) || null, [vehicles, selectedVehicleId]);
 
-  const selectedPersonil = useMemo(
-    () => personnel.find((p) => String(p.personil_id || p.id) === selectedPersonilId) || null,
-    [personnel, selectedPersonilId]
-  );
+  const selectedPersonil = useMemo(() => personnel.find((p) => String(p.personil_id || p.id) === selectedPersonilId) || null, [personnel, selectedPersonilId]);
 
-  const selectedGudangAsal = useMemo(
-    () => warehouses.find((w) => String(w.gudang_id) === selectedGudangAsalId) || null,
-    [warehouses, selectedGudangAsalId]
-  );
+  const selectedGudangAsal = useMemo(() => warehouses.find((w) => String(w.gudang_id) === selectedGudangAsalId) || null, [warehouses, selectedGudangAsalId]);
 
-  const selectedGudangTujuan = useMemo(
-    () => warehouses.find((w) => String(w.gudang_id) === selectedGudangTujuanId) || null,
-    [warehouses, selectedGudangTujuanId]
-  );
+  const selectedGudangTujuan = useMemo(() => warehouses.find((w) => String(w.gudang_id) === selectedGudangTujuanId) || null, [warehouses, selectedGudangTujuanId]);
 
   const driverOptions = useMemo(() => {
     const canDrive = personnel.filter((p) => p.bisa_menyetir);
@@ -210,16 +208,11 @@ export default function AjukanSuratJalanPage() {
           return { ...item, key, qty };
         })
         .filter((i) => i.qty > 0),
-    [boqItems, qtyByItem]
+    [boqItems, qtyByItem],
   );
 
   const totalQty = selectedItems.reduce((sum, i) => sum + i.qty, 0);
-  const canSubmit =
-    !!selectedProject &&
-    selectedItems.length > 0 &&
-    !!selectedGudangAsalId &&
-    !!selectedGudangTujuanId &&
-    !!selectedPersonil;
+  const canSubmit = !!selectedProject && selectedItems.length > 0 && !!selectedGudangAsalId && !!selectedGudangTujuanId && !!selectedPersonil;
 
   async function handleSubmit() {
     if (!canSubmit || !selectedProject || !selectedPersonil) return;
@@ -231,6 +224,11 @@ export default function AjukanSuratJalanPage() {
 
       const payload = {
         tipe: "outbound",
+        // FIX: field ini wajib menurut surat-jalan.validation.js
+        // (createSuratJalanSchema) tapi sebelumnya kelupaan dikirim sama
+        // sekali dari frontend, makanya selalu gagal "expected string,
+        // received undefined". Backend tidak auto-generate nomor ini.
+        nomor_surat_jalan: generateNomorSuratJalanOutbound(),
         gudang_asal_id: selectedGudangAsalId,
         gudang_tujuan_id: selectedGudangTujuanId,
         kendaraan_id: selectedVehicleId || null,
@@ -293,9 +291,7 @@ export default function AjukanSuratJalanPage() {
     <div className="px-8 py-6">
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900">Ajukan Surat Jalan Baru</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Pilih Project sebagai tujuan, lalu tentukan barang yang mau dikirim
-        </p>
+        <p className="mt-1 text-sm text-gray-500">Pilih Project sebagai tujuan, lalu tentukan barang yang mau dikirim</p>
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -321,16 +317,9 @@ export default function AjukanSuratJalanPage() {
                   </option>
                 ))}
               </select>
-              <ChevronDown
-                size={16}
-                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-              />
+              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
             </div>
-            {projects.length === 0 && (
-              <p className="mt-3 text-xs text-gray-400">
-                Belum ada data Project di master data.
-              </p>
-            )}
+            {projects.length === 0 && <p className="mt-3 text-xs text-gray-400">Belum ada data Project di master data.</p>}
           </div>
 
           {/* Gudang Asal & Tujuan */}
@@ -355,16 +344,9 @@ export default function AjukanSuratJalanPage() {
                     </option>
                   ))}
                 </select>
-                <ChevronDown
-                  size={16}
-                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                />
+                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
               </div>
-              {warehouses.length === 0 && (
-                <p className="mt-2 text-xs text-gray-400">
-                  Belum ada data Gudang di master data.
-                </p>
-              )}
+              {warehouses.length === 0 && <p className="mt-2 text-xs text-gray-400">Belum ada data Gudang di master data.</p>}
             </div>
 
             <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
@@ -387,10 +369,7 @@ export default function AjukanSuratJalanPage() {
                     </option>
                   ))}
                 </select>
-                <ChevronDown
-                  size={16}
-                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                />
+                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
               </div>
             </div>
           </div>
@@ -398,15 +377,13 @@ export default function AjukanSuratJalanPage() {
           {/* Daftar barang */}
           {selectedProject && (
             <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
-              <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                Pilih Barang & Kuantitas
-              </p>
+              <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Pilih Barang & Kuantitas</p>
 
               {boqItemsLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-5 w-5 animate-spin text-[#E8632C]" />
                 </div>
-               ) : (
+              ) : (
                 <div>
                   <table className="w-full text-sm">
                     <thead>
@@ -425,19 +402,12 @@ export default function AjukanSuratJalanPage() {
                         const isOver = qty > maxQty && maxQty > 0;
                         return (
                           <tr key={key} className="border-b border-gray-50 last:border-0">
-                            <td className="py-3 pr-4 font-medium text-gray-800">
-                              {item.kode_perangkat}
-                            </td>
+                            <td className="py-3 pr-4 font-medium text-gray-800">{item.kode_perangkat}</td>
                             <td className="py-3 pr-4 text-gray-600">{item.nama_barang}</td>
-                            <td className="py-3 pr-4 text-right text-xs text-gray-500">
-                              {maxQty > 0 ? `${maxQty} unit` : "-"}
-                            </td>
+                            <td className="py-3 pr-4 text-right text-xs text-gray-500">{maxQty > 0 ? `${maxQty} unit` : "-"}</td>
                             <td className="py-3">
                               <div className="flex items-center justify-end gap-2">
-                                <button
-                                  onClick={() => setQty(key, qty - 1)}
-                                  className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50"
-                                >
+                                <button onClick={() => setQty(key, qty - 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50">
                                   −
                                 </button>
                                 <input
@@ -448,10 +418,7 @@ export default function AjukanSuratJalanPage() {
                                   onChange={(e) => setQty(key, Number(e.target.value))}
                                   className={`w-12 rounded-md border py-1 text-center text-sm ${isOver ? "border-rose-400 text-rose-600" : "border-gray-200"}`}
                                 />
-                                <button
-                                  onClick={() => setQty(key, qty + 1)}
-                                  className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50"
-                                >
+                                <button onClick={() => setQty(key, qty + 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50">
                                   +
                                 </button>
                               </div>
@@ -483,18 +450,11 @@ export default function AjukanSuratJalanPage() {
 
         <div className="flex flex-col gap-5">
           <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
-            <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
-              Detail Pengiriman
-            </p>
+            <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Detail Pengiriman</p>
             <div className="space-y-3">
               <div>
                 <label className="mb-1 block text-xs text-gray-500">Tujuan / Keterangan</label>
-                <input
-                  value={tujuan}
-                  onChange={(e) => setTujuan(e.target.value)}
-                  placeholder="Nama tujuan/klien"
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
-                />
+                <input value={tujuan} onChange={(e) => setTujuan(e.target.value)} placeholder="Nama tujuan/klien" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none" />
               </div>
 
               {/* Dropdown Kendaraan — dari master data */}
@@ -516,16 +476,9 @@ export default function AjukanSuratJalanPage() {
                       </option>
                     ))}
                   </select>
-                  <ChevronDown
-                    size={14}
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                  />
+                  <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 </div>
-                {vehicles.length === 0 && (
-                  <p className="mt-1 text-xs text-gray-400">
-                    Belum ada data Kendaraan di master data.
-                  </p>
-                )}
+                {vehicles.length === 0 && <p className="mt-1 text-xs text-gray-400">Belum ada data Kendaraan di master data.</p>}
               </div>
 
               {/* Dropdown Driver — dari master data Personil */}
@@ -549,24 +502,15 @@ export default function AjukanSuratJalanPage() {
                       </option>
                     ))}
                   </select>
-                  <ChevronDown
-                    size={14}
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                  />
+                  <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 </div>
-                {personnel.length === 0 && (
-                  <p className="mt-1 text-xs text-gray-400">
-                    Belum ada data Personil di master data.
-                  </p>
-                )}
+                {personnel.length === 0 && <p className="mt-1 text-xs text-gray-400">Belum ada data Personil di master data.</p>}
               </div>
             </div>
           </div>
 
           <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-              Ringkasan
-            </p>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Ringkasan</p>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Total barang dipilih</span>
               <span className="font-bold text-gray-900">
@@ -575,11 +519,7 @@ export default function AjukanSuratJalanPage() {
             </div>
           </div>
 
-          <Button
-            disabled={!canSubmit || submitting}
-            onClick={handleSubmit}
-            className="h-auto rounded-xl bg-[#E8632C] py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
-          >
+          <Button disabled={!canSubmit || submitting} onClick={handleSubmit} className="h-auto rounded-xl bg-[#E8632C] py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40">
             {submitting ? "Memproses..." : "Ajukan Surat Jalan"}
           </Button>
         </div>
