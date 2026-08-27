@@ -5,6 +5,17 @@ const DEFAULT_PAGE = 1;
 const ALLOWED_SORT_FIELDS = ["boq_id", "status", "tanggal_aktivasi", "created_at", "updated_at"];
 
 const create = async (data) => {
+  // 1. Cek dulu apakah tiket_id yang dikirim dari form sudah punya BOQ
+  const existingBoq = await prisma.boq.findUnique({
+    where: { tiket_id: Number(data.tiket_id) },
+  });
+
+  // 2. Kalau datanya ketemu (berarti sudah ada BOQ-nya), lemparkan error
+  if (existingBoq) {
+    throw new Error("Gagal menyimpan: Nomor tiket tersebut sudah memiliki BOQ aktif.");
+  }
+
+  // 3. Kalau aman, lanjutkan simpan
   return await prisma.boq.create({
     data,
     include: {
@@ -46,23 +57,11 @@ const findById = async (boq_id) => {
 
 const ALLOWED_STATUS = new Set(["draft", "aktif", "ditolak"]);
 
-const findAll = async ({
-  page = DEFAULT_PAGE,
-  limit = DEFAULT_LIMIT,
-  search,
-  sortBy = "created_at",
-  sortOrder = "desc",
-  status,
-  projectId,
-  area,
-  warehouseId,
-}) => {
+const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sortBy = "created_at", sortOrder = "desc", status, projectId, area, warehouseId }) => {
   const sanitizedPage = Math.max(parseInt(page, 10) || DEFAULT_PAGE, DEFAULT_PAGE);
   const sanitizedLimit = Math.max(parseInt(limit, 10) || DEFAULT_LIMIT, 1);
   const orderField = ALLOWED_SORT_FIELDS.includes(sortBy) ? sortBy : "created_at";
-  const orderDirection = ["asc", "desc"].includes((sortOrder || "").toLowerCase())
-    ? sortOrder.toLowerCase()
-    : "desc";
+  const orderDirection = ["asc", "desc"].includes((sortOrder || "").toLowerCase()) ? sortOrder.toLowerCase() : "desc";
 
   const where = {};
 
@@ -82,10 +81,7 @@ const findAll = async ({
   }
 
   if (search) {
-    where.OR = [
-      { tiket: { kode_tiket: { contains: search, mode: "insensitive" } } },
-      { tiket: { area: { contains: search, mode: "insensitive" } } },
-    ];
+    where.OR = [{ tiket: { kode_tiket: { contains: search, mode: "insensitive" } } }, { tiket: { area: { contains: search, mode: "insensitive" } } }];
   }
 
   const total = await prisma.boq.count({
@@ -266,10 +262,7 @@ const exportBoqs = async ({ status, search, projectId, area, warehouseId }) => {
   }
 
   if (search) {
-    where.OR = [
-      { tiket: { kode_tiket: { contains: search, mode: "insensitive" } } },
-      { tiket: { area: { contains: search, mode: "insensitive" } } },
-    ];
+    where.OR = [{ tiket: { kode_tiket: { contains: search, mode: "insensitive" } } }, { tiket: { area: { contains: search, mode: "insensitive" } } }];
   }
 
   return await prisma.boq.findMany({

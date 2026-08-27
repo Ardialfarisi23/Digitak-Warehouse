@@ -2,18 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import {
-  Search,
-  Eye,
-  X,
-  ArrowUpRight,
-  ArrowDownLeft,
-  CheckCircle2,
-  Clock,
-  FileText,
-  Loader2,
-  AlertCircle,
-} from "lucide-react";
+import { Search, Eye, X, ArrowUpRight, ArrowDownLeft, CheckCircle2, Clock, FileText, Loader2, AlertCircle } from "lucide-react";
 
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -24,8 +13,7 @@ const plusJakartaSans = Plus_Jakarta_Sans({
   weight: ["400", "500", "600", "700"],
 });
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 type TipeSuratJalan = "INBOUND" | "OUTBOUND";
 
@@ -116,13 +104,8 @@ export default function AdminDeliveryPage() {
     setError(null);
 
     try {
-      const endpoints: string[] = [];
-      if (activeTab === "SEMUA" || activeTab === "OUTBOUND") {
-        endpoints.push(`${API_BASE}/api/surat-jalan/outbound/queue`);
-      }
-      if (activeTab === "SEMUA" || activeTab === "INBOUND") {
-        endpoints.push(`${API_BASE}/api/surat-jalan/inbound`);
-      }
+      // PERBAIKAN: Langsung ambil kedua endpoint agar state records penuh
+      const endpoints: string[] = [`${API_BASE}/api/surat-jalan/outbound/queue`, `${API_BASE}/api/surat-jalan/inbound`];
 
       const responses = await Promise.all(endpoints.map((url) => get(url)));
       const jsonResults = await Promise.all(responses.map((r) => r.json()));
@@ -147,7 +130,8 @@ export default function AdminDeliveryPage() {
   useEffect(() => {
     if (!user) return;
     fetchData();
-  }, [user, activeTab]);
+    // PERBAIKAN: Menghapus activeTab dari dependency array
+  }, [user]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -161,28 +145,16 @@ export default function AdminDeliveryPage() {
     return records.filter((record) => {
       const tipe = (record.tipe || "").toLowerCase();
       const matchesSearch =
-        !q ||
-        record.nomor_surat_jalan.toLowerCase().includes(q) ||
-        (record.project?.nama_project || "").toLowerCase().includes(q) ||
-        (record.gudang_tujuan?.nama_gudang || record.gudang_asal?.nama_gudang || "").toLowerCase().includes(q);
+        !q || record.nomor_surat_jalan.toLowerCase().includes(q) || (record.project?.nama_project || "").toLowerCase().includes(q) || (record.gudang_tujuan?.nama_gudang || record.gudang_asal?.nama_gudang || "").toLowerCase().includes(q);
 
-      const matchesTab =
-        activeTab === "SEMUA" ||
-        (activeTab === "INBOUND" && tipe === "inbound") ||
-        (activeTab === "OUTBOUND" && tipe === "outbound");
+      const matchesTab = activeTab === "SEMUA" || (activeTab === "INBOUND" && tipe === "inbound") || (activeTab === "OUTBOUND" && tipe === "outbound");
 
       return matchesSearch && matchesTab;
     });
   }, [records, searchQuery, activeTab]);
 
-  const inboundCount = useMemo(
-    () => records.filter((r) => (r.tipe || "").toLowerCase() === "inbound").length,
-    [records]
-  );
-  const outboundCount = useMemo(
-    () => records.filter((r) => (r.tipe || "").toLowerCase() === "outbound").length,
-    [records]
-  );
+  const inboundCount = useMemo(() => records.filter((r) => (r.tipe || "").toLowerCase() === "inbound").length, [records]);
+  const outboundCount = useMemo(() => records.filter((r) => (r.tipe || "").toLowerCase() === "outbound").length, [records]);
 
   return (
     <div className={`${plusJakartaSans.className}`}>
@@ -191,9 +163,7 @@ export default function AdminDeliveryPage() {
         <header className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Surat Jalan</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Kelola dan verifikasi surat jalan inbound dan outbound.
-            </p>
+            <p className="mt-1 text-sm text-slate-500">Kelola dan verifikasi surat jalan inbound dan outbound.</p>
           </div>
         </header>
 
@@ -208,11 +178,7 @@ export default function AdminDeliveryPage() {
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as TabType)}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
-                  activeTab === tab.key
-                    ? "bg-[#FF5500] text-white shadow-md shadow-orange-500/20"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-white"
-                }`}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${activeTab === tab.key ? "bg-[#FF5500] text-white shadow-md shadow-orange-500/20" : "text-slate-600 hover:text-slate-900 hover:bg-white"}`}
               >
                 {tab.label}
               </button>
@@ -280,13 +246,7 @@ export default function AdminDeliveryPage() {
                     return (
                       <tr key={record.surat_jalan_id} className="group transition-colors hover:bg-slate-50">
                         <td className="px-6 py-4">
-                          <span
-                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
-                              isOutbound
-                                ? "bg-amber-50 text-amber-700"
-                                : "bg-blue-50 text-blue-700"
-                            }`}
-                          >
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${isOutbound ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>
                             {isOutbound ? <ArrowUpRight size={12} /> : <ArrowDownLeft size={12} />}
                             {isOutbound ? "Outbound" : "Inbound"}
                           </span>
@@ -294,9 +254,7 @@ export default function AdminDeliveryPage() {
 
                         <td className="px-6 py-4">
                           <p className="font-medium text-slate-900">{record.nomor_surat_jalan}</p>
-                          <p className="text-xs text-slate-400">
-                            {record.gudang_asal?.nama_gudang || record.gudang_tujuan?.nama_gudang || "-"}
-                          </p>
+                          <p className="text-xs text-slate-400">{record.gudang_asal?.nama_gudang || record.gudang_tujuan?.nama_gudang || "-"}</p>
                         </td>
 
                         <td className="px-6 py-4">
@@ -306,9 +264,7 @@ export default function AdminDeliveryPage() {
                           </p>
                         </td>
 
-                        <td className="px-6 py-4 text-slate-500">
-                          {record.tanggal ? new Date(record.tanggal).toLocaleDateString("id-ID") : "-"}
-                        </td>
+                        <td className="px-6 py-4 text-slate-500">{record.tanggal ? new Date(record.tanggal).toLocaleDateString("id-ID") : "-"}</td>
 
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusMeta.bg} ${statusMeta.text}`}>
@@ -320,12 +276,7 @@ export default function AdminDeliveryPage() {
 
                         <td className="px-4 py-4">
                           <div className="flex items-center justify-end gap-1">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedRecord(record)}
-                              title="Lihat detail"
-                              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                            >
+                            <button type="button" onClick={() => setSelectedRecord(record)} title="Lihat detail" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
                               <Eye size={15} />
                             </button>
                           </div>
@@ -341,43 +292,26 @@ export default function AdminDeliveryPage() {
 
         {/* Detail Modal */}
         {selectedRecord && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-            onClick={() => setSelectedRecord(null)}
-          >
-            <div
-              className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl"
-              onClick={(e) => e.stopPropagation()}
-            >
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setSelectedRecord(null)}>
+            <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
               {/* Toolbar — hilang saat print */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 print:hidden">
                 <div>
                   <h2 className="text-base font-semibold text-slate-900">Detail Surat Jalan</h2>
                   <p className="text-xs text-slate-500">{selectedRecord.nomor_surat_jalan}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedRecord(null)}
-                  className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                >
+                <button type="button" onClick={() => setSelectedRecord(null)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
                   <X size={16} />
                 </button>
               </div>
 
               {/* Dokumen Surat Jalan — ini yang ke-print */}
               <div className="p-6">
-                <div
-                  id="surat-jalan-document"
-                  className="mx-auto max-w-3xl rounded-2xl border border-[#F3D9C7] bg-white p-10 print:rounded-none print:border-0 print:p-0"
-                >
+                <div id="surat-jalan-document" className="mx-auto max-w-3xl rounded-2xl border border-[#F3D9C7] bg-white p-10 print:rounded-none print:border-0 print:p-0">
                   {/* Kop surat dengan logo */}
                   <div className="mb-8 flex items-start justify-between border-b-2 border-[#E8632C] pb-6">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src="/logo digitak grdasi.png"
-                      alt="Digitak Studio — PT Metanouva Informatika"
-                      className="h-16 w-auto object-contain"
-                    />
+                    <img src="/logo digitak grdasi.png" alt="Digitak Studio — PT Metanouva Informatika" className="h-16 w-auto object-contain" />
                     <div className="flex flex-col items-end">
                       <h1 className="text-3xl font-bold tracking-wide text-gray-900">SURAT JALAN</h1>
                       <p className="mt-1 text-xs text-gray-500">Surat Jalan Internal — Digitak Studio</p>
@@ -455,7 +389,9 @@ export default function AdminDeliveryPage() {
 
                   {/* Footer dokumen */}
                   <div className="border-t border-gray-200 pt-3 flex items-center justify-between text-[10px] text-gray-400">
-                    <span>{selectedRecord.nomor_surat_jalan} | {selectedRecord.tanggal ? new Date(selectedRecord.tanggal).toLocaleDateString("id-ID") : "-"}</span>
+                    <span>
+                      {selectedRecord.nomor_surat_jalan} | {selectedRecord.tanggal ? new Date(selectedRecord.tanggal).toLocaleDateString("id-ID") : "-"}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -474,11 +410,7 @@ export default function AdminDeliveryPage() {
                   </svg>
                   Cetak / PDF
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedRecord(null)}
-                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-                >
+                <button type="button" onClick={() => setSelectedRecord(null)} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
                   Tutup
                 </button>
               </div>
@@ -489,10 +421,21 @@ export default function AdminDeliveryPage() {
 
       <style jsx global>{`
         @media print {
-          aside, header, nav { display: none !important; }
-          main { margin-left: 0 !important; margin-top: 0 !important; }
-          body { background: white !important; }
-          .print\\:hidden { display: none !important; }
+          aside,
+          header,
+          nav {
+            display: none !important;
+          }
+          main {
+            margin-left: 0 !important;
+            margin-top: 0 !important;
+          }
+          body {
+            background: white !important;
+          }
+          .print\\:hidden {
+            display: none !important;
+          }
         }
       `}</style>
     </div>

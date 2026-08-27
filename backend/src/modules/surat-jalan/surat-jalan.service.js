@@ -61,6 +61,9 @@ const receiveInbound = async (id, items, actorId) => {
       if (typeof item.catatan === "string") {
         updateData.catatan = item.catatan;
       }
+      if (typeof item.is_kelebihan === "boolean") {
+        updateData.is_kelebihan = item.is_kelebihan;
+      }
 
       if (Object.keys(updateData).length > 0) {
         await tx.surat_jalan_item.update({
@@ -137,7 +140,12 @@ const approveInbound = async (id, itemAdjustments = [], actorId) => {
 
   await prisma.$transaction(async (tx) => {
     await suratJalanRepository.addInboundStock(shipment, tx);
-    await suratJalanRepository.updateStatus(id, "disetujui", tx);
+    // FIX (bug #5/#6 looping): sebelumnya di-set "disetujui" — status yang
+    // SAMA dipakai lagi nanti di akhir putaway(), jadi sistem nggak bisa
+    // bedain "baru di-ACC, siap putaway" vs "udah selesai ditempatkan".
+    // Sekarang pakai status "ready_putaway" yang emang udah ada di enum
+    // Prisma tapi belum pernah dipakai.
+    await suratJalanRepository.updateStatus(id, "ready_putaway", tx);
 
     if (shipment.boq_id && shipment.boq?.tiket_id) {
       const totalQty = shipment.items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
@@ -164,7 +172,7 @@ const approveInbound = async (id, itemAdjustments = [], actorId) => {
           aksi: "approve_inbound",
           actor_id: BigInt(actorId),
           data_sebelum: { status: shipment.status },
-          data_sesudah: { status: "disetujui", surat_jalan_id: id },
+          data_sesudah: { status: "ready_putaway", surat_jalan_id: id },
         },
       });
     }
@@ -434,7 +442,13 @@ const rejectInbound = async (id, catatan = null, actorId) => {
         });
       }
 
-      await suratJalanRepository.updateStatus(suratJalanId, "disetujui", tx);
+      // FIX (bug #6 looping): sebelumnya di-set "disetujui" lagi di sini —
+      // sama persis kayak status yang di-set approveInbound(), jadi item
+      // yang UDAH selesai ditempatkan nggak bisa dibedain dari yang BARU
+      // di-ACC Supervisor. Sekarang pakai "diterima_didistribusikan"
+      // sebagai penanda akhir proses inbound (barang sudah diterima &
+      // ditempatkan tuntas).
+      await suratJalanRepository.updateStatus(suratJalanId, "diterima_didistribusikan", tx);
 
       if (actorId) {
         await suratJalanRepository.createApprovalLog(suratJalanId, actorId, "inbound_putaway", "disetujui", null, tx);
@@ -445,7 +459,7 @@ const rejectInbound = async (id, catatan = null, actorId) => {
             aksi: "putaway",
             actor_id: BigInt(actorId),
             data_sebelum: { status: shipment.status },
-            data_sesudah: { status: "disetujui", surat_jalan_id: suratJalanId },
+            data_sesudah: { status: "diterima_didistribusikan", surat_jalan_id: suratJalanId },
           },
         });
       }

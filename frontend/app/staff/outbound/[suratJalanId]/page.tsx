@@ -33,12 +33,16 @@ interface SuratJalan {
 }
 
 // Baris label:nilai yang selalu sejajar, berapa pun panjang labelnya.
+// FIX: value dikasih min-w-0 + break-all — sebelumnya teks panjang tanpa
+// spasi (mis. nomor surat jalan "298990/SJ/OUT/DIGITAK/VIII/2026") nggak
+// mau wrap dan overflow nabrak ke kolom sebelah, karena grid item secara
+// default nggak mau nyusut di bawah lebar konten aslinya (min-width: auto).
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[130px_10px_1fr] items-start leading-snug">
       <span className="text-gray-500">{label}</span>
       <span className="text-gray-500">:</span>
-      <span className="font-semibold text-gray-900">{value}</span>
+      <span className="min-w-0 break-all font-semibold text-gray-900">{value}</span>
     </div>
   );
 }
@@ -91,10 +95,7 @@ export default function SuratJalanDetailPage() {
     return (
       <div className="px-8 py-6">
         <p className="text-gray-500">{error || "Surat Jalan tidak ditemukan."}</p>
-        <button
-          onClick={() => router.push("/staff/outbound")}
-          className="mt-3 text-sm font-semibold text-[#E8632C] hover:underline"
-        >
+        <button onClick={() => router.push("/staff/outbound")} className="mt-3 text-sm font-semibold text-[#E8632C] hover:underline">
           Kembali ke daftar Surat Jalan
         </button>
       </div>
@@ -134,10 +135,7 @@ export default function SuratJalanDetailPage() {
     <div className="px-8 py-6">
       {/* Toolbar — hilang saat print */}
       <div className="mb-6 flex items-center justify-between print:hidden">
-        <button
-          onClick={() => router.push("/staff/outbound")}
-          className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-700"
-        >
+        <button onClick={() => router.push("/staff/outbound")} className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-700">
           <ArrowLeft size={16} />
           Kembali
         </button>
@@ -146,10 +144,7 @@ export default function SuratJalanDetailPage() {
           onClick={async () => {
             setGeneratingPdf(true);
             try {
-              await downloadSuratJalanPdf(
-                displaySJ as any,
-                user?.name || user?.username || "-"
-              );
+              await downloadSuratJalanPdf(displaySJ as any, user?.name || user?.username || "-");
             } finally {
               setGeneratingPdf(false);
             }
@@ -162,18 +157,11 @@ export default function SuratJalanDetailPage() {
       </div>
 
       {/* Dokumen Surat Jalan — ini yang ke-print/ke-download */}
-      <div
-        id="surat-jalan-document"
-        className="mx-auto max-w-3xl rounded-2xl border border-[#F3D9C7] bg-white p-10 print:rounded-none print:border-0 print:p-0"
-      >
+      <div id="surat-jalan-document" className="mx-auto max-w-3xl rounded-2xl border border-[#F3D9C7] bg-white p-10 print:rounded-none print:border-0 print:p-0">
         {/* Kop surat dengan logo */}
         <div className="mb-8 flex items-start justify-between border-b-2 border-[#E8632C] pb-6">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/logo digitak grdasi.png"
-            alt="Digitak Studio — PT Metanouva Informatika"
-            className="h-16 w-auto object-contain"
-          />
+          <img src="/logo digitak grdasi.png" alt="Digitak Studio — PT Metanouva Informatika" className="h-16 w-auto object-contain" />
           <div className="flex flex-col items-end">
             <h1 className="text-3xl font-bold tracking-wide text-gray-900">SURAT JALAN</h1>
             <p className="mt-1 text-xs text-gray-500">Surat Jalan Internal — Digitak Studio</p>
@@ -186,12 +174,12 @@ export default function SuratJalanDetailPage() {
 
         {/* Info grid — 2 kolom */}
         <div className="mb-8 grid grid-cols-2 gap-x-12 gap-y-3 text-sm">
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             <InfoRow label="No Surat Jalan" value={displaySJ.nomor} />
             <InfoRow label="Tujuan" value={displaySJ.tujuan} />
             <InfoRow label="Project" value={displaySJ.projectName || "-"} />
           </div>
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             <InfoRow label="Tanggal" value={displaySJ.tanggal} />
             <InfoRow label="Nama PIC Pemohon" value={displaySJ.namaPicPemohon} />
             <InfoRow label="Kendaraan" value={displaySJ.kendaraan} />
@@ -255,15 +243,26 @@ export default function SuratJalanDetailPage() {
 
         {/* Footer dokumen */}
         <div className="border-t border-gray-200 pt-3 flex items-center justify-between text-[10px] text-gray-400">
-          <span>{displaySJ.nomor} | {displaySJ.tanggal}</span>
+          <span>
+            {displaySJ.nomor} | {displaySJ.tanggal}
+          </span>
         </div>
       </div>
 
       <style jsx global>{`
         @media print {
-          aside, header, nav { display: none !important; }
-          main { margin-left: 0 !important; margin-top: 0 !important; }
-          body { background: white !important; }
+          aside,
+          header,
+          nav {
+            display: none !important;
+          }
+          main {
+            margin-left: 0 !important;
+            margin-top: 0 !important;
+          }
+          body {
+            background: white !important;
+          }
         }
       `}</style>
     </div>

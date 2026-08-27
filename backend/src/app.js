@@ -31,15 +31,7 @@ const errorMiddleware = require("./middlewares/error.middleware");
 
 const app = express();
 
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-  "http://localhost:3001",
-  "http://127.0.0.1:3001",
-  "http://[::1]:3000",
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
-];
+const allowedOrigins = ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001", "http://[::1]:3000", "http://localhost:5173", "http://127.0.0.1:5173"];
 
 app.use(
   cors({
@@ -52,7 +44,7 @@ app.use(
       }
     },
     credentials: true,
-  })
+  }),
 );
 
 app.use(express.json());
@@ -63,9 +55,7 @@ app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 app.use((req, res, next) => {
   const originalJson = res.json.bind(res);
   res.json = (body) => {
-    const json = JSON.stringify(body, (_, value) =>
-      typeof value === "bigint" ? value.toString() : value
-    );
+    const json = JSON.stringify(body, (_, value) => (typeof value === "bigint" ? value.toString() : value));
     return originalJson(JSON.parse(json));
   };
   next();

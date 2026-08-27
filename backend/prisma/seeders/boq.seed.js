@@ -8,13 +8,13 @@ async function seedBoq(prisma) {
   await prisma.tiket_material.deleteMany({});
 
   const projects = await prisma.project.findMany();
-  const projectMap = new Map(projects.map(p => [p.nama_project, p.project_id]));
+  const projectMap = new Map(projects.map((p) => [p.nama_project, p.project_id]));
 
   const barangs = await prisma.barang.findMany();
-  const barangMap = new Map(barangs.map(b => [b.kode_perangkat, b.barang_id]));
+  const barangMap = new Map(barangs.map((b) => [b.kode_perangkat, b.barang_id]));
 
   const gudangs = await prisma.gudang.findMany();
-  const gudangMap = new Map(gudangs.map(g => [g.nama_gudang, g.gudang_id]));
+  const gudangMap = new Map(gudangs.map((g) => [g.nama_gudang, g.gudang_id]));
 
   const satuanMap = new Map();
   const allSatuan = await prisma.satuan.findMany();
@@ -51,9 +51,7 @@ async function seedBoq(prisma) {
       nama_project: "Backbone Garut Selatan",
       area: "Garut",
       status: "draft",
-      items: [
-        { kode_perangkat: "JTR-02242", qty: 5, satuan: "meter", gudang: "Gudang Rancamanyar" },
-      ],
+      items: [{ kode_perangkat: "JTR-02242", qty: 5, satuan: "meter", gudang: "Gudang Rancamanyar" }],
     },
     {
       kode_tiket: "TKT-2026-004",
@@ -87,7 +85,7 @@ async function seedBoq(prisma) {
         created_by: admin.user_id,
         updated_by: admin.user_id,
         items: {
-          create: boq.items.map(item => ({
+          create: boq.items.map((item) => ({
             barang_id: barangMap.get(item.kode_perangkat),
             qty_rencana: item.qty,
             satuan_id: satuanMap.get(item.satuan),
@@ -148,7 +146,37 @@ async function seedBoq(prisma) {
     console.log(`✔ Permintaan BOQ ${req.kode_tiket} (${req.status}) berhasil dibuat.`);
   }
 
-  console.log(`✔ Seeded ${boqs.length} BOQ records`);
+  // --- TAMBAHAN UNTUK TESTING ---
+  // Sengaja membuat tiket yang tidak punya BOQ agar bisa dipilih di dropdown frontend
+  const tiketKosong = [
+    {
+      kode_tiket: "TKT-2026-007",
+      nama_project: "FTTH Rancamanyar Tahap 1",
+      area: "Bandung",
+    },
+    {
+      kode_tiket: "TKT-2026-008",
+      nama_project: "Backbone Garut Selatan",
+      area: "Garut",
+    },
+  ];
+
+  for (const t of tiketKosong) {
+    // Validasi projectMap supaya aman jika data project berbeda
+    if (projectMap.has(t.nama_project)) {
+      await prisma.tiket_material.create({
+        data: {
+          kode_tiket: t.kode_tiket,
+          project_id: projectMap.get(t.nama_project),
+          area: t.area,
+          created_by: admin.user_id,
+        },
+      });
+      console.log(`✔ Tiket kosong ${t.kode_tiket} berhasil dibuat untuk testing form UI.`);
+    }
+  }
+
+  console.log(`✔ Seeded ${boqs.length} BOQ records dan tiket tambahan untuk testing.`);
 }
 
 module.exports = seedBoq;

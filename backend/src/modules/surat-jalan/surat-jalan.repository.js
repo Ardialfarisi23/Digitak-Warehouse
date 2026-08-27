@@ -147,7 +147,12 @@ const findInboundList = async () => {
     where: {
       tipe: "inbound",
       status: {
-        in: ["draft_diajukan", "menunggu_verifikasi", "ready_putaway", "disetujui", "digenerate"],
+        // Ditambahkan "diterima_didistribusikan" — sebelumnya status ini
+        // dikecualikan dari list, jadi Surat Jalan yang udah selesai
+        // di-putaway (lihat fix putaway() di service.js) jadi nggak
+        // kelihatan sama sekali, termasuk di tab "Sudah Ditempatkan"
+        // halaman Putaway staf.
+        in: ["draft_diajukan", "menunggu_verifikasi", "ready_putaway", "disetujui", "digenerate", "diterima_didistribusikan"],
       },
     },
     include: baseInclude,

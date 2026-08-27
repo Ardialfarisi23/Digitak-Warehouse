@@ -13,31 +13,39 @@ const createSuratJalanSchema = z.object({
   nomor_tiket: z.string().optional().nullable(),
   tanggal: z.string().optional().nullable(),
   surat_jalan_url: z.string().url("URL surat jalan tidak valid.").optional().nullable(),
-  items: z.array(
-    z.object({
-      barang_id: z.string().min(1, "Barang wajib diisi."),
-      qty: z.number().positive("Qty harus lebih dari 0."),
-      satuan_id: z.string().min(1, "Satuan wajib diisi."),
-      kondisi: z.string().optional().nullable(),
-      serial_number: z.string().optional().nullable(),
-      foto_url: z.string().optional().nullable(),
-      is_kelebihan: z.boolean().optional().default(false),
-      catatan: z.string().optional().nullable(),
-      bin_lokasi_id: z.string().optional().nullable(),
-    })
-  ).min(1, "Minimal satu item harus diisi."),
+  items: z
+    .array(
+      z.object({
+        barang_id: z.string().min(1, "Barang wajib diisi."),
+        qty: z.number().positive("Qty harus lebih dari 0."),
+        satuan_id: z.string().min(1, "Satuan wajib diisi."),
+        kondisi: z.string().optional().nullable(),
+        serial_number: z.string().optional().nullable(),
+        foto_url: z.string().optional().nullable(),
+        is_kelebihan: z.boolean().optional().default(false),
+        catatan: z.string().optional().nullable(),
+        bin_lokasi_id: z.string().optional().nullable(),
+      }),
+    )
+    .min(1, "Minimal satu item harus diisi."),
 });
 
 const receiveInboundSchema = z.object({
-  items: z.array(
-    z.object({
-      item_id: z.coerce.number(),
-      qty: z.number().nonnegative("Qty tidak boleh negatif.").optional(),
-      kondisi: z.string().optional().nullable(),
-      serial_number: z.string().optional().nullable(),
-      catatan: z.string().max(500).optional().nullable(),
-    })
-  ).min(1, "Minimal satu item harus diupdate."),
+  items: z
+    .array(
+      z.object({
+        item_id: z.coerce.number(),
+        qty: z.number().nonnegative("Qty tidak boleh negatif.").optional(),
+        kondisi: z.string().optional().nullable(),
+        serial_number: z.string().optional().nullable(),
+        catatan: z.string().max(500).optional().nullable(),
+        // Ditambahkan: sebelumnya field ini cuma ada di createSuratJalanSchema,
+        // jadi item yang kelebihan qty pas proses "cocokkan barang" (inbound)
+        // nggak bisa ditandai lewat endpoint receive-inbound.
+        is_kelebihan: z.boolean().optional(),
+      }),
+    )
+    .min(1, "Minimal satu item harus diupdate."),
 });
 
 const approveInboundSchema = z.object({
@@ -47,7 +55,7 @@ const approveInboundSchema = z.object({
         item_id: z.coerce.number(),
         wajar: z.boolean().optional(),
         catatan: z.string().max(500).optional().nullable(),
-      })
+      }),
     )
     .optional(),
 });
@@ -61,23 +69,27 @@ const rejectOutboundSchema = z.object({
 });
 
 const putawaySchema = z.object({
-  items: z.array(
-    z.object({
-      item_id: z.coerce.number(),
-      bin_lokasi_id: z.coerce.number().positive("Bin lokasi wajib diisi."),
-      qty: z.number().positive("Qty harus lebih dari 0."),
-    })
-  ).min(1, "Minimal satu item harus di-putaway."),
+  items: z
+    .array(
+      z.object({
+        item_id: z.coerce.number(),
+        bin_lokasi_id: z.coerce.number().positive("Bin lokasi wajib diisi."),
+        qty: z.number().positive("Qty harus lebih dari 0."),
+      }),
+    )
+    .min(1, "Minimal satu item harus di-putaway."),
 });
 
 const retrieveSchema = z.object({
-  items: z.array(
-    z.object({
-      item_id: z.coerce.number(),
-      bin_lokasi_id: z.coerce.number().positive("Bin lokasi wajib diisi."),
-      qty: z.number().positive("Qty harus lebih dari 0."),
-    })
-  ).min(1, "Minimal satu item harus di-retrieve."),
+  items: z
+    .array(
+      z.object({
+        item_id: z.coerce.number(),
+        bin_lokasi_id: z.coerce.number().positive("Bin lokasi wajib diisi."),
+        qty: z.number().positive("Qty harus lebih dari 0."),
+      }),
+    )
+    .min(1, "Minimal satu item harus di-retrieve."),
 });
 
 module.exports = {
