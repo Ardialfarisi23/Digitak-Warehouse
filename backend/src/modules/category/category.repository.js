@@ -6,8 +6,7 @@ const DEFAULT_PAGE = 1;
 const ALLOWED_SORT_FIELDS = [
   "kategori_id",
   "nama_kategori",
-  "created_at",
-  "updated_at",
+  "is_kritis",
 ];
 
 const create = async (data) => {
@@ -34,7 +33,7 @@ const findAll = async ({
   page = DEFAULT_PAGE,
   limit = DEFAULT_LIMIT,
   search,
-  sortBy = "updated_at",
+  sortBy = "kategori_id",
   sortOrder = "desc",
 } = {}) => {
   const sanitizedPage = Math.max(
@@ -49,7 +48,7 @@ const findAll = async ({
 
   const orderField = ALLOWED_SORT_FIELDS.includes(sortBy)
     ? sortBy
-    : "updated_at";
+    : "kategori_id";
 
   const orderDirection = ["asc", "desc"].includes(
     (sortOrder || "").toLowerCase()

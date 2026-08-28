@@ -12,9 +12,24 @@ const ALLOWED_SORT_FIELDS = [
 ];
 
 const create = async (data) => {
-  return await prisma.barang.create({
-    data,
-  });
+  const { created_by, updated_by, kategori_id, satuan_default_id, ...rest } = data;
+
+  const createData = { ...rest };
+
+  if (created_by != null && !Number.isNaN(Number(created_by))) {
+    createData.creator = { connect: { user_id: Number(created_by) } };
+  }
+  if (updated_by != null && !Number.isNaN(Number(updated_by))) {
+    createData.updater = { connect: { user_id: Number(updated_by) } };
+  }
+  if (kategori_id != null && !Number.isNaN(Number(kategori_id))) {
+    createData.kategori = { connect: { kategori_id: Number(kategori_id) } };
+  }
+  if (satuan_default_id != null && !Number.isNaN(Number(satuan_default_id))) {
+    createData.satuan_default = { connect: { satuan_id: Number(satuan_default_id) } };
+  }
+
+  return await prisma.barang.create({ data: createData });
 };
 
 const findByKode = async (kode_perangkat, options = {}) => {
@@ -88,6 +103,10 @@ const findAll = async ({
     },
     skip: (sanitizedPage - 1) * sanitizedLimit,
     take: sanitizedLimit,
+    include: {
+      kategori: true,
+      satuan_default: true,
+    },
   });
 
   return {
@@ -102,9 +121,23 @@ const findAll = async ({
 };
 
 const update = async (barang_id, data) => {
+  const { updated_by, kategori_id, satuan_default_id, ...rest } = data;
+
+  const updateData = { ...rest };
+
+  if (updated_by != null && !Number.isNaN(Number(updated_by))) {
+    updateData.updater = { connect: { user_id: Number(updated_by) } };
+  }
+  if (kategori_id != null && !Number.isNaN(Number(kategori_id))) {
+    updateData.kategori = { connect: { kategori_id: Number(kategori_id) } };
+  }
+  if (satuan_default_id != null && !Number.isNaN(Number(satuan_default_id))) {
+    updateData.satuan_default = { connect: { satuan_id: Number(satuan_default_id) } };
+  }
+
   return await prisma.barang.update({
     where: { barang_id: Number(barang_id) },
-    data,
+    data: updateData,
   });
 };
 

@@ -3,15 +3,18 @@ const AppError = require("../../shared/errors");
 
 
 const create = async (data, userId) => {
-  const existing = await personnelRepository.findByPersonilId(
-    data.personil_id,
-    {
-      includeInactive: true,
+  if (data.nik) {
+    const existingNik = await personnelRepository.findByNik(data.nik);
+    if (existingNik) {
+      throw new AppError("NIK sudah digunakan.", 400);
     }
-  );
+  }
 
-  if (existing) {
-    throw new AppError("ID personnel sudah digunakan.", 400);
+  if (data.email) {
+    const existingEmail = await personnelRepository.findByEmail(data.email);
+    if (existingEmail) {
+      throw new AppError("Email sudah digunakan.", 400);
+    }
   }
 
   const createData = {

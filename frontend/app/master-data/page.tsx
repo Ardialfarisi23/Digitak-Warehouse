@@ -82,6 +82,8 @@ interface Item {
   nama_barang?: string;
   kategori_id?: number;
   satuan_default_id?: number;
+  kategori?: { nama_kategori?: string } | null;
+  satuan_default?: { kode_satuan?: string } | null;
   quantity?: number;
   unit?: string;
   status?: string;
@@ -207,6 +209,8 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
   items: [
     { key: "kode_perangkat", label: "Kode Perangkat", type: "text", required: true },
     { key: "nama_barang", label: "Nama Barang", type: "text", required: true },
+    { key: "kategori_id", label: "Kategori", type: "select", required: true, options: [] },
+    { key: "satuan_default_id", label: "Satuan Default", type: "select", required: true, options: [] },
     { key: "foto", label: "Foto Barang", type: "file" },
   ],
   projects: [
@@ -223,7 +227,7 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
   ],
   personnel: [
     { key: "nama", label: "Nama", type: "text", required: true },
-    { key: "posisi", label: "Jabatan", type: "text" },
+    { key: "posisi", label: "Jabatan", type: "select", options: ["Supervisor", "Staf Gudang"] },
     { key: "no_hp", label: "Telepon", type: "text" },
     { key: "nik", label: "NIK", type: "text" },
     { key: "email", label: "Email", type: "text" },
@@ -283,6 +287,17 @@ function formatValue(value: unknown): string {
   }
 
   return String(value);
+}
+
+function formatCheckboxValue(fieldKey: string, value: unknown): string {
+  const boolVal = Boolean(value);
+  if (fieldKey === "bisa_menyetir") {
+    return boolVal ? "Bisa" : "Tidak";
+  }
+  if (fieldKey === "is_material_handler") {
+    return boolVal ? "Ya" : "Tidak";
+  }
+  return boolVal ? "Aktif" : "Tidak Aktif";
 }
 
 function formatDateTime(value: unknown): string {
@@ -564,15 +579,30 @@ function DetailModal({
                 </dd>
               </div>
             );
-          }
+                           }
 
-          return (
+                             if (field.key === "kategori_id" || field.key === "satuan_default_id") {
+                               const label = field.key === "kategori_id"
+                                 ? (record as any)?.kategori?.nama_kategori
+                                 : (record as any)?.satuan_default?.kode_satuan;
+
+                               return (
+                                 <div key={field.key} className="flex items-start justify-between gap-4 py-2.5">
+                                   <dt className="text-xs font-medium text-slate-400">{field.label}</dt>
+                                   <dd className="text-right text-sm font-medium text-slate-800">
+                                     {label || "-"}
+                                   </dd>
+                                 </div>
+                               );
+                             }
+
+                           return (
             <div key={field.key} className="flex items-start justify-between gap-4 py-2.5">
               <dt className="text-xs font-medium text-slate-400">{field.label}</dt>
               <dd className="text-right text-sm font-medium text-slate-800">
-                {field.type === "checkbox"
-                  ? formatValue(Boolean(record[field.key]))
-                  : formatValue(record[field.key])}
+                 {field.type === "checkbox"
+                   ? formatCheckboxValue(field.key, record[field.key])
+                   : formatValue(record[field.key])}
               </dd>
             </div>
           );
@@ -656,7 +686,7 @@ function FormModal({
   onSuccess: () => void;
   onShowToast: (message: string, type: "success" | "error") => void;
 }) {
-  const { post, put } = useApi();
+  const { post, put, get } = useApi();
   const fields = TAB_FIELDS[tab];
 
   const buildInitialForm = useCallback(() => {
@@ -681,6 +711,47 @@ function FormModal({
   const [form, setForm] = useState<Record<string, unknown>>(buildInitialForm);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [categoryOptions, setCategoryOptions] = useState<Array<{ value: number; label: string }>>([]);
+  const [unitOptions, setUnitOptions] = useState<Array<{ value: number; label: string }>>([]);
+
+  useEffect(() => {
+    if (open && tab === "items") {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      let cancelled = false;
+
+      Promise.all([
+        get(`${baseUrl}/api/categories`)
+          .then((res) => res.json())
+          .then((result) => {
+            if (cancelled) return;
+            const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+            setCategoryOptions(list.map((cat: any) => ({ value: Number(cat.kategori_id), label: cat.nama_kategori })));
+          })
+          .catch(() => { if (!cancelled) setCategoryOptions([]); }),
+        get(`${baseUrl}/api/units`)
+          .then((res) => res.json())
+          .then((result) => {
+            if (cancelled) return;
+            const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+            setUnitOptions(list.map((u: any) => ({ value: Number(u.satuan_id), label: u.kode_satuan })));
+          })
+          .catch(() => { if (!cancelled) setUnitOptions([]); }),
+      ]);
+
+      return () => { cancelled = true; };
+    }
+  }, [open, tab, get]);
+
+  const formFields = useMemo(() => {
+    if (tab === "items") {
+      return fields.map((field) => {
+        if (field.key === "kategori_id") return { ...field, options: categoryOptions };
+        if (field.key === "satuan_default_id") return { ...field, options: unitOptions };
+        return field;
+      });
+    }
+    return fields;
+  }, [tab, fields, categoryOptions, unitOptions]);
 
   useEffect(() => {
     if (open) {
@@ -742,6 +813,11 @@ function FormModal({
             if (typeof originalUrl === "string" && originalUrl) {
               submitData[field.key] = originalUrl;
             }
+          }
+        } else if (field.type === "select" && submitData[field.key] !== undefined && submitData[field.key] !== "") {
+          const numericValue = Number(submitData[field.key]);
+          if (!Number.isNaN(numericValue)) {
+            submitData[field.key] = numericValue;
           }
         }
       }
@@ -818,7 +894,7 @@ function FormModal({
       subtitle={mode === "edit" ? getRecordTitle(tab, record) : undefined}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        {fields.map((field) => (
+        {formFields.map((field) => (
           <div key={field.key}>
             {field.type === "checkbox" ? (
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
@@ -894,19 +970,23 @@ function FormModal({
                   {field.required && <span className="text-rose-500"> *</span>}
                 </label>
 
-                {field.type === "select" ? (
-                  <select
-                    value={String(form[field.key] ?? "")}
-                    onChange={(e) => handleChange(field.key, e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
-                  >
-                    <option value="">Pilih {field.label.toLowerCase()}</option>
-                    {field.options?.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
+                 {field.type === "select" ? (
+                   <select
+                     value={String(form[field.key] ?? "")}
+                     onChange={(e) => handleChange(field.key, e.target.value)}
+                     className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                   >
+                     <option value="">Pilih {field.label.toLowerCase()}</option>
+                     {(field.options || []).map((opt) => {
+                       const optValue = typeof opt === "string" ? opt : String((opt as any).value);
+                       const optLabel = typeof opt === "string" ? opt : (opt as any).label;
+                       return (
+                         <option key={optValue} value={optValue}>
+                           {optLabel}
+                         </option>
+                       );
+                     })}
+                   </select>
                 ) : field.type === "textarea" ? (
                   <textarea
                     value={String(form[field.key] ?? "")}
@@ -1121,11 +1201,11 @@ function MasterDataPageContent() {
   const columns = useMemo(() => {
     switch (activeTab) {
       case "items":
-        return ["kode_perangkat", "nama_barang", "foto"];
+        return ["kode_perangkat", "nama_barang", "kategori", "satuan_default", "foto"];
       case "projects":
         return ["project_id", "title", "nama_project", "kecamatan", "desa_kelurahan", "status_aktif"];
       case "personnel":
-        return ["personil_id", "nama", "posisi", "no_hp", "foto"];
+        return ["personil_id", "nama", "email", "nik", "posisi", "no_hp", "bisa_menyetir", "foto"];
       case "vehicles":
         return ["kendaraan_id", "jenis_kendaraan", "merk", "no_polisi", "foto"];
       case "warehouses":
@@ -1139,6 +1219,8 @@ function MasterDataPageContent() {
     const labels: Record<string, string> = {
       kode_perangkat: "Kode",
       nama_barang: "Nama Barang",
+      kategori: "Kategori",
+      satuan_default: "Satuan",
       project_id: "ID Project",
       title: "Judul",
       nama_project: "Nama Project",
@@ -1149,6 +1231,9 @@ function MasterDataPageContent() {
       nama: "Nama",
       posisi: "Jabatan",
       no_hp: "Telepon",
+      email: "Email",
+      nik: "NIK",
+      bisa_menyetir: "Bisa Menyetir",
       kendaraan_id: "ID Kendaraan",
       jenis_kendaraan: "Tipe",
       merk: "Merk",
@@ -1490,12 +1575,32 @@ function MasterDataPageContent() {
                                   <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-slate-300">
                                     <ImageOff size={16} />
                                   </div>
-                                )}
-                              </td>
-                            );
-                          }
+                                 )}
+                               </td>
+                              );
+                            }
 
-                          return (
+                            if (column === "bisa_menyetir") {
+                              return (
+                                <td key={column} className="px-6 py-4 text-sm text-slate-600">
+                                  {value === true ? "Bisa" : "Tidak"}
+                                </td>
+                              );
+                            }
+
+                            if (column === "kategori" || column === "satuan_default") {
+                             const label = column === "kategori"
+                               ? item.kategori?.nama_kategori
+                               : item.satuan_default?.kode_satuan;
+
+                             return (
+                               <td key={column} className="px-6 py-4 text-sm text-slate-600">
+                                 {label || "-"}
+                               </td>
+                             );
+                           }
+
+                           return (
                             <td
                               key={column}
                               className={[

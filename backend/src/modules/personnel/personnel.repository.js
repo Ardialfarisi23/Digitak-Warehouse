@@ -13,7 +13,10 @@ const ALLOWED_SORT_FIELDS = [
 
 const create = async (data) => {
   return await prisma.personil.create({
-    data,
+    data: {
+      ...data,
+      jenis: data.jenis ?? "admin_gudang",
+    },
   });
 };
 
@@ -53,9 +56,14 @@ const findByEmail = async (email, options = {}) => {
   }
 
   return await prisma.personil.findFirst({
-    where: {
-      email,
-    },
+    where: { email },
+  });
+};
+
+const findByNik = async (nik) => {
+  if (!nik) return null;
+  return await prisma.personil.findFirst({
+    where: { nik },
   });
 };
 
@@ -158,6 +166,7 @@ module.exports = {
   create,
   findByPersonilId,
   findById,
+  findByNik,
   findByEmail,
   findAll,
   update,

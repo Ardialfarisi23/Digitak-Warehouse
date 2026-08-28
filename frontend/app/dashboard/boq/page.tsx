@@ -24,7 +24,6 @@ import {
   Mail,
   ShieldCheck,
   ShieldAlert,
-  ThumbsUp,
   ThumbsDown,
   ExternalLink,
   History,
@@ -32,7 +31,6 @@ import {
   Download,
   Lock,
   Building2,
-  ClipboardList as RequestIcon,
   ChevronDown,
 } from "lucide-react";
 
@@ -140,7 +138,7 @@ interface SummaryCounts {
 }
 
 type TabType = "aktif" | "draft" | "ditolak";
-type SectionType = TabType | "permintaan";
+type SectionType = TabType;
 
 /* ------------------------------------------------------------------ */
 /* Role helpers                                                        */
@@ -262,20 +260,6 @@ export default function BoqPage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [uploadingRef, setUploadingRef] = useState(false);
-
-  // Permintaan BOQ state
-  const [permintaanBoqs, setPermintaanBoqs] = useState<any[]>([]);
-  const [permintaanLoading, setPermintaanLoading] = useState(false);
-  const [permintaanModalOpen, setPermintaanModalOpen] = useState(false);
-  const [permintaanForm, setPermintaanForm] = useState({
-    projectId: "",
-    barangId: "",
-    quantity: 1,
-    alasan: "",
-    referenceTicket: "",
-  });
-  const [permintaanSubmitting, setPermintaanSubmitting] = useState(false);
-  const [permintaanFormError, setPermintaanFormError] = useState<string | null>(null);
 
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -411,86 +395,6 @@ export default function BoqPage() {
     }
   }, [get]);
 
-  const fetchPermintaanBoqs = useCallback(async () => {
-    setPermintaanLoading(true);
-    try {
-      const res = await get(`${API_BASE}/api/permintaan-boqs?limit=50`);
-      const json = await res.json();
-      if (res.ok && Array.isArray(json?.data?.data)) {
-        setPermintaanBoqs(json.data.data);
-      } else if (res.ok && Array.isArray(json?.data)) {
-        setPermintaanBoqs(json.data);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setPermintaanLoading(false);
-    }
-  }, [get]);
-
-  async function handlePermintaanSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setPermintaanFormError(null);
-
-    if (!permintaanForm.projectId) {
-      setPermintaanFormError("Project wajib dipilih.");
-      return;
-    }
-    if (!permintaanForm.barangId) {
-      setPermintaanFormError("Barang wajib dipilih.");
-      return;
-    }
-    if (!permintaanForm.quantity || permintaanForm.quantity < 1) {
-      setPermintaanFormError("Qty harus lebih dari 0.");
-      return;
-    }
-
-    setPermintaanSubmitting(true);
-    try {
-      const selectedItem = items.find((it) => it.id === permintaanForm.barangId);
-      const payload = {
-        projectId: permintaanForm.projectId,
-        barangId: permintaanForm.barangId,
-        qty: permintaanForm.quantity,
-        alasan: permintaanForm.alasan || null,
-        referenceTicket: permintaanForm.referenceTicket || null,
-        itemCode: selectedItem?.kode_perangkat || "",
-        itemName: selectedItem?.nama_barang || "",
-        unit: selectedItem?.satuan?.kode_satuan || "Unit",
-      };
-
-      const res = await post(`${API_BASE}/api/permintaan-boqs`, payload);
-      if (!res.ok) {
-        const json = await res.json().catch(() => null);
-        throw new Error(json?.message || "Gagal mengajukan permintaan BOQ.");
-      }
-
-      setPermintaanModalOpen(false);
-      setPermintaanForm({ projectId: "", barangId: "", quantity: 1, alasan: "", referenceTicket: "" });
-      fetchPermintaanBoqs();
-    } catch (err) {
-      setPermintaanFormError(err instanceof Error ? err.message : "Terjadi kesalahan.");
-    } finally {
-      setPermintaanSubmitting(false);
-    }
-  }
-
-  async function handleApprovePermintaan(record: any) {
-    try {
-      const res = await put(`${API_BASE}/api/permintaan-boqs/${record.permintaan_id}/status`, {
-        status: "DISETUJUI",
-      });
-      if (!res.ok) {
-        const json = await res.json().catch(() => null);
-        throw new Error(json?.message || "Gagal menyetujui permintaan.");
-      }
-      fetchPermintaanBoqs();
-      setToast({ message: "Permintaan BOQ berhasil disetujui.", type: "success" });
-    } catch (err) {
-      setToast({ message: err instanceof Error ? err.message : "Gagal menyetujui permintaan.", type: "error" });
-    }
-  }
-
   async function handleRestoreBoq(boq: Boq) {
     try {
       const res = await put(`${API_BASE}/api/boqs/${boq.id}/status`, { status: "DRAFT" });
@@ -521,22 +425,6 @@ export default function BoqPage() {
     }
   }
 
-  async function handleRejectPermintaan(record: any) {
-    try {
-      const res = await put(`${API_BASE}/api/permintaan-boqs/${record.permintaan_id}/status`, {
-        status: "DITOLAK",
-      });
-      if (!res.ok) {
-        const json = await res.json().catch(() => null);
-        throw new Error(json?.message || "Gagal menolak permintaan.");
-      }
-      fetchPermintaanBoqs();
-      setToast({ message: "Permintaan BOQ berhasil ditolak.", type: "success" });
-    } catch (err) {
-      setToast({ message: err instanceof Error ? err.message : "Gagal menolak permintaan.", type: "error" });
-    }
-  }
-
   // Staf Gudang is locked to the Aktif tab — never let it switch away.
   useEffect(() => {
     if (isStaffGudang && activeTab !== "aktif") {
@@ -545,9 +433,7 @@ export default function BoqPage() {
   }, [isStaffGudang, activeTab]);
 
   useEffect(() => {
-    if (activeTab !== "permintaan") {
-      fetchBoqs();
-    }
+    fetchBoqs();
   }, [fetchBoqs, activeTab]);
 
   useEffect(() => {
@@ -566,10 +452,6 @@ export default function BoqPage() {
 
     return () => clearTimeout(timer);
   }, [searchInput]);
-
-  useEffect(() => {
-    fetchPermintaanBoqs();
-  }, [fetchPermintaanBoqs]);
 
   useEffect(() => {
     if (itemPickerIndex === null) return;
@@ -991,20 +873,6 @@ export default function BoqPage() {
               </button>
             );
           })}
-          {canManage && (
-            <button
-              type="button"
-              onClick={() => setActiveTab("permintaan")}
-              className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
-                activeTab === "permintaan"
-                  ? "border-orange-500 text-orange-600"
-                  : "border-transparent text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              <RequestIcon size={16} />
-              Permintaan BOQ
-            </button>
-          )}
         </div>
 
         {/* 3. Filter & pencarian */}
@@ -1263,271 +1131,6 @@ export default function BoqPage() {
             </table>
           </div>
         </div>
-
-        {/* Permintaan BOQ Section */}
-        {activeTab === "permintaan" && canManage && (
-          <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">Permintaan BOQ</h3>
-                <p className="text-xs text-slate-500">
-                  Permintaan tambahan barang dari lapangan yang perlu disetujui Admin General.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPermintaanModalOpen(true)}
-                className="flex items-center gap-2 rounded-full bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600"
-              >
-                <Plus size={16} />
-                Ajukan Permintaan
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50">
-                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      Nomor Permintaan
-                    </th>
-                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      Project
-                    </th>
-                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      Barang
-                    </th>
-                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      Qty Usulan
-                    </th>
-                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      Status
-                    </th>
-                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      Tiket Rujukan
-                    </th>
-                    <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      Aksi
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {permintaanLoading ? (
-                    Array.from({ length: 3 }).map((_, rowIndex) => (
-                      <tr key={rowIndex}>
-                        {Array.from({ length: 6 }).map((_, colIndex) => (
-                          <td key={colIndex} className="px-6 py-4">
-                            <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
-                          </td>
-                        ))}
-                      </tr>
-                    ))
-                  ) : permintaanBoqs.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-6 py-16 text-center text-sm text-slate-400">
-                        Belum ada permintaan BOQ.
-                      </td>
-                    </tr>
-                  ) : (
-                    permintaanBoqs.map((record) => {
-                      const statusKey = String(record.status).toUpperCase();
-                      const statusLabel = {
-                        DIAJUKAN: "Diajukan",
-                        DITINJAU: "Ditinjau",
-                        DISETUJUI: "Disetujui",
-                        DITOLAK: "Ditolak",
-                      }[statusKey] || record.status;
-                      const statusColor = {
-                        DIAJUKAN: "bg-amber-50 text-amber-600",
-                        DITINJAU: "bg-sky-50 text-sky-600",
-                        DISETUJUI: "bg-emerald-50 text-emerald-600",
-                        DITOLAK: "bg-rose-50 text-rose-600",
-                      }[statusKey] || "bg-slate-100 text-slate-600";
-                      const canProcess = statusKey === "DIAJUKAN" || statusKey === "DITINJAU";
-
-                      return (
-                        <tr key={record.permintaan_id} className="group transition-colors hover:bg-slate-50">
-                          <td className="px-6 py-4">
-                            <div className="font-semibold text-orange-500">{record.requestNumber || `REQ-${record.permintaan_id}`}</div>
-                            <div className="text-xs text-slate-400">{record.alasan || "-"}</div>
-                          </td>
-                          <td className="px-6 py-4 text-slate-700">
-                            {record.project?.nama_project || "-"}
-                          </td>
-                          <td className="px-6 py-4 text-slate-700">
-                            <div className="font-medium">{record.itemName || record.barang?.nama_barang || "-"}</div>
-                            <div className="text-xs text-slate-400">{record.itemCode || record.barang?.kode_perangkat || "-"}</div>
-                          </td>
-                          <td className="px-6 py-4 text-right font-semibold text-slate-800">
-                            {Number(record.qty_usulan || record.quantity || 0)}
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${statusColor}`}>
-                              {statusLabel}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-slate-500">
-                            {record.referenceTicket || record.tiket_id || "-"}
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="flex items-center justify-end gap-1">
-                              {canProcess && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleApprovePermintaan(record)}
-                                    title="Setujui"
-                                    className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
-                                  >
-                                    <ThumbsUp size={15} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRejectPermintaan(record)}
-                                    title="Tolak"
-                                    className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                                  >
-                                    <ThumbsDown size={15} />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Permintaan BOQ Modal */}
-        {permintaanModalOpen && canManage && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-            onClick={() => setPermintaanModalOpen(false)}
-          >
-            <div
-              className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-                <div>
-                  <h3 className="text-base font-semibold text-slate-900">Ajukan Permintaan BOQ</h3>
-                  <p className="text-xs text-slate-500">
-                    Usulkan penambahan barang yang dibutuhkan di lapangan.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPermintaanModalOpen(false)}
-                  className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <form onSubmit={handlePermintaanSubmit} className="p-6 space-y-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
-                    Project <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={permintaanForm.projectId}
-                    onChange={(e) => setPermintaanForm((prev) => ({ ...prev, projectId: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
-                  >
-                    <option value="">Pilih project</option>
-                    {projects.map((project) => (
-                      <option key={project.projectId} value={project.projectId}>
-                        {project.projectName || project.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
-                    Barang <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={permintaanForm.barangId}
-                    onChange={(e) => setPermintaanForm((prev) => ({ ...prev, barangId: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
-                  >
-                    <option value="">Pilih barang</option>
-                    {items.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.kode_perangkat} - {item.nama_barang}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
-                    Qty <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={permintaanForm.quantity}
-                    onChange={(e) => setPermintaanForm((prev) => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">Alasan / Justifikasi</label>
-                  <textarea
-                    value={permintaanForm.alasan}
-                    onChange={(e) => setPermintaanForm((prev) => ({ ...prev, alasan: e.target.value }))}
-                    placeholder="Jelaskan alasan permintaan tambahan ini..."
-                    rows={3}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">Tiket Rujukan (Opsional)</label>
-                  <input
-                    type="text"
-                    value={permintaanForm.referenceTicket}
-                    onChange={(e) => setPermintaanForm((prev) => ({ ...prev, referenceTicket: e.target.value }))}
-                    placeholder="Nomor tiket material terkait"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
-                  />
-                </div>
-
-                {permintaanFormError && (
-                  <div className="flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-600">
-                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                    {permintaanFormError}
-                  </div>
-                )}
-
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setPermintaanModalOpen(false)}
-                    className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={permintaanSubmitting}
-                    className="flex items-center gap-2 rounded-full bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:opacity-60"
-                  >
-                    {permintaanSubmitting && <Loader2 size={14} className="animate-spin" />}
-                    Ajukan Permintaan
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
 
         {/* Create/Edit Modal — "Input BOQ dari Email" */}
         {modalOpen && canManage && (
