@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Warehouse as WarehouseIcon,
@@ -14,7 +14,6 @@ import {
   ChevronDown,
   ArrowDown,
   Search,
-  Upload,
 } from "lucide-react";
 
 import { useApi } from "@/lib/api";
@@ -39,6 +38,8 @@ type Zona = {
   nama_zona?: string;
   tipe_zona?: string;
   utilisasi_persen?: number | null;
+  total_qty?: number;
+  total_item?: number;
 };
 
 export default function WarehouseLayoutPage() {
@@ -169,6 +170,25 @@ export default function WarehouseLayoutPage() {
     await loadWarehouseLayout(gudangId);
   }
 
+  const layoutPollRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!selectedWarehouseId) return;
+
+    layoutPollRef.current = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        loadWarehouseLayout(selectedWarehouseId);
+      }
+    }, 15000);
+
+    return () => {
+      if (layoutPollRef.current) {
+        clearInterval(layoutPollRef.current);
+        layoutPollRef.current = null;
+      }
+    };
+  }, [selectedWarehouseId]);
+
   const selectedWarehouse = useMemo(() => {
     return warehouses.find(
       (warehouse) =>
@@ -293,30 +313,24 @@ export default function WarehouseLayoutPage() {
     }
   }
 
-  /* =========================================================
-     AUTO-REFRESH PANEL SAAT TERBUKA
-  ========================================================= */
+  const zoneStockPollRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!panelOpen || !selectedZone) return;
 
-    const interval = setInterval(() => {
-      fetchZoneStock(selectedZone);
-    }, 3000);
-
-    const handleStockRefresh = () => {
-      if (selectedZone) {
+    zoneStockPollRef.current = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
         fetchZoneStock(selectedZone);
       }
-    };
-
-    window.addEventListener("warehouse:stock:refresh", handleStockRefresh);
+    }, 15000);
 
     return () => {
-      clearInterval(interval);
-      window.removeEventListener("warehouse:stock:refresh", handleStockRefresh);
+      if (zoneStockPollRef.current) {
+        clearInterval(zoneStockPollRef.current);
+        zoneStockPollRef.current = null;
+      }
     };
-  }, [panelOpen, selectedZone, get]);
+  }, [panelOpen, selectedZone, fetchZoneStock]);
 
   /* =========================================================
      ZONE BACKGROUND
@@ -405,13 +419,36 @@ export default function WarehouseLayoutPage() {
 
         {/* ZONE NAME */}
         <div className="relative z-10">
-          <h3 className="text-[23px] font-extrabold uppercase leading-tight tracking-[-0.5px] text-[#171717] md:text-[25px]">
-            {getCleanZoneCode(zone)}
-          </h3>
+          <div className="flex items-center justify-center gap-2">
+            <h3 className="text-[23px] font-extrabold uppercase leading-tight tracking-[-0.5px] text-[#171717] md:text-[25px]">
+              {getCleanZoneCode(zone)}
+            </h3>
+
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isIndoor ? "bg-[#FFA86B]/20 text-[#8B4513]" : "bg-[#FCEBDD] text-[#6b5647]"}`}>
+              {isIndoor ? "Indoor" : "Outdoor"}
+            </span>
+          </div>
 
           <p className="mt-1 text-[15px] font-medium text-[#222] md:text-[16px]">
             {zoneType}
           </p>
+
+          {(zone.total_item > 0 || zone.total_qty > 0) && (
+            <div className="mt-2">
+              <p className="text-[12px] font-semibold text-[#344054]">
+                {zone.total_item || 0} barang • {Number(zone.total_qty || 0).toLocaleString("id-ID")} unit
+              </p>
+
+              {zone.utilisasi_persen !== undefined && zone.utilisasi_persen > 0 && (
+                <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-[#e5e7eb]">
+                  <div
+                    className="h-full rounded-full bg-[#111827] transition-all duration-500"
+                    style={{ width: `${Math.min(zone.utilisasi_persen, 100)}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* HOVER INDICATOR */}
@@ -422,6 +459,27 @@ export default function WarehouseLayoutPage() {
           />
         </div>
       </button>
+    );
+  }
+
+  function ZoneDetailModal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
+    useEffect(() => {
+      if (!open) return;
+      function handleKey(e: KeyboardEvent) {
+        if (e.key === "Escape") onClose();
+      }
+      document.addEventListener("keydown", handleKey);
+      return () => document.removeEventListener("keydown", handleKey);
+    }, [open, onClose]);
+
+    if (!open) return null;
+
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
+        <div className="w-full max-w-[640px] max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+          {children}
+        </div>
+      </div>
     );
   }
 
@@ -697,180 +755,120 @@ export default function WarehouseLayoutPage() {
       </div>
 
       {/* =====================================================
-          SLIDE-OVER PANEL: STOCK SNAPSHOT
+          MODAL: DETAIL STOK ZONA
       ===================================================== */}
 
-      {panelOpen && (
-        <>
-          {/* BACKDROP */}
+      <ZoneDetailModal open={panelOpen} onClose={closePanel}>
+        {/* HEADER */}
 
-          <div
-            className="fixed inset-0 z-[100] bg-black/30 transition-opacity"
-            onClick={closePanel}
-          />
+        <div className="flex items-start justify-between border-b border-[#edf0f2] px-6 py-4">
+          <div>
+            <h3 className="text-[17px] font-bold text-[#111827]">
+              Detail Zona {selectedZone && getCleanZoneCode(selectedZone)}
+            </h3>
 
-          {/* PANEL */}
-
-          <div className="fixed inset-y-0 right-0 z-[101] flex w-full max-w-[480px] flex-col border-l border-[#e5e7eb] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.2)] transition-transform duration-300 ease-out">
-            
-            {/* HEADER */}
-
-            <div className="flex items-start justify-between border-b border-[#edf0f2] px-5 py-4">
-              <div>
-                <h3 className="text-[17px] font-bold text-[#111827]">
-                  Snapshot Stok Zona
-                </h3>
-
-                {selectedZone && (
-                  <p className="mt-1 text-[12px] text-[#6b7280]">
-                    {selectedWarehouse?.nama_gudang} — Zona {getCleanZoneCode(selectedZone)} ({getZoneType(selectedZone)})
-                  </p>
+            {selectedZone && (
+              <p className="mt-1 text-[12px] text-[#6b7280]">
+                {selectedWarehouse?.nama_gudang} — {getZoneType(selectedZone)}
+                {selectedZone.total_item > 0 && (
+                  <span> • {selectedZone.total_item} barang • {Number(selectedZone.total_qty || 0).toLocaleString("id-ID")} unit</span>
                 )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                {panelLastRefreshed && (
-                  <span className="text-[11px] text-[#98a2b3]">
-                    {panelLastRefreshed.toLocaleTimeString("id-ID")}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => selectedZone && fetchZoneStock(selectedZone)}
-                  className="rounded-lg p-2 text-[#98a2b3] hover:bg-[#f2f4f7] hover:text-[#111827]"
-                >
-                  <Upload size={16} />
-                </button>
-                <button
-                  type="button"
-                  onClick={closePanel}
-                  className="rounded-lg p-2 text-[#98a2b3] hover:bg-[#f2f4f7] hover:text-[#111827]"
-                >
-                  <X size={19} />
-                </button>
-              </div>
-            </div>
-
-            {/* SEARCH */}
-
-            <div className="border-b border-[#edf0f2] px-5 py-3">
-              <div className="flex items-center gap-2 rounded-[9px] border border-[#d0d5dd] bg-white px-3">
-                <Search
-                  size={16}
-                  className="shrink-0 text-[#98a2b3]"
-                />
-
-                <input
-                  value={panelSearch}
-                  onChange={(e) => setPanelSearch(e.target.value)}
-                  placeholder="Cari kode perangkat / nama barang…"
-                  className="h-[38px] w-full bg-transparent text-[13px] text-[#111827] outline-none placeholder:text-[#98a2b3]"
-                />
-              </div>
-            </div>
-
-            {/* CONTENT */}
-
-            <div className="flex-1 overflow-y-auto px-5 py-4">
-              {panelError && (
-                <div className="mb-4 flex items-center gap-2 rounded-[10px] border border-[#fecaca] bg-[#fef2f2] px-3 py-2.5 text-[13px] text-[#b42318]">
-                  <AlertCircle size={16} className="shrink-0" />
-                  <span>{panelError}</span>
-                </div>
-              )}
-
-              {panelLoading ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <Loader2
-                    size={28}
-                    className="animate-spin text-[#667085]"
-                  />
-
-                  <p className="mt-3 text-[13px] text-[#6b7280]">
-                    Memuat data stok…
-                  </p>
-                </div>
-              ) : filteredPanelStock.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <Boxes
-                    size={32}
-                    className="text-[#b0b7c0]"
-                  />
-
-                  <p className="mt-3 text-[13px] font-semibold text-[#667085]">
-                    {panelSearch ? "Tidak ada hasil pencarian" : "Zona ini belum memiliki stok"}
-                  </p>
-
-                  <p className="mt-1 text-[12px] text-[#98a2b3]">
-                    {panelSearch ? "Coba kata kunci lain" : "Snapshot stok saat ini akan muncul di sini"}
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {filteredPanelStock.map((item) => (
-                    <div
-                      key={item.stok_id}
-                      className="flex items-center justify-between rounded-[10px] border border-[#e5e7eb] bg-white px-4 py-3 transition hover:border-[#b9bec5]"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-[13px] font-semibold text-[#111827]">
-                          {item.kode_perangkat}
-                        </p>
-
-                        <p className="mt-0.5 truncate text-[12px] text-[#6b7280]">
-                          {item.nama_barang}
-                        </p>
-
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[#98a2b3]">
-                          <span>{item.kategori}</span>
-
-                          <span>•</span>
-
-                          <span>{item.satuan}</span>
-
-                          <span>•</span>
-
-                          <span className="capitalize">{item.kondisi}</span>
-                        </div>
-                      </div>
-
-                      <div className="ml-4 shrink-0 text-right">
-                        <p className="text-[16px] font-bold text-[#111827]">
-                          {Number(item.qty).toLocaleString("id-ID")}
-                        </p>
-
-                        <p className="text-[11px] text-[#6b7280]">
-                          {item.kode_bin !== "-" && `${item.kode_bin} • `}
-                          {item.kode_rak}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* FOOTER */}
-
-            <div className="border-t border-[#edf0f2] bg-[#fafbfc] px-5 py-3">
-              <div className="flex items-center justify-between text-[12px] text-[#6b7280]">
-                <span>
-                  {filteredPanelStock.length} item ditampilkan
-                </span>
-
-                <button
-                  type="button"
-                  onClick={closePanel}
-                  className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-[#344054] hover:bg-white hover:text-[#111827]"
-                >
-                  Tutup Panel
-                </button>
-              </div>
-            </div>
-
+              </p>
+            )}
           </div>
-        </>
-      )}
+
+          <button
+            type="button"
+            onClick={closePanel}
+            className="rounded-lg p-2 text-[#98a2b3] hover:bg-[#f2f4f7] hover:text-[#111827]"
+          >
+            <X size={19} />
+          </button>
+        </div>
+
+        {/* SEARCH */}
+
+        <div className="border-b border-[#edf0f2] px-6 py-3">
+          <div className="flex items-center gap-2 rounded-[9px] border border-[#d0d5dd] bg-white px-3">
+            <Search
+              size={16}
+              className="shrink-0 text-[#98a2b3]"
+            />
+
+            <input
+              value={panelSearch}
+              onChange={(e) => setPanelSearch(e.target.value)}
+              placeholder="Cari kode perangkat / nama barang…"
+              className="h-[38px] w-full bg-transparent text-[13px] text-[#111827] outline-none placeholder:text-[#98a2b3]"
+            />
+          </div>
+        </div>
+
+        {/* CONTENT */}
+
+        <div className="px-6 py-4">
+          {panelError && (
+            <div className="mb-4 flex items-center gap-2 rounded-[10px] border border-[#fecaca] bg-[#fef2f2] px-3 py-2.5 text-[13px] text-[#b42318]">
+              <AlertCircle size={16} className="shrink-0" />
+              <span>{panelError}</span>
+            </div>
+          )}
+
+          {panelLoading ? (
+            <div className="flex flex-col items-center justify-center py-16">
+              <Loader2
+                size={28}
+                className="animate-spin text-[#667085]"
+              />
+
+              <p className="mt-3 text-[13px] text-[#6b7280]">
+                Memuat data stok…
+              </p>
+            </div>
+          ) : filteredPanelStock.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <Boxes
+                size={32}
+                className="text-[#b0b7c0]"
+              />
+
+              <p className="mt-3 text-[13px] font-semibold text-[#667085]">
+                {panelSearch ? "Tidak ada hasil pencarian" : "Belum ada barang di zona ini"}
+              </p>
+
+              <p className="mt-1 text-[12px] text-[#98a2b3]">
+                {panelSearch ? "Coba kata kunci lain" : "Zona ini belum memiliki stok barang"}
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-[#e5e7eb]">
+                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Nama Barang</th>
+                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Kategori</th>
+                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085] text-right">Qty</th>
+                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Satuan</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#f2f4f7]">
+                  {filteredPanelStock.map((item) => (
+                    <tr key={item.stok_id} className="transition hover:bg-[#fafbfc]">
+                      <td className="px-4 py-3">
+                        <p className="text-[13px] font-semibold text-[#111827]">{item.nama_barang}</p>
+                        <p className="text-[11px] text-[#98a2b3]">{item.kode_perangkat}</p>
+                      </td>
+                      <td className="px-4 py-3 text-[13px] text-[#6b7280]">{item.kategori}</td>
+                      <td className="px-4 py-3 text-right text-[13px] font-semibold text-[#111827]">{Number(item.qty).toLocaleString("id-ID")}</td>
+                      <td className="px-4 py-3 text-[13px] text-[#6b7280]">{item.satuan}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </ZoneDetailModal>
     </div>
   );
 }

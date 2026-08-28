@@ -75,17 +75,15 @@ const restore = async (gudang_id) => {
   return await warehouseRepository.restore(gudang_id);
 };
 
-const getLayout = async (nama_gudang) => {
-  const warehouse = await warehouseRepository.findByNama(nama_gudang);
+const getLayout = async (gudang_id) => {
+  const warehouse = await warehouseRepository.findById(gudang_id);
 
   if (!warehouse) {
     throw new AppError("Warehouse tidak ditemukan.", 404);
   }
 
-  const gudang_id = warehouse.gudang_id;
-
   const zonas = await prisma.zona_gudang.findMany({
-    where: { gudang_id: Number(gudang_id) },
+    where: { gudang_id: warehouse.gudang_id },
     include: {
       raks: {
         include: {
@@ -96,10 +94,44 @@ const getLayout = async (nama_gudang) => {
     orderBy: { kode_zona: "asc" },
   });
 
+  const stockAgg = await prisma.stok_gudang.groupBy({
+    by: ["bin_lokasi_id"],
+    where: {
+      gudang_id: warehouse.gudang_id,
+      bin_lokasi_id: { not: null },
+    },
+    _sum: { qty: true },
+    _count: { barang_id: true },
+  });
+
+  const binToZone = {};
+  zonas.forEach((z) => {
+    z.raks.forEach((r) => {
+      r.bins.forEach((b) => {
+        binToZone[b.bin_id] = z.zona_id;
+      });
+    });
+  });
+
+  const zoneStats = {};
+  zonas.forEach((z) => {
+    zoneStats[z.zona_id] = { total_qty: 0, total_item: 0 };
+  });
+
+  stockAgg.forEach((s) => {
+    const zonaId = binToZone[s.bin_lokasi_id];
+    if (zonaId !== undefined && zoneStats[zonaId]) {
+      zoneStats[zonaId].total_qty += Number(s._sum.qty || 0);
+      zoneStats[zonaId].total_item += s._count.barang_id;
+    }
+  });
+
   return {
     ...warehouse,
     zonas: zonas.map((z) => ({
       ...z,
+      total_qty: zoneStats[z.zona_id]?.total_qty || 0,
+      total_item: zoneStats[z.zona_id]?.total_item || 0,
       raks: z.raks.map((r) => ({
         ...r,
         bins: r.bins.sort((a, b) => a.kode_bin.localeCompare(b.kode_bin)),
@@ -109,6 +141,12 @@ const getLayout = async (nama_gudang) => {
 };
 
 const getZoneStockSnapshot = async (gudang_id, zona_id, query = {}) => {
+  const warehouse = await warehouseRepository.findById(gudang_id);
+
+  if (!warehouse) {
+    throw new AppError("Warehouse tidak ditemukan.", 404);
+  }
+
   const search = (query.search || "").trim();
   const page = Number(query.page || 1);
   const limit = Number(query.limit || 20);

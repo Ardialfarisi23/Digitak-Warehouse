@@ -57,7 +57,7 @@ const restore = async (req, res, next) => {
 
 const getLayout = async (req, res, next) => {
   try {
-    const result = await warehouseService.getLayout(req.params.nama_gudang);
+    const result = await warehouseService.getLayout(req.params.gudang_id);
     return response.success(res, "Layout warehouse berhasil diambil.", result);
   } catch (err) {
     next(err);
@@ -67,7 +67,7 @@ const getLayout = async (req, res, next) => {
 const getZoneStockSnapshot = async (req, res, next) => {
   try {
     const result = await warehouseService.getZoneStockSnapshot(
-      req.params.nama_gudang,
+      req.params.gudang_id,
       req.params.zona_id,
       req.query
     );
