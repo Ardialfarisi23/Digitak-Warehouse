@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import { Search, Eye, X, ArrowUpRight, ArrowDownLeft, CheckCircle2, Clock, FileText, Loader2, AlertCircle } from "lucide-react";
+import { Search, Eye, X, ArrowUpRight, ArrowDownLeft, CheckCircle2, Clock, FileText, Loader2, AlertCircle, PackageCheck } from "lucide-react";
 
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -63,6 +63,7 @@ interface SuratJalanRecord {
 const STATUS_META: Record<string, { label: string; bg: string; text: string }> = {
   draft_diajukan: { label: "Draft Diajukan", bg: "bg-slate-100", text: "text-slate-700" },
   disetujui: { label: "Disetujui", bg: "bg-emerald-50", text: "text-emerald-700" },
+  ready_putaway: { label: "Siap Putaway", bg: "bg-blue-50", text: "text-blue-700" },
   digenerate: { label: "Digenerate", bg: "bg-blue-50", text: "text-blue-700" },
   diterima_didistribusikan: { label: "Diterima / Didistribusikan", bg: "bg-emerald-50", text: "text-emerald-700" },
   dikembalikan: { label: "Dikembalikan", bg: "bg-rose-50", text: "text-rose-700" },
@@ -305,8 +306,12 @@ export default function AdminDeliveryPage() {
 
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusMeta.bg} ${statusMeta.text}`}>
-                            {record.status === "diterima_didistribusikan" && <CheckCircle2 size={12} />}
-                            {record.status === "draft_diajukan" && <Clock size={12} />}
+                            {record.status === "draft_diajukan" && <Clock size={14} />}
+                            {record.status === "disetujui" && <CheckCircle2 size={14} />}
+                            {record.status === "ready_putaway" && <PackageCheck size={14} />}
+                            {record.status === "digenerate" && <Loader2 size={14} />}
+                            {record.status === "diterima_didistribusikan" && <CheckCircle2 size={14} />}
+                            {record.status === "dikembalikan" && <AlertCircle size={14} />}
                             {statusMeta.label}
                           </span>
                         </td>
