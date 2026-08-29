@@ -8,9 +8,16 @@ import {
   FileClock,
   PackageSearch,
   BarChart3,
-  Circle,
   Eye,
   X,
+  Plus,
+  Pencil,
+  Trash2,
+  CheckCircle,
+  PackageCheck,
+  ArrowDownToLine,
+  ArrowUpRight,
+  XCircle,
 } from "lucide-react";
 import { useApi } from "@/lib/api";
 
@@ -28,17 +35,50 @@ const statusColor = {
   diterima_didistribusikan: { fg: "#2E9E6D", bg: "#E4F5EC" },
 };
 
-function Badge({ children, color }) {
+type BadgeVariant = "green" | "blue" | "red" | "purple" | "orange" | "gray" | "outline-green" | "outline-blue" | "outline-red" | "outline-purple" | "outline-orange" | "outline-gray";
+
+const badgeStyles: Record<BadgeVariant, string> = {
+  green: "bg-emerald-50 text-emerald-700",
+  blue: "bg-blue-50 text-blue-700",
+  red: "bg-rose-50 text-rose-700",
+  purple: "bg-purple-50 text-purple-700",
+  orange: "bg-orange-50 text-orange-700",
+  gray: "bg-slate-100 text-slate-700",
+  "outline-green": "bg-transparent border border-emerald-200 text-emerald-700",
+  "outline-blue": "bg-transparent border border-blue-200 text-blue-700",
+  "outline-red": "bg-transparent border border-rose-200 text-rose-700",
+  "outline-purple": "bg-transparent border border-purple-200 text-purple-700",
+  "outline-orange": "bg-transparent border border-orange-200 text-orange-700",
+  "outline-gray": "bg-transparent border border-slate-200 text-slate-600",
+};
+
+function Badge({ label, icon: Icon, variant = "gray" }: { label: string; icon?: React.ComponentType<{ size?: number; className?: string }>; variant?: BadgeVariant }) {
   return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap"
-      style={{ color, backgroundColor: color + "18" }}
-    >
-      <Circle size={12} fill={color} stroke="none" />
-      {children}
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${badgeStyles[variant]}`}>
+      {Icon && <Icon size={14} />}
+      {label}
     </span>
   );
 }
+
+const aksiMap: Record<string, { label: string; icon: React.ComponentType<{ size?: number; className?: string }>; variant: BadgeVariant }> = {
+  create: { label: "Dibuat", icon: Plus, variant: "green" },
+  update: { label: "Diperbarui", icon: Pencil, variant: "blue" },
+  delete: { label: "Dihapus", icon: Trash2, variant: "red" },
+  approve: { label: "Disetujui", icon: CheckCircle, variant: "green" },
+  receive_inbound: { label: "Terima Inbound", icon: ArrowDownToLine, variant: "purple" },
+  approve_inbound: { label: "Approve Inbound", icon: CheckCircle, variant: "green" },
+  approve_outbound: { label: "Approve Outbound", icon: CheckCircle, variant: "green" },
+  confirm_distributed: { label: "Dikonfirmasi", icon: PackageCheck, variant: "purple" },
+  reject_inbound: { label: "Tolak Inbound", icon: XCircle, variant: "red" },
+  reject_outbound: { label: "Tolak Outbound", icon: XCircle, variant: "red" },
+};
+
+const roleMap: Record<string, { label: string; variant: BadgeVariant }> = {
+  admin_general: { label: "Admin General", variant: "outline-orange" },
+  supervisor: { label: "Supervisor", variant: "outline-blue" },
+  staf_gudang: { label: "Staf Gudang", variant: "outline-gray" },
+};
 
 function Modal({ open, onClose, title, children }) {
   useEffect(() => {
@@ -133,7 +173,7 @@ function TabAuditLog({ get }) {
     fetchData();
   }, [fetchData]);
 
-  const aksiList = ["create", "update", "delete", "approve"];
+  const aksiList = ["create", "update", "delete", "approve", "receive_inbound", "approve_inbound", "approve_outbound", "confirm_distributed", "reject_inbound", "reject_outbound"];
 
   const formatDateTime = (iso) => {
     const d = new Date(iso);
@@ -323,14 +363,24 @@ function TabAuditLog({ get }) {
                       <td className="px-6 py-4">
                         <div className="font-semibold text-slate-900">{r.actor_nama}</div>
                       </td>
-                      <td className="px-6 py-4 text-xs text-slate-500">{r.actor_role}</td>
                       <td className="px-6 py-4">
-                        <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                          {r.aksi}
-                        </span>
+                        {roleMap[r.actor_role] ? (
+                          <Badge label={roleMap[r.actor_role].label} variant={roleMap[r.actor_role].variant} />
+                        ) : (
+                          <span className="text-xs text-slate-500">{r.actor_role}</span>
+                        )}
                       </td>
-                      <td className="px-6 py-4 text-xs text-slate-600">
-                        {getEntityLabel(r)}
+                      <td className="px-6 py-4">
+                        {aksiMap[r.aksi] ? (
+                          <Badge label={aksiMap[r.aksi].label} icon={aksiMap[r.aksi].icon} variant={aksiMap[r.aksi].variant} />
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                            {r.aksi}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <Badge label={getEntityLabel(r)} variant="gray" />
                       </td>
                       <td className="px-6 py-4 text-xs text-slate-500">
                         {extraRef !== "—" ? (
@@ -636,9 +686,10 @@ function TabRiwayatStok({ get }) {
                       {r.kode_tiket || "-"}
                     </td>
                     <td className="px-6 py-4">
-                      <Badge color={r.tipe_surat_jalan === "inbound" ? "#2E9E6D" : r.tipe_surat_jalan === "outbound" ? "#D9822B" : "#7C8698"}>
-                        {r.tipe_surat_jalan === "inbound" ? "Inbound" : r.tipe_surat_jalan === "outbound" ? "Outbound" : r.tipe_surat_jalan || "-"}
-                      </Badge>
+                      <Badge
+                        label={r.tipe_surat_jalan === "inbound" ? "Inbound" : r.tipe_surat_jalan === "outbound" ? "Outbound" : r.tipe_surat_jalan || "-"}
+                        variant={r.tipe_surat_jalan === "inbound" ? "green" : r.tipe_surat_jalan === "outbound" ? "orange" : "gray"}
+                      />
                     </td>
                     <td className="px-6 py-4 text-slate-700">{r.gudang}</td>
                     <td className="px-6 py-4">
