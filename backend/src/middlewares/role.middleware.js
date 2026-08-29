@@ -1,4 +1,4 @@
-const AppError = require("../shared/errors");
+﻿const AppError = require("../shared/errors");
 
 const ROLE_ALIASES = {
   admin_general: "ADMIN",

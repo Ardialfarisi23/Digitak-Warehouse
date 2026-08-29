@@ -1,12 +1,7 @@
 const prisma = require("../../config/prisma");
 
 const getInventory = async (filters = {}) => {
-  const {
-    search = "",
-    projectId = "all",
-    warehouseId = "all",
-    status = "all",
-  } = filters;
+  const { search = "", projectId = "all", warehouseId = "all", status = "all" } = filters;
 
   const whereBoq = {
     boq: {
@@ -97,23 +92,14 @@ const getInventory = async (filters = {}) => {
 
     if (item.surat_jalan?.tipe === "inbound") {
       if (item.is_kelebihan) {
-        additionalByProjectBarang.set(
-          key,
-          (additionalByProjectBarang.get(key) || 0) + qty
-        );
+        additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + qty);
       } else {
-        inboundByProjectBarang.set(
-          key,
-          (inboundByProjectBarang.get(key) || 0) + qty
-        );
+        inboundByProjectBarang.set(key, (inboundByProjectBarang.get(key) || 0) + qty);
       }
     }
 
     if (item.surat_jalan?.tipe === "outbound") {
-      outboundByProjectBarang.set(
-        key,
-        (outboundByProjectBarang.get(key) || 0) + qty
-      );
+      outboundByProjectBarang.set(key, (outboundByProjectBarang.get(key) || 0) + qty);
     }
   }
 
@@ -165,18 +151,7 @@ const getInventory = async (filters = {}) => {
 
   if (search.trim()) {
     const q = search.toLowerCase();
-    rows = rows.filter((row) =>
-      [
-        row.project_nama,
-        row.kode_tiket,
-        row.kode_perangkat,
-        row.nama_barang,
-        row.gudang_nama,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(q)
-    );
+    rows = rows.filter((row) => [row.project_nama, row.kode_tiket, row.kode_perangkat, row.nama_barang, row.gudang_nama].join(" ").toLowerCase().includes(q));
   }
 
   if (status !== "all") {
@@ -186,6 +161,14 @@ const getInventory = async (filters = {}) => {
   return { data: rows };
 };
 
+const updateMosMitra = async (tiketId, mos) => {
+  return await prisma.tiket_material.update({
+    where: { tiket_id: BigInt(tiketId) },
+    data: { mos },
+  });
+};
+
 module.exports = {
   getInventory,
+  updateMosMitra,
 };
