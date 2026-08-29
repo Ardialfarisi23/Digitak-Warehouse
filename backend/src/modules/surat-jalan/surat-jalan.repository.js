@@ -119,7 +119,7 @@ const create = async (data, actorId) => {
           foto_url: item.foto_url || null,
           is_kelebihan: Boolean(item.is_kelebihan),
           catatan: item.catatan || null,
-          bin_lokasi_id: item.bin_lokasi_id ? Number(item.bin_lokasi_id) : null,
+          zona_id: item.zona_id ? Number(item.zona_id) : null,
         })),
       },
     },
@@ -300,8 +300,8 @@ const addInboundStock = async (suratJalan, tx = prisma) => {
       where: {
         gudang_id: gudangTujuanId,
         barang_id: item.barang_id,
-        kondisi: "baik",
-        bin_lokasi_id: null,
+        kondisi: item.kondisi || "baik",
+        zona_id: null,
         project_id: suratJalan.project_id,
       },
     });
@@ -334,9 +334,9 @@ const addInboundStock = async (suratJalan, tx = prisma) => {
           gudang_id: gudangTujuanId,
           barang_id: item.barang_id,
           project_id: suratJalan.project_id,
-          kondisi: "baik",
+          kondisi: item.kondisi || "baik",
           qty: qty,
-          bin_lokasi_id: null,
+          zona_id: null,
         },
       });
 
@@ -389,21 +389,21 @@ const deductOutboundStock = async (suratJalan, tx = prisma) => {
     const stockWhere = {
       gudang_id: gudangAsalId,
       barang_id: item.barang_id,
-      kondisi: "baik",
+      kondisi: item.kondisi || "baik",
     };
 
     if (suratJalan.project_id) {
       stockWhere.project_id = suratJalan.project_id;
     }
 
-    if (item.bin_lokasi_id) {
-      stockWhere.bin_lokasi_id = item.bin_lokasi_id;
+    if (item.zona_id) {
+      stockWhere.zona_id = item.zona_id;
     }
 
     let stockRecord = await tx.stok_gudang.findFirst({
       where: {
         ...stockWhere,
-        bin_lokasi_id: { not: null },
+        zona_id: { not: null },
       },
       orderBy: {
         qty: "desc",

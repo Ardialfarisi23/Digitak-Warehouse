@@ -24,11 +24,7 @@ const findByKode = async (kode_zona, options = {}) => {
       where: { kode_zona },
       include: {
         gudang: true,
-        raks: {
-          include: {
-            bins: true,
-          },
-        },
+        dinilai_oleh_user: true,
       },
     });
   }
@@ -39,11 +35,7 @@ const findByKode = async (kode_zona, options = {}) => {
     },
     include: {
       gudang: true,
-      raks: {
-        include: {
-          bins: true,
-        },
-      },
+      dinilai_oleh_user: true,
     },
   });
 };
@@ -83,11 +75,7 @@ const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sor
     take: sanitizedLimit,
     include: {
       gudang: true,
-      raks: {
-        include: {
-          bins: true,
-        },
-      },
+      dinilai_oleh_user: true,
     },
   });
 

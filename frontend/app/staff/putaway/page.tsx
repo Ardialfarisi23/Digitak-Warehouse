@@ -79,8 +79,8 @@ export default function PutawayListPage() {
   return (
     <div className="px-8 py-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Lokasi & Rak (Putaway)</h1>
-        <p className="mt-1 text-sm text-gray-500">Surat Jalan Inbound yang sudah diverifikasi Supervisor dan siap ditempatkan ke rak</p>
+        <h1 className="text-3xl font-bold text-gray-900">Lokasi & Penempatan (Putaway)</h1>
+        <p className="mt-1 text-sm text-gray-500">Surat Jalan Inbound yang sudah diverifikasi Supervisor dan siap ditempatkan ke zona</p>
       </div>
 
       <div className="mb-5 flex gap-2">

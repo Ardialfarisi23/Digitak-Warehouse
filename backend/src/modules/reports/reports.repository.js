@@ -292,62 +292,6 @@ const getAuditLogs = async (filters = {}) => {
   };
 };
 
-const getRackUtilization = async () => {
-  const racks = await prisma.rak.findMany({
-    include: {
-      zona_gudang: {
-        include: {
-          gudang: {
-            select: {
-              nama_gudang: true,
-              tipe: true,
-            },
-          },
-        },
-      },
-      bins: {
-        select: {
-          bin_id: true,
-          kode_bin: true,
-          stoks: {
-            select: {
-              qty: true,
-              barang: {
-                select: {
-                  nama_barang: true,
-                  kode_perangkat: true,
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  });
-
-  return racks.map((rak) => {
-    const totalBins = rak.bins?.length || 0;
-    const occupiedBins = rak.bins?.filter((bin) => bin.stoks && bin.stoks.length > 0).length || 0;
-    const totalQty = rak.bins?.reduce((sum, bin) => {
-      return sum + bin.stoks?.reduce((s, stok) => s + Number(stok.qty || 0), 0) || 0;
-    }, 0) || 0;
-
-    return {
-      rak_id: String(rak.rak_id),
-      kode_rak: rak.kode_rak,
-      zona_id: String(rak.zona_id),
-      zona_nama: rak.zona_gudang?.nama_zona || "-",
-      gudang_id: String(rak.zona_gudang?.gudang_id || ""),
-      gudang_nama: rak.zona_gudang?.gudang?.nama_gudang || "-",
-      gudang_tipe: rak.zona_gudang?.gudang?.tipe || "-",
-      total_bins: totalBins,
-      occupied_bins: occupiedBins,
-      utilization_percent: totalBins > 0 ? Math.round((occupiedBins / totalBins) * 100) : 0,
-      total_qty: totalQty,
-    };
-  });
-};
-
 const getHardwareReconciliation = async (filters = {}) => {
   const { projectId = "all", search = "" } = filters;
 
@@ -971,7 +915,6 @@ const backfillReconciliation = async () => {
 module.exports = {
   getStockHistory,
   getAuditLogs,
-  getRackUtilization,
   getHardwareReconciliation,
   getHardwareReconciliationPerTiket,
   getHardwareReconciliationDetailed,

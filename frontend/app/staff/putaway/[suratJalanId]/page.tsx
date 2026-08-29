@@ -29,25 +29,12 @@ type ApiSuratJalan = {
   items: ApiSuratJalanItem[];
 };
 
-type ApiBin = {
-  bin_id: number;
-  kode_bin: string;
-};
-
-type ApiRak = {
-  rak_id: number;
-  kode_rak: string;
-  nama_rak?: string;
-  bins: ApiBin[];
-};
-
 type ApiZona = {
   zona_id: number;
   gudang_id: number;
   kode_zona: string;
   nama_zona?: string | null;
   tipe_zona?: string | null;
-  raks: ApiRak[];
 };
 
 export default function PutawayDetailPage() {
@@ -59,7 +46,7 @@ export default function PutawayDetailPage() {
   const [zonas, setZonas] = useState<ApiZona[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  // Cukup simpan pilihan zona per item — bin_lokasi_id di-resolve pas submit.
+  // Simpan pilihan zona per item — dikirim sebagai zona_id saat submit.
   const [zonaByItem, setZonaByItem] = useState<Record<number, string>>({});
 
   useEffect(() => {
@@ -152,44 +139,15 @@ export default function PutawayDetailPage() {
     return z.tipe_zona ? `${nama} — ${z.tipe_zona}` : nama;
   }
 
-  // Ambil bin pertama yang tersedia di zona itu (rak pertama, bin pertama).
-  // UI cuma nyuruh staf pilih Zona; backend tetap wajib bin_lokasi_id
-  // spesifik, jadi ini di-resolve otomatis di balik layar.
-  function resolveFirstBin(zonaId: string): ApiBin | null {
-    const zona = zonasForGudang.find((z) => String(z.zona_id) === zonaId);
-    if (!zona) return null;
-    for (const rak of zona.raks) {
-      if (rak.bins.length > 0) return rak.bins[0];
-    }
-    return null;
-  }
-
   const allAssigned = data.items.every((it) => !!zonaByItem[it.item_id]);
 
   async function handleSubmit() {
     if (!allAssigned || !data) return;
 
-    // Validasi dulu semua zona yang dipilih beneran punya bin, sebelum
-    // kirim apa pun ke backend — biar staf dikasih tau jelas kalau ada
-    // zona yang belum di-setup Admin, bukan gagal diem-diem.
-    const missingBinItems: string[] = [];
     const resolvedItems = data.items.map((it) => {
       const zonaId = zonaByItem[it.item_id];
-      const bin = resolveFirstBin(zonaId);
-      if (!bin) {
-        missingBinItems.push(it.barang?.nama_barang || `item #${it.item_id}`);
-      }
-      return { item_id: it.item_id, bin_lokasi_id: bin?.bin_id, qty: it.qty };
+      return { item_id: it.item_id, zona_id: Number(zonaId), qty_ditempatkan: Number(it.qty) };
     });
-
-    if (missingBinItems.length > 0) {
-      alert(
-        `Zona yang dipilih untuk ${missingBinItems.join(
-          ", "
-        )} belum punya Rak/Bin yang di-setup. Hubungi Admin untuk setup layout gudang dulu.`
-      );
-      return;
-    }
 
     setSubmitting(true);
     try {

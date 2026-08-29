@@ -24,15 +24,6 @@ const getAuditLogs = async (req, res, next) => {
   }
 };
 
-const getRackUtilization = async (req, res, next) => {
-  try {
-    const result = await reportsService.getRackUtilization();
-    return response.success(res, "Utilisasi rak berhasil diambil.", result);
-  } catch (err) {
-    next(err);
-  }
-};
-
 const getHardwareReconciliation = async (req, res, next) => {
   try {
     const result = await reportsService.getHardwareReconciliation(req.query);
@@ -291,7 +282,6 @@ const confirmReconciliationUpload = async (req, res, next) => {
 module.exports = {
   getStockHistory,
   getAuditLogs,
-  getRackUtilization,
   getHardwareReconciliation,
   getHardwareReconciliationPerTiket,
   getHardwareReconciliationDetailed,
