@@ -55,7 +55,7 @@ const findById = async (boq_id) => {
   });
 };
 
-const ALLOWED_STATUS = new Set(["draft", "aktif", "ditolak"]);
+const ALLOWED_STATUS = new Set(["draft", "aktif", "selesai", "ditolak"]);
 
 const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sortBy = "created_at", sortOrder = "desc", status, projectId, area, warehouseId }) => {
   const sanitizedPage = Math.max(parseInt(page, 10) || DEFAULT_PAGE, DEFAULT_PAGE);
@@ -287,9 +287,10 @@ const exportBoqs = async ({ status, search, projectId, area, warehouseId }) => {
 };
 
 const getStats = async () => {
-  const [aktif, draft, total, activeTikets] = await Promise.all([
+  const [aktif, draft, selesai, total, activeTikets] = await Promise.all([
     prisma.boq.count({ where: { status: "aktif" } }),
     prisma.boq.count({ where: { status: "draft" } }),
+    prisma.boq.count({ where: { status: "selesai" } }),
     prisma.boq.count(),
     prisma.tiket_material.findMany({
       where: { boq: { status: "aktif" } },
@@ -303,6 +304,7 @@ const getStats = async () => {
   return {
     aktif,
     draft,
+    selesai,
     total,
     proyekBerjalan,
   };
