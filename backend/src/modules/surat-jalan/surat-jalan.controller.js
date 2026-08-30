@@ -136,7 +136,7 @@ const putaway = async (req, res, next) => {
     }
 
     // Normalisasi properti untuk service (backward compatibility untuk zona_id -> bin_lokasi_id)
-    const normalizedItems = items.map(item => ({
+    const normalizedItems = items.map((item) => ({
       ...item,
       bin_lokasi_id: item.bin_lokasi_id || item.zona_id,
       qty: item.qty || item.qty_ditempatkan,

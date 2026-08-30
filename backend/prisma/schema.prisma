@@ -149,17 +149,19 @@ model gudang {
 }
 
 model zona_gudang {
-  zona_id          BigInt                 @id @default(autoincrement())
-  gudang_id        BigInt                 @db.BigInt
-  gudang           gudang                 @relation(fields: [gudang_id], references: [gudang_id], onDelete: Cascade)
-  kode_zona        String                 @db.Text
-  nama_zona        String?                @db.Text
-  tipe_zona        String?                @db.Text
-  status_kecukupan status_kecukupan_zona? @default(CUKUP)
-  utilisasi_persen Int?
+  zona_id           BigInt                 @id @default(autoincrement())
+  gudang_id         BigInt                 @db.BigInt
+  gudang            gudang                 @relation(fields: [gudang_id], references: [gudang_id], onDelete: Cascade)
+  kode_zona         String                 @db.Text
+  nama_zona         String?                @db.Text
+  tipe_zona         String?                @db.Text
+  status_kecukupan  status_kecukupan_zona? @default(CUKUP)
+  utilisasi_persen  Int?
 
-  raks             rak[]
-  utilisasi_logs   zona_utilisasi_log[]
+  raks              rak[]
+  utilisasi_logs    zona_utilisasi_log[]
+  stok_gudangs      stok_gudang[]
+  surat_jalan_items surat_jalan_item[]
 
   @@unique([gudang_id, kode_zona])
   @@index([gudang_id])
@@ -264,24 +266,24 @@ model tiket_material {
 }
 
 model boq {
-  boq_id                       BigInt                       @id @default(autoincrement())
-  tiket_id                     BigInt                       @unique
-  boq_number                   String?                      @unique
-  status                       boq_status                   @default(draft)
-  source                       boq_source                   @default(top_down)
-  external_verification_status external_verification_status @default(menunggu)
+  boq_id                       BigInt                        @id @default(autoincrement())
+  tiket_id                     BigInt                        @unique
+  boq_number                   String?                       @unique
+  status                       boq_status                    @default(draft)
+  source                       boq_source                    @default(top_down)
+  external_verification_status external_verification_status  @default(menunggu)
   tanggal_aktivasi             DateTime?
   diaktifkan_oleh              BigInt?
   catatan                      String?
   reference_file               String?
-  created_at                   DateTime                     @default(now())
-  updated_at                   DateTime                     @default(now())
+  created_at                   DateTime                      @default(now())
+  updated_at                   DateTime                      @default(now())
   created_by                   BigInt
   updated_by                   BigInt
-  creator                      user_account                 @relation("boq_created_by", fields: [created_by], references: [user_id])
-  diaktifkan_user              user_account?                @relation("boq_diaktifkan", fields: [diaktifkan_oleh], references: [user_id])
-  tiket                        tiket_material               @relation(fields: [tiket_id], references: [tiket_id])
-  updater                      user_account                 @relation("boq_updated_by", fields: [updated_by], references: [user_id])
+  creator                      user_account                  @relation("boq_created_by", fields: [created_by], references: [user_id])
+  diaktifkan_user              user_account?                 @relation("boq_diaktifkan", fields: [diaktifkan_oleh], references: [user_id])
+  tiket                        tiket_material                @relation(fields: [tiket_id], references: [tiket_id])
+  updater                      user_account                  @relation("boq_updated_by", fields: [updated_by], references: [user_id])
   items                        boq_item[]
   surat_jalans                 surat_jalan[]
 
@@ -377,20 +379,24 @@ model surat_jalan_item {
   is_kelebihan   Boolean         @default(false)
   catatan        String?
   bin_lokasi_id  BigInt?
+  zona_id        BigInt?
   created_at     DateTime        @default(now())
   stok_ledgers   stok_ledger[]
   barang         barang          @relation(fields: [barang_id], references: [barang_id])
   bin_lokasi     bin_lokasi?     @relation(fields: [bin_lokasi_id], references: [bin_id])
+  zona           zona_gudang?    @relation(fields: [zona_id], references: [zona_id])
   satuan         satuan          @relation(fields: [satuan_id], references: [satuan_id])
   surat_jalan    surat_jalan     @relation(fields: [surat_jalan_id], references: [surat_jalan_id], onDelete: Cascade)
 
   @@index([surat_jalan_id])
+  @@index([zona_id])
 }
 
 model stok_gudang {
   stok_id       BigInt         @id @default(autoincrement())
   gudang_id     BigInt
   bin_lokasi_id BigInt?
+  zona_id       BigInt?
   barang_id     BigInt
   project_id    BigInt?
   kondisi       kondisi_barang @default(baik)
@@ -398,12 +404,14 @@ model stok_gudang {
   updated_at    DateTime       @default(now())
   barang        barang         @relation(fields: [barang_id], references: [barang_id])
   bin_lokasi    bin_lokasi?    @relation(fields: [bin_lokasi_id], references: [bin_id])
+  zona          zona_gudang?   @relation(fields: [zona_id], references: [zona_id])
   gudang        gudang         @relation(fields: [gudang_id], references: [gudang_id])
   project       project?       @relation(fields: [project_id], references: [project_id])
 
-  @@unique([gudang_id, bin_lokasi_id, barang_id, project_id, kondisi])
+  @@unique([gudang_id, bin_lokasi_id, zona_id, barang_id, project_id, kondisi])
   @@index([gudang_id, barang_id])
   @@index([project_id])
+  @@index([zona_id])
 }
 
 model stok_ledger {
