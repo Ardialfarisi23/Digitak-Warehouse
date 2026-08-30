@@ -36,6 +36,7 @@ model user_account {
   updated_surat_jalans    surat_jalan[]        @relation("surat_jalan_updated_by")
   created_tiket_materials tiket_material[]     @relation("tiket_material_created_by")
   zona_utilisasi_logs     zona_utilisasi_log[] @relation("zona_utilisasi_log_updater")
+  zona_dinilai_oleh       zona_gudang[]       @relation("ZonaGudangDinilaiOleh")
 
   @@index([email])
 }
@@ -156,10 +157,14 @@ model zona_gudang {
   nama_zona        String?                @db.Text
   tipe_zona        String?                @db.Text
   status_kecukupan status_kecukupan_zona? @default(CUKUP)
-  utilisasi_persen Int?
+  dinilai_oleh      BigInt?
+  dinilai_pada      DateTime?
 
-  raks             rak[]
+  dinilai_oleh_user user_account?            @relation("ZonaGudangDinilaiOleh", fields: [dinilai_oleh], references: [user_id])
+
   utilisasi_logs   zona_utilisasi_log[]
+  surat_jalan_items surat_jalan_item[]
+  stok_gudangs      stok_gudang[]
 
   @@unique([gudang_id, kode_zona])
   @@index([gudang_id])
@@ -177,31 +182,6 @@ model zona_utilisasi_log {
 
   @@index([zona_id])
   @@index([created_at])
-}
-
-model rak {
-  rak_id         BigInt       @id @default(autoincrement())
-  zona_id        BigInt
-  kode_rak       String
-  kapasitas_unit Decimal?     @db.Decimal(12, 2)
-  bins           bin_lokasi[]
-  zona           zona_gudang  @relation(fields: [zona_id], references: [zona_id], onDelete: Cascade)
-
-  @@unique([zona_id, kode_rak])
-  @@index([zona_id])
-}
-
-model bin_lokasi {
-  bin_id            BigInt             @id @default(autoincrement())
-  rak_id            BigInt
-  kode_bin          String
-  kapasitas_unit    Decimal?           @db.Decimal(12, 2)
-  rak               rak                @relation(fields: [rak_id], references: [rak_id], onDelete: Cascade)
-  stok_gudangs      stok_gudang[]
-  surat_jalan_items surat_jalan_item[]
-
-  @@unique([rak_id, kode_bin])
-  @@index([rak_id])
 }
 
 model kategori_barang {
@@ -376,13 +356,13 @@ model surat_jalan_item {
   foto_url       String?
   is_kelebihan   Boolean         @default(false)
   catatan        String?
-  bin_lokasi_id  BigInt?
+  zona_id        BigInt?
   created_at     DateTime        @default(now())
   stok_ledgers   stok_ledger[]
   barang         barang          @relation(fields: [barang_id], references: [barang_id])
-  bin_lokasi     bin_lokasi?     @relation(fields: [bin_lokasi_id], references: [bin_id])
   satuan         satuan          @relation(fields: [satuan_id], references: [satuan_id])
   surat_jalan    surat_jalan     @relation(fields: [surat_jalan_id], references: [surat_jalan_id], onDelete: Cascade)
+  zona           zona_gudang?    @relation(fields: [zona_id], references: [zona_id])
 
   @@index([surat_jalan_id])
 }
@@ -390,18 +370,18 @@ model surat_jalan_item {
 model stok_gudang {
   stok_id       BigInt         @id @default(autoincrement())
   gudang_id     BigInt
-  bin_lokasi_id BigInt?
+  zona_id       BigInt?
   barang_id     BigInt
   project_id    BigInt?
   kondisi       kondisi_barang @default(baik)
   qty           Decimal        @default(0) @db.Decimal(14, 2)
   updated_at    DateTime       @default(now())
   barang        barang         @relation(fields: [barang_id], references: [barang_id])
-  bin_lokasi    bin_lokasi?    @relation(fields: [bin_lokasi_id], references: [bin_id])
   gudang        gudang         @relation(fields: [gudang_id], references: [gudang_id])
   project       project?       @relation(fields: [project_id], references: [project_id])
+  zona          zona_gudang?   @relation(fields: [zona_id], references: [zona_id])
 
-  @@unique([gudang_id, bin_lokasi_id, barang_id, project_id, kondisi])
+  @@unique([gudang_id, zona_id, barang_id, project_id, kondisi])
   @@index([gudang_id, barang_id])
   @@index([project_id])
 }
@@ -558,4 +538,6 @@ enum audit_aksi {
   confirm_distributed
   reject_inbound
   reject_outbound
+  putaway
+  retrieve
 }

@@ -7,6 +7,7 @@ const zoneController = require("./zone.controller");
 const {
   createZoneSchema,
   updateZoneSchema,
+  updateZoneUtilizationSchema,
 } = require("./zone.validation");
 
 const validate = require("../../middlewares/validation.middleware");
@@ -41,6 +42,13 @@ router.patch(
   authenticate,
   authorize("ADMIN"),
   zoneController.restore
+);
+router.patch(
+  "/:zona_id/utilization-status",
+  authenticate,
+  authorize("ADMIN", "SUPERVISOR"),
+  validate(updateZoneUtilizationSchema),
+  zoneController.updateUtilizationStatus
 );
 
 module.exports = router;

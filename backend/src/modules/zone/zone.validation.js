@@ -5,7 +5,6 @@ const createZoneSchema = z.object({
   name: z.string().min(3, "Nama minimal 3 karakter.").max(100, "Nama maksimal 100 karakter."),
   description: z.string().optional(),
   gudang_id: z.string().optional(),
-  utilisasi_persen: z.number().int().min(0).max(100).optional(),
 });
 
 const updateZoneSchema = createZoneSchema.partial().refine(
@@ -15,7 +14,12 @@ const updateZoneSchema = createZoneSchema.partial().refine(
   }
 );
 
+const updateZoneUtilizationSchema = z.object({
+  status_kecukupan: z.enum(["CUKUP", "MENDEKATI_PENUH", "TIDAK_CUKUP"]),
+});
+
 module.exports = {
   createZoneSchema,
   updateZoneSchema,
+  updateZoneUtilizationSchema,
 };

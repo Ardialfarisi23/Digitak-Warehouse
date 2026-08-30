@@ -27,6 +27,7 @@ router.get("/stats", authenticate, boqController.getStats);
 router.get("/areas", authenticate, boqController.getAreas);
 router.get("/items", authenticate, boqController.getItems);
 router.get("/export", authenticate, boqController.exportBoqs);
+router.get("/export-matrix", authenticate, boqController.exportMatrixExcel);
 router.get("/:id", authenticate, boqController.findById);
 router.get("/:id/summary", authenticate, boqController.getSummary);
 

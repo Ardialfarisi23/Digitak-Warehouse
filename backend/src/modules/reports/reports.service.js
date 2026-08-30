@@ -8,10 +8,6 @@ const getAuditLogs = async (filters = {}) => {
   return await reportsRepository.getAuditLogs(filters);
 };
 
-const getRackUtilization = async () => {
-  return await reportsRepository.getRackUtilization();
-};
-
 const getHardwareReconciliation = async (filters = {}) => {
   return await reportsRepository.getHardwareReconciliation(filters);
 };
@@ -39,7 +35,6 @@ const backfillReconciliation = async () => {
 module.exports = {
   getStockHistory,
   getAuditLogs,
-  getRackUtilization,
   getHardwareReconciliation,
   getHardwareReconciliationPerTiket,
   getHardwareReconciliationDetailed,

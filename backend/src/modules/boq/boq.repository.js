@@ -363,6 +363,209 @@ const findItemsByProject = async (projectId) => {
   return Array.from(itemMap.values());
 };
 
+const getExportMatrixData = async () => {
+  const boqItems = await prisma.boq_item.findMany({
+    where: {
+      boq: {
+        status: "aktif",
+      },
+    },
+    include: {
+      boq: {
+        include: {
+          tiket: {
+            select: {
+              tiket_id: true,
+              kode_tiket: true,
+              mos: true,
+              project: {
+                select: {
+                  project_id: true,
+                  nama_project: true,
+                  cluster_id: true,
+                  area: true,
+                },
+              },
+            },
+          },
+        },
+      },
+      barang: {
+        select: {
+          kode_perangkat: true,
+          nama_barang: true,
+        },
+      },
+      satuan: {
+        select: {
+          kode_satuan: true,
+        },
+      },
+    },
+  });
+
+  const shipmentWhere = {
+    surat_jalan: {
+      status: { in: ["disetujui", "diterima_didistribusikan"] },
+    },
+  };
+
+  const shipmentItems = await prisma.surat_jalan_item.findMany({
+    where: shipmentWhere,
+    include: {
+      surat_jalan: {
+        select: {
+          tipe: true,
+          project_id: true,
+          boq_id: true,
+        },
+      },
+    },
+  });
+
+  const inboundByProjectBarang = new Map();
+  const outboundByProjectBarang = new Map();
+  const additionalByProjectBarang = new Map();
+
+  for (const item of shipmentItems) {
+    const projectIdNum = Number(item.surat_jalan?.project_id);
+    const barangId = String(item.barang_id);
+    const qty = Number(item.qty || 0);
+    const key = `${projectIdNum}-${barangId}`;
+
+    if (item.surat_jalan?.tipe === "inbound") {
+      if (item.is_kelebihan) {
+        additionalByProjectBarang.set(
+          key,
+          (additionalByProjectBarang.get(key) || 0) + qty
+        );
+      } else {
+        inboundByProjectBarang.set(
+          key,
+          (inboundByProjectBarang.get(key) || 0) + qty
+        );
+      }
+    }
+
+    if (item.surat_jalan?.tipe === "outbound") {
+      outboundByProjectBarang.set(
+        key,
+        (outboundByProjectBarang.get(key) || 0) + qty
+      );
+    }
+  }
+
+  const rows = boqItems.map((item) => {
+    const tiket = item.boq?.tiket;
+    const project = tiket?.project;
+    const projectIdNum = Number(project?.project_id || 0);
+    const barangId = String(item.barang_id);
+    const key = `${projectIdNum}-${barangId}`;
+
+    const boq = Number(item.qty_rencana || 0);
+    const additional = Number(additionalByProjectBarang.get(key) || 0);
+    const mosSistem = Number(inboundByProjectBarang.get(key) || 0);
+    const mosMitra = Number(tiket?.mos || 0);
+    const used = Number(outboundByProjectBarang.get(key) || 0);
+    const remains = mosSistem - (boq + additional);
+
+    return {
+      project_id: projectIdNum,
+      project_nama: project?.nama_project || "-",
+      cluster_id: project?.cluster_id || "-",
+      area: project?.area || "-",
+      barang_id: barangId,
+      kode_perangkat: item.barang?.kode_perangkat || "-",
+      nama_barang: item.barang?.nama_barang || "-",
+      satuan: item.satuan?.kode_satuan || "-",
+      boq,
+      additional,
+      mos_sistem: mosSistem,
+      mos_mitra: mosMitra,
+      used,
+      remains,
+    };
+  });
+
+  const projectMap = new Map();
+  const materialMap = new Map();
+
+  for (const row of rows) {
+    const projectKey = String(row.project_id);
+    if (!projectMap.has(projectKey)) {
+      projectMap.set(projectKey, {
+        project_id: row.project_id,
+        project_nama: row.project_nama,
+        cluster_id: row.cluster_id,
+        area: row.area,
+      });
+    }
+
+    const materialKey = row.kode_perangkat;
+    if (!materialMap.has(materialKey)) {
+      materialMap.set(materialKey, {
+        kode_perangkat: row.kode_perangkat,
+        nama_barang: row.nama_barang,
+        satuan: row.satuan,
+        projects: {},
+      });
+    }
+
+    const material = materialMap.get(materialKey);
+    if (!material.projects[projectKey]) {
+      material.projects[projectKey] = {
+        project_id: row.project_id,
+        project_nama: row.project_nama,
+        boq: 0,
+        additional: 0,
+        mos_sistem: 0,
+        mos_mitra: row.mos_mitra,
+        used: 0,
+        remains: 0,
+      };
+    }
+
+    const proj = material.projects[projectKey];
+    proj.boq += row.boq;
+    proj.additional += row.additional;
+    proj.mos_sistem += row.mos_sistem;
+    proj.mos_mitra = Math.max(proj.mos_mitra, row.mos_mitra);
+    proj.used += row.used;
+    proj.remains = proj.mos_sistem - (proj.boq + proj.additional);
+  }
+
+  const usedProjectIds = new Set();
+
+  for (const material of materialMap.values()) {
+    const filteredProjects = {};
+    for (const [key, proj] of Object.entries(material.projects)) {
+      if (proj.boq > 0 || proj.additional > 0 || proj.mos_sistem > 0 || proj.used > 0) {
+        filteredProjects[key] = proj;
+        usedProjectIds.add(key);
+      }
+    }
+    material.projects = filteredProjects;
+  }
+
+  for (const [key] of projectMap.entries()) {
+    if (!usedProjectIds.has(key)) {
+      projectMap.delete(key);
+    }
+  }
+
+  const projects = Array.from(projectMap.values()).sort((a, b) =>
+    a.project_nama.localeCompare(b.project_nama)
+  );
+  const materials = Array.from(materialMap.values()).sort((a, b) =>
+    a.kode_perangkat.localeCompare(b.kode_perangkat)
+  );
+
+  return {
+    projects,
+    materials,
+  };
+};
+
 module.exports = {
   create,
   findById,
@@ -376,4 +579,5 @@ module.exports = {
   getStats,
   getAreas,
   findItemsByProject,
+  getExportMatrixData,
 };

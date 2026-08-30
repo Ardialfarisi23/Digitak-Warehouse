@@ -512,6 +512,15 @@ function TabRiwayatStok({ get }) {
   const [warehouses, setWarehouses] = useState([]);
   const [detailTiket, setDetailTiket] = useState(null);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const warehouseId = params.get("warehouseId");
+    if (warehouseId) {
+      setGudang(warehouseId);
+    }
+  }, []);
+
   const jenisList = ["inbound", "outbound"];
   const statusList = ["draft_diajukan", "disetujui", "digenerate", "diterima_didistribusikan"];
 
@@ -875,6 +884,15 @@ function TabUtilisasi({ get }) {
 export default function LaporanAuditPage() {
   const [tab, setTab] = useState("audit");
   const { get } = useApi();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get("tab");
+    if (tabParam && ["audit", "stok", "utilisasi"].includes(tabParam)) {
+      setTab(tabParam);
+    }
+  }, []);
 
   const tabs = [
     { key: "audit", label: "Audit Log", icon: FileClock },

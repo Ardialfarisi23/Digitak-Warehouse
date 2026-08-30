@@ -1,5 +1,6 @@
 const zoneRepository = require("./zone.repository");
 const AppError = require("../../shared/errors");
+const prisma = require("../../config/prisma");
 
 const create = async (data) => {
   const kodeZona = data.kode_zona || data.code;
@@ -58,9 +59,43 @@ const update = async (kode_zona, data) => {
   return await zoneRepository.update(record.zona_id, payload);
 };
 
+const updateUtilizationStatus = async (zona_id, status_kecukupan, userId) => {
+  const zonaId = Number(zona_id);
+
+  const updatedZona = await prisma.zona_gudang.update({
+    where: { zona_id: zonaId },
+    data: {
+      status_kecukupan: status_kecukupan,
+      dinilai_oleh: Number(userId),
+      dinilai_pada: new Date(),
+    },
+    include: {
+      dinilai_oleh_user: {
+        select: {
+          nama: true,
+          email: true,
+          role: true,
+        },
+      },
+    },
+  });
+
+  await prisma.zona_utilisasi_log.create({
+    data: {
+      zona_id: zonaId,
+      status: status_kecukupan,
+      diperbarui_oleh: Number(userId),
+      catatan: `Status kecukupan diperbarui menjadi ${status_kecukupan}`,
+    },
+  });
+
+  return updatedZona;
+};
+
 module.exports = {
   create,
   findAll,
   findByKode,
   update,
+  updateUtilizationStatus,
 };

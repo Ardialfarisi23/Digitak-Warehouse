@@ -135,11 +135,10 @@ const putaway = async (req, res, next) => {
       return response.success(res, "Pengecekan fisik berhasil divalidasi. Lanjutkan ke pemilihan zona.", { items });
     }
 
-    // Normalisasi properti untuk service (backward compatibility untuk zona_id -> bin_lokasi_id)
     const normalizedItems = items.map(item => ({
       ...item,
-      bin_lokasi_id: item.bin_lokasi_id || item.zona_id,
-      qty: item.qty || item.qty_ditempatkan,
+      zona_id: item.zona_id,
+      qty_ditempatkan: item.qty_ditempatkan || item.qty,
     }));
 
     const result = await suratJalanService.putaway(req.params.id, normalizedItems, req.user.id);
