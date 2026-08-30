@@ -450,6 +450,7 @@ enum gudang_tipe {
 enum boq_status {
   draft
   aktif
+  selesai
   ditolak
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import {
   Search,
@@ -504,12 +504,18 @@ function TabRiwayatStok({ get }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [gudang, setGudang] = useState("");
+  const [zona, setZona] = useState("");
+  const [project, setProject] = useState("");
+  const [kategori, setKategori] = useState("");
   const [jenis, setJenis] = useState("");
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [warehouses, setWarehouses] = useState([]);
+  const [warehouses, setWarehouses] = useState<{ id: string; nama: string }[]>([]);
+  const [zonas, setZonas] = useState<{ id: string; gudangId: string; label: string }[]>([]);
+  const [projects, setProjects] = useState<{ id: string; label: string }[]>([]);
+  const [kategoris, setKategoris] = useState<{ id: string; nama: string }[]>([]);
   const [detailTiket, setDetailTiket] = useState(null);
 
   useEffect(() => {
@@ -524,6 +530,120 @@ function TabRiwayatStok({ get }) {
   const jenisList = ["inbound", "outbound"];
   const statusList = ["draft_diajukan", "disetujui", "digenerate", "diterima_didistribusikan"];
 
+  // Semua dropdown filter diisi dari master data supaya value-nya berupa ID
+  // numerik (backend memfilter pakai ID, bukan nama). Limit dikirim eksplisit
+  // karena endpoint master default-nya limit=10.
+  useEffect(() => {
+    let cancelled = false;
+
+    const readList = (json) =>
+      Array.isArray(json?.data?.data)
+        ? json.data.data
+        : Array.isArray(json?.data)
+        ? json.data
+        : [];
+
+    (async () => {
+      try {
+        const [whRes, zonaRes, projRes, katRes] = await Promise.all([
+          get(`${API_BASE}/api/warehouses`),
+          get(`${API_BASE}/api/zones?limit=500`),
+          get(`${API_BASE}/api/projects?all=true`),
+          get(`${API_BASE}/api/categories?limit=500`),
+        ]);
+
+        const [whJson, zonaJson, projJson, katJson] = await Promise.all([
+          whRes.json(),
+          zonaRes.json(),
+          projRes.json(),
+          katRes.json(),
+        ]);
+
+        if (cancelled) return;
+
+        if (whRes.ok) {
+          setWarehouses(
+            readList(whJson).map((w) => ({ id: String(w.gudang_id), nama: w.nama_gudang }))
+          );
+        }
+
+        if (zonaRes.ok) {
+          // Label selalu menyertakan nama gudang: kode_zona hanya unik per gudang
+          // (@@unique([gudang_id, kode_zona])), jadi "Zona A" ada di >1 gudang.
+          // Value tetap zona_id (PK) supaya filter tidak pernah ambigu.
+          setZonas(
+            readList(zonaJson)
+              .map((z) => ({
+                id: String(z.zona_id),
+                gudangId: String(z.gudang_id ?? z.gudang?.gudang_id ?? ""),
+                label: `${z.gudang?.nama_gudang || "Gudang ?"} — ${z.nama_zona || `Zona ${z.kode_zona}`}`,
+              }))
+              .sort((a, b) => a.label.localeCompare(b.label))
+          );
+        }
+
+        if (projRes.ok) {
+          // Master project punya baris duplikat (nama+cluster sama). Dedup di UI
+          // saja, ambil project_id terkecil; database tidak disentuh.
+          const seen = new Set();
+          const list = [];
+          for (const p of readList(projJson).sort(
+            (a, b) => Number(a.project_id) - Number(b.project_id)
+          )) {
+            const cluster = p.cluster_id || "";
+            const key = `${p.nama_project}||${cluster}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            list.push({
+              id: String(p.project_id),
+              label: cluster ? `${p.nama_project} (${cluster})` : p.nama_project,
+            });
+          }
+          setProjects(list);
+        }
+
+        if (katRes.ok) {
+          setKategoris(
+            readList(katJson).map((k) => ({
+              id: String(k.kategori_id),
+              nama: k.nama_kategori,
+            }))
+          );
+        }
+      } catch {
+        // Dropdown filter bersifat opsional: kegagalan load tidak boleh mematikan tabel.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [get]);
+
+  // Jaga-jaga untuk deep-link ?warehouseId=<id> yang tiba sebelum master data selesai load.
+  const warehouseOptions = useMemo(() => {
+    if (gudang && !warehouses.some((w) => w.id === gudang)) {
+      return [...warehouses, { id: gudang, nama: `Gudang #${gudang}` }];
+    }
+    return warehouses;
+  }, [warehouses, gudang]);
+
+  // Auto-narrow: kalau Gudang sudah dipilih, opsi Zona menyempit ke gudang itu
+  // saja supaya user tidak bisa memilih kombinasi mustahil (Gudang A + Zona
+  // milik Gudang B) yang selalu menghasilkan 0 baris.
+  const zonaOptions = useMemo(() => {
+    if (!gudang) return zonas;
+    return zonas.filter((z) => z.gudangId === gudang);
+  }, [zonas, gudang]);
+
+  // Kalau zona terpilih tidak lagi valid setelah Gudang berubah, reset supaya
+  // tidak ada filter tersembunyi yang bikin tabel kosong tanpa sebab jelas.
+  useEffect(() => {
+    if (zona && !zonaOptions.some((z) => z.id === zona)) {
+      setZona("");
+    }
+  }, [zonaOptions, zona]);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -531,6 +651,9 @@ function TabRiwayatStok({ get }) {
       const params = new URLSearchParams();
       if (q.trim()) params.set("search", q.trim());
       if (gudang) params.set("warehouseId", gudang);
+      if (zona) params.set("zonaId", zona);
+      if (project) params.set("projectId", project);
+      if (kategori) params.set("kategoriId", kategori);
       if (jenis) params.set("type", jenis);
       if (status) params.set("status", status);
       if (startDate) params.set("startDate", startDate);
@@ -547,16 +670,13 @@ function TabRiwayatStok({ get }) {
 
       const rows = Array.isArray(json?.data?.data) ? json.data.data : [];
       setData(rows);
-
-      const gudangSet = [...new Set(rows.map((r) => r.gudang).filter(Boolean))];
-      setWarehouses(gudangSet);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan.");
       setData([]);
     } finally {
       setLoading(false);
     }
-  }, [get, gudang, jenis, status, q, startDate, endDate]);
+  }, [get, gudang, zona, project, kategori, jenis, status, q, startDate, endDate]);
 
   useEffect(() => {
     fetchData();
@@ -594,8 +714,50 @@ function TabRiwayatStok({ get }) {
             className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
           >
             <option value="">Semua gudang</option>
-            {warehouses.map((o) => (
-              <option key={o} value={o}>{o}</option>
+            {warehouseOptions.map((o) => (
+              <option key={o.id} value={o.id}>{o.nama}</option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        </div>
+
+        <div className="relative">
+          <select
+            value={zona}
+            onChange={(e) => setZona(e.target.value)}
+            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+          >
+            <option value="">{gudang ? "Semua zona di gudang ini" : "Semua zona"}</option>
+            {zonaOptions.map((o) => (
+              <option key={o.id} value={o.id}>{o.label}</option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        </div>
+
+        <div className="relative">
+          <select
+            value={project}
+            onChange={(e) => setProject(e.target.value)}
+            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+          >
+            <option value="">Semua project/cluster</option>
+            {projects.map((o) => (
+              <option key={o.id} value={o.id}>{o.label}</option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        </div>
+
+        <div className="relative">
+          <select
+            value={kategori}
+            onChange={(e) => setKategori(e.target.value)}
+            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+          >
+            <option value="">Semua kategori perangkat</option>
+            {kategoris.map((o) => (
+              <option key={o.id} value={o.id}>{o.nama}</option>
             ))}
           </select>
           <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -656,9 +818,13 @@ function TabRiwayatStok({ get }) {
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tanggal</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Jenis Transaksi</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gudang</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diproses Oleh</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Perangkat</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
+                <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Qty</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Zona</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Asal → Tujuan</th>
                 <th className="px-6 py-4 w-10"></th>
               </tr>
             </thead>
@@ -666,18 +832,18 @@ function TabRiwayatStok({ get }) {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4" colSpan={7}>
+                    <td className="px-6 py-4" colSpan={11}>
                       <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                     </td>
                   </tr>
                 ))
               ) : error ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={7}>{error}</td>
+                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={11}>{error}</td>
                 </tr>
               ) : data.length === 0 ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={7}>
+                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={11}>
                     Tidak ada pergerakan stok yang cocok dengan filter ini.
                   </td>
                 </tr>
@@ -686,7 +852,7 @@ function TabRiwayatStok({ get }) {
                   <tr
                     key={r.ledger_id}
                     className="group cursor-pointer transition-colors hover:bg-slate-50"
-                    onClick={() => r.kode_tiket && r.kode_tiket !== "-" && setDetailTiket(r)}
+                    onClick={() => setDetailTiket(r)}
                   >
                     <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400">
                       {new Date(r.waktu_mutasi).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}
@@ -700,7 +866,6 @@ function TabRiwayatStok({ get }) {
                         variant={r.tipe_surat_jalan === "inbound" ? "green" : r.tipe_surat_jalan === "outbound" ? "orange" : "gray"}
                       />
                     </td>
-                    <td className="px-6 py-4 text-slate-700">{r.gudang}</td>
                     <td className="px-6 py-4">
                       <span
                         className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold"
@@ -713,11 +878,39 @@ function TabRiwayatStok({ get }) {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-slate-600">{r.diproses_oleh || "-"}</td>
+                    <td className="px-6 py-4 whitespace-nowrap font-mono text-xs font-semibold text-slate-700">
+                      {r.kode_perangkat || "-"}
+                    </td>
+                    <td className="px-6 py-4 max-w-[260px] truncate text-slate-700" title={r.nama_barang || "-"}>
+                      {r.nama_barang || "-"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-slate-900">
+                      <span className="font-semibold">{r.qty}</span>
+                      {r.satuan && r.satuan !== "-" && (
+                        <span className="ml-1 text-xs font-normal text-slate-400">{r.satuan}</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-700">
+                      {r.zona_kode && r.zona_kode !== "-" ? (
+                        <span>
+                          <span className="text-slate-500">{r.zona_gudang}</span>
+                          <span className="mx-1 text-slate-300">/</span>
+                          <span className="font-mono font-semibold text-slate-800">{r.zona_kode}</span>
+                        </span>
+                      ) : (
+                        <span className="text-slate-300" title="Zona baru terisi setelah item melewati proses putaway">—</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-700">
+                      <span className={r.gudang_asal === "-" ? "text-slate-300" : ""}>{r.gudang_asal}</span>
+                      <span className="mx-1.5 text-slate-400">→</span>
+                      <span className={r.gudang_tujuan === "-" ? "text-slate-300" : ""}>{r.gudang_tujuan}</span>
+                    </td>
                     <td className="px-6 py-4 text-right">
                       <button
                         type="button"
                         className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                        onClick={(e) => { e.stopPropagation(); r.kode_tiket && r.kode_tiket !== "-" && setDetailTiket(r); }}
+                        onClick={(e) => { e.stopPropagation(); setDetailTiket(r); }}
                       >
                         <Eye size={16} />
                       </button>
@@ -734,38 +927,137 @@ function TabRiwayatStok({ get }) {
         <Modal
           open={!!detailTiket}
           onClose={() => setDetailTiket(null)}
-          title="Detail Tiket Gudang"
+          title="Detail Pergerakan Stok"
         >
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs font-medium text-slate-400">Kode Tiket</p>
-                <p className="text-sm font-semibold text-slate-800">{detailTiket.kode_tiket}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-400">Project</p>
-                <p className="text-sm text-slate-800">{detailTiket.project_nama}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-400">Area</p>
-                <p className="text-sm text-slate-800">{detailTiket.area}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-400">Gudang</p>
-                <p className="text-sm text-slate-800">{detailTiket.gudang}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-400">Jenis Transaksi</p>
-                <p className="text-sm text-slate-800">{detailTiket.tipe_surat_jalan}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-400">Status</p>
-                <p className="text-sm text-slate-800">{detailTiket.status_surat_jalan}</p>
+          <div className="space-y-5">
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tiket &amp; Project</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Kode Tiket</p>
+                  <p className="text-sm font-mono font-semibold text-orange-600">{detailTiket.kode_tiket}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Project</p>
+                  <p className="text-sm text-slate-800">{detailTiket.project_nama}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Area</p>
+                  <p className="text-sm text-slate-800">{detailTiket.area}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Waktu Mutasi</p>
+                  <p className="text-sm font-mono text-slate-700">
+                    {new Date(detailTiket.waktu_mutasi).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}
+                  </p>
+                </div>
               </div>
             </div>
-            <div className="border-t border-slate-100 pt-3">
-              <p className="text-xs font-medium text-slate-400">Surat Jalan</p>
-              <p className="text-sm font-mono text-slate-700">{detailTiket.nomor_surat_jalan}</p>
+
+            <div className="border-t border-slate-100 pt-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Kode Perangkat</p>
+                  <p className="text-sm font-mono font-semibold text-slate-800">{detailTiket.kode_perangkat}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Nama Barang</p>
+                  <p className="text-sm text-slate-800">{detailTiket.nama_barang}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Qty</p>
+                  <p className="text-sm font-mono text-slate-800">
+                    <span className="font-semibold">{detailTiket.qty}</span>
+                    {detailTiket.satuan && detailTiket.satuan !== "-" && (
+                      <span className="ml-1 text-slate-400">{detailTiket.satuan}</span>
+                    )}
+                    <span className="ml-2 text-xs text-slate-400">
+                      ({detailTiket.jenis_mutasi === "in" ? "masuk" : "keluar"})
+                    </span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Saldo Setelah Mutasi</p>
+                  <p className="text-sm font-mono text-slate-800">{detailTiket.saldo_setelah}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Kondisi</p>
+                  <p className="text-sm text-slate-800">{detailTiket.kondisi}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Kelebihan Kirim</p>
+                  <p className="text-sm text-slate-800">{detailTiket.is_kelebihan ? "Ya" : "Tidak"}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Lokasi</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Gudang Asal</p>
+                  <p className={`text-sm ${detailTiket.gudang_asal === "-" ? "text-slate-300" : "text-slate-800"}`}>
+                    {detailTiket.gudang_asal}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Gudang Tujuan</p>
+                  <p className={`text-sm ${detailTiket.gudang_tujuan === "-" ? "text-slate-300" : "text-slate-800"}`}>
+                    {detailTiket.gudang_tujuan}
+                  </p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs font-medium text-slate-400">Zona Penempatan</p>
+                  {detailTiket.zona_kode && detailTiket.zona_kode !== "-" ? (
+                    <p className="text-sm text-slate-800">
+                      <span className="text-slate-500">{detailTiket.zona_gudang}</span>
+                      <span className="mx-1 text-slate-300">/</span>
+                      <span className="font-mono font-semibold">{detailTiket.zona_kode}</span>
+                      {detailTiket.zona_nama && detailTiket.zona_nama !== "-" && (
+                        <span className="ml-2 text-slate-500">{detailTiket.zona_nama}</span>
+                      )}
+                      {detailTiket.zona_tipe && detailTiket.zona_tipe !== "-" && (
+                        <span className="ml-2 text-xs text-slate-400">({detailTiket.zona_tipe})</span>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-slate-400">
+                      Belum ditempatkan — zona terisi setelah item melewati proses putaway.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <p className="mt-2 text-[11px] text-slate-400">
+                Gudang Asal/Tujuan menunjukkan pergerakan antar gudang; Zona adalah sub-lokasi di dalam gudang.
+              </p>
+            </div>
+
+            <div className="border-t border-slate-100 pt-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Dokumen</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-medium text-slate-400">No. Surat Jalan</p>
+                  <p className="text-sm font-mono text-slate-700">{detailTiket.nomor_surat_jalan}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Jenis Transaksi</p>
+                  <p className="text-sm text-slate-800">{jenisLabel[detailTiket.tipe_surat_jalan] || detailTiket.tipe_surat_jalan}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Status</p>
+                  <p className="text-sm text-slate-800">{statusLabel[detailTiket.status_surat_jalan] || detailTiket.status_surat_jalan}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Diproses Oleh</p>
+                  <p className="text-sm text-slate-800">
+                    {detailTiket.diproses_oleh}
+                    {detailTiket.diproses_oleh_role && detailTiket.diproses_oleh_role !== "-" && (
+                      <span className="ml-1 text-xs text-slate-400">({detailTiket.diproses_oleh_role})</span>
+                    )}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </Modal>
@@ -774,112 +1066,8 @@ function TabRiwayatStok({ get }) {
   );
 }
 
-function TabUtilisasi({ get }) {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [gudang, setGudang] = useState("");
-  const [gudangs, setGudangs] = useState([]);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await get(`${API_BASE}/api/reports/zone-utilization`);
-      const json = await res.json();
-
-      if (!res.ok) {
-        throw new Error(json?.message || "Gagal mengambil data utilisasi zona.");
-      }
-
-      const rows = Array.isArray(json?.data) ? json.data : [];
-      let filtered = rows;
-      if (gudang) {
-        filtered = rows.filter((r) => r.gudang_nama === gudang);
-      }
-      setData(filtered);
-
-      const gudangSet = [...new Set(rows.map((r) => r.gudang_nama).filter(Boolean))];
-      setGudangs(gudangSet);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan.");
-      setData([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [get, gudang]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  return (
-    <div>
-      <div className="mb-6 flex flex-wrap items-center gap-2">
-        <div className="relative">
-          <select
-            value={gudang}
-            onChange={(e) => setGudang(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
-          >
-            <option value="">Semua gudang</option>
-            {gudangs.map((o) => (
-              <option key={o} value={o}>{o}</option>
-            ))}
-          </select>
-          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        </div>
-      </div>
-
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gudang</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Zona</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tipe Zona</th>
-                <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Utilisasi (%)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i}>
-                    <td className="px-6 py-4" colSpan={4}>
-                      <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
-                    </td>
-                  </tr>
-                ))
-              ) : error ? (
-                <tr>
-                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={4}>{error}</td>
-                </tr>
-              ) : data.length === 0 ? (
-                <tr>
-                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={4}>
-                    Tidak ada data utilisasi untuk filter ini.
-                  </td>
-                </tr>
-              ) : (
-                data.map((r) => (
-                  <tr key={r.zona_id} className="group transition-colors hover:bg-slate-50">
-                    <td className="px-6 py-4 text-slate-700">{r.gudang_nama}</td>
-                    <td className="px-6 py-4 whitespace-nowrap font-mono font-semibold text-orange-600">{r.zona_kode}</td>
-                    <td className="px-6 py-4 text-slate-700">{r.gudang_tipe === "tetap" ? "Indoor" : "Outdoor"}</td>
-                    <td className="px-6 py-4 text-right font-mono font-semibold text-slate-900">
-                      {r.utilisasi_persen !== null && r.utilisasi_persen !== undefined ? `${r.utilisasi_persen}%` : "—"}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
+// Dihilangkan - tab Utilisasi dipindah/dihapus sesuai PRD 7.12
+// function TabUtilisasi({ get }) { ... } // seluruh komponen tab Utilisasi dihapus dari UI
 
 export default function LaporanAuditPage() {
   const [tab, setTab] = useState("audit");
@@ -889,7 +1077,7 @@ export default function LaporanAuditPage() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get("tab");
-    if (tabParam && ["audit", "stok", "utilisasi"].includes(tabParam)) {
+    if (tabParam && ["audit", "stok"].includes(tabParam)) {
       setTab(tabParam);
     }
   }, []);
@@ -897,7 +1085,6 @@ export default function LaporanAuditPage() {
   const tabs = [
     { key: "audit", label: "Audit Log", icon: FileClock },
     { key: "stok", label: "Riwayat Stok", icon: PackageSearch },
-    { key: "utilisasi", label: "Utilisasi", icon: BarChart3 },
   ];
 
   return (
@@ -933,7 +1120,6 @@ export default function LaporanAuditPage() {
         <div className="mt-6">
           {tab === "audit" && <TabAuditLog get={get} />}
           {tab === "stok" && <TabRiwayatStok get={get} />}
-          {tab === "utilisasi" && <TabUtilisasi get={get} />}
         </div>
 
         <div className="mt-6 text-center text-xs text-slate-400">

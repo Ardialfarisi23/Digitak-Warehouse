@@ -64,7 +64,7 @@ const getProjectSummary = async () => {
 
   const boqRecords = await prisma.boq.findMany({
     where: {
-      status: { in: ["draft", "aktif"] },
+      status: { in: ["draft", "aktif", "selesai"] },
     },
     include: {
       tiket: {
