@@ -1,5 +1,6 @@
 const boqService = require("./boq.service");
 const response = require("../../shared/response");
+const ExcelJS = require("exceljs");
 
 const transformBoq = (boq) => {
   if (!boq) return null;
@@ -211,6 +212,128 @@ const getItems = async (req, res, next) => {
   }
 };
 
+const getExportMatrixData = async (req, res, next) => {
+  try {
+    const result = await boqService.getExportMatrixData();
+    return response.success(res, "Data export matrix berhasil diambil.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const exportMatrixExcel = async (req, res, next) => {
+  try {
+    const { projects, materials } = await boqService.getExportMatrixData();
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("BOQ Matrix");
+
+    const METRICS = ["BoQ Plan", "Additional", "MOS", "Used", "Remains"];
+    const BASE_COLS = 3;
+
+    const headerFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4F46E5" } };
+    const headerFont = { bold: true, color: { argb: "FFFFFFFF" } };
+    const subHeaderFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEEF2FF" } };
+    const subHeaderFont = { bold: true, color: { argb: "FF4F46E5" } };
+    const borderStyle = {
+      top: { style: "thin" },
+      left: { style: "thin" },
+      bottom: { style: "thin" },
+      right: { style: "thin" },
+    };
+
+    worksheet.getCell(1, 1).value = "Kode Perangkat";
+    worksheet.getCell(1, 2).value = "Nama Barang";
+    worksheet.getCell(1, 3).value = "Satuan";
+
+    for (let c = 1; c <= BASE_COLS; c++) {
+      const cell = worksheet.getCell(1, c);
+      cell.font = headerFont;
+      cell.fill = headerFill;
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.border = borderStyle;
+    }
+
+    for (let i = 0; i < projects.length; i++) {
+      const col = BASE_COLS + i * METRICS.length + 1;
+      const cell = worksheet.getCell(1, col);
+      const projectLabel = `${projects[i].project_nama}${projects[i].cluster_id && projects[i].cluster_id !== "-" ? ` (${projects[i].cluster_id})` : ""}`;
+      cell.value = projectLabel;
+      cell.font = headerFont;
+      cell.fill = headerFill;
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      worksheet.mergeCells(1, col, 1, col + METRICS.length - 1);
+    }
+
+    for (let i = 0; i < projects.length; i++) {
+      for (let j = 0; j < METRICS.length; j++) {
+        const col = BASE_COLS + i * METRICS.length + j + 1;
+        const cell = worksheet.getCell(2, col);
+        cell.value = METRICS[j];
+        cell.font = subHeaderFont;
+        cell.fill = subHeaderFill;
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+        cell.border = borderStyle;
+      }
+    }
+
+    for (let i = 0; i < materials.length; i++) {
+      const material = materials[i];
+      const row = i + 3;
+      const kodeCell = worksheet.getCell(row, 1);
+      const namaCell = worksheet.getCell(row, 2);
+      const satuanCell = worksheet.getCell(row, 3);
+
+      kodeCell.value = material.kode_perangkat;
+      namaCell.value = material.nama_barang;
+      satuanCell.value = material.satuan;
+
+      for (let j = 0; j < projects.length; j++) {
+        const project = projects[j];
+        const projData = material.projects[String(project.project_id)] || {
+          boq: 0,
+          additional: 0,
+          mos_sistem: 0,
+          used: 0,
+          remains: 0,
+        };
+        const baseCol = BASE_COLS + j * METRICS.length;
+        const values = [projData.boq, projData.additional, projData.mos_sistem, projData.used, projData.remains];
+        for (let k = 0; k < METRICS.length; k++) {
+          const cell = worksheet.getCell(row, baseCol + k + 1);
+          cell.value = values[k];
+          cell.numberFormat = "0.00";
+          cell.alignment = { horizontal: "center", vertical: "middle" };
+          cell.border = borderStyle;
+        }
+      }
+
+      kodeCell.border = borderStyle;
+      namaCell.border = borderStyle;
+      satuanCell.border = borderStyle;
+    }
+
+    worksheet.getColumn(1).width = 14;
+    worksheet.getColumn(2).width = 32;
+    worksheet.getColumn(3).width = 10;
+    for (let i = 0; i < projects.length; i++) {
+      for (let j = 0; j < METRICS.length; j++) {
+        worksheet.getColumn(BASE_COLS + i * METRICS.length + j + 1).width = 12;
+      }
+    }
+
+    worksheet.getRow(1).height = 22;
+    worksheet.getRow(2).height = 18;
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const filename = `BOQ-Export-Matrix_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename=${encodeURIComponent(filename)}`);
+    return res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   create,
   findAll,
@@ -224,4 +347,6 @@ module.exports = {
   getStats,
   getAreas,
   getItems,
+  getExportMatrixData,
+  exportMatrixExcel,
 };

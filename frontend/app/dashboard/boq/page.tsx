@@ -32,6 +32,7 @@ import {
   Lock,
   Building2,
   ChevronDown,
+  Info,
 } from "lucide-react";
 
 import { useApi } from "@/lib/api";
@@ -174,7 +175,7 @@ function getStatusBadge(status: BoqStatus) {
 function getSourceBadge(source: BoqSource) {
   switch (source) {
     case "top_down":
-      return { label: "Top Down", bg: "bg-sky-50", text: "text-sky-600", icon: Mail };
+      return { label: "PO Internal", bg: "bg-sky-50", text: "text-sky-600", icon: Mail };
     case "bottom_up":
       return { label: "Bottom Up", bg: "bg-violet-50", text: "text-violet-600", icon: ClipboardList };
     default:
@@ -260,6 +261,7 @@ export default function BoqPage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [uploadingRef, setUploadingRef] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -706,28 +708,25 @@ export default function BoqPage() {
   }
 
   async function handleExport() {
+    setExporting(true);
     try {
-      const params = new URLSearchParams();
-      params.set("status", activeTab);
-      if (projectFilter) params.set("projectId", projectFilter);
-      if (areaFilter) params.set("area", areaFilter);
-      if (warehouseFilter) params.set("warehouseId", warehouseFilter);
-
-      const res = await get(`${API_BASE}/api/boqs/export?${params.toString()}`);
+      const res = await get(`${API_BASE}/api/boqs/export-matrix`);
       if (!res.ok) throw new Error("Gagal mengekspor laporan BOQ.");
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `laporan-boq-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `BOQ-Export-Matrix_${new Date().toISOString().slice(0, 10)}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
       setToast({ message: "Laporan BOQ berhasil diekspor.", type: "success" });
     } catch (err) {
-      setToast({ message: err instanceof Error ? err.message : "Gagal mengekspor laporan BOQ.", type: "error" });
+      setToast({ message: err instanceof Error ? err.message : "Gagal mengekspor BOQ.", type: "error" });
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -804,10 +803,11 @@ export default function BoqPage() {
             <button
               type="button"
               onClick={handleExport}
-              className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50"
+              disabled={exporting}
+              className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <Download size={16} />
-              Ekspor
+              {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+              {exporting ? "Mengekspor..." : "Ekspor"}
             </button>
 
             {canManage && (
@@ -841,7 +841,10 @@ export default function BoqPage() {
             <p className="mt-1 text-2xl font-bold text-slate-900">{summary.draft}</p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-xs font-medium text-slate-400">Proyek Berjalan</p>
+            <p className="text-xs font-medium text-slate-400 flex items-center gap-1">
+              Proyek Berjalan
+              <Info size={12} className="text-slate-400" title="Jumlah project unik dengan BOQ aktif" />
+            </p>
             <p className="mt-1 text-2xl font-bold text-slate-900">{summary.proyekBerjalan}</p>
           </div>
         </div>

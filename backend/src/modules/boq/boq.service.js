@@ -390,6 +390,10 @@ const getAreas = async () => {
   return await boqRepository.getAreas();
 };
 
+const getExportMatrixData = async () => {
+  return await boqRepository.getExportMatrixData();
+};
+
 const getItems = async (projectId) => {
   return await boqRepository.findItemsByProject(projectId);
 };
@@ -407,4 +411,5 @@ module.exports = {
   getStats,
   getAreas,
   getItems,
+  getExportMatrixData,
 };
