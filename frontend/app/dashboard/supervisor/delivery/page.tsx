@@ -1,115 +1,169 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, Search, ChevronDown, Filter, X, Eye, CheckSquare, AlertTriangle } from "lucide-react";
+import { Search, X, Eye, ArrowUpRight, ArrowDownLeft } from "lucide-react";
 import { useApi } from "@/lib/api";
 
-const STATUS_LABEL: Record<string, string> = {
-  stok_kurang: "Stok Tidak Cukup",
-  melewati_batas: "Melewati Limit Kuota",
-  manual_override: "Manual / Direct Outbound",
+type ActiveTab = "SEMUA" | "INBOUND" | "OUTBOUND";
+
+const STATUS_DELIVERY_LABEL: Record<string, string> = {
+  disetujui: "Disetujui",
+  digenerate: "Digenerate",
+  diterima_didistribusikan: "Diterima / Didistribusikan",
+  draft_diajukan: "Draft Diajukan",
 };
 
-const STATUS_BADGE: Record<string, string> = {
-  stok_kurang: "bg-amber-50 text-amber-700 border-amber-200",
-  melewati_batas: "bg-rose-50 text-rose-700 border-rose-200",
-  manual_override: "bg-slate-100 text-slate-700 border-slate-200",
+const STATUS_DELIVERY_BADGE: Record<string, string> = {
+  disetujui: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  digenerate: "bg-blue-50 text-blue-700 border-blue-200",
+  diterima_didistribusikan: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  draft_diajukan: "bg-slate-100 text-slate-700 border-slate-200",
 };
 
-interface OutboundItem {
+interface BaseRow {
+  surat_jalan_id: number;
+  nomor_surat_jalan: string;
+  status: string;
+  tipe: "inbound" | "outbound";
+  personil_pengantar?: { nama?: string } | null;
+  kendaraan?: { jenis_kendaraan?: string; no_polisi?: string } | null;
+}
+
+interface DeliveryItem {
   item_id: number;
   qty: number;
-  serial_number?: string | null;
   kondisi?: string | null;
+  serial_number?: string | null;
   catatan?: string | null;
   barang?: { nama_barang?: string; kode_perangkat?: string; satuan_default?: { kode_satuan?: string } } | null;
   satuan?: { kode_satuan?: string } | null;
 }
 
-interface OutboundRow {
-  surat_jalan_id: number;
-  nomor_surat_jalan: string;
-  created_at: string;
-  kategori_approval?: string;
-  project?: { nama_project?: string } | null;
+interface DeliveryDetail extends BaseRow {
+  tanggal?: string;
+  tanggal_disetujui?: string;
+  tanggal_digenerate?: string;
+  tanggal_diterima?: string;
+  catatan?: string | null;
+  project?: { nama_project?: string; area?: string } | null;
   gudang_asal?: { nama_gudang?: string } | null;
   gudang_tujuan?: { nama_gudang?: string } | null;
-  personil_pengantar?: { nama?: string } | null;
-  kendaraan?: { jenis_kendaraan?: string; no_polisi?: string } | null;
-  creator?: { nama?: string } | null;
-  items?: OutboundItem[];
+  items?: DeliveryItem[];
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid grid-cols-[130px_10px_1fr] items-start leading-snug">
-      <span className="text-gray-500">{label}</span>
-      <span className="text-gray-500">:</span>
-      <span className="font-semibold text-gray-900">{value}</span>
-    </div>
-  );
-}
-
-export default function SupervisorApprovalOutboundPage() {
-  const { get, put } = useApi();
-  const [requests, setRequests] = useState<OutboundRow[]>([]);
+export default function SupervisorDeliveryPage() {
+  const { get } = useApi();
+  const [activeTab, setActiveTab] = useState<ActiveTab>("SEMUA");
+  const [dataList, setDataList] = useState<BaseRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedDetail, setSelectedDetail] = useState<DeliveryDetail | null>(null);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
-  const [query, setQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-
-  const [selectedItem, setSelectedItem] = useState<OutboundRow | null>(null);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
-
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const [confirmTargetId, setConfirmTargetId] = useState<number | null>(null);
-
-  const fetchApprovalQueue = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
       const params = new URLSearchParams();
-      params.set("page", String(currentPage));
-      if (query.trim()) params.set("search", query.trim());
-      if (selectedCategory !== "all") params.set("kategori_approval", selectedCategory);
+      if (searchQuery.trim()) params.set("search", searchQuery.trim());
 
-      const response = await get(`${baseUrl}/api/surat-jalan/outbound/approval?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error("Gagal mengambil daftar verifikasi surat jalan.");
+      let outboundData: BaseRow[] = [];
+      let inboundData: BaseRow[] = [];
+
+      if (activeTab === "SEMUA" || activeTab === "OUTBOUND") {
+        const outboundRes = await get(`${baseUrl}/api/surat-jalan/outbound/delivery?${params.toString()}`);
+        if (!outboundRes.ok) {
+          throw new Error("Gagal mengambil data outbound delivery.");
+        }
+        const outboundJson = await outboundRes.json();
+        const outboundResult = outboundJson?.data ?? outboundJson ?? {};
+        const outboundList = Array.isArray(outboundResult.data) ? outboundResult.data : Array.isArray(outboundResult) ? outboundResult : [];
+        outboundData = outboundList.map((item) => ({ ...(item as BaseRow), tipe: "outbound" as const }));
       }
-      const json = await response.json();
-      const result = json?.data ?? json ?? {};
-      const list = Array.isArray(result.data) ? result.data : Array.isArray(result) ? result : [];
-      setRequests(list as OutboundRow[]);
-      setTotalPages((result?.meta?.totalPages as number) || 1);
+
+      if (activeTab === "SEMUA" || activeTab === "INBOUND") {
+        const inboundRes = await get(`${baseUrl}/api/surat-jalan/inbound?${params.toString()}`);
+        if (!inboundRes.ok) {
+          throw new Error("Gagal mengambil data inbound.");
+        }
+        const inboundJson = await inboundRes.json();
+        const inboundResult = inboundJson?.data ?? inboundJson ?? {};
+        const inboundList = Array.isArray(inboundResult.data) ? inboundResult.data : Array.isArray(inboundResult) ? inboundResult : [];
+        inboundData = inboundList.map((item) => ({ ...(item as BaseRow), tipe: "inbound" as const }));
+      }
+
+      const combined = activeTab === "SEMUA" ? [...outboundData, ...inboundData] : activeTab === "OUTBOUND" ? outboundData : inboundData;
+      setDataList(combined);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan saat memuat data.");
     } finally {
       setIsLoading(false);
     }
-  }, [get, currentPage, query, selectedCategory]);
+  }, [get, activeTab, searchQuery]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchApprovalQueue();
-  }, [fetchApprovalQueue]);
+    fetchData();
+  }, [fetchData]);
 
-  const filteredRequests = useMemo(() => {
-    return requests.filter((r) => {
-      const matchCat =
-        selectedCategory === "all" ||
-        (r.kategori_approval || "manual_override") === selectedCategory;
-      return matchCat;
+  const closeDetail = useCallback(() => {
+    setSelectedDetail(null);
+    setDetailError(null);
+  }, []);
+
+  // Shortcut tombol ESC untuk menutup Modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeDetail();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeDetail]);
+
+  const filteredData = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return dataList;
+    return dataList.filter((item) => {
+      return (
+        item.nomor_surat_jalan.toLowerCase().includes(q) ||
+        (item.personil_pengantar?.nama || "").toLowerCase().includes(q) ||
+        (item.kendaraan?.jenis_kendaraan || "").toLowerCase().includes(q) ||
+        (item.kendaraan?.no_polisi || "").toLowerCase().includes(q)
+      );
     });
-  }, [requests, selectedCategory]);
+  }, [dataList, searchQuery]);
 
-  const formatDate = (value: string) => {
+  const getStatusLabel = (status: string) => {
+    return STATUS_DELIVERY_LABEL[status] || status;
+  };
+
+  const getStatusBadge = (status: string) => {
+    return STATUS_DELIVERY_BADGE[status] || "bg-slate-100 text-slate-700 border-slate-200";
+  };
+
+  const openDetail = async (row: BaseRow) => {
+    setSelectedDetail(null);
+    setDetailError(null);
+    setIsDetailLoading(true);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const response = await get(`${baseUrl}/api/surat-jalan/${row.surat_jalan_id}`);
+      if (!response.ok) {
+        throw new Error("Gagal mengambil detail surat jalan.");
+      }
+      const json = await response.json();
+      const data = json?.data ?? json ?? null;
+      setSelectedDetail({ ...(data as DeliveryDetail), tipe: row.tipe });
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : "Terjadi kesalahan saat memuat detail.");
+    } finally {
+      setIsDetailLoading(false);
+    }
+  };
+
+  const formatDate = (value?: string) => {
     if (!value) return "-";
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return value;
@@ -120,429 +174,296 @@ export default function SupervisorApprovalOutboundPage() {
     });
   };
 
-  const openConfirmDialog = (id: number) => {
-    setConfirmTargetId(id);
-    setShowConfirmDialog(true);
-  };
-
-  const closeConfirmDialog = () => {
-    setShowConfirmDialog(false);
-    setConfirmTargetId(null);
-  };
-
-  const executeApprove = async () => {
-    if (!confirmTargetId) return;
-    const id = confirmTargetId;
-    setActionLoading(String(id));
-    closeConfirmDialog();
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const response = await put(`${baseUrl}/api/surat-jalan/${id}/approve-outbound`, {});
-      if (!response.ok) {
-        const err = await response.json().catch(() => null);
-        throw new Error(err?.message || "Gagal menyetujui outbound.");
-      }
-      setToast({ message: "Surat Jalan berhasil diverifikasi dan disetujui.", type: "success" });
-      setSelectedItem(null);
-      fetchApprovalQueue();
-    } catch (err) {
-      setToast({ message: err instanceof Error ? err.message : "Gagal menyetujui outbound.", type: "error" });
-    } finally {
-      setActionLoading(null);
-      setTimeout(() => setToast(null), 4000);
-    }
-  };
-
-  const openDetail = (row: OutboundRow) => {
-    setSelectedItem(row);
-  };
-
-  const closeDetail = () => {
-    setSelectedItem(null);
-  };
-
   return (
-    <div className="min-h-screen bg-slate-50/50 p-6 md:p-8 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Link
-            href="/dashboard/supervisor/approval"
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-900"
-          >
-            <ArrowLeft size={18} />
-          </Link>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
-                Supervisor Portal
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="text-xs font-medium text-slate-500">
-                Otorisasi Barang Keluar
-              </span>
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900">
-              Approval Pengeluaran Barang (Outbound)
-            </h1>
-          </div>
-        </div>
+    <div className="flex-1 p-4 md:p-8 bg-[#F8F6F0] min-h-screen text-slate-800 w-full overflow-x-hidden">
+      {/* HEADER SECTION */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Tracking Pengiriman Surat Jalan</h1>
+        <p className="text-sm text-slate-500 mt-1">Monitoring Surat Jalan inbound dan outbound yang telah disetujui.</p>
       </div>
 
       {error && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 mb-6">
           {error}
-          <button
-            onClick={fetchApprovalQueue}
-            className="ml-3 rounded-lg border border-rose-300 px-3 py-1 text-xs font-semibold text-rose-800 hover:bg-rose-100"
-          >
+          <button onClick={fetchData} className="ml-3 rounded-lg border border-rose-300 px-3 py-1 text-xs font-semibold text-rose-800 hover:bg-rose-100">
             Coba Lagi
           </button>
         </div>
       )}
 
-      {toast && (
-        <div
-          className={`fixed top-4 right-4 z-50 rounded-xl border px-4 py-3 shadow-lg ${
-            toast.type === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-              : "border-rose-200 bg-rose-50 text-rose-800"
-          }`}
-        >
-          <div className="flex items-center gap-2 text-sm font-medium">
-            {toast.type === "success" ? "✓" : "✕"}
-            {toast.message}
-          </div>
+      {/* TABS & SEARCH BAR */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div className="flex flex-wrap items-center gap-2 bg-stone-200/50 p-1.5 rounded-2xl w-fit">
+          {(["SEMUA", "INBOUND", "OUTBOUND"] as ActiveTab[]).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${activeTab === tab ? "bg-[#FF5500] text-white shadow-md shadow-orange-500/20" : "text-slate-600 hover:text-slate-900 hover:bg-stone-200/60"}`}
+            >
+              {tab === "SEMUA" ? "Semua" : tab === "INBOUND" ? "Inbound" : "Outbound"}
+            </button>
+          ))}
         </div>
-      )}
 
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-sm">
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
+        <div className="relative w-full md:w-80">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Cari No. SJ, Proyek, Gudang..."
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-4 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none"
+            type="text"
+            placeholder="Cari No. Surat Jalan / Driver / Kendaraan..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5500]/50 shadow-sm transition"
           />
-        </div>
-
-        <div className="relative w-full sm:w-auto">
-          <Filter size={16} className="absolute left-3 top-3 text-slate-400 pointer-events-none" />
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="w-full sm:w-auto appearance-none rounded-xl border border-slate-200 bg-slate-50/50 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 focus:border-indigo-500 focus:bg-white focus:outline-none"
-          >
-            <option value="all">Semua Kategori</option>
-            <option value="stok_kurang">Stok Tidak Cukup</option>
-            <option value="melewati_batas">Melewati Limit Kuota</option>
-            <option value="manual_override">Manual / Direct</option>
-          </select>
-          <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      {/* DATA TABLE */}
+      <div className="bg-white rounded-3xl border border-stone-200/80 shadow-sm w-full overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider text-xs border-b border-slate-200">
-              <tr>
-                <th className="px-4 py-3">No. Surat Jalan</th>
-                <th className="px-4 py-3">Tanggal</th>
-                <th className="px-4 py-3">Project</th>
-                <th className="px-4 py-3">Gudang</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-center">Aksi</th>
+          <table className="w-full text-left border-collapse table-fixed">
+            <thead>
+              <tr className="border-b border-stone-100 bg-stone-50/50 text-[11px] md:text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                <th className="py-4 px-3 md:px-4 w-[11%]">Tipe</th>
+                <th className="py-4 px-3 md:px-4 w-[24%]">No. Surat Jalan</th>
+                <th className="py-4 px-3 md:px-4 w-[18%]">Driver</th>
+                <th className="py-4 px-3 md:px-4 w-[18%]">Kendaraan</th>
+                <th className="py-4 px-3 md:px-4 w-[16%]">Status</th>
+                <th className="py-4 px-2 md:px-3 w-[13%] text-center">Detail</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-stone-100 text-xs md:text-sm text-slate-700">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={6} className="py-12 text-center text-slate-500">
                     <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
-                    <p className="mt-2 text-sm">Memuat data outbound...</p>
+                    <p className="mt-2 text-sm">Memuat data surat jalan...</p>
                   </td>
                 </tr>
-              ) : filteredRequests.length === 0 ? (
+              ) : filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
-                    <p className="text-sm font-semibold text-slate-700">Tidak ada pengajuan outbound ditemukan</p>
-                    <p className="text-xs text-slate-400">Ganti kata kunci atau pilih filter lain.</p>
+                  <td colSpan={6} className="py-12 text-center text-slate-400 text-sm">
+                    Tidak ada data Surat Jalan yang sesuai.
                   </td>
                 </tr>
               ) : (
-                filteredRequests.map((r) => {
-                  const kategori = r.kategori_approval || "manual_override";
-                  const badgeClass = STATUS_BADGE[kategori] || STATUS_BADGE.manual_override;
-                  const label = STATUS_LABEL[kategori] || "Manual / Direct Outbound";
-
-                  return (
-                    <tr key={r.surat_jalan_id} className="hover:bg-slate-50/50 transition">
-                      <td className="px-4 py-3 font-mono font-bold text-slate-900">
-                        {r.nomor_surat_jalan}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">
-                        {formatDate(r.created_at)}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">
-                        {r.project?.nama_project || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">
-                        {r.gudang_asal?.nama_gudang || "-"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badgeClass}`}>
-                          {label}
+                filteredData.map((item) => (
+                  <tr key={item.surat_jalan_id} className="hover:bg-stone-50/60 transition cursor-pointer" onClick={() => openDetail(item)}>
+                    <td className="py-4 px-3 md:px-4">
+                      {item.tipe === "outbound" ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                          <ArrowUpRight size={12} /> Outbound
                         </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openDetail(r)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
-                            title="Detail"
-                          >
-                            <Eye size={14} />
-                            <span className="hidden sm:inline">Detail</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openConfirmDialog(r.surat_jalan_id)}
-                            disabled={actionLoading === String(r.surat_jalan_id)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-100 disabled:opacity-50"
-                            title="Verifikasi"
-                          >
-                            <CheckSquare size={14} />
-                            <span className="hidden sm:inline">Verifikasi</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                          <ArrowDownLeft size={12} /> Inbound
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-4 px-3 md:px-4 font-semibold text-slate-900 break-words">
+                      <div className="flex items-center gap-2">
+                        {item.nomor_surat_jalan}
+                        <Eye size={14} className="text-slate-400" />
+                      </div>
+                    </td>
+                    <td className="py-4 px-3 md:px-4">{item.personil_pengantar?.nama || "-"}</td>
+                    <td className="py-4 px-3 md:px-4">
+                      <div className="flex flex-col">
+                        <span className="font-medium text-slate-800">{item.kendaraan?.jenis_kendaraan || "-"}</span>
+                        <span className="text-xs text-slate-400">{item.kendaraan?.no_polisi || "-"}</span>
+                      </div>
+                    </td>
+                    <td className="py-4 px-3 md:px-4">
+                      <span className={`inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-lg ${getStatusBadge(item.status)}`}>{getStatusLabel(item.status)}</span>
+                    </td>
+                    <td className="py-4 px-2 md:px-3 text-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDetail(item);
+                        }}
+                        className="inline-flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-2.5 py-1.5 rounded-xl shadow-sm transition"
+                        title="Lihat Detail"
+                      >
+                        <Eye size={13} /> Detail
+                      </button>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <button
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-          >
-            Sebelumnya
-          </button>
-          <span className="text-xs text-slate-500">
-            Halaman {currentPage} dari {totalPages}
-          </span>
-          <button
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-          >
-            Selanjutnya
-          </button>
-        </div>
-      )}
-
-      {selectedItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="relative w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-3xl bg-white shadow-2xl flex flex-col">
-            {/* Toolbar */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 print:hidden">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">
-                  Detail Surat Jalan
-                </h3>
-                <p className="text-xs text-slate-500">
-                  {selectedItem.nomor_surat_jalan}
-                </p>
+      {/* MODAL DETAIL TRACKING — Berbentuk Surat */}
+      {selectedDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 sm:p-6" onClick={closeDetail}>
+          <div className="relative bg-[#F8F6F0] rounded-3xl max-w-3xl w-full max-h-[88vh] flex flex-col shadow-2xl border border-stone-200/80 overflow-hidden animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+            {/* MODAL HEADER (STICKY AT TOP) */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200/80 bg-[#F8F6F0] shrink-0 z-10">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                      selectedDetail.tipe?.toLowerCase() === "outbound" ? "bg-amber-100 text-amber-800 border border-amber-200" : "bg-blue-100 text-blue-800 border border-blue-200"
+                    }`}
+                  >
+                    {selectedDetail.tipe?.toLowerCase() === "outbound" ? (
+                      <>
+                        <ArrowUpRight size={12} /> Outbound
+                      </>
+                    ) : (
+                      <>
+                        <ArrowDownLeft size={12} /> Inbound
+                      </>
+                    )}
+                  </span>
+                  <span className={`inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full border ${getStatusBadge(selectedDetail.status)}`}>{getStatusLabel(selectedDetail.status)}</span>
+                </div>
+                <h2 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">{selectedDetail.nomor_surat_jalan}</h2>
               </div>
-              <button
-                onClick={closeDetail}
-                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              >
+              <button onClick={closeDetail} className="p-2 rounded-2xl bg-white border border-stone-200/80 hover:bg-stone-100 text-slate-500 hover:text-slate-800 transition shadow-sm" title="Tutup Modal (ESC)">
                 <X size={18} />
               </button>
             </div>
 
-            {/* Dokumen Surat Jalan — ini yang ke-print */}
-            <div className="overflow-y-auto p-6">
-              <div
-                id="surat-jalan-document"
-                className="mx-auto max-w-3xl rounded-2xl border border-[#F3D9C7] bg-white p-10 print:rounded-none print:border-0 print:p-0"
-              >
-                {/* Kop surat dengan logo */}
-                <div className="mb-8 flex items-start justify-between border-b-2 border-[#E8632C] pb-6">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src="/logo digitak grdasi.png"
-                    alt="Digitak Studio — PT Metanouva Informatika"
-                    className="h-16 w-auto object-contain"
-                  />
-                  <div className="flex flex-col items-end">
-                    <h1 className="text-3xl font-bold tracking-wide text-gray-900">SURAT JALAN</h1>
-                    <p className="mt-1 text-xs text-gray-500">Surat Jalan Internal — Digitak Studio</p>
-                    <div className="mt-2 text-right">
-                      <p className="text-xs font-bold text-[#E8632C]">PT Metanouva Informatika</p>
-                      <p className="text-[10px] text-gray-400">Digitak Studio</p>
-                    </div>
-                  </div>
+            {/* MODAL BODY (SCROLLABLE AREA) */}
+            <div className="p-6 overflow-y-auto space-y-6 flex-1">
+              {detailError && (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 flex items-center justify-between">
+                  <span>{detailError}</span>
+                  <button onClick={() => openDetail(selectedDetail)} className="rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 transition">
+                    Coba Lagi
+                  </button>
                 </div>
+              )}
 
-                {/* Info grid — 2 kolom */}
-                <div className="mb-8 grid grid-cols-2 gap-x-12 gap-y-3 text-sm">
-                  <div className="space-y-3">
-                    <InfoRow label="No Surat Jalan" value={selectedItem.nomor_surat_jalan} />
-                    <InfoRow label="Project" value={selectedItem.project?.nama_project || "-"} />
-                    <InfoRow label="Gudang Asal" value={selectedItem.gudang_asal?.nama_gudang || "-"} />
-                  </div>
-                  <div className="space-y-3">
-                    <InfoRow label="Tanggal" value={formatDate(selectedItem.created_at)} />
-                    <InfoRow label="Gudang Tujuan" value={selectedItem.gudang_tujuan?.nama_gudang || "-"} />
-                    <InfoRow label="Driver" value={selectedItem.personil_pengantar?.nama || "-"} />
-                    <InfoRow label="Kendaraan" value={selectedItem.kendaraan?.jenis_kendaraan || "-"} />
-                    <InfoRow label="No Polisi" value={selectedItem.kendaraan?.no_polisi || "-"} />
-                  </div>
+              {isDetailLoading ? (
+                <div className="py-16 text-center text-slate-500">
+                  <div className="inline-block h-8 w-8 animate-spin rounded-full border-3 border-stone-300 border-t-[#FF5500]" />
+                  <p className="mt-3 text-sm font-medium">Memuat detail pengiriman...</p>
                 </div>
+              ) : (
+                <>
+                  {/* INFORMASI PENGIRIMAN (GRID CARD) */}
+                  <div className="bg-white rounded-2xl border border-stone-200/80 p-5 shadow-sm">
+                    <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-3">Informasi Pengiriman</h3>
 
-                {/* Tabel item */}
-                <table className="mb-10 w-full border-collapse text-sm">
-                  <thead>
-                    <tr className="bg-[#FFF7ED]">
-                      <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">No</th>
-                      <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Kode Barang</th>
-                      <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Nama Barang</th>
-                      <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">QTY</th>
-                      <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">UOM</th>
-                      <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Keterangan</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedItem.items && selectedItem.items.length > 0 ? (
-                      selectedItem.items.map((item, i) => (
-                        <tr key={item.item_id || i} className="even:bg-gray-50">
-                          <td className="border border-gray-200 px-3 py-2.5">{i + 1}</td>
-                          <td className="border border-gray-200 px-3 py-2.5 font-medium">
-                            {item.barang?.kode_perangkat || "-"}
-                          </td>
-                          <td className="border border-gray-200 px-3 py-2.5">
-                            {item.barang?.nama_barang || "-"}
-                          </td>
-                          <td className="border border-gray-200 px-3 py-2.5 text-center font-semibold">
-                            {item.qty}
-                          </td>
-                          <td className="border border-gray-200 px-3 py-2.5 text-center">
-                            {item.satuan?.kode_satuan || item.barang?.satuan_default?.kode_satuan || "-"}
-                          </td>
-                          <td className="border border-gray-200 px-3 py-2.5 text-gray-500">
-                            {item.catatan || "-"}
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={6} className="border border-gray-200 px-3 py-6 text-center text-gray-400">
-                          Tidak ada rincian barang.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs sm:text-sm">
+                      {/* RUTE GUDANG */}
+                      <div className="md:col-span-3 bg-stone-50 border border-stone-200/60 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Gudang Asal</span>
+                          <p className="font-semibold text-slate-900">{selectedDetail.gudang_asal?.nama_gudang || "-"}</p>
+                        </div>
+                        <div className="text-slate-400 font-bold hidden sm:block">→</div>
+                        <div>
+                          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Gudang Tujuan</span>
+                          <p className="font-semibold text-slate-900">{selectedDetail.gudang_tujuan?.nama_gudang || "-"}</p>
+                        </div>
+                      </div>
 
-                {/* Tanda tangan */}
-                <div className="mb-8 grid grid-cols-3 gap-6 text-center text-sm">
-                    <div>
-                      <p className="mb-16 font-medium text-gray-700">Material Handler</p>
-                      <div className="border-t border-gray-400 pt-1">
-                        <p className="font-semibold text-gray-900">{selectedItem.creator?.nama || "-"}</p>
+                      {/* DETAILS ROW 1 */}
+                      <div className="space-y-0.5">
+                        <span className="text-xs text-slate-400">Driver / Logistik</span>
+                        <p className="font-semibold text-slate-800">{selectedDetail.personil_pengantar?.nama || "-"}</p>
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <span className="text-xs text-slate-400">Armada / Plat</span>
+                        <p className="font-semibold text-slate-800">
+                          {selectedDetail.kendaraan?.jenis_kendaraan || "-"}
+                          {selectedDetail.kendaraan?.no_polisi && <span className="text-xs font-normal text-slate-500 ml-1.5 bg-stone-100 px-2 py-0.5 rounded-md">{selectedDetail.kendaraan.no_polisi}</span>}
+                        </p>
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <span className="text-xs text-slate-400">Project / Area</span>
+                        <p className="font-semibold text-slate-800">
+                          {selectedDetail.project?.nama_project || "-"}
+                          {selectedDetail.project?.area && <span className="text-xs font-normal text-slate-500 block">Area: {selectedDetail.project.area}</span>}
+                        </p>
+                      </div>
+
+                      {/* DETAILS ROW 2 - TIMESTAMPS */}
+                      <div className="space-y-0.5 pt-2 border-t border-stone-100">
+                        <span className="text-xs text-slate-400">Tgl Disetujui</span>
+                        <p className="font-semibold text-slate-800">{formatDate(selectedDetail.tanggal_disetujui)}</p>
+                      </div>
+
+                      <div className="space-y-0.5 pt-2 border-t border-stone-100">
+                        <span className="text-xs text-slate-400">Tgl Digenerate</span>
+                        <p className="font-semibold text-slate-800">{formatDate(selectedDetail.tanggal_digenerate)}</p>
+                      </div>
+
+                      <div className="space-y-0.5 pt-2 border-t border-stone-100">
+                        <span className="text-xs text-slate-400">Tgl Diterima</span>
+                        <p className="font-semibold text-slate-800">{formatDate(selectedDetail.tanggal_diterima)}</p>
                       </div>
                     </div>
-                  <div>
-                    <p className="mb-16 font-medium text-gray-700">Driver</p>
-                    <div className="border-t border-gray-400 pt-1">
-                      <p className="font-semibold text-gray-900">
-                        {selectedItem.personil_pengantar?.nama || "-"}
-                      </p>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="mb-16 font-medium text-gray-700">PIC Pemohon (Penerima)</p>
-                    <div className="border-t border-gray-400 pt-1">
-                      <p className="font-semibold text-gray-900">-</p>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Footer dokumen */}
-                <div className="border-t border-gray-200 pt-3 flex items-center justify-between text-[10px] text-gray-400">
-                  <span>{selectedItem.nomor_surat_jalan} | {formatDate(selectedItem.created_at)}</span>
-                </div>
-              </div>
+                    {selectedDetail.catatan && (
+                      <div className="mt-4 rounded-xl bg-amber-50/70 border border-amber-200/60 p-3">
+                        <span className="text-xs font-bold text-amber-900 block mb-0.5">Catatan Pengiriman:</span>
+                        <p className="text-xs text-amber-800 leading-relaxed">{selectedDetail.catatan}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* BARANG YANG DIBAWA (TABLE CARD) */}
+                  <div className="bg-white rounded-2xl border border-stone-200/80 p-5 shadow-sm">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Barang yang Dibawa</h3>
+                      <span className="text-xs font-semibold text-slate-500 bg-stone-100 px-2.5 py-0.5 rounded-full">Total: {selectedDetail.items?.length || 0} Item</span>
+                    </div>
+
+                    <div className="overflow-hidden rounded-xl border border-stone-200/70">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-stone-50 text-slate-500 font-semibold uppercase tracking-wider border-b border-stone-200/80">
+                            <tr>
+                              <th className="px-3.5 py-2.5">Kode</th>
+                              <th className="px-3.5 py-2.5">Nama Barang</th>
+                              <th className="px-3.5 py-2.5 text-center">Satuan</th>
+                              <th className="px-3.5 py-2.5 text-center">Qty</th>
+                              <th className="px-3.5 py-2.5">Kondisi</th>
+                              <th className="px-3.5 py-2.5">Serial Number</th>
+                              <th className="px-3.5 py-2.5">Catatan</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-stone-100 text-slate-700">
+                            {selectedDetail.items && selectedDetail.items.length > 0 ? (
+                              selectedDetail.items.map((it, idx) => (
+                                <tr key={it.item_id || idx} className="hover:bg-stone-50/60 transition">
+                                  <td className="px-3.5 py-3 font-semibold text-slate-900 whitespace-nowrap">{it.barang?.kode_perangkat || "-"}</td>
+                                  <td className="px-3.5 py-3 font-medium text-slate-800">{it.barang?.nama_barang || `Item ${idx + 1}`}</td>
+                                  <td className="px-3.5 py-3 text-center text-slate-500">{it.satuan?.kode_satuan || it.barang?.satuan_default?.kode_satuan || "-"}</td>
+                                  <td className="px-3.5 py-3 text-center font-bold text-slate-900 bg-stone-50/50">{it.qty}</td>
+                                  <td className="px-3.5 py-3">{it.kondisi ? <span className="px-2 py-0.5 text-[10px] rounded-md font-medium bg-slate-100 text-slate-700 capitalize border border-slate-200">{it.kondisi}</span> : "-"}</td>
+                                  <td className="px-3.5 py-3 font-mono text-slate-600">{it.serial_number || "-"}</td>
+                                  <td className="px-3.5 py-3 text-slate-500 max-w-xs truncate">{it.catatan || "-"}</td>
+                                </tr>
+                              ))
+                            ) : (
+                              <tr>
+                                <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
+                                  Tidak ada rincian barang untuk surat jalan ini.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
-            {/* Actions */}
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2 print:hidden">
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="inline-flex items-center gap-2 rounded-lg border border-[#E8632C] bg-white px-4 py-2 text-xs font-semibold text-[#E8632C] shadow-sm transition hover:bg-[#E8632C] hover:text-white"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="6 9 6 2 18 2 18 9" />
-                  <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-                  <rect x="6" y="14" width="12" height="8" />
-                </svg>
-                Cetak / PDF
-              </button>
-              <button
-                type="button"
-                onClick={closeDetail}
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-              >
+            {/* MODAL FOOTER */}
+            <div className="px-6 py-3 border-t border-stone-200/80 bg-[#F8F6F0] flex justify-end shrink-0">
+              <button onClick={closeDetail} className="px-4 py-2 bg-white hover:bg-stone-100 border border-stone-300 text-slate-700 font-semibold text-xs rounded-xl shadow-sm transition">
                 Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showConfirmDialog && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 p-6">
-            <div className="flex items-start gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-                <AlertTriangle size={24} />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-base font-bold text-slate-900">
-                  Konfirmasi Verifikasi Surat Jalan
-                </h3>
-                <p className="mt-2 text-sm text-slate-600">
-                  Apakah Anda yakin ingin memverifikasi dan menyetujui Surat Jalan ini? Tindakan ini akan mengurangi stok gudang dan tidak dapat dibatalkan.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={closeConfirmDialog}
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={executeApprove}
-                disabled={actionLoading !== null}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
-              >
-                {actionLoading !== null ? "Memproses..." : "Ya, Verifikasi"}
               </button>
             </div>
           </div>
@@ -551,10 +472,21 @@ export default function SupervisorApprovalOutboundPage() {
 
       <style jsx global>{`
         @media print {
-          aside, header, nav { display: none !important; }
-          main { margin-left: 0 !important; margin-top: 0 !important; }
-          body { background: white !important; }
-          .print\\:hidden { display: none !important; }
+          aside,
+          header,
+          nav {
+            display: none !important;
+          }
+          main {
+            margin-left: 0 !important;
+            margin-top: 0 !important;
+          }
+          body {
+            background: white !important;
+          }
+          .print\\:hidden {
+            display: none !important;
+          }
         }
       `}</style>
     </div>

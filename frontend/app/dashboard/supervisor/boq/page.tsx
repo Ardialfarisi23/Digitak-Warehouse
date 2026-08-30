@@ -30,7 +30,7 @@ export default function SupervisorBoqPage() {
   const [itemsFromApi, setItemsFromApi] = useState<ItemOption[]>([]);
   const [projectsFromApi, setProjectsFromApi] = useState<{ id: string; label: string }[]>([]);
   const [area, setArea] = useState(areaOptions[0]);
-  const [project, setProject] = useState(projectOptions[0].id);
+  const [project, setProject] = useState("");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [kodeTiket, setKodeTiket] = useState("");
   const [rows, setRows] = useState(() => [defaultRow]);

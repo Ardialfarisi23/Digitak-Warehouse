@@ -67,7 +67,7 @@ const create = async (data, userId) => {
         kode_tiket: ticketNumber,
         project_id: projectId ? Number(projectId) : null,
         area: area || null,
-        created_by: userId,
+        created_by: Number(userId),
       },
     });
   }
@@ -78,8 +78,8 @@ const create = async (data, userId) => {
     ...boqData,
     boq_number: boqNumber,
     tiket_id: tiket.tiket_id,
-    created_by: userId,
-    updated_by: userId,
+    created_by: Number(userId),
+    updated_by: Number(userId),
     status: normalizeStatus(boqData.status),
     source: normalizeSource(boqData.source),
     external_verification_status: normalizeVerification(boqData.external_verification_status),
@@ -133,8 +133,8 @@ const create = async (data, userId) => {
 
     boqDataWithMeta.items = {
       create: items.map((item) => {
-        const barangId = item.barang_id ? Number(item.barang_id) : (barangMap.get(item.itemCode) || null);
-        const satuanId = item.satuan_id ? Number(item.satuan_id) : (satuanMap.get(item.unit) || null);
+        const barangId = item.barang_id ? Number(item.barang_id) : barangMap.get(item.itemCode) || null;
+        const satuanId = item.satuan_id ? Number(item.satuan_id) : satuanMap.get(item.unit) || null;
 
         return {
           barang_id: barangId,
@@ -196,9 +196,8 @@ const update = async (id, data, userId) => {
 
   const updateData = {
     ...boqData,
-    updated_by: userId,
+    updated_by: Number(userId),
     status: boqData.status ? normalizeStatus(boqData.status) : undefined,
-    source: boqData.source ? normalizeSource(boqData.source) : undefined,
   };
 
   if (boqData.externalVerificationStatus) {
@@ -271,8 +270,8 @@ const update = async (id, data, userId) => {
     updateData.items = {
       deleteMany: {},
       create: items.map((item) => {
-        const barangId = item.barang_id ? Number(item.barang_id) : (barangMap.get(item.itemCode) || null);
-        const satuanId = item.satuan_id ? Number(item.satuan_id) : (satuanMap.get(item.unit) || null);
+        const barangId = item.barang_id ? Number(item.barang_id) : barangMap.get(item.itemCode) || null;
+        const satuanId = item.satuan_id ? Number(item.satuan_id) : satuanMap.get(item.unit) || null;
 
         return {
           barang_id: barangId,
