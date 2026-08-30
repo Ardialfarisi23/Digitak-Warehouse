@@ -1,18 +1,4 @@
-import {
-  LayoutDashboard,
-  Database,
-  ClipboardList,
-  Truck,
-  Warehouse,
-  RefreshCw,
-  FileBarChart,
-  UserCog,
-  ClipboardCheck,
-  Home,
-  PackageCheck,
-  MapPin,
-  LucideIcon,
-} from "lucide-react";
+import { LayoutDashboard, Database, ClipboardList, Truck, Warehouse, RefreshCw, FileBarChart, UserCog, ClipboardCheck, Home, PackageCheck, MapPin, LucideIcon } from "lucide-react";
 
 export type UserRole = "admin" | "supervisor" | "staff";
 
@@ -80,11 +66,19 @@ export const navigationConfig: NavItem[] = [
     section: "operasional",
   },
   {
+    id: "boq-supervisor",
+    title: "BOQ & Tiket",
+    href: "/dashboard/supervisor/boq",
+    icon: ClipboardList,
+    roles: ["supervisor"],
+    section: "operasional",
+  },
+  {
     id: "delivery-supervisor",
     title: "Surat Jalan",
-    href: "/dashboard/supervisor/delivery", 
+    href: "/dashboard/supervisor/delivery",
     icon: Truck,
-    roles: ["supervisor"], 
+    roles: ["supervisor"],
     section: "operasional",
   },
   {

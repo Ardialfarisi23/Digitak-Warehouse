@@ -4,12 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 
-const areaOptions = [
-  "Pilih Area Operasional",
-  "Gudang Pusat Cimahi",
-  "Gudang Kedua",
-  "Site Klien - Jakarta",
-];
+const areaOptions = ["Pilih Area Operasional", "Gudang Pusat Cimahi", "Gudang Kedua", "Site Klien - Jakarta"];
 
 const projectOptions = [
   { id: "p1", label: "Project Backbone JKT" },
@@ -19,6 +14,7 @@ const projectOptions = [
 
 type ItemOption = {
   id: string;
+  code: string;
   label: string;
   satuan: string;
 };
@@ -30,7 +26,7 @@ const defaultRow = {
 };
 
 export default function SupervisorBoqPage() {
-  const { get } = useApi();
+  const { get, post, put } = useApi();
   const [itemsFromApi, setItemsFromApi] = useState<ItemOption[]>([]);
   const [projectsFromApi, setProjectsFromApi] = useState<{ id: string; label: string }[]>([]);
   const [area, setArea] = useState(areaOptions[0]);
@@ -62,13 +58,9 @@ export default function SupervisorBoqPage() {
         const mappedItems = Array.isArray(rawItems)
           ? rawItems.map((item: any) => ({
               id: String(item.barang_id ?? item.kode_perangkat ?? item.id ?? item.kode ?? item.nama_barang ?? ""),
+              code: String(item.kode_perangkat ?? item.barang_id ?? item.id ?? ""),
               label: String(item.nama_barang ?? item.kode_perangkat ?? item.id ?? "Barang"),
-              satuan:
-                typeof item.unit === "string"
-                  ? item.unit
-                  : item.satuan_default?.kode_satuan ||
-                    item.satuan_default?.kodeSatuan ||
-                    String(item.satuan_default_id ?? "Unit"),
+              satuan: typeof item.unit === "string" ? item.unit : item.satuan_default?.kode_satuan || item.satuan_default?.kodeSatuan || String(item.satuan_default_id ?? "Unit"),
             }))
           : [];
 
@@ -110,8 +102,8 @@ export default function SupervisorBoqPage() {
           : {
               ...row,
               [field]: field === "qty" ? Number(value) : value,
-            }
-      )
+            },
+      ),
     );
   };
 
@@ -153,7 +145,7 @@ export default function SupervisorBoqPage() {
       items: rows.map((r) => {
         const sel = itemsFromApi.find((it) => it.id === r.barangId);
         return {
-          itemCode: sel?.id ?? String(r.barangId ?? ""),
+          itemCode: sel?.code ?? sel?.id ?? String(r.barangId ?? ""),
           itemName: sel?.label ?? "",
           quantity: Number(r.qty || 0),
           unit: sel?.satuan ?? "Unit",
@@ -166,11 +158,7 @@ export default function SupervisorBoqPage() {
 
   const createBoq = async (payload: any) => {
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-    const resp = await fetch(`${baseUrl}/api/boqs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    const resp = await post(`${baseUrl}/api/boqs`, payload);
 
     if (!resp.ok) {
       const err = await resp.json().catch(() => null);
@@ -182,11 +170,7 @@ export default function SupervisorBoqPage() {
 
   const activateBoq = async (boqId: string | number) => {
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-    const resp = await fetch(`${baseUrl}/api/boqs/${boqId}/status`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "aktif" }),
-    });
+    const resp = await put(`${baseUrl}/api/boqs/${boqId}/status`, { status: "aktif" });
 
     if (!resp.ok) {
       const err = await resp.json().catch(() => null);
@@ -325,16 +309,10 @@ export default function SupervisorBoqPage() {
         <div className="rounded-3xl border border-slate-200/80 bg-white p-8 shadow-sm">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-orange-500">
-                Input BOQ Plan
-              </p>
-              <h1 className="mt-3 text-3xl font-semibold text-slate-900">
-                Berdasarkan Tiket Material External
-              </h1>
+              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-orange-500">Input BOQ Plan</p>
+              <h1 className="mt-3 text-3xl font-semibold text-slate-900">Berdasarkan Tiket Material External</h1>
             </div>
-            <div className="rounded-2xl bg-orange-50 px-4 py-3 text-sm text-orange-700">
-              Status: Draft
-            </div>
+            <div className="rounded-2xl bg-orange-50 px-4 py-3 text-sm text-orange-700">Status: Draft</div>
           </div>
 
           <form onSubmit={handleSaveDraft} className="mt-10 grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
@@ -343,20 +321,14 @@ export default function SupervisorBoqPage() {
                 <div className="mb-6 flex items-center justify-between gap-4">
                   <div>
                     <h2 className="text-lg font-semibold text-slate-900">Informasi Utama</h2>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Pilih area, project, dan masukkan kode tiket.
-                    </p>
+                    <p className="mt-1 text-sm text-slate-500">Pilih area, project, dan masukkan kode tiket.</p>
                   </div>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="space-y-2 text-sm text-slate-700">
                     Area
-                    <select
-                      value={area}
-                      onChange={(event) => setArea(event.target.value)}
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-orange-400"
-                    >
+                    <select value={area} onChange={(event) => setArea(event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-orange-400">
                       {areaOptions.map((option) => (
                         <option key={option} value={option}>
                           {option}
@@ -372,19 +344,17 @@ export default function SupervisorBoqPage() {
                       onChange={(event) => setProject(event.target.value)}
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-orange-400"
                     >
-                      {projectsFromApi.length > 0 ? (
-                        projectsFromApi.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.label}
-                          </option>
-                        ))
-                      ) : (
-                        projectOptions.map((projectOption) => (
-                          <option key={projectOption.id} value={projectOption.id}>
-                            {projectOption.label}
-                          </option>
-                        ))
-                      )}
+                      {projectsFromApi.length > 0
+                        ? projectsFromApi.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.label}
+                            </option>
+                          ))
+                        : projectOptions.map((projectOption) => (
+                            <option key={projectOption.id} value={projectOption.id}>
+                              {projectOption.label}
+                            </option>
+                          ))}
                     </select>
                   </label>
 
@@ -416,9 +386,7 @@ export default function SupervisorBoqPage() {
                 <div className="mb-6 flex items-center justify-between gap-4">
                   <div>
                     <h2 className="text-lg font-semibold text-slate-900">Daftar Barang</h2>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Tambah atau hapus baris produk untuk BOQ Plan.
-                    </p>
+                    <p className="mt-1 text-sm text-slate-500">Tambah atau hapus baris produk untuk BOQ Plan.</p>
                   </div>
                 </div>
 
@@ -427,10 +395,7 @@ export default function SupervisorBoqPage() {
                     const selectedItem = itemsFromApi.find((item) => item.id === row.barangId);
 
                     return (
-                      <div
-                        key={row.id}
-                        className="grid gap-3 rounded-3xl border border-slate-200/80 bg-slate-50 p-4 sm:grid-cols-[1.3fr_0.9fr_0.8fr_auto]"
-                      >
+                      <div key={row.id} className="grid gap-3 rounded-3xl border border-slate-200/80 bg-slate-50 p-4 sm:grid-cols-[1.3fr_0.9fr_0.8fr_auto]">
                         <label className="space-y-2 text-sm text-slate-700">
                           Nama Barang
                           <select
@@ -462,9 +427,7 @@ export default function SupervisorBoqPage() {
 
                         <div className="space-y-2 text-sm text-slate-700">
                           <span className="block mb-2">Satuan</span>
-                          <div className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-700">
-                            {selectedItem?.satuan ?? "Unit"}
-                          </div>
+                          <div className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-700">{selectedItem?.satuan ?? "Unit"}</div>
                         </div>
 
                         <button
@@ -491,12 +454,8 @@ export default function SupervisorBoqPage() {
               <div className="rounded-3xl border border-slate-200/80 bg-[#FEFBF8] p-6 shadow-sm">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <p className="text-sm font-semibold uppercase tracking-[0.2em] text-orange-500">
-                      Ringkasan
-                    </p>
-                    <h2 className="mt-3 text-xl font-semibold text-slate-900">
-                      Todo BOQ Plan
-                    </h2>
+                    <p className="text-sm font-semibold uppercase tracking-[0.2em] text-orange-500">Ringkasan</p>
+                    <h2 className="mt-3 text-xl font-semibold text-slate-900">Todo BOQ Plan</h2>
                   </div>
                 </div>
 

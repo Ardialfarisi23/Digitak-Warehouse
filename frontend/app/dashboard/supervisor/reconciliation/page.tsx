@@ -1,188 +1,227 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
-import {
-  Search,
-  RefreshCw,
-  FileCheck,
-  AlertTriangle,
-  CheckCircle2,
-  Eye,
-  X,
-  ShieldAlert
-} from "lucide-react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { Search, RefreshCw, FileCheck, AlertTriangle, CheckCircle2, Eye, X, ShieldAlert, Loader2 } from "lucide-react";
+import { useApi } from "@/lib/api";
 
 // ==========================================
-// 1. Tipe Data TypeScript
+// 1. Tipe Data (mengikuti bentuk asli response backend)
 // ==========================================
-export type StatusRekonsiliasi = "BERJALAN" | "PERHATIAN" | "SELESAI";
+export type StatusRekonsiliasi = "berjalan" | "perhatian" | "sesuai";
 
 export interface ItemRekonsiliasi {
   id: string;
+  projectId: string;
   project: string;
+  tiketId: string;
   kodeTiket: string;
   barang: string;
   kodeBarang: string;
   gudang: string;
   boq: number;
   additional: number;
-  onSite: number;
+  onSite: number; // = MOS (Sistem), dihitung real-time dari Surat Jalan Inbound yang sudah diterima
+  mosMitra: number; // input manual admin/supervisor, dibandingkan terhadap MOS (Sistem)
+  selisih: number; // mosMitra - onSite
   used: number;
   remains: number;
   status: StatusRekonsiliasi;
-  catatanStaf?: string;
 }
 
-// ==========================================
-// 2. Dummy Data Rekonsiliasi Supervisor
-// ==========================================
-const MOCK_REKONSILIASI: ItemRekonsiliasi[] = [
-  {
-    id: "REC-001",
-    project: "FTTH Ciamis Area Utara",
-    kodeTiket: "TKT-2026-002",
-    barang: "KABEL FO 24/2T ZTT 2024",
-    kodeBarang: "CBL-00461",
-    gudang: "Gudang Ciamis",
-    boq: 30,
-    additional: 0,
-    onSite: 0,
-    used: 100,
-    remains: -100,
-    status: "PERHATIAN",
-    catatanStaf: "Penggunaan membengkak di lapangan karena pengalihan jalur tiang listrik utama.",
-  },
-  {
-    id: "REC-002",
-    project: "FTTH Ciamis Area Utara",
-    kodeTiket: "TKT-2026-002",
-    barang: "PATCHCORD LC/UPC - SC/UPC 3 METER (Simplex)",
-    kodeBarang: "JTR-02242",
-    gudang: "Gudang Ciamis",
-    boq: 100,
-    additional: 0,
-    onSite: 0,
-    used: 0,
-    remains: 0,
-    status: "BERJALAN",
-  },
-  {
-    id: "REC-003",
-    project: "Backbone Garut Selatan",
-    kodeTiket: "TKT-2026-003",
-    barang: "PATCHCORD LC/UPC - SC/UPC 3 METER (Simplex)",
-    kodeBarang: "JTR-02242",
-    gudang: "Gudang Rancamanyar",
-    boq: 5,
-    additional: 0,
-    onSite: 0,
-    used: 0,
-    remains: 0,
-    status: "BERJALAN",
-  },
-  {
-    id: "REC-004",
-    project: "FTTH Rancamanyar Tahap 1",
-    kodeTiket: "TKT-2026-004",
-    barang: "ODP 10 PORT WITH 8PCS SC UPC ADAPTER AND OUTDOOR CONNECTOR",
-    kodeBarang: "NWK-00964",
-    gudang: "Gudang Rancamanyar",
-    boq: 25,
-    additional: 0,
-    onSite: 0,
-    used: 0,
-    remains: 0,
-    status: "BERJALAN",
-  },
-];
+const STATUS_LABEL: Record<StatusRekonsiliasi, string> = {
+  perhatian: "Perhatian",
+  berjalan: "Berjalan",
+  sesuai: "Sesuai",
+};
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+// Memetakan satu baris response API (snake_case) ke bentuk yang dipakai komponen ini.
+function mapApiRow(row: any): ItemRekonsiliasi {
+  return {
+    id: String(row.id),
+    projectId: String(row.project_id ?? ""),
+    project: row.project_nama ?? "-",
+    tiketId: String(row.tiket_id ?? ""),
+    kodeTiket: row.kode_tiket ?? "-",
+    barang: row.nama_barang ?? "-",
+    kodeBarang: row.kode_perangkat ?? "-",
+    gudang: row.gudang_nama ?? "-",
+    boq: Number(row.boq ?? 0),
+    additional: Number(row.additional ?? 0),
+    onSite: Number(row.mos_sistem ?? 0),
+    mosMitra: Number(row.mos_mitra ?? 0),
+    selisih: Number(row.selisih ?? 0),
+    used: Number(row.used ?? 0),
+    remains: Number(row.remains ?? 0),
+    status: (row.status as StatusRekonsiliasi) ?? "berjalan",
+  };
+}
 
 export default function SupervisorReconciliationPage() {
-  const [dataList, setDataList] = useState<ItemRekonsiliasi[]>(MOCK_REKONSILIASI);
+  const { get, put } = useApi();
+
+  const [dataList, setDataList] = useState<ItemRekonsiliasi[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProject, setSelectedProject] = useState("SEMUA");
-  const [selectedStatus, setSelectedStatus] = useState("SEMUA");
-  const [activeTab, setActiveTab] = useState<"SEMUA" | "PERHATIAN" | "BERJALAN">("SEMUA");
+  const [selectedStatus, setSelectedStatus] = useState<"SEMUA" | StatusRekonsiliasi>("SEMUA");
+  const [activeTab, setActiveTab] = useState<"SEMUA" | "perhatian" | "berjalan">("SEMUA");
 
-  // State Modal Detail & Approval
+  // State Modal Detail & Input MOS Mitra
   const [selectedItem, setSelectedItem] = useState<ItemRekonsiliasi | null>(null);
+  const [mosMitraInput, setMosMitraInput] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Filter Logic
+  // ==========================================
+  // Ambil data real-time dari backend
+  // ==========================================
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const params = new URLSearchParams();
+      if (searchQuery.trim()) params.set("search", searchQuery.trim());
+      if (selectedStatus !== "SEMUA") params.set("status", selectedStatus);
+
+      const response = await get(`${BASE_URL}/api/reconciliation/inventory?${params.toString()}`);
+
+      if (response.status === 403) {
+        setLoadError("Anda tidak memiliki akses ke data rekonsiliasi ini.");
+        setDataList([]);
+        return;
+      }
+
+      if (!response.ok) {
+        setLoadError("Gagal memuat data rekonsiliasi dari server.");
+        setDataList([]);
+        return;
+      }
+
+      const payload = await response.json();
+      const rows = payload?.data?.data ?? payload?.data ?? [];
+      setDataList(Array.isArray(rows) ? rows.map(mapApiRow) : []);
+    } catch (err) {
+      console.error("Gagal memuat rekonsiliasi:", err);
+      setLoadError("Terjadi kesalahan saat menghubungi server.");
+      setDataList([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [get, searchQuery, selectedStatus]);
+
+  useEffect(() => {
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Refetch otomatis saat filter search/status berubah (debounce ringan untuk search)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadData();
+    }, 350);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, selectedStatus]);
+
+  // Daftar project untuk dropdown filter, diturunkan dari data yang sudah masuk
+  const projectOptions = useMemo(() => {
+    const unique = new Map<string, string>();
+    dataList.forEach((item) => unique.set(item.project, item.project));
+    return Array.from(unique.values());
+  }, [dataList]);
+
+  // Filter Logic (project & tab difilter di client, search & status sudah difilter server-side)
   const filteredData = useMemo(() => {
     return dataList.filter((item) => {
-      const matchSearch =
-        item.project.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.kodeTiket.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.barang.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.kodeBarang.toLowerCase().includes(searchQuery.toLowerCase());
-
-      if (!matchSearch) return false;
-
       if (selectedProject !== "SEMUA" && item.project !== selectedProject) return false;
-      if (selectedStatus !== "SEMUA" && item.status !== selectedStatus) return false;
-
-      if (activeTab === "PERHATIAN") return item.status === "PERHATIAN";
-      if (activeTab === "BERJALAN") return item.status === "BERJALAN";
-
+      if (activeTab === "perhatian") return item.status === "perhatian";
+      if (activeTab === "berjalan") return item.status === "berjalan";
       return true;
     });
-  }, [dataList, searchQuery, selectedProject, selectedStatus, activeTab]);
+  }, [dataList, selectedProject, activeTab]);
 
-  // Kalkulasi KPI Dynamic
+  // Kalkulasi KPI Dynamic — dihitung ulang tiap kali dataList berubah (real-time terhadap data ter-fetch)
   const metrics = useMemo(() => {
     const boq = dataList.reduce((acc, curr) => acc + curr.boq, 0);
     const additional = dataList.reduce((acc, curr) => acc + curr.additional, 0);
     const onSite = dataList.reduce((acc, curr) => acc + curr.onSite, 0);
     const used = dataList.reduce((acc, curr) => acc + curr.used, 0);
     const remains = dataList.reduce((acc, curr) => acc + curr.remains, 0);
-    const totalAnomali = dataList.filter((item) => item.status === "PERHATIAN").length;
+    const totalAnomali = dataList.filter((item) => item.status === "perhatian").length;
 
     return { boq, additional, onSite, used, remains, totalAnomali };
   }, [dataList]);
 
-  // Handler Approval Adjustment oleh Supervisor
-  const handleApproveAdjustment = (id: string) => {
-    if (!confirm("Apakah Anda yakin ingin menyetujui penyesuaian BOQ (Additional) untuk item ini?")) return;
+  // Buka modal detail, isi input MOS Mitra dengan nilai saat ini
+  const openDetail = (item: ItemRekonsiliasi) => {
+    setSelectedItem(item);
+    setMosMitraInput(String(item.mosMitra ?? 0));
+    setSaveError(null);
+  };
 
-    setDataList((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          const diff = Math.abs(item.remains);
-          return {
-            ...item,
-            additional: item.additional + diff,
-            remains: 0,
-            status: "BERJALAN",
-          };
-        }
-        return item;
-      })
-    );
+  // Handler input MOS Laporan Mitra oleh Admin/Supervisor
+  const handleSaveMosMitra = async () => {
+    if (!selectedItem) return;
 
-    setSelectedItem(null);
-    alert("Penyesuaian BOQ berhasil disetujui!");
+    const parsed = Number(mosMitraInput);
+    if (Number.isNaN(parsed) || parsed < 0) {
+      setSaveError("Masukkan angka yang valid (tidak boleh negatif).");
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const response = await put(`${BASE_URL}/api/reconciliation/tiket/${selectedItem.tiketId}/mos-mitra`, { mos: parsed });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        setSaveError(body?.message || "Gagal menyimpan MOS Laporan Mitra.");
+        return;
+      }
+
+      // Update semua baris dengan tiket_id yang sama (satu tiket bisa punya beberapa baris barang)
+      setDataList((prev) =>
+        prev.map((item) => {
+          if (item.tiketId !== selectedItem.tiketId) return item;
+          const selisih = parsed - item.onSite;
+          return { ...item, mosMitra: parsed, selisih };
+        }),
+      );
+
+      setSelectedItem((prev) => (prev ? { ...prev, mosMitra: parsed, selisih: parsed - prev.onSite } : prev));
+    } catch (err) {
+      console.error("Gagal menyimpan MOS Mitra:", err);
+      setSaveError("Terjadi kesalahan saat menghubungi server.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="flex-1 p-4 md:p-8 bg-[#F8F6F0] min-h-screen text-slate-800 w-full overflow-x-hidden">
-      
       {/* 1. HEADER TITLE */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Rekonsiliasi Inventory (Supervisor)
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Pantau kesesuaian BOQ, evaluasi selisih material, dan setujui penyesuaian stok project.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Rekonsiliasi Inventory (Supervisor)</h1>
+          <p className="text-sm text-slate-500 mt-1">Pantau kesesuaian BOQ, realisasi hardware real-time, dan input MOS Laporan Mitra.</p>
         </div>
 
         <button
-          onClick={() => alert("Refreshed!")}
-          className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-2xl border border-slate-200 text-sm font-semibold shadow-sm transition w-fit cursor-pointer"
+          onClick={loadData}
+          disabled={isLoading}
+          className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-2xl border border-slate-200 text-sm font-semibold shadow-sm transition w-fit cursor-pointer disabled:opacity-60"
         >
-          <RefreshCw size={15} /> Refresh
+          {isLoading ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+          Refresh
         </button>
       </div>
+
+      {loadError && <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 mb-6 text-sm text-rose-700 font-medium">{loadError}</div>}
 
       {/* 2. FILTER BAR */}
       <div className="bg-white p-4 rounded-3xl border border-stone-200/80 shadow-sm mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
@@ -198,25 +237,24 @@ export default function SupervisorReconciliationPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          <select
-            value={selectedProject}
-            onChange={(e) => setSelectedProject(e.target.value)}
-            className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold text-slate-700 focus:outline-none"
-          >
+          <select value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)} className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold text-slate-700 focus:outline-none">
             <option value="SEMUA">Semua Project</option>
-            <option value="FTTH Ciamis Area Utara">FTTH Ciamis Area Utara</option>
-            <option value="Backbone Garut Selatan">Backbone Garut Selatan</option>
-            <option value="FTTH Rancamanyar Tahap 1">FTTH Rancamanyar Tahap 1</option>
+            {projectOptions.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
           </select>
 
           <select
             value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
+            onChange={(e) => setSelectedStatus(e.target.value as typeof selectedStatus)}
             className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold text-slate-700 focus:outline-none"
           >
             <option value="SEMUA">Semua Status</option>
-            <option value="PERHATIAN">Perhatian (Selisih)</option>
-            <option value="BERJALAN">Berjalan (Normal)</option>
+            <option value="perhatian">Perhatian (Selisih)</option>
+            <option value="berjalan">Berjalan (Normal)</option>
+            <option value="sesuai">Sesuai (Terpenuhi)</option>
           </select>
         </div>
       </div>
@@ -232,27 +270,25 @@ export default function SupervisorReconciliationPage() {
         <div className="bg-white p-4.5 rounded-3xl border border-stone-200/80 shadow-sm">
           <span className="text-xs text-slate-400 font-medium">Additional</span>
           <p className="text-2xl font-black text-slate-900 mt-1">{metrics.additional}</p>
-          <span className="text-[11px] text-slate-400 block mt-0.5">Tambahan di luar BOQ</span>
+          <span className="text-[11px] text-slate-400 block mt-0.5">Kelebihan inbound di luar BOQ</span>
         </div>
 
         <div className="bg-white p-4.5 rounded-3xl border border-stone-200/80 shadow-sm">
-          <span className="text-xs text-slate-400 font-medium">Hardware on Site</span>
+          <span className="text-xs text-slate-400 font-medium">MOS (Sistem)</span>
           <p className="text-2xl font-black text-slate-900 mt-1">{metrics.onSite}</p>
-          <span className="text-[11px] text-slate-400 block mt-0.5">Sudah diterima</span>
+          <span className="text-[11px] text-slate-400 block mt-0.5">Real-time dari Surat Jalan diterima</span>
         </div>
 
         <div className="bg-white p-4.5 rounded-3xl border border-stone-200/80 shadow-sm">
           <span className="text-xs text-slate-400 font-medium">Used</span>
           <p className="text-2xl font-black text-slate-900 mt-1">{metrics.used}</p>
-          <span className="text-[11px] text-slate-400 block mt-0.5">Sudah digunakan</span>
+          <span className="text-[11px] text-slate-400 block mt-0.5">Real-time dari Surat Jalan outbound</span>
         </div>
 
         <div className={`p-4.5 rounded-3xl border shadow-sm ${metrics.remains < 0 ? "bg-rose-50/70 border-rose-200 text-rose-900" : "bg-white border-stone-200/80 text-slate-900"}`}>
           <span className="text-xs font-medium opacity-80">Remains</span>
-          <p className={`text-2xl font-black mt-1 ${metrics.remains < 0 ? "text-rose-600" : "text-slate-900"}`}>
-            {metrics.remains}
-          </p>
-          <span className="text-[11px] opacity-70 block mt-0.5">Sisa perangkat</span>
+          <p className={`text-2xl font-black mt-1 ${metrics.remains < 0 ? "text-rose-600" : "text-slate-900"}`}>{metrics.remains}</p>
+          <span className="text-[11px] opacity-70 block mt-0.5">MOS Sistem − (BOQ + Additional)</span>
         </div>
       </div>
 
@@ -260,8 +296,9 @@ export default function SupervisorReconciliationPage() {
       <div className="bg-blue-50/80 border border-blue-200/80 rounded-2xl p-4 mb-6 flex items-start gap-3">
         <ShieldAlert className="text-blue-600 shrink-0 mt-0.5" size={18} />
         <div className="text-xs text-blue-900 leading-relaxed">
-          <span className="font-bold">Perhitungan Rekonsiliasi Supervisor:</span> Item berstatus{" "}
-          <span className="font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Perhatian</span> memerlukan tindakan verifikasi dan approval *Additional BOQ* agar stok fisik terbukti valid secara sistem.
+          <span className="font-bold">Perhitungan Rekonsiliasi:</span> kolom BOQ, Additional, MOS (Sistem), Used, dan Remains dihitung otomatis secara real-time dari data Surat Jalan yang sudah berstatus Disetujui/Diterima. Kolom{" "}
+          <span className="font-bold">MOS Laporan Mitra</span> dan <span className="font-bold">Selisih</span> perlu diisi manual oleh Admin/Supervisor berdasarkan laporan lapangan dari mitra pelaksana, lalu Selisih akan otomatis terhitung
+          terhadap MOS (Sistem).
         </div>
       </div>
 
@@ -271,25 +308,19 @@ export default function SupervisorReconciliationPage() {
         <div className="p-5 border-b border-stone-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-slate-900">Daftar Rekonsiliasi</h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Rekonsiliasi BOQ dan realisasi hardware per project/tiket.
-            </p>
+            <p className="text-xs text-slate-400 mt-0.5">Rekonsiliasi BOQ dan realisasi hardware per project/tiket.</p>
           </div>
 
           <div className="flex items-center gap-1.5 bg-stone-100 p-1 rounded-xl w-fit">
             <button
               onClick={() => setActiveTab("SEMUA")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                activeTab === "SEMUA" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${activeTab === "SEMUA" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
             >
               Semua ({dataList.length})
             </button>
             <button
-              onClick={() => setActiveTab("PERHATIAN")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 ${
-                activeTab === "PERHATIAN" ? "bg-amber-500 text-white shadow-sm" : "text-amber-700 hover:bg-amber-50"
-              }`}
+              onClick={() => setActiveTab("perhatian")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 ${activeTab === "perhatian" ? "bg-amber-500 text-white shadow-sm" : "text-amber-700 hover:bg-amber-50"}`}
             >
               <AlertTriangle size={12} /> Perhatian ({metrics.totalAnomali})
             </button>
@@ -298,93 +329,96 @@ export default function SupervisorReconciliationPage() {
 
         {/* Table Content */}
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse table-fixed min-w-[900px]">
+          <table className="w-full text-left border-collapse table-fixed min-w-[1000px]">
             <thead>
               <tr className="border-b border-stone-100 bg-stone-50/50 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                <th className="py-3.5 px-4 w-[20%]">Project</th>
-                <th className="py-3.5 px-3 w-[12%]">Kode Tiket</th>
-                <th className="py-3.5 px-4 w-[24%]">Barang</th>
-                <th className="py-3.5 px-2 text-center w-[6%]">BOQ</th>
-                <th className="py-3.5 px-2 text-center w-[7%]">Additional</th>
-                <th className="py-3.5 px-2 text-center w-[7%]">On Site</th>
-                <th className="py-3.5 px-2 text-center w-[6%]">Used</th>
-                <th className="py-3.5 px-2 text-center w-[7%]">Remains</th>
-                <th className="py-3.5 px-3 text-center w-[11%]">Status</th>
-                <th className="py-3.5 px-3 text-center w-[8%]">Aksi</th>
+                <th className="py-3.5 px-4 w-[16%]">Project</th>
+                <th className="py-3.5 px-3 w-[10%]">Kode Tiket</th>
+                <th className="py-3.5 px-4 w-[19%]">Barang</th>
+                <th className="py-3.5 px-2 text-center w-[5%]">BOQ</th>
+                <th className="py-3.5 px-2 text-center w-[6%]">Add.</th>
+                <th className="py-3.5 px-2 text-center w-[7%]">MOS Sistem</th>
+                <th className="py-3.5 px-2 text-center w-[7%]">MOS Mitra</th>
+                <th className="py-3.5 px-2 text-center w-[6%]">Selisih</th>
+                <th className="py-3.5 px-2 text-center w-[5%]">Used</th>
+                <th className="py-3.5 px-2 text-center w-[6%]">Remains</th>
+                <th className="py-3.5 px-3 text-center w-[9%]">Status</th>
+                <th className="py-3.5 px-3 text-center w-[6%]">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100 text-xs md:text-sm text-slate-700">
-              {filteredData.length > 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={12} className="py-12 text-center text-slate-400 text-sm">
+                    <Loader2 className="animate-spin inline-block mr-2" size={16} />
+                    Memuat data rekonsiliasi...
+                  </td>
+                </tr>
+              ) : filteredData.length > 0 ? (
                 filteredData.map((item) => (
                   <tr key={item.id} className="hover:bg-stone-50/60 transition">
-                    
                     {/* Project */}
-                    <td className="py-4 px-4 font-semibold text-slate-900 break-words">
-                      {item.project}
-                    </td>
+                    <td className="py-4 px-4 font-semibold text-slate-900 break-words">{item.project}</td>
 
                     {/* Kode Tiket */}
                     <td className="py-4 px-3 font-mono text-xs text-slate-600">
-                      <span className="bg-slate-100 px-2 py-1 rounded-md border border-slate-200">
-                        {item.kodeTiket}
-                      </span>
+                      <span className="bg-slate-100 px-2 py-1 rounded-md border border-slate-200">{item.kodeTiket}</span>
                     </td>
 
                     {/* Barang */}
                     <td className="py-4 px-4 break-words">
                       <span className="font-bold text-slate-800 block leading-tight">{item.barang}</span>
-                      <span className="text-xs text-slate-400 font-mono">{item.kodeBarang} • {item.gudang}</span>
+                      <span className="text-xs text-slate-400 font-mono">
+                        {item.kodeBarang} • {item.gudang}
+                      </span>
                     </td>
 
                     {/* Numbers */}
                     <td className="py-4 px-2 text-center font-medium text-slate-800">{item.boq}</td>
                     <td className="py-4 px-2 text-center font-medium text-slate-800">{item.additional}</td>
                     <td className="py-4 px-2 text-center font-semibold text-blue-600">{item.onSite}</td>
+                    <td className="py-4 px-2 text-center font-medium text-slate-800">{item.mosMitra}</td>
+
+                    {/* Selisih */}
+                    <td className="py-4 px-2 text-center font-bold">
+                      {item.selisih !== 0 ? <span className={item.selisih < 0 ? "text-rose-600" : "text-amber-600"}>{item.selisih > 0 ? `+${item.selisih}` : item.selisih}</span> : <span className="text-slate-400">0</span>}
+                    </td>
+
                     <td className="py-4 px-2 text-center font-medium text-slate-800">{item.used}</td>
 
                     {/* Remains */}
                     <td className="py-4 px-2 text-center font-bold">
-                      {item.remains < 0 ? (
-                        <span className="text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100">
-                          {item.remains}
-                        </span>
-                      ) : (
-                        <span className="text-emerald-600">{item.remains}</span>
-                      )}
+                      {item.remains < 0 ? <span className="text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100">{item.remains}</span> : <span className="text-emerald-600">{item.remains}</span>}
                     </td>
 
                     {/* Status Badge */}
                     <td className="py-4 px-3 text-center">
-                      {item.status === "PERHATIAN" ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100/80 px-2.5 py-1 rounded-full">
-                          Perhatian
-                        </span>
+                      {item.status === "perhatian" ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100/80 px-2.5 py-1 rounded-full">Perhatian</span>
+                      ) : item.status === "sesuai" ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">Sesuai</span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 bg-sky-50 px-2.5 py-1 rounded-full">
-                          Berjalan
-                        </span>
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 bg-sky-50 px-2.5 py-1 rounded-full">Berjalan</span>
                       )}
                     </td>
 
                     {/* Aksi Button Supervisor */}
                     <td className="py-4 px-3 text-center">
                       <button
-                        onClick={() => setSelectedItem(item)}
+                        onClick={() => openDetail(item)}
                         className={`inline-flex items-center justify-center p-2 rounded-xl transition shadow-sm cursor-pointer ${
-                          item.status === "PERHATIAN"
-                            ? "bg-amber-500 hover:bg-amber-600 text-white"
-                            : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                          item.status === "perhatian" ? "bg-amber-500 hover:bg-amber-600 text-white" : "bg-slate-100 hover:bg-slate-200 text-slate-700"
                         }`}
-                        title={item.status === "PERHATIAN" ? "Tinjau & Disposisi Selisih" : "Lihat Detail"}
+                        title={item.status === "perhatian" ? "Tinjau & Input MOS Mitra" : "Lihat Detail"}
                       >
-                        {item.status === "PERHATIAN" ? <FileCheck size={16} /> : <Eye size={16} />}
+                        {item.status === "perhatian" ? <FileCheck size={16} /> : <Eye size={16} />}
                       </button>
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-400 text-sm">
+                  <td colSpan={12} className="py-12 text-center text-slate-400 text-sm">
                     Tidak ada data rekonsiliasi yang sesuai.
                   </td>
                 </tr>
@@ -394,29 +428,25 @@ export default function SupervisorReconciliationPage() {
         </div>
       </div>
 
-      {/* 6. MODAL APPROVAL SUPERVISOR */}
+      {/* 6. MODAL DETAIL & INPUT MOS MITRA */}
       {selectedItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="relative bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-stone-200 my-8">
-            
             {/* Header Modal */}
             <div className="flex items-center justify-between pb-4 border-b border-stone-100">
               <div className="flex items-center gap-2.5">
-                <div className={`p-2 rounded-xl ${selectedItem.status === "PERHATIAN" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
+                <div className={`p-2 rounded-xl ${selectedItem.status === "perhatian" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
                   <ShieldAlert size={20} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">
-                    {selectedItem.status === "PERHATIAN" ? "Tinjau Selisih BOQ" : "Detail Rekonsiliasi"}
-                  </h3>
-                  <p className="text-xs text-slate-400">{selectedItem.kodeTiket} • {selectedItem.project}</p>
+                  <h3 className="text-lg font-bold text-slate-900">Detail & Input MOS Laporan Mitra</h3>
+                  <p className="text-xs text-slate-400">
+                    {selectedItem.kodeTiket} • {selectedItem.project}
+                  </p>
                 </div>
               </div>
 
-              <button
-                onClick={() => setSelectedItem(null)}
-                className="p-2 rounded-full hover:bg-slate-100 text-slate-400 transition cursor-pointer"
-              >
+              <button onClick={() => setSelectedItem(null)} className="p-2 rounded-full hover:bg-slate-100 text-slate-400 transition cursor-pointer">
                 <X size={18} />
               </button>
             </div>
@@ -426,61 +456,73 @@ export default function SupervisorReconciliationPage() {
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
                 <span className="text-xs text-slate-400 uppercase font-semibold">Perangkat / Material</span>
                 <p className="text-base font-bold text-slate-900 mt-0.5">{selectedItem.barang}</p>
-                <p className="text-xs text-slate-500 font-mono">{selectedItem.kodeBarang} ({selectedItem.gudang})</p>
+                <p className="text-xs text-slate-500 font-mono">
+                  {selectedItem.kodeBarang} ({selectedItem.gudang})
+                </p>
               </div>
 
-              {/* Rincian Angka */}
+              {/* Rincian Angka Real-Time (read only) */}
               <div className="grid grid-cols-4 gap-2 text-center">
                 <div className="bg-stone-50 p-3 rounded-xl border border-stone-200">
-                  <span className="text-[11px] text-slate-400 block">BOQ Awal</span>
+                  <span className="text-[11px] text-slate-400 block">BOQ</span>
                   <span className="font-bold text-slate-800 text-sm">{selectedItem.boq}</span>
-                </div>
-                <div className="bg-stone-50 p-3 rounded-xl border border-stone-200">
-                  <span className="text-[11px] text-slate-400 block">Terpakai</span>
-                  <span className="font-bold text-slate-800 text-sm">{selectedItem.used}</span>
                 </div>
                 <div className="bg-stone-50 p-3 rounded-xl border border-stone-200">
                   <span className="text-[11px] text-slate-400 block">Additional</span>
                   <span className="font-bold text-slate-800 text-sm">{selectedItem.additional}</span>
                 </div>
-                <div className="bg-rose-50 p-3 rounded-xl border border-rose-200">
-                  <span className="text-[11px] text-rose-600 block font-semibold">Remains</span>
-                  <span className="font-black text-rose-600 text-sm">{selectedItem.remains}</span>
+                <div className="bg-stone-50 p-3 rounded-xl border border-stone-200">
+                  <span className="text-[11px] text-slate-400 block">MOS Sistem</span>
+                  <span className="font-bold text-slate-800 text-sm">{selectedItem.onSite}</span>
+                </div>
+                <div className={`p-3 rounded-xl border ${selectedItem.remains < 0 ? "bg-rose-50 border-rose-200" : "bg-stone-50 border-stone-200"}`}>
+                  <span className={`text-[11px] block font-semibold ${selectedItem.remains < 0 ? "text-rose-600" : "text-slate-400"}`}>Remains</span>
+                  <span className={`font-black text-sm ${selectedItem.remains < 0 ? "text-rose-600" : "text-slate-800"}`}>{selectedItem.remains}</span>
                 </div>
               </div>
 
-              {/* Catatan Lapangan Staf */}
-              {selectedItem.catatanStaf && (
-                <div className="bg-amber-50/70 border border-amber-200 p-4 rounded-2xl">
-                  <span className="text-xs font-bold text-amber-900 block mb-1">Catatan Staf Lapangan:</span>
-                  <p className="text-xs text-amber-800 leading-relaxed">{selectedItem.catatanStaf}</p>
+              <p className="text-[11px] text-slate-400 leading-relaxed">Empat angka di atas dihitung otomatis secara real-time dari data Surat Jalan sistem dan tidak bisa diedit manual di sini.</p>
+
+              {/* Input MOS Laporan Mitra (editable oleh Admin/Supervisor) */}
+              <div className="bg-blue-50/60 border border-blue-200 p-4 rounded-2xl space-y-2">
+                <label className="text-xs font-bold text-blue-900 block">MOS Laporan Mitra (input manual)</label>
+                <p className="text-[11px] text-blue-800 leading-relaxed mb-2">Isi berdasarkan laporan fisik dari mitra pelaksana di lapangan. Selisih terhadap MOS Sistem akan otomatis terhitung setelah disimpan.</p>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    min={0}
+                    value={mosMitraInput}
+                    onChange={(e) => setMosMitraInput(e.target.value)}
+                    className="w-32 px-3 py-2 rounded-xl border border-blue-300 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                  <button
+                    onClick={handleSaveMosMitra}
+                    disabled={isSaving}
+                    className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md transition cursor-pointer disabled:opacity-60"
+                  >
+                    {isSaving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                    Simpan
+                  </button>
+                  <span className="text-xs text-slate-500">
+                    Selisih saat ini:{" "}
+                    <span className={`font-bold ${selectedItem.selisih < 0 ? "text-rose-600" : selectedItem.selisih > 0 ? "text-amber-600" : "text-slate-600"}`}>
+                      {selectedItem.selisih > 0 ? `+${selectedItem.selisih}` : selectedItem.selisih}
+                    </span>
+                  </span>
                 </div>
-              )}
+                {saveError && <p className="text-xs text-rose-600 font-semibold">{saveError}</p>}
+              </div>
             </div>
 
             {/* Action Buttons */}
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-100">
-              <button
-                onClick={() => setSelectedItem(null)}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-50 transition cursor-pointer"
-              >
+              <button onClick={() => setSelectedItem(null)} className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-50 transition cursor-pointer">
                 Tutup
               </button>
-
-              {selectedItem.status === "PERHATIAN" && (
-                <button
-                  onClick={() => handleApproveAdjustment(selectedItem.id)}
-                  className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-md transition cursor-pointer"
-                >
-                  <CheckCircle2 size={16} /> Disetujui (Adjustment BOQ)
-                </button>
-              )}
             </div>
-
           </div>
         </div>
       )}
-
     </div>
   );
 }
