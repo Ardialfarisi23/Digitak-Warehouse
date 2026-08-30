@@ -484,7 +484,7 @@ export default function SupervisorDeliveryPage() {
           body {
             background: white !important;
           }
-          .print\\:hidden {
+          .print\:hidden {
             display: none !important;
           }
         }
