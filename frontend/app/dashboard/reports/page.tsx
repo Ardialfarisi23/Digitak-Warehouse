@@ -30,9 +30,13 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 const statusColor = {
   draft_diajukan: { fg: "#6B7280", bg: "#F3F4F6" },
+  menunggu_verifikasi: { fg: "#92400E", bg: "#FEF3C7" },
+  ready_putaway: { fg: "#1E40AF", bg: "#DBEAFE" },
   disetujui: { fg: "#1E7A4C", bg: "#E4F5EC" },
   digenerate: { fg: "#6B7280", bg: "#F3F4F6" },
   diterima_didistribusikan: { fg: "#2E9E6D", bg: "#E4F5EC" },
+  sedang_dikirim: { fg: "#92400E", bg: "#FEF3C7" },
+  ditolak: { fg: "#991B1B", bg: "#FEE2E2" },
 };
 
 type BadgeVariant = "green" | "blue" | "red" | "purple" | "orange" | "gray" | "outline-green" | "outline-blue" | "outline-red" | "outline-purple" | "outline-orange" | "outline-gray";
@@ -528,7 +532,7 @@ function TabRiwayatStok({ get }) {
   }, []);
 
   const jenisList = ["inbound", "outbound"];
-  const statusList = ["draft_diajukan", "disetujui", "digenerate", "diterima_didistribusikan"];
+  const statusList = ["draft_diajukan", "menunggu_verifikasi", "ready_putaway", "disetujui", "digenerate", "diterima_didistribusikan", "sedang_dikirim", "ditolak"];
 
   // Semua dropdown filter diisi dari master data supaya value-nya berupa ID
   // numerik (backend memfilter pakai ID, bukan nama). Limit dikirim eksplisit
@@ -689,9 +693,13 @@ function TabRiwayatStok({ get }) {
 
   const statusLabel = {
     draft_diajukan: "Draft",
+    menunggu_verifikasi: "Menunggu Verifikasi",
+    ready_putaway: "Siap Putaway",
     disetujui: "Disetujui",
     digenerate: "Digenerate",
     diterima_didistribusikan: "Diterima/Didistribusikan",
+    sedang_dikirim: "Sedang Dikirim",
+    ditolak: "Ditolak",
   };
 
   return (

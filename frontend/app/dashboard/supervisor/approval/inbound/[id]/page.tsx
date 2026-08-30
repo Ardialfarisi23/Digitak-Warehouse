@@ -4,11 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
-<<<<<<< Updated upstream
 import { CheckCircle2 } from "lucide-react";
-=======
-import { Printer, ArrowLeft } from "lucide-react";
->>>>>>> Stashed changes
 
 const STATUS_BADGES: Record<string, string> = {
   draft_diajukan: "bg-slate-100 text-slate-700",
@@ -221,7 +217,7 @@ export default function SupervisorApprovalInboundDetailPage() {
                   {item.barang?.kode_perangkat || item.kode_perangkat || "-"}
                 </td>
                 <td className="border border-gray-200 px-3 py-2.5">
-                  {item.barang?.nama_barang || item.nama barang || "-"}
+                  {item.barang?.nama_barang || item.nama_barang || "-"}
                 </td>
                 <td className="border border-gray-200 px-3 py-2.5 text-center font-semibold">{item.qty}</td>
                 <td className="border border-gray-200 px-3 py-2.5 text-center capitalize">{item.kondisi || "-"}</td>
@@ -291,7 +287,6 @@ export default function SupervisorApprovalInboundDetailPage() {
         </div>
       </div>
 
-<<<<<<< Updated upstream
       {/* Pop-up Modal Sukses Custom */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm animate-in fade-in duration-200">
@@ -316,16 +311,6 @@ export default function SupervisorApprovalInboundDetailPage() {
           </div>
         </div>
       )}
-=======
-      <style jsx global>{`
-        @media print {
-          aside, header, nav { display: none !important; }
-          main { margin-left: 0 !important; margin-top: 0 !important; }
-          body { background: white !important; }
-          .print\\:hidden { display: none !important; }
-        }
-      `}</style>
->>>>>>> Stashed changes
     </div>
   );
 }
