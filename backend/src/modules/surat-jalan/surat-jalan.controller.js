@@ -30,7 +30,7 @@ const receiveInbound = async (req, res, next) => {
 
 const findOutboundQueue = async (req, res, next) => {
   try {
-    const result = await suratJalanService.findOutboundQueue();
+    const result = await suratJalanService.findOutboundQueue(req.query);
     return response.success(res, "Daftar pengajuan outbound berhasil diambil.", result);
   } catch (err) {
     next(err);
@@ -39,7 +39,7 @@ const findOutboundQueue = async (req, res, next) => {
 
 const findInboundList = async (req, res, next) => {
   try {
-    const result = await suratJalanService.findInboundList();
+    const result = await suratJalanService.findInboundList(req.query);
     return response.success(res, "Daftar inbound yang menunggu approval berhasil diambil.", result);
   } catch (err) {
     next(err);
@@ -157,6 +157,33 @@ const retrieve = async (req, res, next) => {
   }
 };
 
+const updateDeliveryStatus = async (req, res, next) => {
+  try {
+    const result = await suratJalanService.updateDeliveryStatus(req.params.id, req.body, req.user.id);
+    return response.success(res, "Status distribusi berhasil diperbarui.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const addItemFoto = async (req, res, next) => {
+  try {
+    const result = await suratJalanService.addItemFoto(req.params.id, req.params.itemId, req.body, req.user.id);
+    return response.success(res, "Foto berhasil diunggah.", result, 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const deleteItemFoto = async (req, res, next) => {
+  try {
+    const result = await suratJalanService.deleteItemFoto(req.params.id, req.params.itemId, req.params.fotoId, req.user.id);
+    return response.success(res, "Foto berhasil dihapus.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   create,
   createStaffInbound,
@@ -174,4 +201,7 @@ module.exports = {
   rejectOutbound,
   putaway,
   retrieve,
+  updateDeliveryStatus,
+  addItemFoto,
+  deleteItemFoto,
 };

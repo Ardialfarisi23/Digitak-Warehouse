@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { ClipboardList, ChevronDown, Loader2, AlertCircle, Truck, User, Warehouse } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
-import { addInboundSuratJalan, generateNomorInbound, getAllInbound } from "@/lib/staff/inbound-store";
 
 // ---------------------------------------------------------------------------
 // Project, Gudang, Kendaraan, Personil semuanya diambil dari master data
@@ -23,6 +22,8 @@ type ItemBarang = {
   kode_perangkat?: string;
   nama_barang?: string;
   unit?: string;
+  satuan_default_id?: string | number;
+  satuan_default?: { kode_satuan?: string };
 };
 
 type Gudang = {
@@ -50,7 +51,7 @@ type Vehicle = {
 
 export default function InputSuratJalanInboundPage() {
   const router = useRouter();
-  const { get } = useApi();
+  const { get, post } = useApi();
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [items, setItems] = useState<ItemBarang[]>([]);
@@ -68,6 +69,7 @@ export default function InputSuratJalanInboundPage() {
   const [selectedPicId, setSelectedPicId] = useState("");
   const [qtyByItem, setQtyByItem] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -149,34 +151,48 @@ export default function InputSuratJalanInboundPage() {
   async function handleSubmit() {
     if (!canSubmit || !selectedProject || !selectedDriver || !selectedPic) return;
     setSubmitting(true);
+    setFormError(null);
     try {
-      // TODO: ganti jadi POST /api/inbound begitu backend Inbound tersedia.
-      const existing = getAllInbound();
-      const created = addInboundSuratJalan({
-        nomor: generateNomorInbound(existing),
-        namaProject: selectedProject.nama_project,
-        asalGudang: asalGudang.trim(),
-        tujuanGudang: selectedGudangTujuan,
-        kendaraan: selectedVehicle ? `${selectedVehicle.jenis_kendaraan}${selectedVehicle.merk ? " " + selectedVehicle.merk : ""}` : "-",
-        noPolisi: selectedVehicle?.no_polisi || "-",
-        namaDriver: selectedDriver.nama,
-        namaPicPemohon: selectedPic.nama,
-        tanggal: new Date().toLocaleDateString("id-ID", {
-          day: "2-digit",
-          month: "long",
-          year: "numeric",
-        }),
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const payload = {
+        tipe: "inbound",
+        nomor_surat_jalan: "",
+        gudang_tujuan_id: selectedGudangTujuan ? String(selectedGudangTujuan) : null,
+        tanggal: new Date().toISOString().split("T")[0],
+        project_id: selectedProjectId ? String(selectedProjectId) : null,
+        pengirim_or_vendor: asalGudang.trim() || null,
+        kendaraan_id: selectedVehicleId || null,
+        personil_pengantar_id: selectedDriverId,
+        pic_pemohon_nama: selectedPic.nama,
+        nomor_tiket: null,
+        notes: null,
+        kategori_approval: "manual_override",
+        surat_jalan_url: null,
         items: selectedItems.map((i) => ({
-          kodeBarang: i.kode_perangkat || String(i.key),
-          namaBarang: i.nama_barang || "-",
-          qtyDiminta: i.qty,
-          qtyDiterima: 0,
-          kondisi: "",
-          serialNumbers: [],
+          barang_id: String(i.barang_id || i.id),
+          qty: i.qty,
+          satuan_id: String(i.satuan_default_id || i.unit || 1),
+          kondisi: "baik",
+          is_kelebihan: false,
+          catatan: null,
         })),
-        status: "BELUM_DIPROSES",
-      });
-      router.push(`/staff/inbound/${created.id}`);
+      };
+
+      const response = await post(`${baseUrl}/api/surat-jalan/inbound/staff`, payload);
+      if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        throw new Error(err?.message || "Gagal membuat pengajuan inbound.");
+      }
+
+      const result = await response.json();
+      const suratJalanId = result?.data?.surat_jalan_id || result?.data?.id;
+      if (!suratJalanId) {
+        throw new Error("Respons API tidak mengembalikan ID Surat Jalan.");
+      }
+
+      router.push(`/staff/inbound/${suratJalanId}`);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Terjadi kesalahan saat membuat pengajuan inbound.");
     } finally {
       setSubmitting(false);
     }
@@ -300,7 +316,7 @@ export default function InputSuratJalanInboundPage() {
                       Pilih gudang tujuan...
                     </option>
                     {gudangList.map((g) => (
-                      <option key={g.gudang_id || g.id} value={g.nama_gudang}>
+                      <option key={g.gudang_id || g.id} value={String(g.gudang_id || g.id)}>
                         {g.nama_gudang} {g.tipe ? `(${g.tipe})` : ""}
                       </option>
                     ))}
@@ -405,6 +421,13 @@ export default function InputSuratJalanInboundPage() {
               </span>
             </div>
           </div>
+
+          {formError && (
+            <div className="flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">
+              <AlertCircle size={14} className="mt-0.5 shrink-0" />
+              {formError}
+            </div>
+          )}
 
           <Button disabled={!canSubmit || submitting} onClick={handleSubmit} className="h-auto rounded-xl bg-[#E8632C] py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40">
             {submitting ? "Menyimpan..." : "Simpan Surat Jalan Inbound"}

@@ -8,7 +8,38 @@ import {
   Image,
   StyleSheet,
 } from "@react-pdf/renderer";
-import type { SuratJalan } from "./surat-jalan-store";
+
+export type ItemCategory = "KRITIS" | "NORMAL";
+
+export type SuratJalanItem = {
+  kodeBarang: string;
+  namaBarang: string;
+  qty: number;
+  uom: string;
+  keterangan?: string;
+  kategori: ItemCategory;
+};
+
+export type SuratJalanStatus =
+  | "MENUNGGU_APPROVAL"
+  | "DISETUJUI"
+  | "AUTO_APPROVE"
+  | "SIAP_KIRIM"
+  | "TERKIRIM";
+
+export type SuratJalan = {
+  id: string;
+  nomor: string;
+  tanggal: string;
+  namaPicPemohon: string;
+  kendaraan: string;
+  noPolisi: string;
+  namaDriver: string;
+  tujuan: string;
+  projectName?: string;
+  items: SuratJalanItem[];
+  status: SuratJalanStatus;
+};
 
 const styles = StyleSheet.create({
   page: { padding: 40, fontSize: 10, fontFamily: "Helvetica" },

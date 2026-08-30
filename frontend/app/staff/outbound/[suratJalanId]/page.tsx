@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Download, ArrowLeft } from "lucide-react";
+import { Download, ArrowLeft, ExternalLink } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -30,6 +31,11 @@ interface SuratJalan {
   project?: { nama_project: string };
   kendaraan?: { jenis_kendaraan: string; no_polisi: string };
   personil_pengantar?: { nama: string };
+  boq?: {
+    boq_id: number;
+    boq_number?: string;
+    tiket?: { kode_tiket: string };
+  } | null;
 }
 
 // Baris label:nilai yang selalu sejajar, berapa pun panjang labelnya.
@@ -185,6 +191,30 @@ export default function SuratJalanDetailPage() {
             <InfoRow label="Kendaraan" value={displaySJ.kendaraan} />
             <InfoRow label="No Polisi" value={displaySJ.noPolisi} />
             <InfoRow label="Nama Driver" value={displaySJ.namaDriver} />
+            {suratJalan.boq_id ? (
+              <InfoRow
+                label="BOQ / Tiket"
+                value={
+                  <span className="inline-flex items-center gap-2">
+                    <Link
+                      href="/dashboard/boq"
+                      className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
+                    >
+                      <ExternalLink size={12} />
+                      {suratJalan.boq?.boq_number || `BOQ #${suratJalan.boq_id}`}
+                    </Link>
+                    <span className="text-xs text-slate-500">
+                      Tiket: {suratJalan.boq?.tiket?.kode_tiket || "-"}
+                    </span>
+                  </span>
+                }
+              />
+            ) : (
+              <InfoRow
+                label="BOQ / Tiket"
+                value={<span className="text-xs text-slate-400">Tidak terhubung ke BOQ/Tiket</span>}
+              />
+            )}
           </div>
         </div>
 

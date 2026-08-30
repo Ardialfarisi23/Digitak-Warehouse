@@ -4,6 +4,7 @@ const AppError = require("../../shared/errors");
 const baseInclude = {
   items: {
     include: {
+      fotos: true,
       barang: {
         include: {
           satuan_default: true,
@@ -47,6 +48,16 @@ const baseInclude = {
 
 const APPROVAL_STATUS = "draft_diajukan";
 const DELIVERY_STATUSES = ["disetujui", "digenerate", "diterima_didistribusikan"];
+
+const parseIdFilter = (value, fieldName) => {
+  if (value === undefined || value === null) return null;
+  const raw = String(value).trim();
+  if (!raw || raw === "all") return null;
+  if (!/^\d+$/.test(raw)) {
+    throw new AppError(`Parameter "${fieldName}" harus berupa ID numerik.`, 400);
+  }
+  return BigInt(raw);
+};
 
 function applyListFilters(where, params = {}) {
   const { kategori_approval, search, startDate, endDate } = params;
@@ -129,32 +140,103 @@ const create = async (data, actorId) => {
   return suratJalan;
 };
 
-const findOutboundQueue = async () => {
+const findOutboundQueue = async (filters = {}) => {
+  const { gudangTujuanId, status, startDate, endDate, search } = filters;
+  const where = { tipe: "outbound" };
+
+  if (status && status !== "all") {
+    where.status = status;
+  } else {
+    where.status = { in: ["draft_diajukan", "disetujui", "digenerate"] };
+  }
+
+  const andConditions = [];
+
+  const gudangFilter = parseIdFilter(gudangTujuanId, "gudangTujuanId");
+  if (gudangFilter !== null) {
+    andConditions.push({
+      OR: [
+        { gudang_asal_id: gudangFilter },
+        { gudang_tujuan_id: gudangFilter },
+      ],
+    });
+  }
+
+  if (startDate || endDate) {
+    const dateCondition = {};
+    if (startDate) dateCondition.gte = new Date(startDate);
+    if (endDate) dateCondition.lte = new Date(endDate + "T23:59:59");
+    andConditions.push({ tanggal: dateCondition });
+  }
+
+  if (search && search.trim()) {
+    const s = search.trim();
+    andConditions.push({
+      OR: [
+        { nomor_surat_jalan: { contains: s, mode: "insensitive" } },
+        { project: { nama_project: { contains: s, mode: "insensitive" } } },
+        { gudang_asal: { nama_gudang: { contains: s, mode: "insensitive" } } },
+        { gudang_tujuan: { nama_gudang: { contains: s, mode: "insensitive" } } },
+      ],
+    });
+  }
+
+  if (andConditions.length > 0) {
+    where.AND = andConditions;
+  }
+
   return await prisma.surat_jalan.findMany({
-    where: {
-      tipe: "outbound",
-      status: {
-        in: ["draft_diajukan", "disetujui", "digenerate"],
-      },
-    },
+    where,
     include: baseInclude,
     orderBy: [{ updated_at: "desc" }],
   });
 };
 
-const findInboundList = async () => {
+const findInboundList = async (filters = {}) => {
+  const { gudangTujuanId, status, startDate, endDate, search } = filters;
+  const where = { tipe: "inbound" };
+
+  where.status = {
+    in: ["draft_diajukan", "menunggu_verifikasi", "ready_putaway", "disetujui", "digenerate", "diterima_didistribusikan"],
+  };
+
+  const andConditions = [];
+
+  const gudangFilter = parseIdFilter(gudangTujuanId, "gudangTujuanId");
+  if (gudangFilter !== null) {
+    andConditions.push({
+      OR: [
+        { gudang_asal_id: gudangFilter },
+        { gudang_tujuan_id: gudangFilter },
+      ],
+    });
+  }
+
+  if (startDate || endDate) {
+    const dateCondition = {};
+    if (startDate) dateCondition.gte = new Date(startDate);
+    if (endDate) dateCondition.lte = new Date(endDate + "T23:59:59");
+    andConditions.push({ tanggal: dateCondition });
+  }
+
+  if (search && search.trim()) {
+    const s = search.trim();
+    andConditions.push({
+      OR: [
+        { nomor_surat_jalan: { contains: s, mode: "insensitive" } },
+        { project: { nama_project: { contains: s, mode: "insensitive" } } },
+        { gudang_asal: { nama_gudang: { contains: s, mode: "insensitive" } } },
+        { gudang_tujuan: { nama_gudang: { contains: s, mode: "insensitive" } } },
+      ],
+    });
+  }
+
+  if (andConditions.length > 0) {
+    where.AND = andConditions;
+  }
+
   return await prisma.surat_jalan.findMany({
-    where: {
-      tipe: "inbound",
-      status: {
-        // Ditambahkan "diterima_didistribusikan" — sebelumnya status ini
-        // dikecualikan dari list, jadi Surat Jalan yang udah selesai
-        // di-putaway (lihat fix putaway() di service.js) jadi nggak
-        // kelihatan sama sekali, termasuk di tab "Sudah Ditempatkan"
-        // halaman Putaway staf.
-        in: ["draft_diajukan", "menunggu_verifikasi", "ready_putaway", "disetujui", "digenerate", "diterima_didistribusikan"],
-      },
-    },
+    where,
     include: baseInclude,
     orderBy: [{ updated_at: "desc" }],
   });
@@ -495,6 +577,41 @@ const reduceBoqAllocation = async (suratJalan, tx = prisma) => {
   }
 };
 
+const updateDeliveryStatus = async (id, updateData) => {
+  return await prisma.surat_jalan.update({
+    where: { surat_jalan_id: Number(id) },
+    data: updateData,
+  });
+};
+
+const addItemFoto = async (itemId, fotoData) => {
+  return await prisma.surat_jalan_item_foto.create({
+    data: {
+      item_id: Number(itemId),
+      url: fotoData.url,
+      filename: fotoData.filename || null,
+      mimetype: fotoData.mimetype || null,
+      ukuran_bytes: fotoData.ukuran_bytes,
+    },
+  });
+};
+
+const updateItemVerification = async (itemId, data) => {
+  return await prisma.surat_jalan_item.update({
+    where: { item_id: Number(itemId) },
+    data: {
+      diperiksa_oleh: data.diperiksa_oleh ? Number(data.diperiksa_oleh) : null,
+      diperiksa_pada: data.diperiksa_pada || new Date(),
+    },
+  });
+};
+
+const deleteItemFoto = async (fotoId) => {
+  return await prisma.surat_jalan_item_foto.delete({
+    where: { foto_id: Number(fotoId) },
+  });
+};
+
 module.exports = {
   create,
   findOutboundQueue,
@@ -509,4 +626,8 @@ module.exports = {
   addInboundStock,
   createApprovalLog,
   reduceBoqAllocation,
+  updateDeliveryStatus,
+  addItemFoto,
+  updateItemVerification,
+  deleteItemFoto,
 };

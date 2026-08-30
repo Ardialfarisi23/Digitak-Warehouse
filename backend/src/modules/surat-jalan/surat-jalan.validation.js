@@ -133,6 +133,19 @@ const retrieveSchema = z.object({
     .min(1, "Minimal satu item harus di-retrieve."),
 });
 
+const deliveryStatusSchema = z.object({
+  status: z.enum(["sedang_dikirim", "diterima_didistribusikan"]),
+  estimasi_tiba: z.string().optional().nullable(),
+  catatan_distribusi: z.string().optional().nullable(),
+});
+
+const itemFotoSchema = z.object({
+  url: z.string().url("URL foto tidak valid."),
+  filename: z.string().optional().nullable(),
+  mimetype: z.string().optional().nullable(),
+  ukuran_bytes: z.coerce.number().positive().optional().nullable(),
+});
+
 module.exports = {
   createSuratJalanSchema,
   receiveInboundSchema,
@@ -141,4 +154,6 @@ module.exports = {
   rejectOutboundSchema,
   putawaySchema,
   retrieveSchema,
+  deliveryStatusSchema,
+  itemFotoSchema,
 };

@@ -37,6 +37,7 @@ model user_account {
   created_tiket_materials tiket_material[]     @relation("tiket_material_created_by")
   zona_utilisasi_logs     zona_utilisasi_log[] @relation("zona_utilisasi_log_updater")
   zona_dinilai_oleh       zona_gudang[]       @relation("ZonaGudangDinilaiOleh")
+  surat_jalan_item_diperiksa_oleh surat_jalan_item[] @relation("SuratJalanItemDiperiksaOleh")
 
   @@index([email])
 }
@@ -357,14 +358,31 @@ model surat_jalan_item {
   is_kelebihan   Boolean         @default(false)
   catatan        String?
   zona_id        BigInt?
+  diperiksa_oleh BigInt?
+  diperiksa_pada DateTime?
   created_at     DateTime        @default(now())
   stok_ledgers   stok_ledger[]
   barang         barang          @relation(fields: [barang_id], references: [barang_id])
   satuan         satuan          @relation(fields: [satuan_id], references: [satuan_id])
   surat_jalan    surat_jalan     @relation(fields: [surat_jalan_id], references: [surat_jalan_id], onDelete: Cascade)
   zona           zona_gudang?    @relation(fields: [zona_id], references: [zona_id])
+  diperiksa_oleh_user user_account? @relation("SuratJalanItemDiperiksaOleh", fields: [diperiksa_oleh], references: [user_id])
+  fotos          surat_jalan_item_foto[]
 
   @@index([surat_jalan_id])
+}
+
+model surat_jalan_item_foto {
+  foto_id       BigInt   @id @default(autoincrement())
+  item_id       BigInt
+  url           String
+  filename      String?
+  mimetype      String?
+  ukuran_bytes  BigInt?
+  created_at    DateTime @default(now())
+  item          surat_jalan_item @relation(fields: [item_id], references: [item_id], onDelete: Cascade)
+
+  @@index([item_id])
 }
 
 model stok_gudang {

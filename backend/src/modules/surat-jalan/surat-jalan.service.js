@@ -108,12 +108,12 @@ const receiveInbound = async (id, items, actorId) => {
   return await suratJalanRepository.findById(id);
 };
 
-const findOutboundQueue = async () => {
-  return await suratJalanRepository.findOutboundQueue();
+const findOutboundQueue = async (filters = {}) => {
+  return await suratJalanRepository.findOutboundQueue(filters);
 };
 
-const findInboundList = async () => {
-  return await suratJalanRepository.findInboundList();
+const findInboundList = async (filters = {}) => {
+  return await suratJalanRepository.findInboundList(filters);
 };
 
 const findVerificationQueue = async (query = {}) => {
@@ -597,6 +597,110 @@ const rejectInbound = async (id, catatan = null, actorId) => {
     return await suratJalanRepository.findById(suratJalanId);
   };
 
+  const updateDeliveryStatus = async (id, body, actorId) => {
+    const shipment = await suratJalanRepository.findById(id);
+
+    if (!shipment) {
+      throw new AppError("Surat Jalan tidak ditemukan.", 404);
+    }
+
+    if (shipment.tipe !== "outbound") {
+      throw new AppError("Hanya surat jalan outbound yang dapat diubah status distribusinya.", 400);
+    }
+
+    const allowedStatuses = ["disetujui", "sedang_dikirim"];
+    if (!allowedStatuses.includes(shipment.status)) {
+      throw new AppError(`Status surat jalan saat ini (${shipment.status}) tidak dapat diubah ke status distribusi.`, 400);
+    }
+
+    const newStatus = body.status;
+    if (!["sedang_dikirim", "diterima_didistribusikan"].includes(newStatus)) {
+      throw new AppError("Status distribusi tidak valid.", 400);
+    }
+
+    if (shipment.status === newStatus) {
+      return shipment;
+    }
+
+    const updateData = {
+      status: newStatus,
+    };
+
+    if (body.estimasi_tiba) {
+      updateData.estimasi_tiba = new Date(body.estimasi_tiba);
+    }
+
+    if (body.catatan_distribusi !== undefined) {
+      updateData.catatan_distribusi = body.catatan_distribusi || null;
+    }
+
+    await suratJalanRepository.updateDeliveryStatus(id, updateData);
+
+    if (actorId) {
+      await suratJalanRepository.createApprovalLog(id, actorId, "outbound_delivery", newStatus === "sedang_dikirim" ? "sedang_dikirim" : "diterima_didistribusikan", body.catatan_distribusi || null);
+    }
+
+    return await suratJalanRepository.findById(id);
+  };
+
+  const addItemFoto = async (suratJalanId, itemId, body, actorId) => {
+    const suratJalan = await suratJalanRepository.findById(suratJalanId);
+
+    if (!suratJalan) {
+      throw new AppError("Surat Jalan tidak ditemukan.", 404);
+    }
+
+    const item = suratJalan.items.find((i) => Number(i.item_id) === Number(itemId));
+
+    if (!item) {
+      throw new AppError("Item surat jalan tidak ditemukan.", 404);
+    }
+
+    const { url, filename, mimetype, ukuran_bytes } = body;
+
+    if (!url) {
+      throw new AppError("URL foto wajib diisi.", 400);
+    }
+
+    const foto = await suratJalanRepository.addItemFoto(itemId, {
+      url,
+      filename,
+      mimetype,
+      ukuran_bytes: ukuran_bytes ? Number(ukuran_bytes) : null,
+    });
+
+    await suratJalanRepository.updateItemVerification(itemId, {
+      diperiksa_oleh: actorId,
+      diperiksa_pada: new Date(),
+    });
+
+    return foto;
+  };
+
+  const deleteItemFoto = async (suratJalanId, itemId, fotoId) => {
+    const suratJalan = await suratJalanRepository.findById(suratJalanId);
+
+    if (!suratJalan) {
+      throw new AppError("Surat Jalan tidak ditemukan.", 404);
+    }
+
+    const item = suratJalan.items.find((i) => Number(i.item_id) === Number(itemId));
+
+    if (!item) {
+      throw new AppError("Item surat jalan tidak ditemukan.", 404);
+    }
+
+    const foto = item.fotos?.find((f) => Number(f.foto_id) === Number(fotoId));
+
+    if (!foto) {
+      throw new AppError("Foto tidak ditemukan untuk item ini.", 404);
+    }
+
+    await suratJalanRepository.deleteItemFoto(fotoId);
+
+    return { deleted: true };
+  };
+
   module.exports = {
     create,
     createStaffInbound,
@@ -614,4 +718,7 @@ const rejectInbound = async (id, catatan = null, actorId) => {
     rejectOutbound,
     putaway,
     retrieve,
+    updateDeliveryStatus,
+    addItemFoto,
+    deleteItemFoto,
   };

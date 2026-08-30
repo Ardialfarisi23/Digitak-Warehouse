@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -18,54 +18,14 @@ import {
   UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useApi } from "@/lib/api";
 
-// Data Dummy Distribusi
-const INITIAL_DUMMY_DISTRIBUTION = [
-  {
-    distribution_id: 301,
-    nomor_surat_jalan: "SJ-DIST-2026-001",
-    nama_proyek: "Project Jaringan Utama",
-    gudang_asal: "Gudang Utama Jakarta",
-    tujuan: "Site BTS Kebayoran Baru",
-    kurir: "Ekspedisi Internal (Budi Santoso)",
-    status: "siap_didistribusikan",
-    estimasi_tiba: "13 Aug 2026, 17:00",
-    catatan: "Perangkat kritikal untuk upgrade bandwidth backbone.",
-    items: [
-      { nama: "Router Cisco ISR 4331", qty: 1, unit: "unit", serial_number: "SN-CS-99211" },
-      { nama: "Switch Huawei S5735", qty: 1, unit: "unit", serial_number: "SN-HW-11029" },
-    ],
-  },
-  {
-    distribution_id: 302,
-    nomor_surat_jalan: "SJ-DIST-2026-002",
-    nama_proyek: "Project Office Network",
-    gudang_asal: "Gudang Cabang Bandung",
-    tujuan: "Gedung Telkom Bandung Floor 3",
-    kurir: "JNE Logistics (No Resi: JNE-8820192)",
-    status: "sedang_dikirim",
-    estimasi_tiba: "14 Aug 2026, 10:00",
-    catatan: "Kabel dan kabel duct untuk penyambungan jaringan LAN internal.",
-    items: [
-      { nama: "Kabel UTP Cat6 Amp 305m", qty: 100, unit: "roll", serial_number: "-" },
-      { nama: "RJ45 Connector Cat6", qty: 100, unit: "pcs", serial_number: "-" },
-    ],
-  },
-  {
-    distribution_id: 303,
-    nomor_surat_jalan: "SJ-DIST-2026-003",
-    nama_proyek: "Relokasi Perangkat Surabaya",
-    gudang_asal: "Gudang Utama Jakarta",
-    tujuan: "Gudang Transit Semarang",
-    kurir: "Kurir Toko / Driver PT (Ahmad)",
-    status: "terkirim",
-    estimasi_tiba: "12 Aug 2026, 14:30",
-    catatan: "Pengiriman telah sampai dan diterima oleh Petugas Gudang Semarang.",
-    items: [
-      { nama: "Access Point Aruba AP-505", qty: 5, unit: "unit", serial_number: "SN-AR-77810" },
-    ],
-  },
-];
+// Mapping status backend -> UI
+const STATUS_MAP: Record<string, string> = {
+  disetujui: "siap_didistribusikan",
+  sedang_dikirim: "sedang_dikirim",
+  diterima_didistribusikan: "terkirim",
+};
 
 const STATUS_CONFIG: Record<
   string,
@@ -88,54 +48,98 @@ const STATUS_CONFIG: Record<
   },
 };
 
-export default function SupervisorDistributionPage() {
-  const [requests, setRequests] = useState<any[]>(INITIAL_DUMMY_DISTRIBUTION);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+interface DistributionItem {
+  surat_jalan_id: number;
+  nomor_surat_jalan: string;
+  project?: { nama_project?: string } | null;
+  gudang_asal?: { nama_gudang?: string } | null;
+  gudang_tujuan?: { nama_gudang?: string } | null;
+  personil_pengantar?: { nama?: string } | null;
+  estimasi_tiba?: string | null;
+  catatan_distribusi?: string | null;
+  status: string;
+  items?: any[];
+}
 
-  // Filters & Search
+export default function SupervisorDistributionPage() {
+  const { get, put } = useApi();
+  const [requests, setRequests] = useState<DistributionItem[]>([]);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [selectedItem, setSelectedItem] = useState<DistributionItem | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Modal State
-  const [selectedItem, setSelectedItem] = useState<any | null>(null);
+  const fetchData = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const response = await get(`${baseUrl}/api/surat-jalan/outbound/delivery`);
+      if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        throw new Error(err?.message || "Gagal mengambil data distribusi.");
+      }
+      const json = await response.json();
+      const data = json?.data ?? json ?? [];
+      const list = Array.isArray(data) ? data : [];
+      setRequests(list);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  // Metrics
+  useEffect(() => {
+    fetchData();
+  }, []);
+
   const metrics = useMemo(() => {
+    const mapped = requests.map((r) => STATUS_MAP[r.status] || "siap_didistribusikan");
     const total = requests.length;
-    const siap = requests.filter((r) => r.status === "siap_didistribusikan").length;
-    const dikirim = requests.filter((r) => r.status === "sedang_dikirim").length;
-    const selesai = requests.filter((r) => r.status === "terkirim").length;
+    const siap = mapped.filter((s) => s === "siap_didistribusikan").length;
+    const dikirim = mapped.filter((s) => s === "sedang_dikirim").length;
+    const selesai = mapped.filter((s) => s === "terkirim").length;
     return { total, siap, dikirim, selesai };
   }, [requests]);
 
-  // Filtered Data
   const filteredRequests = useMemo(() => {
     return requests.filter((r) => {
+      const uiStatus = STATUS_MAP[r.status] || "siap_didistribusikan";
       const matchSearch =
         !query.trim() ||
         r.nomor_surat_jalan?.toLowerCase().includes(query.toLowerCase()) ||
-        r.nama_proyek?.toLowerCase().includes(query.toLowerCase()) ||
-        r.tujuan?.toLowerCase().includes(query.toLowerCase());
+        r.project?.nama_project?.toLowerCase().includes(query.toLowerCase()) ||
+        (r.gudang_tujuan?.nama_gudang || "").toLowerCase().includes(query.toLowerCase());
 
-      const matchStatus =
-        selectedStatus === "all" || r.status === selectedStatus;
+      const matchStatus = selectedStatus === "all" || uiStatus === selectedStatus;
 
       return matchSearch && matchStatus;
     });
   }, [requests, query, selectedStatus]);
 
-  // Handle Mark Received
-  const handleMarkAsReceived = (id: number) => {
+  const handleMarkAsReceived = async (id: number) => {
     setActionLoading(String(id));
-    setTimeout(() => {
-      setRequests((prev) =>
-        prev.map((item) =>
-          item.distribution_id === id ? { ...item, status: "terkirim" } : item
-        )
-      );
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const response = await put(`${baseUrl}/api/surat-jalan/${id}/delivery-status`, {
+        status: "diterima_didistribusikan",
+        estimasi_tiba: new Date().toISOString(),
+        catatan_distribusi: "Dikonfirmasi diterima oleh penerima.",
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        throw new Error(err?.message || "Gagal menandai diterima.");
+      }
+      await fetchData();
       setSelectedItem(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Gagal menandai diterima.");
+    } finally {
       setActionLoading(null);
-    }, 500);
+    }
   };
 
   return (
@@ -254,7 +258,18 @@ export default function SupervisorDistributionPage() {
 
       {/* List Cards */}
       <div className="space-y-3">
-        {filteredRequests.length === 0 ? (
+        {isLoading ? (
+          <div className="rounded-2xl border border-slate-200 bg-white py-12 text-center">
+            <p className="text-sm text-slate-500">Memuat data distribusi...</p>
+          </div>
+        ) : error ? (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+            {error}
+            <Button variant="outline" size="sm" onClick={fetchData} className="ml-3">
+              Coba Lagi
+            </Button>
+          </div>
+        ) : filteredRequests.length === 0 ? (
           <div className="rounded-2xl border border-slate-200 bg-white py-12 text-center">
             <Truck className="mx-auto h-10 w-10 text-slate-300" />
             <p className="mt-2 text-sm font-semibold text-slate-700">
@@ -266,17 +281,17 @@ export default function SupervisorDistributionPage() {
           </div>
         ) : (
           filteredRequests.map((r) => {
-            const statusConfig =
-              STATUS_CONFIG[r.status] || STATUS_CONFIG["siap_didistribusikan"];
+            const uiStatus = STATUS_MAP[r.status] || "siap_didistribusikan";
+            const statusConfig = STATUS_CONFIG[uiStatus] || STATUS_CONFIG["siap_didistribusikan"];
             const StatusIcon = statusConfig.icon;
             const totalUnits = r.items?.reduce(
-              (acc: number, item: any) => acc + item.qty,
+              (acc: number, item: any) => acc + Number(item.qty || 0),
               0
             );
 
             return (
               <div
-                key={r.distribution_id}
+                key={r.surat_jalan_id}
                 className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md"
               >
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -295,20 +310,30 @@ export default function SupervisorDistributionPage() {
                     </div>
 
                     <h3 className="text-base font-bold text-slate-900">
-                      {r.nama_proyek}
+                      {r.project?.nama_project || "-"}
                     </h3>
 
                     <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs text-slate-600">
                       <div className="flex items-center gap-1">
                         <MapPin size={14} className="text-slate-400" />
                         <span>
-                          <strong className="text-slate-700">{r.gudang_asal}</strong> →{" "}
-                          <strong className="text-slate-900">{r.tujuan}</strong>
+                          <strong className="text-slate-700">
+                            {r.gudang_asal?.nama_gudang || "-"}
+                          </strong>{" "}
+                          →{" "}
+                          <strong className="text-slate-900">
+                            {r.gudang_tujuan?.nama_gudang || "-"}
+                          </strong>
                         </span>
                       </div>
+                      {/* 
+                        personil_pengantar berfungsi sebagai data kurir.
+                        Di halaman distribusi, field ini menampilkan nama driver/pengirim
+                        yang juga digunakan sebagai informasi kurir untuk tracking.
+                      */}
                       <div className="flex items-center gap-1 text-slate-500">
                         <Truck size={14} className="text-slate-400" />
-                        <span>{r.kurir}</span>
+                        <span>{r.personil_pengantar?.nama || "-"}</span>
                       </div>
                     </div>
 
@@ -316,12 +341,6 @@ export default function SupervisorDistributionPage() {
                     <div className="flex items-center gap-2 text-xs text-slate-500">
                       <span className="font-semibold text-slate-700">
                         {r.items?.length || 0} jenis item ({totalUnits} unit)
-                      </span>
-                      <span>•</span>
-                      <span className="truncate max-w-md">
-                        {r.items
-                          ?.map((i: any) => `${i.nama} (${i.qty} ${i.unit})`)
-                          .join(", ")}
                       </span>
                     </div>
                   </div>
@@ -336,13 +355,13 @@ export default function SupervisorDistributionPage() {
                       Detail / Review
                     </Button>
 
-                    {r.status !== "terkirim" && (
+                    {uiStatus !== "terkirim" && (
                       <Button
-                        onClick={() => handleMarkAsReceived(r.distribution_id)}
-                        disabled={actionLoading === String(r.distribution_id)}
+                        onClick={() => handleMarkAsReceived(r.surat_jalan_id)}
+                        disabled={actionLoading === String(r.surat_jalan_id)}
                         className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4"
                       >
-                        {actionLoading === String(r.distribution_id)
+                        {actionLoading === String(r.surat_jalan_id)
                           ? "Memproses..."
                           : "Tandai Diterima"}
                       </Button>
@@ -366,7 +385,7 @@ export default function SupervisorDistributionPage() {
                   {selectedItem.nomor_surat_jalan}
                 </span>
                 <h3 className="text-lg font-bold text-slate-900">
-                  {selectedItem.nama_proyek}
+                  {selectedItem.project?.nama_project || "-"}
                 </h3>
               </div>
               <button
@@ -386,8 +405,8 @@ export default function SupervisorDistributionPage() {
                     Rute Pengiriman
                   </span>
                   <div className="space-y-1 text-slate-800 font-semibold">
-                    <p>Asal: {selectedItem.gudang_asal}</p>
-                    <p>Tujuan: {selectedItem.tujuan}</p>
+                    <p>Asal: {selectedItem.gudang_asal?.nama_gudang || "-"}</p>
+                    <p>Tujuan: {selectedItem.gudang_tujuan?.nama_gudang || "-"}</p>
                   </div>
                 </div>
                 <div>
@@ -397,24 +416,27 @@ export default function SupervisorDistributionPage() {
                   <div className="space-y-1 text-slate-800">
                     <p className="flex items-center gap-1">
                       <UserCheck size={13} className="text-slate-400" />
-                      {selectedItem.kurir}
+                      {selectedItem.personil_pengantar?.nama || "-"}
                     </p>
                     <p className="flex items-center gap-1">
                       <Calendar size={13} className="text-slate-400" />
-                      Est. Tiba: {selectedItem.estimasi_tiba}
+                      Est. Tiba:{" "}
+                      {selectedItem.estimasi_tiba
+                        ? new Date(selectedItem.estimasi_tiba).toLocaleString("id-ID")
+                        : "-"}
                     </p>
                   </div>
                 </div>
               </div>
 
-              {selectedItem.catatan && (
+              {selectedItem.catatan_distribusi && (
                 <div className="rounded-2xl bg-blue-50/60 border border-blue-200/60 p-4 flex gap-3">
                   <Info size={18} className="text-blue-600 shrink-0 mt-0.5" />
                   <div className="text-xs text-blue-900">
                     <span className="font-semibold block mb-0.5">
                       Catatan Distribusi:
                     </span>
-                    {selectedItem.catatan}
+                    {selectedItem.catatan_distribusi}
                   </div>
                 </div>
               )}
@@ -430,20 +452,16 @@ export default function SupervisorDistributionPage() {
                       <tr>
                         <th className="px-4 py-3">Nama Barang</th>
                         <th className="px-4 py-3 text-center">Jumlah</th>
-                        <th className="px-4 py-3">Serial Number</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700">
                       {selectedItem.items?.map((it: any, idx: number) => (
                         <tr key={idx} className="hover:bg-slate-50/50">
                           <td className="px-4 py-3 font-medium text-slate-900">
-                            {it.nama}
+                            {it.barang?.nama_barang || `Barang #${it.barang_id}`}
                           </td>
                           <td className="px-4 py-3 text-center font-bold">
-                            {it.qty} {it.unit}
-                          </td>
-                          <td className="px-4 py-3 font-mono text-slate-500">
-                            {it.serial_number || "-"}
+                            {Number(it.qty || 0)}
                           </td>
                         </tr>
                       ))}
@@ -462,10 +480,10 @@ export default function SupervisorDistributionPage() {
               >
                 Tutup
               </Button>
-              {selectedItem.status !== "terkirim" && (
+              {STATUS_MAP[selectedItem.status] !== "terkirim" && (
                 <Button
-                  onClick={() => handleMarkAsReceived(selectedItem.distribution_id)}
-                  disabled={actionLoading === String(selectedItem.distribution_id)}
+                  onClick={() => handleMarkAsReceived(selectedItem.surat_jalan_id)}
+                  disabled={actionLoading === String(selectedItem.surat_jalan_id)}
                   className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-5"
                 >
                   Tandai Diterima

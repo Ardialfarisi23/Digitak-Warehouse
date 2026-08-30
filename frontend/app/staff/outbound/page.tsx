@@ -6,21 +6,27 @@ import { FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 
-type SuratJalanStatus = "draft_diajukan" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "ditolak";
+type SuratJalanStatus = "draft_diajukan" | "menunggu_verifikasi" | "ready_putaway" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "sedang_dikirim" | "ditolak";
 
 const STATUS_META: Record<SuratJalanStatus, { label: string; tone: string }> = {
   draft_diajukan: { label: "Menunggu Approval", tone: "bg-amber-50 text-amber-600" },
+  menunggu_verifikasi: { label: "Menunggu Verifikasi", tone: "bg-amber-50 text-amber-600" },
+  ready_putaway: { label: "Siap Putaway", tone: "bg-blue-50 text-blue-600" },
   disetujui: { label: "Disetujui — Siap Picking", tone: "bg-emerald-50 text-emerald-600" },
   digenerate: { label: "Digenerate", tone: "bg-blue-50 text-blue-600" },
   diterima_didistribusikan: { label: "Terkirim", tone: "bg-gray-100 text-gray-500" },
+  sedang_dikirim: { label: "Sedang Dikirim", tone: "bg-amber-50 text-amber-600" },
   ditolak: { label: "Ditolak", tone: "bg-rose-50 text-rose-600" },
 };
 
 const FILTER_TABS: { key: "SEMUA" | SuratJalanStatus; label: string }[] = [
   { key: "SEMUA", label: "Semua" },
   { key: "draft_diajukan", label: "Menunggu Approval" },
+  { key: "disetujui", label: "Disetujui" },
   { key: "digenerate", label: "Siap Kirim" },
+  { key: "sedang_dikirim", label: "Sedang Dikirim" },
   { key: "diterima_didistribusikan", label: "Terkirim" },
+  { key: "ditolak", label: "Ditolak" },
 ];
 
 interface SuratJalanItem {

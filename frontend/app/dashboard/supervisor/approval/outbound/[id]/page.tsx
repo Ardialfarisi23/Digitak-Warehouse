@@ -4,13 +4,18 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
+import Link from "next/link";
+import { ExternalLink } from "lucide-react";
 
 const STATUS_META: Record<string, { label: string; tone: string }> = {
   draft_diajukan: { label: "Draft Diajukan", tone: "bg-slate-100 text-slate-700" },
+  menunggu_verifikasi: { label: "Menunggu Verifikasi", tone: "bg-amber-100 text-amber-700" },
+  ready_putaway: { label: "Siap Putaway", tone: "bg-blue-100 text-blue-700" },
   disetujui: { label: "Disetujui", tone: "bg-emerald-100 text-emerald-700" },
   digenerate: { label: "Digenerate", tone: "bg-blue-100 text-blue-700" },
   diterima_didistribusikan: { label: "Diterima / Didistribusikan", tone: "bg-emerald-100 text-emerald-700" },
-  dikembalikan: { label: "Dikembalikan / Ditolak", tone: "bg-rose-100 text-rose-700" },
+  sedang_dikirim: { label: "Sedang Dikirim", tone: "bg-amber-100 text-amber-700" },
+  ditolak: { label: "Ditolak", tone: "bg-rose-100 text-rose-700" },
 };
 
 export default function SupervisorApprovalOutboundDetailPage() {
@@ -202,20 +207,36 @@ export default function SupervisorApprovalOutboundDetailPage() {
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
               Detail BOQ / Tiket Rujukan
             </p>
-            <div className="mt-4 grid gap-3 text-sm text-slate-700">
-              <div className="grid grid-cols-[140px_1fr] gap-2">
-                <span className="font-medium text-slate-600">Nomor Tiket</span>
-                <span>{request.boq?.tiket?.kode_tiket || "-"}</span>
+            {request.boq_id ? (
+              <div className="mt-4 grid gap-3 text-sm text-slate-700">
+                <div className="grid grid-cols-[140px_1fr] gap-2">
+                  <span className="font-medium text-slate-600">BOQ</span>
+                  <span>
+                    <Link
+                      href="/dashboard/boq"
+                      className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-600 hover:bg-orange-100"
+                    >
+                      <ExternalLink size={12} />
+                      {request.boq?.boq_number || `BOQ #${request.boq_id}`}
+                    </Link>
+                  </span>
+                </div>
+                <div className="grid grid-cols-[140px_1fr] gap-2">
+                  <span className="font-medium text-slate-600">Nomor Tiket</span>
+                  <span>{request.boq?.tiket?.kode_tiket || "-"}</span>
+                </div>
+                <div className="grid grid-cols-[140px_1fr] gap-2">
+                  <span className="font-medium text-slate-600">Project</span>
+                  <span>{request.project?.nama_project || "-"}</span>
+                </div>
+                <div className="grid grid-cols-[140px_1fr] gap-2">
+                  <span className="font-medium text-slate-600">Area</span>
+                  <span>{request.project?.area || "-"}</span>
+                </div>
               </div>
-              <div className="grid grid-cols-[140px_1fr] gap-2">
-                <span className="font-medium text-slate-600">Project</span>
-                <span>{request.project?.nama_project || "-"}</span>
-              </div>
-              <div className="grid grid-cols-[140px_1fr] gap-2">
-                <span className="font-medium text-slate-600">Area</span>
-                <span>{request.project?.area || "-"}</span>
-              </div>
-            </div>
+            ) : (
+              <p className="mt-3 text-xs text-slate-400">Tidak terhubung ke BOQ/Tiket</p>
+            )}
           </div>
 
           <div className="mt-8">
