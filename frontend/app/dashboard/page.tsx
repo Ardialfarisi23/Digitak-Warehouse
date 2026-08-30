@@ -375,7 +375,7 @@ function DashboardPageContent() {
               Kecukupan Area
             </h2>
             <p className="text-xs text-slate-400">
-              Kapasitas rak/area gudang dibanding volume perangkat saat ini.
+              Status kecukupan gudang berdasarkan penilaian manual Supervisor.
             </p>
           </div>
 

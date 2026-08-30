@@ -1,10 +1,34 @@
 const prisma = require("../../config/prisma");
+const AppError = require("../../shared/errors");
+
+/**
+ * Mengubah filter ID dari query string menjadi BigInt secara aman.
+ * Mengembalikan null bila filter tidak dipakai ("all"/kosong/undefined),
+ * dan melempar AppError 400 (bukan 500) bila nilainya bukan ID numerik.
+ */
+const parseIdFilter = (value, fieldName) => {
+  if (value === undefined || value === null) return null;
+
+  const raw = String(value).trim();
+  if (!raw || raw === "all") return null;
+
+  if (!/^\d+$/.test(raw)) {
+    throw new AppError(
+      `Parameter "${fieldName}" harus berupa ID numerik, diterima: "${raw}".`,
+      400
+    );
+  }
+
+  return BigInt(raw);
+};
 
 const getStockHistory = async (filters = {}) => {
   const {
     search = "",
     projectId = "all",
     warehouseId = "all",
+    zonaId = "all",
+    kategoriId = "all",
     type = "all",
     status = "all",
     startDate,
@@ -39,30 +63,53 @@ const getStockHistory = async (filters = {}) => {
     ];
   }
 
+  // --- Filter di level surat_jalan (project / tipe / status / gudang) ---
   const suratJalanWhere = {};
-  if (projectId !== "all") {
-    suratJalanWhere.project_id = BigInt(projectId);
+
+  const projectIdFilter = parseIdFilter(projectId, "projectId");
+  if (projectIdFilter !== null) {
+    suratJalanWhere.project_id = projectIdFilter;
   }
-  if (type !== "all") {
+  if (type && type !== "all") {
     suratJalanWhere.tipe = type;
   }
-  if (status !== "all") {
+  if (status && status !== "all") {
     suratJalanWhere.status = status;
   }
 
-  if (Object.keys(suratJalanWhere).length > 0) {
-    where.surat_jalan_item = { surat_jalan: suratJalanWhere };
+  const warehouseIdFilter = parseIdFilter(warehouseId, "warehouseId");
+  if (warehouseIdFilter !== null) {
+    suratJalanWhere.OR = [
+      { gudang_asal_id: warehouseIdFilter },
+      { gudang_tujuan_id: warehouseIdFilter },
+    ];
   }
 
-  if (warehouseId !== "all") {
-    const w = where.surat_jalan_item || {};
-    const sj = w.surat_jalan || {};
-    sj.OR = sj.OR || [];
-    sj.OR.push(
-      { gudang_asal_id: BigInt(warehouseId) },
-      { gudang_tujuan_id: BigInt(warehouseId) }
-    );
-    where.surat_jalan_item = { ...w, surat_jalan: sj };
+  // --- Filter di level surat_jalan_item (zona) ---
+  // Sengaja memfilter memakai zona_id (PK, unik global), BUKAN kode_zona.
+  // zona_gudang hanya punya @@unique([gudang_id, kode_zona]), jadi "Zona A"
+  // ada di beberapa gudang; memfilter by kode_zona akan mencampur gudang.
+  const suratJalanItemWhere = {};
+
+  const zonaIdFilter = parseIdFilter(zonaId, "zonaId");
+  if (zonaIdFilter !== null) {
+    suratJalanItemWhere.zona_id = zonaIdFilter;
+  }
+
+  if (Object.keys(suratJalanWhere).length > 0) {
+    suratJalanItemWhere.surat_jalan = suratJalanWhere;
+  }
+
+  if (Object.keys(suratJalanItemWhere).length > 0) {
+    where.surat_jalan_item = suratJalanItemWhere;
+  }
+
+  // --- Filter di level barang (kategori perangkat) ---
+  // stok_ledger punya FK barang_id sendiri, jadi cukup 1 hop tanpa lewat
+  // surat_jalan_item.
+  const kategoriIdFilter = parseIdFilter(kategoriId, "kategoriId");
+  if (kategoriIdFilter !== null) {
+    where.barang = { kategori_id: kategoriIdFilter };
   }
 
   if (startDate || endDate) {
@@ -122,6 +169,34 @@ const getStockHistory = async (filters = {}) => {
               select: {
                 kode_perangkat: true,
                 nama_barang: true,
+                kategori: {
+                  select: {
+                    kategori_id: true,
+                    nama_kategori: true,
+                  },
+                },
+              },
+            },
+            satuan: {
+              select: {
+                kode_satuan: true,
+              },
+            },
+            // Zona penempatan item. Hanya terisi untuk item yang sudah melewati
+            // alur putaway (surat_jalan_item.zona_id nullable), jadi bisa null.
+            // kode_zona cuma unik per gudang -> nama gudang ikut diambil supaya
+            // "Zona A" tidak ambigu antar gudang.
+            zona: {
+              select: {
+                zona_id: true,
+                kode_zona: true,
+                nama_zona: true,
+                tipe_zona: true,
+                gudang: {
+                  select: {
+                    nama_gudang: true,
+                  },
+                },
               },
             },
           },
@@ -137,25 +212,44 @@ const getStockHistory = async (filters = {}) => {
     const suratJalan = item?.surat_jalan;
     const barang = item?.barang;
     const tiket = suratJalan?.boq?.tiket;
+    const zona = item?.zona;
+
+    const gudangAsal = suratJalan?.gudang_asal?.nama_gudang || null;
+    const gudangTujuan = suratJalan?.gudang_tujuan?.nama_gudang || null;
 
     return {
       ledger_id: String(ledger.ledger_id),
       waktu_mutasi: ledger.waktu_mutasi,
       jenis_mutasi: ledger.jenis_mutasi,
       qty: Number(ledger.qty),
+      satuan: item?.satuan?.kode_satuan || "-",
       saldo_setelah: Number(ledger.saldo_setelah),
       barang_id: String(ledger.barang_id),
       kode_perangkat: barang?.kode_perangkat || "-",
       nama_barang: barang?.nama_barang || "-",
+      kategori_id: barang?.kategori?.kategori_id ? String(barang.kategori.kategori_id) : null,
+      kategori_nama: barang?.kategori?.nama_kategori || "-",
+      kondisi: item?.kondisi || "-",
       surat_jalan_id: suratJalan ? String(suratJalan.surat_jalan_id) : "-",
       nomor_surat_jalan: suratJalan?.nomor_surat_jalan || "-",
       tipe_surat_jalan: suratJalan?.tipe || "-",
       status_surat_jalan: suratJalan?.status || "-",
       project_nama: suratJalan?.project?.nama_project || "-",
       area: suratJalan?.project?.area || "-",
-      gudang: suratJalan?.gudang_asal?.nama_gudang || suratJalan?.gudang_tujuan?.nama_gudang || "-",
+      // `gudang` dipertahankan untuk kompatibilitas konsumen lama.
+      gudang: gudangAsal || gudangTujuan || "-",
+      // Asal & tujuan dipisah: level GUDANG (antar/keluar-masuk gudang).
+      gudang_asal: gudangAsal || "-",
+      gudang_tujuan: gudangTujuan || "-",
       gudang_asal_id: suratJalan?.gudang_asal_id ? String(suratJalan.gudang_asal_id) : null,
       gudang_tujuan_id: suratJalan?.gudang_tujuan_id ? String(suratJalan.gudang_tujuan_id) : null,
+      // Zona: sub-lokasi DI DALAM satu gudang (granularitas lebih kecil dari
+      // gudang_asal/gudang_tujuan, bukan duplikatnya).
+      zona_id: zona?.zona_id ? String(zona.zona_id) : null,
+      zona_kode: zona?.kode_zona || "-",
+      zona_nama: zona?.nama_zona || "-",
+      zona_tipe: zona?.tipe_zona || "-",
+      zona_gudang: zona?.gudang?.nama_gudang || "-",
       tiket_id: tiket ? String(tiket.tiket_id) : "-",
       kode_tiket: tiket?.kode_tiket || "-",
       is_kelebihan: item?.is_kelebihan || false,
@@ -292,62 +386,6 @@ const getAuditLogs = async (filters = {}) => {
   };
 };
 
-const getRackUtilization = async () => {
-  const racks = await prisma.rak.findMany({
-    include: {
-      zona_gudang: {
-        include: {
-          gudang: {
-            select: {
-              nama_gudang: true,
-              tipe: true,
-            },
-          },
-        },
-      },
-      bins: {
-        select: {
-          bin_id: true,
-          kode_bin: true,
-          stoks: {
-            select: {
-              qty: true,
-              barang: {
-                select: {
-                  nama_barang: true,
-                  kode_perangkat: true,
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  });
-
-  return racks.map((rak) => {
-    const totalBins = rak.bins?.length || 0;
-    const occupiedBins = rak.bins?.filter((bin) => bin.stoks && bin.stoks.length > 0).length || 0;
-    const totalQty = rak.bins?.reduce((sum, bin) => {
-      return sum + bin.stoks?.reduce((s, stok) => s + Number(stok.qty || 0), 0) || 0;
-    }, 0) || 0;
-
-    return {
-      rak_id: String(rak.rak_id),
-      kode_rak: rak.kode_rak,
-      zona_id: String(rak.zona_id),
-      zona_nama: rak.zona_gudang?.nama_zona || "-",
-      gudang_id: String(rak.zona_gudang?.gudang_id || ""),
-      gudang_nama: rak.zona_gudang?.gudang?.nama_gudang || "-",
-      gudang_tipe: rak.zona_gudang?.gudang?.tipe || "-",
-      total_bins: totalBins,
-      occupied_bins: occupiedBins,
-      utilization_percent: totalBins > 0 ? Math.round((occupiedBins / totalBins) * 100) : 0,
-      total_qty: totalQty,
-    };
-  });
-};
-
 const getHardwareReconciliation = async (filters = {}) => {
   const { projectId = "all", search = "" } = filters;
 
@@ -368,7 +406,7 @@ const getHardwareReconciliation = async (filters = {}) => {
 
   const boqRecords = await prisma.boq.findMany({
     where: {
-      status: { in: ["draft", "aktif"] },
+      status: { in: ["draft", "aktif", "selesai"] },
       ...(projectId !== "all" && {
         tiket: { project_id: BigInt(projectId) },
       }),
@@ -524,7 +562,7 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
         },
       },
       boq: {
-        where: { status: { in: ["draft", "aktif"] } },
+        where: { status: { in: ["draft", "aktif", "selesai"] } },
         include: {
           items: {
             select: {
@@ -642,7 +680,7 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
   const { projectId = "all", search = "" } = filters;
 
   const whereBoq = {
-    status: { in: ["draft", "aktif"] },
+    status: { in: ["draft", "aktif", "selesai"] },
   };
 
   if (projectId !== "all") {
@@ -971,7 +1009,6 @@ const backfillReconciliation = async () => {
 module.exports = {
   getStockHistory,
   getAuditLogs,
-  getRackUtilization,
   getHardwareReconciliation,
   getHardwareReconciliationPerTiket,
   getHardwareReconciliationDetailed,

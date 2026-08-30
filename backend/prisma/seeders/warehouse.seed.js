@@ -47,10 +47,10 @@ async function seedWarehouses(prisma) {
   }
 
   const zonaLayout = [
-    { kode_zona: "A", nama_zona: "Zona A", tipe_zona: "Indoor", status_kecukupan: "CUKUP", utilisasi_persen: 0 },
-    { kode_zona: "B", nama_zona: "Zona B", tipe_zona: "Indoor", status_kecukupan: "CUKUP", utilisasi_persen: 0 },
-    { kode_zona: "C", nama_zona: "Zona C", tipe_zona: "Outdoor", status_kecukupan: "CUKUP", utilisasi_persen: 0 },
-    { kode_zona: "D", nama_zona: "Zona D", tipe_zona: "Outdoor", status_kecukupan: "CUKUP", utilisasi_persen: 0 },
+    { kode_zona: "A", nama_zona: "Zona A", tipe_zona: "Indoor", status_kecukupan: "CUKUP" },
+    { kode_zona: "B", nama_zona: "Zona B", tipe_zona: "Indoor", status_kecukupan: "CUKUP" },
+    { kode_zona: "C", nama_zona: "Zona C", tipe_zona: "Outdoor", status_kecukupan: "CUKUP" },
+    { kode_zona: "D", nama_zona: "Zona D", tipe_zona: "Outdoor", status_kecukupan: "CUKUP" },
   ];
 
   for (const gudang of seededGudangs) {
@@ -69,7 +69,6 @@ async function seedWarehouses(prisma) {
             nama_zona: zona.nama_zona,
             tipe_zona: zona.tipe_zona,
             status_kecukupan: zona.status_kecukupan,
-            utilisasi_persen: zona.utilisasi_persen,
           },
         });
       } else {
@@ -80,7 +79,6 @@ async function seedWarehouses(prisma) {
             nama_zona: zona.nama_zona,
             tipe_zona: zona.tipe_zona,
             status_kecukupan: zona.status_kecukupan,
-            utilisasi_persen: zona.utilisasi_persen,
           },
         });
       }

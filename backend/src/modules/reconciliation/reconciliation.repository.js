@@ -5,7 +5,7 @@ const getInventory = async (filters = {}) => {
 
   const whereBoq = {
     boq: {
-      status: { in: ["draft", "aktif"] },
+      status: { in: ["draft", "aktif", "selesai"] },
     },
   };
 

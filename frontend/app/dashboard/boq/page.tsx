@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import {
   ClipboardList,
+  ClipboardCheck,
   Plus,
   Eye,
   Pencil,
@@ -12,6 +13,7 @@ import {
   X,
   Loader2,
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   Clock,
   XCircle,
@@ -32,6 +34,7 @@ import {
   Lock,
   Building2,
   ChevronDown,
+  Info,
 } from "lucide-react";
 
 import { useApi } from "@/lib/api";
@@ -51,7 +54,7 @@ const API_BASE =
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
 
-type BoqStatus = "draft" | "aktif" | "ditolak";
+type BoqStatus = "draft" | "aktif" | "selesai" | "ditolak";
 type BoqSource = "top_down" | "bottom_up";
 type ExternalVerificationStatus = "terverifikasi" | "menunggu" | "tidak_berlaku";
 
@@ -134,10 +137,11 @@ interface Boq {
 interface SummaryCounts {
   aktif: number;
   draft: number;
+  selesai: number;
   proyekBerjalan: number;
 }
 
-type TabType = "aktif" | "draft" | "ditolak";
+type TabType = "aktif" | "draft" | "selesai" | "ditolak";
 type SectionType = TabType;
 
 /* ------------------------------------------------------------------ */
@@ -164,6 +168,8 @@ function getStatusBadge(status: BoqStatus) {
       return { label: "Draft", bg: "bg-amber-50", text: "text-amber-600", icon: Clock };
     case "aktif":
       return { label: "Aktif", bg: "bg-emerald-50", text: "text-emerald-600", icon: CheckCircle2 };
+    case "selesai":
+      return { label: "Selesai", bg: "bg-slate-100", text: "text-slate-700", icon: ClipboardCheck };
     case "ditolak":
       return { label: "Ditolak", bg: "bg-rose-50", text: "text-rose-600", icon: XCircle };
     default:
@@ -174,7 +180,7 @@ function getStatusBadge(status: BoqStatus) {
 function getSourceBadge(source: BoqSource) {
   switch (source) {
     case "top_down":
-      return { label: "Top Down", bg: "bg-sky-50", text: "text-sky-600", icon: Mail };
+      return { label: "PO Internal", bg: "bg-sky-50", text: "text-sky-600", icon: Mail };
     case "bottom_up":
       return { label: "Bottom Up", bg: "bg-violet-50", text: "text-violet-600", icon: ClipboardList };
     default:
@@ -196,6 +202,7 @@ function getVerificationBadge(status: ExternalVerificationStatus) {
 const TABS: { key: TabType; label: string; icon: React.ElementType }[] = [
   { key: "aktif", label: "BOQ Aktif", icon: CheckCircle2 },
   { key: "draft", label: "BOQ Draft", icon: Clock },
+  { key: "selesai", label: "Selesai", icon: ClipboardCheck },
   { key: "ditolak", label: "Ditolak", icon: XCircle },
 ];
 
@@ -218,6 +225,7 @@ export default function BoqPage() {
   const [summary, setSummary] = useState<SummaryCounts>({
     aktif: 0,
     draft: 0,
+    selesai: 0,
     proyekBerjalan: 0,
   });
 
@@ -233,6 +241,8 @@ export default function BoqPage() {
   const [selectedBoq, setSelectedBoq] = useState<Boq | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailBoq, setDetailBoq] = useState<Boq | null>(null);
+  const [confirmSelesaiOpen, setConfirmSelesaiOpen] = useState(false);
+  const [confirmSelesaiBoq, setConfirmSelesaiBoq] = useState<Boq | null>(null);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -260,6 +270,7 @@ export default function BoqPage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [uploadingRef, setUploadingRef] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -314,6 +325,7 @@ export default function BoqPage() {
         setSummary({
           aktif: json.data.aktif || 0,
           draft: json.data.draft || 0,
+          selesai: json.data.selesai || 0,
           proyekBerjalan: json.data.proyekBerjalan || 0,
         });
       }
@@ -422,6 +434,58 @@ export default function BoqPage() {
       setToast({ message: "BOQ berhasil ditolak.", type: "success" });
     } catch (err) {
       setToast({ message: err instanceof Error ? err.message : "Gagal menolak BOQ.", type: "error" });
+    }
+  }
+
+  async function handleMarkSelesai(boq: Boq) {
+    setConfirmSelesaiBoq(boq);
+    setConfirmSelesaiOpen(true);
+  }
+
+  async function handleConfirmSelesai() {
+    if (!confirmSelesaiBoq) return;
+
+    const boq = confirmSelesaiBoq;
+    setConfirmSelesaiOpen(false);
+    setConfirmSelesaiBoq(null);
+
+    try {
+      const res = await put(`${API_BASE}/api/boqs/${boq.id}/status`, { status: "SELESAI" });
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        throw new Error(json?.message || "Gagal menandai BOQ sebagai Selesai.");
+      }
+      setDetailOpen(false);
+      fetchBoqs();
+      fetchSummary();
+      setToast({ message: "BOQ berhasil ditandai sebagai Selesai.", type: "success" });
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Gagal menandai Selesai.", type: "error" });
+    }
+  }
+
+  function handleCancelSelesai() {
+    setConfirmSelesaiOpen(false);
+    setConfirmSelesaiBoq(null);
+  }
+
+  async function handleReopenBoq(boq: Boq) {
+    if (!window.confirm("Yakin ingin membuka kembali BOQ ini ke status Aktif?")) {
+      return;
+    }
+
+    try {
+      const res = await put(`${API_BASE}/api/boqs/${boq.id}/status`, { status: "AKTIF" });
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        throw new Error(json?.message || "Gagal membuka kembali BOQ.");
+      }
+      setDetailOpen(false);
+      fetchBoqs();
+      fetchSummary();
+      setToast({ message: "BOQ berhasil dibuka kembali ke Aktif.", type: "success" });
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Gagal membuka kembali BOQ.", type: "error" });
     }
   }
 
@@ -706,28 +770,25 @@ export default function BoqPage() {
   }
 
   async function handleExport() {
+    setExporting(true);
     try {
-      const params = new URLSearchParams();
-      params.set("status", activeTab);
-      if (projectFilter) params.set("projectId", projectFilter);
-      if (areaFilter) params.set("area", areaFilter);
-      if (warehouseFilter) params.set("warehouseId", warehouseFilter);
-
-      const res = await get(`${API_BASE}/api/boqs/export?${params.toString()}`);
+      const res = await get(`${API_BASE}/api/boqs/export-matrix`);
       if (!res.ok) throw new Error("Gagal mengekspor laporan BOQ.");
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `laporan-boq-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `BOQ-Export-Matrix_${new Date().toISOString().slice(0, 10)}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
       setToast({ message: "Laporan BOQ berhasil diekspor.", type: "success" });
     } catch (err) {
-      setToast({ message: err instanceof Error ? err.message : "Gagal mengekspor laporan BOQ.", type: "error" });
+      setToast({ message: err instanceof Error ? err.message : "Gagal mengekspor BOQ.", type: "error" });
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -804,10 +865,11 @@ export default function BoqPage() {
             <button
               type="button"
               onClick={handleExport}
-              className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50"
+              disabled={exporting}
+              className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <Download size={16} />
-              Ekspor
+              {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+              {exporting ? "Mengekspor..." : "Ekspor"}
             </button>
 
             {canManage && (
@@ -841,7 +903,10 @@ export default function BoqPage() {
             <p className="mt-1 text-2xl font-bold text-slate-900">{summary.draft}</p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-xs font-medium text-slate-400">Proyek Berjalan</p>
+            <p className="text-xs font-medium text-slate-400 flex items-center gap-1">
+              Proyek Berjalan
+              <Info size={12} className="text-slate-400" title="Jumlah project unik dengan BOQ aktif" />
+            </p>
             <p className="mt-1 text-2xl font-bold text-slate-900">{summary.proyekBerjalan}</p>
           </div>
         </div>
@@ -850,7 +915,7 @@ export default function BoqPage() {
         <div className="mb-6 flex items-center gap-2 border-b border-slate-100">
           {TABS.map((tab) => {
             const Icon = tab.icon;
-            const count = tab.key === "draft" ? summary.draft : tab.key === "ditolak" ? undefined : null;
+            const count = tab.key === "draft" ? summary.draft : tab.key === "selesai" ? summary.selesai : tab.key === "ditolak" ? undefined : null;
 
             return (
               <button
@@ -1072,7 +1137,7 @@ export default function BoqPage() {
                               <Eye size={15} />
                             </button>
 
-                            {canManage && boq.status !== "aktif" && boq.status !== "ditolak" && (
+                             {canManage && boq.status !== "aktif" && boq.status !== "selesai" && boq.status !== "ditolak" && (
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -1940,7 +2005,29 @@ export default function BoqPage() {
                     </button>
                   )}
 
-                  {canManage && detailBoq.status === "ditolak" && (
+                   {canManage && detailBoq.status === "aktif" && (
+                     <button
+                       type="button"
+                       onClick={() => handleMarkSelesai(detailBoq)}
+                       className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                     >
+                       <ClipboardCheck size={16} />
+                       Tandai Selesai
+                     </button>
+                   )}
+
+                   {canManage && detailBoq.status === "selesai" && (
+                     <button
+                       type="button"
+                       onClick={() => handleReopenBoq(detailBoq)}
+                       className="flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-emerald-600"
+                     >
+                       <CheckCircle2 size={16} />
+                       Buka Kembali ke Aktif
+                     </button>
+                   )}
+
+                   {canManage && detailBoq.status === "ditolak" && (
                     <button
                       type="button"
                       onClick={() => {
@@ -1959,6 +2046,55 @@ export default function BoqPage() {
           </div>
         )}
       </div>
+
+      {confirmSelesaiOpen && confirmSelesaiBoq && (() => {
+        const boq = confirmSelesaiBoq;
+        const totalBoq = boq.items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
+        const totalAdditional = boq.reconciliation?.additional || 0;
+        const mosSistem = boq.reconciliation?.mosSistem || 0;
+        const remains = mosSistem - (totalBoq + totalAdditional);
+        const hasWarning = remains !== 0;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+              <h3 className="text-base font-semibold text-slate-900">Tandai BOQ sebagai Selesai?</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                BOQ <span className="font-semibold text-slate-700">{boq.boqNumber || boq.id}</span> akan diubah menjadi status Selesai.
+              </p>
+
+              {hasWarning && (
+                <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-semibold">Perhatian: BOQ ini masih memiliki sisa material.</p>
+                    <p className="mt-0.5 text-xs">
+                      Remains = <span className="font-semibold">{remains}</span> (MOS Sistem: {mosSistem}, BOQ: {totalBoq}, Additional: {totalAdditional})
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-6 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleCancelSelesai}
+                  className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSelesai}
+                  className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-emerald-600"
+                >
+                  Ya, Tandai Selesai
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {toast && (
         <div

@@ -81,16 +81,7 @@ const receiveInbound = async (id, items, actorId) => {
         updateData.catatan = item.catatan;
       }
       if (typeof item.zona_id === "number" && item.zona_id > 0) {
-        // zona_id mengacu ke zona_gudang, tapi bin_lokasi_id mengacu ke bin_lokasi
-        // Ambil bin pertama dari rak pertama di zona tersebut
-        const firstRak = await tx.rak.findFirst({
-          where: { zona_id: item.zona_id },
-          include: { bins: { take: 1 } },
-        });
-        const firstBin = firstRak?.bins?.[0];
-        if (firstBin) {
-          updateData.bin_lokasi_id = firstBin.bin_id;
-        }
+        updateData.zona_id = Number(item.zona_id);
       }
 
       if (Object.keys(updateData).length > 0) {
@@ -386,11 +377,11 @@ const rejectInbound = async (id, catatan = null, actorId) => {
       const gudangTujuanId = Number(shipment.gudang_tujuan_id);
 
       for (const item of items) {
-        const qty = Number(item.qty || 0);
-        const binLokasiId = item.bin_lokasi_id ? Number(item.bin_lokasi_id) : null;
+        const qty = Number(item.qty_ditempatkan || 0);
+        const zonaId = item.zona_id ? Number(item.zona_id) : null;
 
         if (qty <= 0) continue;
-        if (!binLokasiId) continue;
+        if (!zonaId) continue;
 
         const suratItem = shipment.items.find((si) => Number(si.item_id) === Number(item.item_id));
         if (!suratItem) continue;
@@ -401,8 +392,8 @@ const rejectInbound = async (id, catatan = null, actorId) => {
           where: {
             gudang_id: gudangTujuanId,
             barang_id: barangId,
-            kondisi: "baik",
-            bin_lokasi_id: null,
+            kondisi: suratItem.kondisi || "baik",
+            zona_id: null,
             project_id: shipment.project_id,
           },
           orderBy: { qty: "desc" },
@@ -428,44 +419,54 @@ const rejectInbound = async (id, catatan = null, actorId) => {
           });
         }
 
-        const binStock = await tx.stok_gudang.findFirst({
+        await tx.stok_ledger.create({
+          data: {
+            surat_jalan_item_id: suratItem.item_id,
+            barang_id: barangId,
+            jenis_mutasi: "out",
+            qty: qty,
+            saldo_setelah: Math.max(0, newGenericQty),
+          },
+        });
+
+        const zonaStock = await tx.stok_gudang.findFirst({
           where: {
             gudang_id: gudangTujuanId,
             barang_id: barangId,
-            bin_lokasi_id: binLokasiId,
-            kondisi: "baik",
+            zona_id: zonaId,
+            kondisi: suratItem.kondisi || "baik",
             project_id: shipment.project_id,
           },
         });
 
-        let saldoSetelahBin = qty;
-        if (binStock) {
-          saldoSetelahBin = Number(binStock.qty || 0) + qty;
+        let saldoSetelahZona = qty;
+        if (zonaStock) {
+          saldoSetelahZona = Number(zonaStock.qty || 0) + qty;
           await tx.stok_gudang.update({
-            where: { stok_id: binStock.stok_id },
-            data: { qty: saldoSetelahBin, updated_at: new Date() },
+            where: { stok_id: zonaStock.stok_id },
+            data: { qty: saldoSetelahZona, updated_at: new Date() },
           });
         } else {
           const created = await tx.stok_gudang.create({
             data: {
               gudang_id: gudangTujuanId,
               barang_id: barangId,
-              bin_lokasi_id: binLokasiId,
+              zona_id: zonaId,
               project_id: shipment.project_id,
-              kondisi: "baik",
+              kondisi: suratItem.kondisi || "baik",
               qty: qty,
             },
           });
-          saldoSetelahBin = Number(created.qty);
+          saldoSetelahZona = Number(created.qty);
         }
 
         await tx.stok_ledger.create({
           data: {
             surat_jalan_item_id: suratItem.item_id,
             barang_id: barangId,
-            jenis_mutasi: "transfer",
+            jenis_mutasi: "in",
             qty: qty,
-            saldo_setelah: saldoSetelahBin,
+            saldo_setelah: saldoSetelahZona,
           },
         });
       }
@@ -516,10 +517,10 @@ const rejectInbound = async (id, catatan = null, actorId) => {
 
       for (const item of items) {
         const qty = Number(item.qty || 0);
-        const binLokasiId = item.bin_lokasi_id ? Number(item.bin_lokasi_id) : null;
+        const zonaId = item.zona_id ? Number(item.zona_id) : null;
 
         if (qty <= 0) continue;
-        if (!binLokasiId) continue;
+        if (!zonaId) continue;
 
         const suratItem = shipment.items.find((si) => Number(si.item_id) === Number(item.item_id));
         if (!suratItem) continue;
@@ -530,8 +531,8 @@ const rejectInbound = async (id, catatan = null, actorId) => {
           where: {
             gudang_id: gudangAsalId,
             barang_id: barangId,
-            bin_lokasi_id: binLokasiId,
-            kondisi: "baik",
+            zona_id: zonaId,
+            kondisi: suratItem.kondisi || "baik",
             project_id: shipment.project_id,
           },
           orderBy: { qty: "desc" },
@@ -539,7 +540,7 @@ const rejectInbound = async (id, catatan = null, actorId) => {
 
         if (!stock) {
           throw new AppError(
-            `Stok barang ${barangId} di bin tidak ditemukan.`,
+            `Stok barang ${barangId} di zona tidak ditemukan.`,
             400
           );
         }
@@ -547,7 +548,7 @@ const rejectInbound = async (id, catatan = null, actorId) => {
         const existingQty = Number(stock.qty || 0);
         if (existingQty < qty) {
           throw new AppError(
-            `Stok barang ${barangId} di bin tidak mencukupi (Tersedia: ${existingQty}, Dibutuhkan: ${qty}).`,
+            `Stok barang ${barangId} di zona tidak mencukupi (Tersedia: ${existingQty}, Dibutuhkan: ${qty}).`,
             400
           );
         }

@@ -24,7 +24,7 @@ const createSuratJalanSchema = z.object({
         foto_url: z.string().optional().nullable(),
         is_kelebihan: z.boolean().optional().default(false),
         catatan: z.string().optional().nullable(),
-        bin_lokasi_id: z.string().optional().nullable(),
+        zona_id: z.coerce.number().positive().nullable().optional(),
       }),
     )
     .min(1, "Minimal satu item harus diisi."),
@@ -75,12 +75,9 @@ const putawaySchema = z.object({
       qty_fisik: z.number().nonnegative().optional(),
       status_kesesuaian: z.string().optional(),
       // Tahap 2 fields
-      zona_id: z.coerce.number().positive().optional(),
-      gudang_id: z.coerce.number().positive().optional(),
-      qty_ditempatkan: z.number().positive().optional(),
-      // Legacy fields
-      bin_lokasi_id: z.coerce.number().positive().optional(),
-      qty: z.number().positive().optional(),
+      zona_id: z.coerce.number().positive("Zona wajib diisi."),
+      qty_ditempatkan: z.coerce.number().positive("Qty harus lebih dari 0."),
+      qty: z.coerce.number().positive().optional(),
     })
   ).min(1, "Minimal satu item harus di-putaway."),
 }).superRefine((data, ctx) => {
@@ -103,20 +100,20 @@ const putawaySchema = z.object({
         });
       }
     } else {
-      const hasLokasi = item.zona_id !== undefined || item.bin_lokasi_id !== undefined;
-      const hasQty = item.qty_ditempatkan !== undefined || item.qty !== undefined;
+      const hasZona = item.zona_id > 0;
+      const hasQty = item.qty_ditempatkan !== undefined && item.qty_ditempatkan > 0;
 
-      if (!hasLokasi) {
+      if (!hasZona) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "zona_id atau bin_lokasi_id wajib diisi pada Tahap 2.",
+          message: "zona_id wajib diisi pada Tahap 2.",
           path: ["items", index, "zona_id"],
         });
       }
       if (!hasQty) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "qty_ditempatkan atau qty wajib diisi pada Tahap 2.",
+          message: "qty_ditempatkan wajib diisi pada Tahap 2.",
           path: ["items", index, "qty_ditempatkan"],
         });
       }
@@ -129,8 +126,8 @@ const retrieveSchema = z.object({
     .array(
       z.object({
         item_id: z.coerce.number(),
-        bin_lokasi_id: z.coerce.number().positive("Bin lokasi wajib diisi."),
-        qty: z.number().positive("Qty harus lebih dari 0."),
+        zona_id: z.coerce.number().positive("Zona wajib diisi."),
+        qty: z.coerce.number().positive("Qty harus lebih dari 0."),
       }),
     )
     .min(1, "Minimal satu item harus di-retrieve."),

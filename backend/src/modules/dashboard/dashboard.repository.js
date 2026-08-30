@@ -30,7 +30,6 @@ const getStats = async () => {
     warehouses: await safeCount("gudang"),
     personnels: await safeCount("personil"),
     aisles: await safeCount("zona_gudang"),
-    bins: await safeCount("bin_lokasi"),
     categories: await safeCount("kategori_barang"),
     customers: await safeCount("customer"),
     items: totalItems,
@@ -39,7 +38,6 @@ const getStats = async () => {
     activeBoq,
     pendingShipments,
     pendingApprovals,
-    racks: await safeCount("rak"),
     suppliers: await safeCount("supplier"),
     units: await safeCount("satuan"),
     vehicles: await safeCount("kendaraan"),
@@ -66,7 +64,7 @@ const getProjectSummary = async () => {
 
   const boqRecords = await prisma.boq.findMany({
     where: {
-      status: { in: ["draft", "aktif"] },
+      status: { in: ["draft", "aktif", "selesai"] },
     },
     include: {
       tiket: {

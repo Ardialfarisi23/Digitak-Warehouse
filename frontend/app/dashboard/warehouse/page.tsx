@@ -37,7 +37,9 @@ type Zona = {
   kode_zona: string;
   nama_zona?: string;
   tipe_zona?: string;
-  utilisasi_persen?: number | null;
+  status_kecukupan?: string;
+  dinilai_oleh?: string | null;
+  dinilai_pada?: string | null;
   total_qty?: number;
   total_item?: number;
 };
@@ -45,7 +47,7 @@ type Zona = {
 export default function WarehouseLayoutPage() {
   const router = useRouter();
 
-  const { get } = useApi();
+  const { get, request } = useApi();
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
@@ -63,6 +65,11 @@ export default function WarehouseLayoutPage() {
   const [panelSearch, setPanelSearch] = useState("");
   const [panelError, setPanelError] = useState<string | null>(null);
   const [panelLastRefreshed, setPanelLastRefreshed] = useState<Date | null>(null);
+
+  const [statusModalOpen, setStatusModalOpen] = useState(false);
+  const [statusModalZone, setStatusModalZone] = useState<Zona | null>(null);
+  const [statusFormValue, setStatusFormValue] = useState<string>("CUKUP");
+  const [statusSaving, setStatusSaving] = useState(false);
 
   /* =========================================================
      AUTH
@@ -227,6 +234,47 @@ export default function WarehouseLayoutPage() {
     return zone.kode_zona || "";
   }
 
+  function getStatusBadgeClass(status?: string) {
+    switch (status) {
+      case "CUKUP":
+        return "border-green-200 bg-green-100 text-green-800";
+      case "MENDEKATI_PENUH":
+        return "border-orange-200 bg-orange-100 text-orange-800";
+      case "TIDAK_CUKUP":
+        return "border-red-200 bg-red-100 text-red-800";
+      default:
+        return "border-gray-200 bg-gray-100 text-gray-800";
+    }
+  }
+
+  function getStatusLabel(status?: string) {
+    switch (status) {
+      case "CUKUP":
+        return "Cukup";
+      case "MENDEKATI_PENUH":
+        return "Mendekati Penuh";
+      case "TIDAK_CUKUP":
+        return "Tidak Cukup";
+      default:
+        return "Belum dinilai";
+    }
+  }
+
+  function formatDateTime(dateString?: string | null) {
+    if (!dateString) return "-";
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "-";
+    return date.toLocaleString("id-ID", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  const canEditStatus = mapRole(user?.role) === "admin" || mapRole(user?.role) === "supervisor";
+
   /* =========================================================
      ZONE ORDER (kode_zona A-Z)
   ========================================================= */
@@ -276,6 +324,48 @@ export default function WarehouseLayoutPage() {
     setPanelSearch("");
     setPanelError(null);
     setPanelLastRefreshed(null);
+  }
+
+  function openStatusModal(zone: Zona) {
+    setStatusModalZone(zone);
+    setStatusFormValue(zone.status_kecukupan || "CUKUP");
+    setStatusModalOpen(true);
+  }
+
+  function closeStatusModal() {
+    setStatusModalOpen(false);
+    setStatusModalZone(null);
+    setStatusFormValue("CUKUP");
+  }
+
+  async function saveStatus() {
+    if (!statusModalZone || !selectedWarehouseId) return;
+
+    setStatusSaving(true);
+
+    try {
+      const res = await request(
+        `${API_BASE}/api/zones/${statusModalZone.zona_id}/utilization-status`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ status_kecukupan: statusFormValue }),
+        }
+      );
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json?.message || "Gagal menyimpan status utilisasi.");
+      }
+
+      await loadWarehouseLayout(selectedWarehouseId);
+      closeStatusModal();
+    } catch (err) {
+      console.error("Error saving zone status:", err);
+      alert(err instanceof Error ? err.message : "Gagal menyimpan status utilisasi.");
+    } finally {
+      setStatusSaving(false);
+    }
   }
 
   async function fetchZoneStock(zone: Zona) {
@@ -383,12 +473,19 @@ export default function WarehouseLayoutPage() {
     const isIndoor = zoneType === "Indoor";
     const isSelected = selectedZone?.zona_id === zone.zona_id;
 
-    return (
-      <button
-        type="button"
-        onClick={() => openZone(zone)}
-        className={`group relative flex min-h-[180px] w-full flex-col items-center justify-center overflow-hidden p-4 text-center transition-all duration-200 hover:brightness-[0.97] ${getZoneBackground(zone)} ${getZoneSelectedClass(zone)}`}
-      >
+     return (
+       <div
+         role="button"
+         tabIndex={0}
+         onClick={() => openZone(zone)}
+         onKeyDown={(e) => {
+           if (e.key === "Enter" || e.key === " ") {
+             e.preventDefault();
+             openZone(zone);
+           }
+         }}
+         className={`group relative flex min-h-[180px] w-full flex-col items-center justify-center overflow-hidden p-4 text-center transition-all duration-200 hover:brightness-[0.97] cursor-pointer ${getZoneBackground(zone)} ${getZoneSelectedClass(zone)}`}
+       >
         {/* SELECTED INDICATOR */}
         {isSelected && (
           <div className="absolute left-3 top-3">
@@ -429,25 +526,41 @@ export default function WarehouseLayoutPage() {
             </span>
           </div>
 
-          <p className="mt-1 text-[15px] font-medium text-[#222] md:text-[16px]">
-            {zoneType}
-          </p>
-
           {(zone.total_item > 0 || zone.total_qty > 0) && (
             <div className="mt-2">
               <p className="text-[12px] font-semibold text-[#344054]">
                 {zone.total_item || 0} barang • {Number(zone.total_qty || 0).toLocaleString("id-ID")} unit
               </p>
+            </div>
+          )}
 
-              {zone.utilisasi_persen !== undefined && zone.utilisasi_persen > 0 && (
-                <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-[#e5e7eb]">
-                  <div
-                    className="h-full rounded-full bg-[#111827] transition-all duration-500"
-                    style={{ width: `${Math.min(zone.utilisasi_persen, 100)}%` }}
-                  />
-                </div>
+          {zone.status_kecukupan ? (
+            <div className="mt-2">
+              <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${getStatusBadgeClass(zone.status_kecukupan)}`}>
+                {getStatusLabel(zone.status_kecukupan)}
+              </span>
+
+              {zone.dinilai_oleh && (
+                <p className="mt-1 text-[10px] text-[#667085]">
+                  Dinilai manual oleh {zone.dinilai_oleh} pada {formatDateTime(zone.dinilai_pada)}
+                </p>
               )}
             </div>
+          ) : (
+            <p className="mt-2 text-[10px] text-[#98a2b3]">Belum dinilai</p>
+          )}
+
+          {canEditStatus && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                openStatusModal(zone);
+              }}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-[#111827]/10 bg-white px-3 py-1.5 text-[11px] font-semibold text-[#111827] shadow-sm transition hover:border-[#111827]/30 hover:bg-[#f7f8fa]"
+            >
+              <span>Input Status</span>
+            </button>
           )}
         </div>
 
@@ -458,7 +571,7 @@ export default function WarehouseLayoutPage() {
             className="rotate-[-45deg] text-[#333]"
           />
         </div>
-      </button>
+      </div>
     );
   }
 
@@ -478,6 +591,81 @@ export default function WarehouseLayoutPage() {
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
         <div className="w-full max-w-[640px] max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
           {children}
+        </div>
+      </div>
+    );
+  }
+
+  function StatusInputModal({ open, onClose, zone, value, onChange, onSave, saving }: { open: boolean; onClose: () => void; zone: Zona; value: string; onChange: (v: string) => void; onSave: () => void; saving: boolean }) {
+    useEffect(() => {
+      if (!open) return;
+      function handleKey(e: KeyboardEvent) {
+        if (e.key === "Escape") onClose();
+      }
+      document.addEventListener("keydown", handleKey);
+      return () => document.removeEventListener("keydown", handleKey);
+    }, [open, onClose]);
+
+    if (!open || !zone) return null;
+
+    const options = [
+      { value: "CUKUP", label: "Cukup", color: "bg-green-500" },
+      { value: "MENDEKATI_PENUH", label: "Mendekati Penuh", color: "bg-orange-500" },
+      { value: "TIDAK_CUKUP", label: "Tidak Cukup", color: "bg-red-500" },
+    ];
+
+    return (
+      <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
+        <div className="w-full max-w-[420px] rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="border-b border-[#edf0f2] px-6 py-4">
+            <h3 className="text-[17px] font-bold text-[#111827]">
+              Input Status Zona {getCleanZoneCode(zone)}
+            </h3>
+            <p className="mt-1 text-[12px] text-[#6b7280]">
+              Pilih status kecukupan untuk zona ini.
+            </p>
+          </div>
+
+          <div className="px-6 py-5">
+            <div className="flex flex-col gap-2">
+              {options.map((opt) => (
+                <label
+                  key={opt.value}
+                  className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition ${value === opt.value ? "border-[#111827] bg-[#f7f8fa]" : "border-[#e5e7eb] hover:border-[#d0d5dd]"}`}
+                >
+                  <input
+                    type="radio"
+                    name="status_kecukupan"
+                    value={opt.value}
+                    checked={value === opt.value}
+                    onChange={(e) => onChange(e.target.value)}
+                    className="h-4 w-4 accent-[#111827]"
+                  />
+                  <span className={`inline-block h-2.5 w-2.5 rounded-full ${opt.color}`} />
+                  <span className="text-[13px] font-semibold text-[#111827]">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 border-t border-[#edf0f2] px-6 py-4">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-lg border border-[#d0d5dd] px-4 py-2 text-[13px] font-semibold text-[#344054] transition hover:bg-[#f7f8fa] disabled:opacity-60"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saving}
+              className="rounded-lg bg-[#111827] px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-black disabled:opacity-60"
+            >
+              {saving ? "Menyimpan..." : "Simpan"}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -777,13 +965,27 @@ export default function WarehouseLayoutPage() {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={closePanel}
-            className="rounded-lg p-2 text-[#98a2b3] hover:bg-[#f2f4f7] hover:text-[#111827]"
-          >
-            <X size={19} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (!selectedWarehouseId || !selectedZone) return;
+                const target = `/dashboard/reports?tab=stok&warehouseId=${encodeURIComponent(selectedWarehouseId)}`;
+                window.location.href = target;
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#111827]/10 bg-white px-3 py-1.5 text-[11px] font-semibold text-[#111827] shadow-sm transition hover:border-[#111827]/30 hover:bg-[#f7f8fa]"
+            >
+              Lihat Riwayat Stok
+            </button>
+
+            <button
+              type="button"
+              onClick={closePanel}
+              className="rounded-lg p-2 text-[#98a2b3] hover:bg-[#f2f4f7] hover:text-[#111827]"
+            >
+              <X size={19} />
+            </button>
+          </div>
         </div>
 
         {/* SEARCH */}
@@ -869,6 +1071,16 @@ export default function WarehouseLayoutPage() {
           )}
         </div>
       </ZoneDetailModal>
+
+      <StatusInputModal
+        open={statusModalOpen}
+        onClose={closeStatusModal}
+        zone={statusModalZone}
+        value={statusFormValue}
+        onChange={setStatusFormValue}
+        onSave={saveStatus}
+        saving={statusSaving}
+      />
     </div>
   );
 }

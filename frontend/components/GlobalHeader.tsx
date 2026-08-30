@@ -289,7 +289,7 @@ export function GlobalHeader() {
               <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-4 border border-stone-100">
                 <div className="relative h-10 w-10 shrink-0">
                    <Image
-                     src="/logo-digitak.png"
+                     src="/logo digitak .png"
                      alt="Digitak Logo"
                      fill
                      className="object-contain"
@@ -315,7 +315,7 @@ export function GlobalHeader() {
               <div className="flex items-center gap-2 rounded-xl border border-stone-200 bg-white p-3">
                 <ExternalLink size={14} className="text-slate-400 shrink-0" />
                 <a
-                  href="https://digitak.studio"
+                  href="https://digitak.id/"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs font-semibold text-orange-500 hover:text-orange-600"
