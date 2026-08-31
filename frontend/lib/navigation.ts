@@ -90,6 +90,14 @@ export const navigationConfig: NavItem[] = [
     section: "operasional",
   },
   {
+    id: "warehouse-supervisor",
+    title: "Utilisasi Gudang",
+    href: "/dashboard/supervisor/warehousespv", // Ubah path di sini
+    icon: Warehouse,
+    roles: ["supervisor"],
+    section: "operasional",
+  },
+  {
     id: "reconciliation-admin",
     title: "Rekonsiliasi",
     href: "/dashboard/reconciliation",
