@@ -452,16 +452,25 @@ export default function UsersPage() {
       SIMPAN PERUBAHAN EDIT
    ========================================================= */
 
-   const handleEditUser = async () => {
-     if (!editForm) return;
+    const handleEditUser = async () => {
+      if (!editForm) return;
 
-     if (!editForm.nama?.trim() || !editForm.email?.trim()) {
-       setError("Nama lengkap dan email wajib diisi.");
-       return;
-     }
+      if (!editForm.nama?.trim() || !editForm.email?.trim()) {
+        setError("Nama lengkap dan email wajib diisi.");
+        return;
+      }
 
-     setIsSaving(true);
-     setError(null);
+      const role = editForm.role;
+
+      if (role === "supervisor" || role === "staf_gudang") {
+        if (!editForm.gudang_id) {
+          setError("Gudang yang ditugaskan wajib diisi untuk role Supervisor atau Staf Gudang.");
+          return;
+        }
+      }
+
+      setIsSaving(true);
+      setError(null);
 
      try {
        const userId = editForm.user_id ?? editForm.id;

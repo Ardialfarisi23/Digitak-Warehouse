@@ -1006,6 +1006,92 @@ const backfillReconciliation = async () => {
   return { updated: tikets.length };
 };
 
+const getReconciliationUploadLogs = async (filters = {}) => {
+  const {
+    search = "",
+    actorId = "all",
+    startDate,
+    endDate,
+    page = 1,
+    limit = 20,
+  } = filters;
+
+  const where = {};
+
+  if (search.trim()) {
+    where.OR = [
+      { filename: { contains: search.trim(), mode: "insensitive" } },
+      { actor: { nama: { contains: search.trim(), mode: "insensitive" } } },
+    ];
+  }
+
+  if (actorId !== "all") {
+    where.uploaded_by = BigInt(actorId);
+  }
+
+  if (startDate || endDate) {
+    where.uploaded_at = {};
+    if (startDate) where.uploaded_at.gte = new Date(startDate);
+    if (endDate) where.uploaded_at.lte = new Date(endDate + "T23:59:59");
+  }
+
+  const skip = (Number(page) - 1) * Number(limit);
+
+  const [data, total] = await Promise.all([
+    prisma.reconciliation_upload_log.findMany({
+      where,
+      skip: Number(skip),
+      take: Number(limit),
+      orderBy: { uploaded_at: "desc" },
+      include: {
+        actor: {
+          select: {
+            user_id: true,
+            nama: true,
+            email: true,
+            role: true,
+          },
+        },
+        details: {
+          orderBy: { detail_id: "asc" },
+        },
+      },
+    }),
+    prisma.reconciliation_upload_log.count({ where }),
+  ]);
+
+  const rows = data.map((log) => ({
+    upload_id: String(log.upload_id),
+    filename: log.filename,
+    file_url: log.file_url,
+    uploaded_at: log.uploaded_at,
+    uploaded_by: String(log.uploaded_by),
+    uploaded_by_nama: log.actor?.nama || "-",
+    uploaded_by_role: log.actor?.role || "-",
+    total_rows: log.total_rows,
+    success_rows: log.success_rows,
+    failed_rows: log.failed_rows,
+    details: log.details.map((d) => ({
+      detail_id: String(d.detail_id),
+      kode_tiket: d.kode_tiket,
+      mos: d.mos ? Number(d.mos) : 0,
+      used: d.used ? Number(d.used) : 0,
+      status: d.status,
+      reason: d.reason,
+    })),
+  }));
+
+  return {
+    data: rows,
+    meta: {
+      total,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(total / Number(limit)) || 1,
+    },
+  };
+};
+
 module.exports = {
   getStockHistory,
   getAuditLogs,
@@ -1015,4 +1101,5 @@ module.exports = {
   getZoneUtilizationHistory,
   getZoneUtilization,
   backfillReconciliation,
+  getReconciliationUploadLogs,
 };
