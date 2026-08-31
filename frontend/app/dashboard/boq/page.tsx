@@ -1932,7 +1932,7 @@ export default function BoqPage() {
                         <p className="text-sm font-semibold text-slate-800">{detailBoq.reconciliation.boqQty}</p>
                       </div>
                       <div>
-                        <p className="text-[11px] text-slate-400">Hardware on Site</p>
+                        <p className="text-[11px] text-slate-400">MOS (Sistem)</p>
                         <p className="text-sm font-semibold text-slate-800">
                           {detailBoq.reconciliation.hardwareOnSite}
                         </p>

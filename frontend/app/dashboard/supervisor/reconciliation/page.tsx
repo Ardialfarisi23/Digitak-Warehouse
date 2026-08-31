@@ -236,7 +236,7 @@ export default function SupervisorReconciliationPage() {
         </div>
 
         <div className="bg-white p-4.5 rounded-3xl border border-stone-200/80 shadow-sm">
-          <span className="text-xs text-slate-400 font-medium">Hardware on Site</span>
+          <span className="text-xs text-slate-400 font-medium">MOS (Sistem)</span>
           <p className="text-2xl font-black text-slate-900 mt-1">{metrics.onSite}</p>
           <span className="text-[11px] text-slate-400 block mt-0.5">Sudah diterima</span>
         </div>
