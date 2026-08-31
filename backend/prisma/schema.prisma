@@ -38,6 +38,7 @@ model user_account {
   zona_utilisasi_logs     zona_utilisasi_log[] @relation("zona_utilisasi_log_updater")
   zona_dinilai_oleh       zona_gudang[]       @relation("ZonaGudangDinilaiOleh")
   surat_jalan_item_diperiksa_oleh surat_jalan_item[] @relation("SuratJalanItemDiperiksaOleh")
+  reconciliation_upload_logs reconciliation_upload_log[] @relation("ReconciliationUploadLogActor")
 
   @@index([email])
 }
@@ -448,6 +449,41 @@ model audit_log {
   @@index([actor_id])
 }
 
+model reconciliation_upload_log {
+  upload_id    BigInt   @id @default(autoincrement())
+  filename     String
+  file_url     String?
+  uploaded_by  BigInt
+  uploaded_at  DateTime @default(now())
+  total_rows   Int
+  success_rows Int
+  failed_rows  Int
+
+  actor user_account @relation("ReconciliationUploadLogActor", fields: [uploaded_by], references: [user_id])
+  details reconciliation_upload_detail[]
+
+  @@index([uploaded_at])
+}
+
+model reconciliation_upload_detail {
+  detail_id   BigInt   @id @default(autoincrement())
+  upload_id   BigInt
+  kode_tiket  String
+  mos         Decimal  @db.Decimal(14, 2)
+  used        Decimal  @db.Decimal(14, 2)
+  status      reconciliation_detail_status
+  reason      String?
+
+  upload reconciliation_upload_log @relation(fields: [upload_id], references: [upload_id])
+
+  @@index([upload_id])
+}
+
+enum reconciliation_detail_status {
+  berhasil
+  gagal
+}
+
 enum user_role {
   admin_general
   supervisor
@@ -500,9 +536,10 @@ enum surat_jalan_status {
   menunggu_verifikasi
   ready_putaway
   disetujui
-  digenerate
+  sedang_dikirim
   diterima_didistribusikan
   ditolak
+  digenerate
 }
 
 enum kondisi_barang {

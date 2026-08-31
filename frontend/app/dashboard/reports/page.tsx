@@ -18,6 +18,7 @@ import {
   ArrowDownToLine,
   ArrowUpRight,
   XCircle,
+  Upload,
 } from "lucide-react";
 import { useApi } from "@/lib/api";
 
@@ -1077,6 +1078,316 @@ function TabRiwayatStok({ get }) {
 // Dihilangkan - tab Utilisasi dipindah/dihapus sesuai PRD 7.12
 // function TabUtilisasi({ get }) { ... } // seluruh komponen tab Utilisasi dihapus dari UI
 
+function TabRiwayatInputMitra({ get }) {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [q, setQ] = useState("");
+  const [actorId, setActorId] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [detailRow, setDetailRow] = useState(null);
+  const [actors, setActors] = useState([]);
+  const limit = 20;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await get(`${API_BASE}/api/users?role=admin_general&limit=100`);
+        const json = await res.json();
+        if (!cancelled && res.ok) {
+          const list = Array.isArray(json?.data?.data) ? json.data.data : Array.isArray(json?.data) ? json.data : [];
+          setActors(list);
+        }
+      } catch {
+        // ignore actor fetch error
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [get]);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    setDetailRow(null);
+    try {
+      const params = new URLSearchParams();
+      if (q.trim()) params.set("search", q.trim());
+      if (actorId) params.set("actorId", actorId);
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
+      params.set("page", String(page));
+      params.set("limit", String(limit));
+
+      const res = await get(`${API_BASE}/api/reports/reconciliation-upload-logs?${params.toString()}`);
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json?.message || "Gagal mengambil riwayat upload.");
+      }
+
+      const rows = Array.isArray(json?.data?.data) ? json.data.data : [];
+      setData(rows);
+      setTotal(json?.data?.meta?.total || 0);
+      setTotalPages(json?.data?.meta?.totalPages || 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan.");
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [get, q, actorId, startDate, endDate, page]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const formatDateTime = (iso) => {
+    const d = new Date(iso);
+    const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+    const day = d.getDate();
+    const mon = months[d.getMonth()];
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${day} ${mon}, ${hh}:${mm}`;
+  };
+
+  const statusBadge = (status) => {
+    if (status === "berhasil") return <Badge label="Berhasil" variant="green" />;
+    if (status === "gagal") return <Badge label="Gagal" variant="red" />;
+    return <Badge label={status} variant="gray" />;
+  };
+
+  return (
+    <div>
+      <div className="mb-4 rounded-xl border border-orange-100 bg-orange-50 px-4 py-2 text-xs text-orange-700">
+        Tabel ini menampilkan histori upload laporan mitra. Setiap baris merepresentasikan 1 sesi upload file Excel.
+      </div>
+
+      <div className="mb-6 flex flex-wrap items-center gap-2">
+        <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+          <Search size={16} className="shrink-0 text-slate-400" />
+          <input
+            value={q}
+            onChange={(e) => { setQ(e.target.value); setPage(1); }}
+            placeholder="Cari nama file atau pengguna…"
+            className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-300"
+          />
+        </div>
+
+        <div className="relative">
+          <select
+            value={actorId}
+            onChange={(e) => { setActorId(e.target.value); setPage(1); }}
+            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+          >
+            <option value="">Semua pengguna</option>
+            {actors.map((a) => (
+              <option key={a.user_id} value={String(a.user_id)}>{a.nama}</option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        </div>
+
+        <div className="relative">
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+          />
+        </div>
+
+        <div className="relative">
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+          />
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50">
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Waktu Upload</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama File</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diunggah Oleh</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Total</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Berhasil</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gagal</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+                <th className="px-6 py-4 w-10"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i}>
+                    <td className="px-6 py-4" colSpan={8}>
+                      <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
+                    </td>
+                  </tr>
+                ))
+              ) : error ? (
+                <tr>
+                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={8}>{error}</td>
+                </tr>
+              ) : data.length === 0 ? (
+                <tr>
+                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={8}>
+                    Belum ada riwayat upload laporan mitra.
+                  </td>
+                </tr>
+              ) : (
+                data.map((r) => {
+                  const allSuccess = r.failed_rows === 0 && r.success_rows > 0;
+                  const hasFailed = r.failed_rows > 0;
+                  const overallStatus = allSuccess ? "berhasil" : hasFailed ? "sebagian_gagal" : "draft";
+                  return (
+                    <tr
+                      key={r.upload_id}
+                      className="group cursor-pointer transition-colors hover:bg-slate-50"
+                      onClick={() => setDetailRow(r)}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400">
+                        {formatDateTime(r.uploaded_at)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-semibold text-slate-900">{r.filename}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-semibold text-slate-900">{r.uploaded_by_nama}</div>
+                        <div className="text-xs text-slate-500">{r.uploaded_by_role}</div>
+                      </td>
+                      <td className="px-6 py-4 text-center font-mono text-xs text-slate-600">{r.total_rows}</td>
+                      <td className="px-6 py-4 text-center font-mono text-xs text-emerald-600">{r.success_rows}</td>
+                      <td className="px-6 py-4 text-center font-mono text-xs text-rose-600">{r.failed_rows}</td>
+                      <td className="px-6 py-4">
+                        {overallStatus === "berhasil" && <Badge label="Berhasil" variant="green" />}
+                        {overallStatus === "sebagian_gagal" && <Badge label="Sebagian Gagal" variant="orange" />}
+                        {overallStatus === "draft" && <Badge label="Draft" variant="gray" />}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          type="button"
+                          className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                          onClick={(e) => { e.stopPropagation(); setDetailRow(r); }}
+                        >
+                          <Eye size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {totalPages > 1 && (
+        <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
+          <span>
+            Menampilkan {((page - 1) * limit) + 1}–{Math.min(page * limit, total)} dari {total} entri
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1 || loading}
+              className="rounded-full border border-slate-200 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-50"
+            >
+              Sebelumnya
+            </button>
+            <span className="font-mono">
+              {page} / {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages || loading}
+              className="rounded-full border border-slate-200 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-50"
+            >
+              Selanjutnya
+            </button>
+          </div>
+        </div>
+      )}
+
+      <Modal
+        open={!!detailRow}
+        onClose={() => setDetailRow(null)}
+        title="Detail Upload Laporan Mitra"
+      >
+        {detailRow && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs font-medium text-slate-400">Nama File</p>
+                <p className="text-sm font-semibold text-slate-800">{detailRow.filename}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-slate-400">Waktu Upload</p>
+                <p className="text-sm font-semibold text-slate-800">{formatDateTime(detailRow.uploaded_at)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-slate-400">Diunggah Oleh</p>
+                <p className="text-sm font-semibold text-slate-800">{detailRow.uploaded_by_nama}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-slate-400">Total / Berhasil / Gagal</p>
+                <p className="text-sm font-semibold text-slate-800">
+                  {detailRow.total_rows} / {detailRow.success_rows} / {detailRow.failed_rows}
+                </p>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-4">
+              <p className="text-xs font-medium text-slate-400 mb-3">Detail Baris</p>
+              {detailRow.details && detailRow.details.length > 0 ? (
+                <div className="overflow-x-auto rounded-lg border border-slate-100">
+                  <table className="min-w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-slate-50">
+                        <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
+                        <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">MOS</th>
+                        <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">Used</th>
+                        <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+                        <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Alasan Gagal</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {detailRow.details.map((d) => (
+                        <tr key={d.detail_id} className="hover:bg-slate-50">
+                          <td className="px-3 py-2 font-mono font-semibold text-slate-700">{d.kode_tiket}</td>
+                          <td className="px-3 py-2 text-right font-mono text-slate-600">{d.mos}</td>
+                          <td className="px-3 py-2 text-right font-mono text-slate-600">{d.used}</td>
+                          <td className="px-3 py-2">{statusBadge(d.status)}</td>
+                          <td className="px-3 py-2 text-slate-500">{d.reason || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">Tidak ada detail baris untuk upload ini.</p>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
 export default function LaporanAuditPage() {
   const [tab, setTab] = useState("audit");
   const { get } = useApi();
@@ -1085,7 +1396,7 @@ export default function LaporanAuditPage() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get("tab");
-    if (tabParam && ["audit", "stok"].includes(tabParam)) {
+    if (tabParam && ["audit", "stok", "reconciliation"].includes(tabParam)) {
       setTab(tabParam);
     }
   }, []);
@@ -1093,6 +1404,7 @@ export default function LaporanAuditPage() {
   const tabs = [
     { key: "audit", label: "Audit Log", icon: FileClock },
     { key: "stok", label: "Riwayat Stok", icon: PackageSearch },
+    { key: "reconciliation", label: "Riwayat Input Laporan Mitra", icon: Upload },
   ];
 
   return (
@@ -1128,6 +1440,7 @@ export default function LaporanAuditPage() {
         <div className="mt-6">
           {tab === "audit" && <TabAuditLog get={get} />}
           {tab === "stok" && <TabRiwayatStok get={get} />}
+          {tab === "reconciliation" && <TabRiwayatInputMitra get={get} />}
         </div>
 
         <div className="mt-6 text-center text-xs text-slate-400">

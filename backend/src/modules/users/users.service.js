@@ -50,6 +50,16 @@ const update = async (user_id, data) => {
     delete data.password;
   }
 
+  const finalRole = data.role ?? user.role;
+
+  if (finalRole === "supervisor" || finalRole === "staf_gudang") {
+    const gudangId = data.gudang_id ?? user.gudang_id;
+
+    if (gudangId === undefined || gudangId === null || gudangId === "") {
+      throw new AppError("Gudang yang ditugaskan wajib diisi untuk role Supervisor atau Staf Gudang.", 400);
+    }
+  }
+
   return await usersRepository.update(user_id, data);
 };
 
