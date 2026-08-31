@@ -830,7 +830,7 @@ export default function ReconciliationInventoryPage() {
                   <div>
                     <p className="text-sm font-semibold text-rose-800">Remains tidak valid</p>
                     <p className="mt-1 text-xs leading-relaxed text-rose-600">
-                      Qty Used melebihi Hardware on Site. Kondisi ini perlu diperiksa sebelum transaksi outbound berikutnya diproses.
+                      Qty Used melebihi MOS (Sistem). Kondisi ini perlu diperiksa sebelum transaksi outbound berikutnya diproses.
                     </p>
                   </div>
                 </div>

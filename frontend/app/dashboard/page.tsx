@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
@@ -31,7 +30,7 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 
 // ---------------------------------------------------------------------------
 // DATA DUMMY — sesuai istilah & metrik pada PRD (BOQ, Surat Jalan, Kecukupan
-// Area, Rekonsiliasi Hardware, Approval Outbound)
+// Area, Rekonsiliasi Hardware)
 // ---------------------------------------------------------------------------
 
 const formatNumber = (value: number) =>
@@ -78,23 +77,32 @@ const warehouseCapacity = [
 
 const toneMap: Record<
   string,
-  { badge: string; bar: string; track: string }
+  { badge: string; card: string; iconWrap: string; iconFg: string }
 > = {
   rose: {
     badge: "text-rose-600 bg-rose-50",
-    bar: "bg-rose-500",
-    track: "bg-rose-100",
+    card: "border-rose-100 bg-rose-50/40",
+    iconWrap: "bg-rose-100",
+    iconFg: "text-rose-600",
   },
   amber: {
     badge: "text-amber-600 bg-amber-50",
-    bar: "bg-amber-500",
-    track: "bg-amber-100",
+    card: "border-amber-100 bg-amber-50/40",
+    iconWrap: "bg-amber-100",
+    iconFg: "text-amber-600",
   },
   emerald: {
     badge: "text-emerald-600 bg-emerald-50",
-    bar: "bg-emerald-400",
-    track: "bg-emerald-100",
+    card: "border-emerald-100 bg-emerald-50/40",
+    iconWrap: "bg-emerald-100",
+    iconFg: "text-emerald-600",
   },
+};
+
+const statusIconMap: Record<string, typeof CheckCircle2> = {
+  "Cukup": CheckCircle2,
+  "Mendekati Penuh": Clock,
+  "Tidak Cukup": AlertTriangle,
 };
 
 type ProjectSummaryRow = {
@@ -110,82 +118,9 @@ type ProjectSummaryRow = {
   progress: number;
 };
 
-const reconciliationBreakdown = [
-  { label: "BOQ (Rencana)", value: 620, tone: "bg-slate-300" },
-  { label: "Additional", value: 84, tone: "bg-blue-400" },
-  { label: "Hardware on Site", value: 560, tone: "bg-emerald-400" },
-  { label: "Used (Terpasang)", value: 410, tone: "bg-orange-400" },
-  { label: "Remains", value: 150, tone: "bg-slate-400" },
-];
-const reconciliationMax = Math.max(
-  ...reconciliationBreakdown.map((r) => r.value)
-);
-
-const activityFeed = [
-  {
-    id: "act-1",
-    icon: FileCheck2,
-    iconColor: "text-emerald-600 bg-emerald-50",
-    text: "BOQ Proyek SI Data Center BUMN Rw 04 diaktifkan",
-    time: "12 menit lalu",
-  },
-  {
-    id: "act-2",
-    icon: AlertTriangle,
-    iconColor: "text-rose-500 bg-rose-50",
-    text: "Surat Jalan #SJ-0231 belum dikonfirmasi diterima sejak 2 hari",
-    time: "2 hari lalu",
-  },
-  {
-    id: "act-3",
-    icon: PackageCheck,
-    iconColor: "text-blue-500 bg-blue-50",
-    text: "Kelebihan barang tercatat pada inbound Surat Jalan #SJ-0225 (Switch Managed 24-port)",
-    time: "5 jam lalu",
-  },
-  {
-    id: "act-4",
-    icon: ShieldCheck,
-    iconColor: "text-orange-500 bg-orange-50",
-    text: "Permintaan BOQ tambahan dari Supervisor Gudang 2 menunggu tinjauan",
-    time: "1 hari lalu",
-  },
-];
-
 // ---------------------------------------------------------------------------
 // HELPER COMPONENTS
 // ---------------------------------------------------------------------------
-
-function GaugeRing({ score, size = 140 }: { score: number; size?: number }) {
-  const stroke = 12;
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (score / 100) * circumference;
-
-  return (
-    <svg width={size} height={size} className="-rotate-90">
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        stroke="#FFF7ED"
-        strokeWidth={stroke}
-        fill="none"
-      />
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        stroke="#F97316"
-        strokeWidth={stroke}
-        strokeLinecap="round"
-        fill="none"
-        strokeDasharray={circumference}
-        strokeDashoffset={offset}
-      />
-    </svg>
-  );
-}
 
 function KpiCard({
   label,
@@ -247,21 +182,66 @@ function DashboardPageContent() {
   const [projectFilter, setProjectFilter] = useState("");
   const [projectSummary, setProjectSummary] = useState<ProjectSummaryRow[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats>(defaultDashboardStats);
+  const [reconciliationRows, setReconciliationRows] = useState<
+    Array<{
+      project_id: string;
+      project_nama?: string;
+      boq: number;
+      additional: number;
+      mos_sistem: number;
+      used: number;
+      remains: number;
+      status?: string;
+    }>
+  >([]);
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const [isLoadingReconciliation, setIsLoadingReconciliation] = useState(true);
+  const [recentBoqs, setRecentBoqs] = useState<
+    Array<{
+      boq_id: number | string;
+      boq_number?: string | null;
+      status?: string;
+      tanggal_aktivasi?: string | null;
+      updated_at?: string | null;
+      created_at?: string | null;
+      tiket?: { project?: { nama_project?: string } } | null;
+    }>
+  >([]);
+  const [outboundQueue, setOutboundQueue] = useState<
+    Array<{
+      surat_jalan_id: number | string;
+      nomor_surat_jalan?: string;
+      status?: string;
+      updated_at?: string | null;
+      created_at?: string | null;
+    }>
+  >([]);
+  const [inboundList, setInboundList] = useState<
+    Array<{
+      surat_jalan_id: number | string;
+      nomor_surat_jalan?: string;
+      status?: string;
+      updated_at?: string | null;
+      created_at?: string | null;
+    }>
+  >([]);
+  const [isLoadingActivity, setIsLoadingActivity] = useState(true);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
         const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
-        const [statsResponse, projectSummaryResponse] = await Promise.all([
+        const [statsResponse, projectSummaryResponse, reconciliationResponse] = await Promise.all([
           get(`${apiBase}/api/dashboard`),
           get(`${apiBase}/api/dashboard/project-summary`),
+          get(`${apiBase}/api/reconciliation/inventory`),
         ]);
 
         const statsJson = await statsResponse.json();
         const projectSummaryJson = await projectSummaryResponse.json();
+        const reconciliationJson = await reconciliationResponse.json();
 
         if (!statsResponse.ok) {
           throw new Error(statsJson?.message || "Gagal mengambil statistik dashboard.");
@@ -284,17 +264,111 @@ function DashboardPageContent() {
         });
 
         setProjectSummary(Array.isArray(projectSummaryJson?.data) ? projectSummaryJson.data : []);
+
+        const reconPayload = reconciliationJson?.data;
+        const reconList: any[] = Array.isArray(reconPayload)
+          ? reconPayload
+          : Array.isArray(reconPayload?.data)
+            ? reconPayload.data
+            : [];
+        setReconciliationRows(
+          reconList.map((row) => ({
+            project_id: String(row?.project_id ?? ""),
+            project_nama: row?.project_nama ?? row?.project?.nama_project ?? undefined,
+            boq: Number(row?.boq ?? 0) || 0,
+            additional: Number(row?.additional ?? 0) || 0,
+            mos_sistem: Number(row?.mos_sistem ?? 0) || 0,
+            used: Number(row?.used ?? 0) || 0,
+            remains: Number(row?.remains ?? 0) || 0,
+            status: row?.status ? String(row.status) : undefined,
+          }))
+        );
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
         setDashboardStats(defaultDashboardStats);
         setProjectSummary([]);
+        setReconciliationRows([]);
       } finally {
         setIsLoadingProjects(false);
         setIsLoadingStats(false);
+        setIsLoadingReconciliation(false);
       }
     };
 
     fetchDashboardData();
+  }, [get]);
+
+  useEffect(() => {
+    const fetchActivity = async () => {
+      setIsLoadingActivity(true);
+      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
+      const safeJson = async (res: Response) => {
+        try {
+          return await res.json();
+        } catch {
+          return null;
+        }
+      };
+
+      const [boqRes, outboundRes, inboundRes] = await Promise.allSettled([
+        get(`${apiBase}/api/boqs?page=1&limit=5&sortBy=updated_at&sortOrder=desc`),
+        get(`${apiBase}/api/surat-jalan/outbound/queue`),
+        get(`${apiBase}/api/surat-jalan/inbound`),
+      ]);
+
+      if (boqRes.status === "fulfilled") {
+        const res = boqRes.value;
+        const json = await safeJson(res);
+        if (res.ok) {
+          const list = json?.data?.data ?? json?.data ?? [];
+          setRecentBoqs(Array.isArray(list) ? list : []);
+        } else {
+          setRecentBoqs([]);
+        }
+      } else {
+        setRecentBoqs([]);
+      }
+
+      if (outboundRes.status === "fulfilled") {
+        const res = outboundRes.value;
+        const json = await safeJson(res);
+        if (res.ok) {
+          const list = json?.data ?? [];
+          const arr = Array.isArray(list)
+            ? list
+            : Array.isArray(list?.data)
+              ? list.data
+              : [];
+          setOutboundQueue(arr.slice(0, 5));
+        } else {
+          setOutboundQueue([]);
+        }
+      } else {
+        setOutboundQueue([]);
+      }
+
+      if (inboundRes.status === "fulfilled") {
+        const res = inboundRes.value;
+        const json = await safeJson(res);
+        if (res.ok) {
+          const list = json?.data ?? [];
+          const arr = Array.isArray(list)
+            ? list
+            : Array.isArray(list?.data)
+              ? list.data
+              : [];
+          setInboundList(arr.slice(0, 5));
+        } else {
+          setInboundList([]);
+        }
+      } else {
+        setInboundList([]);
+      }
+
+      setIsLoadingActivity(false);
+    };
+
+    fetchActivity();
   }, [get]);
 
   const greeting = `Selamat Pagi, Selamat Beraktivitas! `;
@@ -343,11 +417,240 @@ function DashboardPageContent() {
     },
   ];
 
-  const filteredProjects = projectSummary.filter((p) =>
+  const reconciliationTotals = reconciliationRows.reduce(
+    (acc, row) => {
+      acc.boq += row.boq;
+      acc.additional += row.additional;
+      acc.mos_sistem += row.mos_sistem;
+      acc.used += row.used;
+      acc.remains += row.remains;
+      return acc;
+    },
+    { boq: 0, additional: 0, mos_sistem: 0, used: 0, remains: 0 }
+  );
+
+  const reconciliationByProject = reconciliationRows.reduce(
+    (acc, row) => {
+      const key = String(row.project_id ?? "");
+      if (!key) return acc;
+      if (!acc[key]) {
+        acc[key] = { mos_sistem: 0, used: 0, remains: 0 };
+      }
+      acc[key].mos_sistem += row.mos_sistem;
+      acc[key].used += row.used;
+      acc[key].remains += row.remains;
+      return acc;
+    },
+    {} as Record<string, { mos_sistem: number; used: number; remains: number }>
+  );
+
+  const projectRows = projectSummary.map((p) => {
+    const key = String(p.projectId);
+    const metrics = reconciliationByProject[key];
+    const hardwareOnSite = metrics?.mos_sistem ?? 0;
+    const used = metrics?.used ?? 0;
+    const remains = metrics?.remains ?? 0;
+    const progress =
+      hardwareOnSite > 0
+        ? Math.min(Math.round((used / hardwareOnSite) * 100), 100)
+        : 0;
+    return { ...p, hardwareOnSite, used, remains, progress };
+  });
+  const filteredProjects = projectRows.filter((p) =>
     `${p.projectName} ${p.area} ${p.clusterLabel}`
       .toLowerCase()
       .includes(projectFilter.toLowerCase())
   );
+
+  const reconciliationBreakdown = [
+    { label: "BOQ (Rencana)", value: reconciliationTotals.boq, tone: "bg-slate-300" },
+    { label: "Additional", value: reconciliationTotals.additional, tone: "bg-blue-400" },
+    { label: "MOS (Sistem)", value: reconciliationTotals.mos_sistem, tone: "bg-emerald-400" },
+    { label: "Used (Terpasang)", value: reconciliationTotals.used, tone: "bg-orange-400" },
+    { label: "Remains", value: reconciliationTotals.remains, tone: "bg-slate-400" },
+  ];
+  const reconciliationMax = Math.max(
+    1,
+    ...reconciliationBreakdown.map((r) => r.value)
+  );
+  const reconciliationValues = isLoadingReconciliation
+    ? reconciliationBreakdown.map((r) => ({ ...r, value: 0 }))
+    : reconciliationBreakdown;
+
+  const timeAgo = (iso: string | null | undefined): string | null => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    const diffMs = Date.now() - d.getTime();
+    const sec = Math.floor(diffMs / 1000);
+    if (sec < 0) return null;
+    if (sec < 60) return "Baru saja";
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min} menit lalu`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr} jam lalu`;
+    const day = Math.floor(hr / 24);
+    if (day < 7) return `${day} hari lalu`;
+    const wk = Math.floor(day / 7);
+    if (wk < 5) return `${wk} minggu lalu`;
+    const mo = Math.floor(day / 30);
+    return `${mo} bulan lalu`;
+  };
+
+  type ActivityItem = {
+    id: string;
+    type: "boq" | "surat-jalan" | "reconciliation";
+    title: string;
+    timestamp: string | null;
+    actionRequired: boolean;
+    actionUrl?: string;
+    iconKey: "file" | "truck" | "alert" | "package" | "shield";
+    iconTone: string;
+  };
+
+  const buildActivityItems = (): ActivityItem[] => {
+    const items: ActivityItem[] = [];
+
+    for (const sj of outboundQueue) {
+      if (!sj) continue;
+      const id = `sj-out-${sj.surat_jalan_id}`;
+      const status = String(sj.status ?? "").toLowerCase();
+      const actionRequired = status === "draft_diajukan";
+      const ts = sj.updated_at ?? sj.created_at ?? null;
+      const nomor = sj.nomor_surat_jalan ?? `#${sj.surat_jalan_id}`;
+      const verb = actionRequired
+        ? "menunggu approval"
+        : status === "disetujui"
+          ? "telah disetujui"
+          : status === "digenerate"
+            ? "siap dikirim"
+            : `status: ${sj.status ?? "-"}`;
+      items.push({
+        id,
+        type: "surat-jalan",
+        title: `Surat Jalan ${nomor} (Outbound) ${verb}`,
+        timestamp: ts,
+        actionRequired,
+        actionUrl: "/dashboard/delivery",
+        iconKey: actionRequired ? "shield" : "truck",
+        iconTone: actionRequired
+          ? "text-orange-500 bg-orange-50"
+          : "text-blue-500 bg-blue-50",
+      });
+    }
+
+    for (const sj of inboundList) {
+      if (!sj) continue;
+      const id = `sj-in-${sj.surat_jalan_id}`;
+      const status = String(sj.status ?? "").toLowerCase();
+      const actionRequired = status === "draft_diajukan" || status === "menunggu_verifikasi";
+      const ts = sj.updated_at ?? sj.created_at ?? null;
+      const nomor = sj.nomor_surat_jalan ?? `#${sj.surat_jalan_id}`;
+      const verb = actionRequired
+        ? "menunggu verifikasi"
+        : status === "disetujui" || status === "digenerate"
+          ? "telah disetujui"
+          : status === "diterima_didistribusikan"
+            ? "telah diterima"
+            : `status: ${sj.status ?? "-"}`;
+      items.push({
+        id,
+        type: "surat-jalan",
+        title: `Surat Jalan ${nomor} (Inbound) ${verb}`,
+        timestamp: ts,
+        actionRequired,
+        actionUrl: "/dashboard/delivery",
+        iconKey: actionRequired ? "alert" : "package",
+        iconTone: actionRequired
+          ? "text-rose-500 bg-rose-50"
+          : "text-emerald-600 bg-emerald-50",
+      });
+    }
+
+    for (const row of reconciliationRows) {
+      if (!row || String(row.status ?? "").toLowerCase() !== "perhatian") continue;
+      const id = `recon-${row.project_id}`;
+      const projectName = (row as { project_nama?: string }).project_nama ?? `Project ${row.project_id}`;
+      items.push({
+        id,
+        type: "reconciliation",
+        title: `Rekonsiliasi ${projectName} memerlukan perhatian`,
+        timestamp: null,
+        actionRequired: true,
+        actionUrl: "/dashboard/reconciliation",
+        iconKey: "alert",
+        iconTone: "text-rose-500 bg-rose-50",
+      });
+    }
+
+    for (const boq of recentBoqs) {
+      if (!boq) continue;
+      const id = `boq-${boq.boq_id}`;
+      const status = String(boq.status ?? "").toLowerCase();
+      const ts =
+        status === "aktif"
+          ? boq.tanggal_aktivasi ?? boq.updated_at ?? boq.created_at ?? null
+          : boq.updated_at ?? boq.created_at ?? null;
+      const projectName =
+        boq.tiket?.project?.nama_project ?? `BOQ ${boq.boq_number ?? boq.boq_id}`;
+      const actionRequired = status === "draft";
+      const verb = actionRequired
+        ? "menunggu verifikasi"
+        : status === "aktif"
+          ? "telah diaktifkan"
+          : status === "selesai"
+            ? "telah selesai"
+            : `status: ${boq.status ?? "-"}`;
+      items.push({
+        id,
+        type: "boq",
+        title: `BOQ ${projectName} ${verb}`,
+        timestamp: ts,
+        actionRequired,
+        actionUrl: "/dashboard/boq",
+        iconKey: actionRequired ? "alert" : "file",
+        iconTone: actionRequired
+          ? "text-amber-600 bg-amber-50"
+          : "text-emerald-600 bg-emerald-50",
+      });
+    }
+
+    const withTs = items.filter((i) => i.timestamp);
+    const withoutTs = items.filter((i) => !i.timestamp);
+    withTs.sort((a, b) => {
+      const at = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const bt = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return bt - at;
+    });
+    const priorityScore = (i: ActivityItem) => (i.actionRequired ? 0 : 1);
+    const ordered = [...withTs, ...withoutTs].sort((a, b) => {
+      const pa = priorityScore(a);
+      const pb = priorityScore(b);
+      if (pa !== pb) return pa - pb;
+      const at = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const bt = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return bt - at;
+    });
+    return ordered.slice(0, 5);
+  };
+
+  const activityItems = buildActivityItems();
+
+  const iconForKey = (k: ActivityItem["iconKey"]) => {
+    switch (k) {
+      case "truck":
+        return Truck;
+      case "alert":
+        return AlertTriangle;
+      case "package":
+        return PackageCheck;
+      case "shield":
+        return ShieldCheck;
+      case "file":
+      default:
+        return FileCheck2;
+    }
+  };
 
   return (
     <div className={`flex gap-6 text-slate-800 ${plusJakartaSans.className}`}>
@@ -379,36 +682,46 @@ function DashboardPageContent() {
             </p>
           </div>
 
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            {warehouseCapacity.map((w) => {
-              const tone = toneMap[w.tone];
-              return (
-                <div
-                  key={w.name}
-                  className="rounded-2xl border border-slate-100 px-4 py-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-500">
-                      {w.name}
-                    </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${tone.badge}`}
-                    >
-                      {w.status}
-                    </span>
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {[...warehouseCapacity]
+              .sort((a, b) => {
+                const order: Record<string, number> = {
+                  "Tidak Cukup": 0,
+                  "Mendekati Penuh": 1,
+                  "Cukup": 2,
+                };
+                return (order[a.status] ?? 99) - (order[b.status] ?? 99);
+              })
+              .map((w) => {
+                const tone = toneMap[w.tone];
+                const StatusIcon = statusIconMap[w.status];
+                return (
+                  <div
+                    key={w.name}
+                    className={`rounded-2xl border ${tone.card} p-4 shadow-xs transition hover:shadow-sm`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tone.iconWrap}`}
+                      >
+                        <StatusIcon size={20} className={tone.iconFg} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-slate-900 leading-snug">
+                          {w.name}
+                        </div>
+                        <div className="mt-1.5">
+                          <span
+                            className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${tone.badge}`}
+                          >
+                            {w.status}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className={`mt-3 h-1.5 w-full overflow-hidden rounded-full ${tone.track}`}>
-                    <div
-                      className={`h-full rounded-full ${tone.bar}`}
-                      style={{ width: `${w.percent}%` }}
-                    />
-                  </div>
-                  <div className="mt-1 text-[11px] text-slate-400">
-                    {w.percent}% terpakai
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
           </div>
         </section>
 
@@ -443,7 +756,7 @@ function DashboardPageContent() {
                   <th className="pb-2 font-medium">Project/Cluster</th>
                   <th className="pb-2 font-medium">Area</th>
                   <th className="pb-2 font-medium">Status BOQ</th>
-                  <th className="pb-2 font-medium">Hardware on Site</th>
+                  <th className="pb-2 font-medium">MOS (Sistem)</th>
                   <th className="pb-2 font-medium">Used</th>
                   <th className="pb-2 font-medium">Remains</th>
                   <th className="pb-2 font-medium">Progres</th>
@@ -517,38 +830,6 @@ function DashboardPageContent() {
 
       {/* KOLOM KANAN */}
       <aside className="w-80 space-y-4">
-        {/* 4a. APPROVAL OUTBOUND TEPAT WAKTU */}
-        <section className="rounded-3xl border border-slate-100 bg-white p-6 shadow-xs">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
-            Approval Outbound Tepat Waktu
-          </h2>
-
-          <div className="mt-4 flex justify-center">
-            <div className="relative flex items-center justify-center">
-              <GaugeRing score={100} />
-              <div className="absolute flex flex-col items-center">
-                <span className="text-3xl font-bold text-slate-900">
-                  100<span className="text-base text-slate-300">%</span>
-                </span>
-                <span className="mt-0.5 text-[10px] font-semibold tracking-wide text-orange-500">
-                  KATEGORI KRITIS
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 space-y-2">
-            <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm">
-              <span className="text-slate-500">Rata-rata delay konfirmasi</span>
-              <span className="font-semibold text-slate-900">4.5 jam</span>
-            </div>
-            <div className="flex items-center justify-between rounded-xl bg-rose-50 px-3 py-2 text-sm">
-              <span className="text-slate-500">Surat Jalan &gt; 24 jam</span>
-              <span className="font-semibold text-rose-500">2 dokumen</span>
-            </div>
-          </div>
-        </section>
-
         {/* 4b. REKONSILIASI HARDWARE RINGKAS */}
         <section className="rounded-3xl border border-slate-100 bg-white p-6 shadow-xs">
           <h2 className="text-sm font-bold text-slate-900">
@@ -557,7 +838,7 @@ function DashboardPageContent() {
           <p className="text-xs text-slate-400">Agregat seluruh proyek aktif</p>
 
           <div className="mt-4 space-y-3">
-            {reconciliationBreakdown.map((r) => (
+            {reconciliationValues.map((r) => (
               <div key={r.label}>
                 <div className="mb-1 flex items-center justify-between text-xs">
                   <span className="text-slate-500">{r.label}</span>
@@ -580,41 +861,54 @@ function DashboardPageContent() {
             <h2 className="text-sm font-bold text-slate-900">
               Aktivitas & Tindak Lanjut Terbaru
             </h2>
-            <button
-              type="button"
-              className="text-[11px] font-semibold text-orange-500 hover:text-orange-600 cursor-pointer"
-            >
-              LIHAT SEMUA
-            </button>
           </div>
 
           <ul className="mt-4 space-y-4">
-            {activityFeed.map((a) => (
-              <li key={a.id} className="flex items-start gap-3">
-                <span
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${a.iconColor}`}
-                >
-                  <a.icon size={13} strokeWidth={2.5} />
-                </span>
-                <div>
-                  <div className="text-xs font-medium leading-snug text-slate-700">
-                    {a.text}
-                  </div>
-                  <div className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400">
-                    <Clock size={10} />
-                    {a.time}
-                  </div>
-                </div>
+            {isLoadingActivity ? (
+              <li className="text-[11px] text-slate-400">Memuat aktivitas terbaru...</li>
+            ) : activityItems.length === 0 ? (
+              <li className="text-[11px] text-slate-400">
+                Tidak ada aktivitas terbaru
               </li>
-            ))}
+            ) : (
+              activityItems.map((a) => {
+                const Icon = iconForKey(a.iconKey);
+                const ts = timeAgo(a.timestamp);
+                const inner = (
+                  <>
+                    <span
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${a.iconTone}`}
+                    >
+                      <Icon size={13} strokeWidth={2.5} />
+                    </span>
+                    <div>
+                      <div className="text-xs font-medium leading-snug text-slate-700">
+                        {a.title}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400">
+                        <Clock size={10} />
+                        {ts ?? "Waktu tidak tersedia"}
+                      </div>
+                    </div>
+                  </>
+                );
+                return (
+                  <li key={a.id}>
+                    {a.actionUrl ? (
+                      <Link
+                        href={a.actionUrl}
+                        className="flex items-start gap-3 hover:opacity-90"
+                      >
+                        {inner}
+                      </Link>
+                    ) : (
+                      <div className="flex items-start gap-3">{inner}</div>
+                    )}
+                  </li>
+                );
+              })
+            )}
           </ul>
-
-          <Button
-            variant="outline"
-            className="mt-5 w-full rounded-xl border-slate-200 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
-          >
-            LIHAT SEMUA AKTIVITAS
-          </Button>
         </section>
       </aside>
     </div>
