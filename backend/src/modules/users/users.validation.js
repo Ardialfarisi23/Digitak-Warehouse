@@ -9,10 +9,44 @@ const createUserSchema = z.object({
   no_telepon: z.string().optional().nullable(),
   gudang_id: z.union([z.string(), z.number()]).optional().nullable(),
   personil_id: z.union([z.string(), z.number()]).optional().nullable(),
+}).superRefine((data, ctx) => {
+  const role = data.role;
+
+  if (role === "supervisor" || role === "staf_gudang") {
+    const gudangId = data.gudang_id;
+
+    if (gudangId === undefined || gudangId === null || gudangId === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["gudang_id"],
+        message: "Gudang yang ditugaskan wajib diisi untuk role Supervisor atau Staf Gudang.",
+      });
+    }
+  }
 });
 
-const updateUserSchema = createUserSchema.partial().refine(
-  (data) => Object.keys(data).length > 0,
+const updateUserSchema = z.object({
+  nama: createUserSchema.shape.nama.optional(),
+  email: createUserSchema.shape.email.optional(),
+  password: createUserSchema.shape.password.optional(),
+  role: createUserSchema.shape.role.optional(),
+  is_aktif: createUserSchema.shape.is_aktif.optional(),
+  no_telepon: createUserSchema.shape.no_telepon.optional().nullable(),
+  gudang_id: createUserSchema.shape.gudang_id.optional().nullable(),
+  personil_id: createUserSchema.shape.personil_id.optional().nullable(),
+}).superRefine((data, ctx) => {
+  if (data.role === "supervisor" || data.role === "staf_gudang") {
+    const gudangId = data.gudang_id;
+    if (gudangId === undefined || gudangId === null || gudangId === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["gudang_id"],
+        message: "Gudang yang ditugaskan wajib diisi untuk role Supervisor atau Staf Gudang.",
+      });
+    }
+  }
+}).refine(
+  (data) => Object.values(data).some((v) => v !== undefined && v !== null && v !== ""),
   {
     message: "Minimal satu field harus diupdate.",
   }
