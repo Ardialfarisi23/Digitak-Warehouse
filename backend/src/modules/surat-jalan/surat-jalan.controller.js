@@ -135,11 +135,18 @@ const putaway = async (req, res, next) => {
       return response.success(res, "Pengecekan fisik berhasil divalidasi. Lanjutkan ke pemilihan zona.", { items });
     }
 
-    // Normalisasi properti untuk service (backward compatibility untuk zona_id -> bin_lokasi_id)
+    // FIX: sebelumnya baris ini nimpa zona_id LANGSUNG ke bin_lokasi_id
+    // (bin_lokasi_id: item.bin_lokasi_id || item.zona_id) — padahal itu 2
+    // tabel/entitas yang beda total (zona_gudang vs bin_lokasi), jadi ID-nya
+    // nunjuk ke row yang salah sama sekali begitu sampai di database.
+    // Sekarang zona_id dan bin_lokasi_id dikirim apa adanya, dua-duanya
+    // sebagai field terpisah — service.putaway() yang nentuin mana yang
+    // dipakai berdasarkan mana yang keisi.
     const normalizedItems = items.map((item) => ({
       ...item,
-      bin_lokasi_id: item.bin_lokasi_id || item.zona_id,
-      qty: item.qty || item.qty_ditempatkan,
+      zona_id: item.zona_id ?? null,
+      bin_lokasi_id: item.bin_lokasi_id ?? null,
+      qty: item.qty ?? item.qty_ditempatkan,
     }));
 
     const result = await suratJalanService.putaway(req.params.id, normalizedItems, req.user.id);

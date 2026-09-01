@@ -566,4 +566,5 @@ enum audit_aksi {
   confirm_distributed
   reject_inbound
   reject_outbound
+  putaway
 }

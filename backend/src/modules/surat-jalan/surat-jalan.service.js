@@ -48,17 +48,17 @@ const receiveInbound = async (id, items, actorId) => {
   await prisma.$transaction(async (tx) => {
     // Mapping label UI → enum Prisma kondisi_barang
     const KONDISI_MAP = {
-      "Baik": "baik",
+      Baik: "baik",
       "Rusak Ringan": "rusak_ringan",
       "Rusak Berat": "rusak_berat",
       "Tidak Sesuai Spek": "tidak_sesuai_spek",
-      "DOA": "doa",
+      DOA: "doa",
       // Sudah lowercase (dari sumber lain)
-      "baik": "baik",
-      "rusak_ringan": "rusak_ringan",
-      "rusak_berat": "rusak_berat",
-      "tidak_sesuai_spek": "tidak_sesuai_spek",
-      "doa": "doa",
+      baik: "baik",
+      rusak_ringan: "rusak_ringan",
+      rusak_berat: "rusak_berat",
+      tidak_sesuai_spek: "tidak_sesuai_spek",
+      doa: "doa",
     };
 
     for (const item of items) {
@@ -80,18 +80,8 @@ const receiveInbound = async (id, items, actorId) => {
       if (typeof item.catatan === "string") {
         updateData.catatan = item.catatan;
       }
-      if (typeof item.zona_id === "number" && item.zona_id > 0) {
-        // zona_id mengacu ke zona_gudang, tapi bin_lokasi_id mengacu ke bin_lokasi
-        // Ambil bin pertama dari rak pertama di zona tersebut
-        const firstRak = await tx.rak.findFirst({
-          where: { zona_id: item.zona_id },
-          include: { bins: { take: 1 } },
-        });
-        const firstBin = firstRak?.bins?.[0];
-        if (firstBin) {
-          updateData.bin_lokasi_id = firstBin.bin_id;
-        }
-      }
+      // Resolve zona_id -> bin_lokasi_id DIHAPUS dari tahap ini — penempatan
+      // lokasi sekarang murni tanggung jawab putaway() di bawah.
 
       if (Object.keys(updateData).length > 0) {
         await tx.surat_jalan_item.update({
@@ -168,9 +158,6 @@ const approveInbound = async (id, itemAdjustments = [], actorId) => {
 
   await prisma.$transaction(async (tx) => {
     await suratJalanRepository.addInboundStock(shipment, tx);
-    // Ubah status menjadi 'ready_putaway' setelah approval supervisor,
-    // bukan 'disetujui'. Status 'disetujui' akan dicapai setelah putaway.
-    // Ini akan menghilangkannya dari antrean verifikasi.
     await suratJalanRepository.updateStatus(id, "ready_putaway", tx);
 
     if (shipment.boq_id && shipment.boq?.tiket_id) {
@@ -258,7 +245,6 @@ const approveOutbound = async (id, actorId) => {
     }
   });
 
-  // Ambil data terbaru setelah transaksi berhasil untuk dikembalikan ke controller
   const updatedShipment = await suratJalanRepository.findById(id);
   return updatedShipment;
 };
@@ -314,28 +300,28 @@ const rejectInbound = async (id, catatan = null, actorId) => {
     throw new AppError("Surat Jalan ini bukan inbound.", 400);
   }
 
-    await prisma.$transaction(async (tx) => {
-      await suratJalanRepository.updateStatus(id, "ditolak", tx);
+  await prisma.$transaction(async (tx) => {
+    await suratJalanRepository.updateStatus(id, "ditolak", tx);
 
-      if (actorId) {
-        await suratJalanRepository.createApprovalLog(id, actorId, "inbound_verifikasi", "ditolak", catatan, tx);
-        await tx.audit_log.create({
-          data: {
-            entity_type: "surat_jalan",
-            entity_id: BigInt(id),
-            aksi: "reject_inbound",
-            actor_id: BigInt(actorId),
-            data_sebelum: { status: shipment.status },
-            data_sesudah: { status: "ditolak", surat_jalan_id: id, catatan },
-          },
-        });
-      }
-    });
+    if (actorId) {
+      await suratJalanRepository.createApprovalLog(id, actorId, "inbound_verifikasi", "ditolak", catatan, tx);
+      await tx.audit_log.create({
+        data: {
+          entity_type: "surat_jalan",
+          entity_id: BigInt(id),
+          aksi: "reject_inbound",
+          actor_id: BigInt(actorId),
+          data_sebelum: { status: shipment.status },
+          data_sesudah: { status: "ditolak", surat_jalan_id: id, catatan },
+        },
+      });
+    }
+  });
 
-    return await suratJalanRepository.findById(id);
-  };
+  return await suratJalanRepository.findById(id);
+};
 
-  const rejectOutbound = async (id, catatan = null, actorId) => {
+const rejectOutbound = async (id, catatan = null, actorId) => {
   const shipment = await suratJalanRepository.findById(id);
 
   if (!shipment) {
@@ -346,271 +332,282 @@ const rejectInbound = async (id, catatan = null, actorId) => {
     throw new AppError("Surat Jalan ini bukan outbound.", 400);
   }
 
-    await prisma.$transaction(async (tx) => {
-      await suratJalanRepository.updateStatus(id, "ditolak", tx);
+  await prisma.$transaction(async (tx) => {
+    await suratJalanRepository.updateStatus(id, "ditolak", tx);
 
-      if (actorId) {
-        await suratJalanRepository.createApprovalLog(id, actorId, "outbound_approval", "ditolak", catatan, tx);
-        await tx.audit_log.create({
-          data: {
-            entity_type: "surat_jalan",
-            entity_id: BigInt(id),
-            aksi: "reject_outbound",
-            actor_id: BigInt(actorId),
-            data_sebelum: { status: shipment.status },
-            data_sesudah: { status: "ditolak", surat_jalan_id: id, catatan },
-          },
+    if (actorId) {
+      await suratJalanRepository.createApprovalLog(id, actorId, "outbound_approval", "ditolak", catatan, tx);
+      await tx.audit_log.create({
+        data: {
+          entity_type: "surat_jalan",
+          entity_id: BigInt(id),
+          aksi: "reject_outbound",
+          actor_id: BigInt(actorId),
+          data_sebelum: { status: shipment.status },
+          data_sesudah: { status: "ditolak", surat_jalan_id: id, catatan },
+        },
+      });
+    }
+  });
+
+  return await suratJalanRepository.findById(id);
+};
+
+/**
+ * putaway() — nyimpen lokasi akhir barang. Terima zona_id ATAU
+ * bin_lokasi_id per item. Stok dipindah dari "generic" (belum
+ * ditempatkan) ke baris stok_gudang spesifik lokasi itu, plus
+ * surat_jalan_item ikut dicatat lokasi akhirnya.
+ */
+const putaway = async (suratJalanId, items = [], actorId) => {
+  const shipment = await suratJalanRepository.findById(suratJalanId);
+
+  if (!shipment) {
+    throw new AppError("Surat Jalan tidak ditemukan.", 404);
+  }
+
+  if (shipment.tipe !== "inbound") {
+    throw new AppError("Hanya inbound yang dapat diproses putaway.", 400);
+  }
+
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new AppError("Daftar item putaway kosong.", 400);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const gudangTujuanId = Number(shipment.gudang_tujuan_id);
+
+    for (const item of items) {
+      const qty = Number(item.qty || 0);
+      const zonaId = item.zona_id ? Number(item.zona_id) : null;
+      const binLokasiId = item.bin_lokasi_id ? Number(item.bin_lokasi_id) : null;
+
+      if (qty <= 0) continue;
+      if (!zonaId && !binLokasiId) continue;
+
+      const suratItem = shipment.items.find((si) => Number(si.item_id) === Number(item.item_id));
+      if (!suratItem) continue;
+
+      const barangId = Number(suratItem.barang_id);
+
+      // 1. Kurangi stok "generic" (belum ditempatkan: bin & zona null).
+      const genericStock = await tx.stok_gudang.findFirst({
+        where: {
+          gudang_id: gudangTujuanId,
+          barang_id: barangId,
+          kondisi: "baik",
+          bin_lokasi_id: null,
+          zona_id: null,
+          project_id: shipment.project_id,
+        },
+        orderBy: { qty: "desc" },
+      });
+
+      if (!genericStock || Number(genericStock.qty || 0) < qty) {
+        throw new AppError(`Stok generic untuk barang ${barangId} tidak mencukupi untuk putaway (Dibutuhkan: ${qty}, Tersedia: ${genericStock ? Number(genericStock.qty) : 0}).`, 400);
+      }
+
+      const newGenericQty = Number(genericStock.qty || 0) - qty;
+
+      if (newGenericQty <= 0) {
+        await tx.stok_gudang.delete({
+          where: { stok_id: genericStock.stok_id },
+        });
+      } else {
+        await tx.stok_gudang.update({
+          where: { stok_id: genericStock.stok_id },
+          data: { qty: newGenericQty, updated_at: new Date() },
         });
       }
-    });
 
-    return await suratJalanRepository.findById(id);
-  };
+      // 2. Tambahkan/perbarui stok di lokasi spesifik (zona ATAU bin).
+      const targetStock = await tx.stok_gudang.findFirst({
+        where: {
+          gudang_id: gudangTujuanId,
+          barang_id: barangId,
+          bin_lokasi_id: binLokasiId,
+          zona_id: zonaId,
+          kondisi: "baik",
+          project_id: shipment.project_id,
+        },
+      });
 
-  const putaway = async (suratJalanId, items = [], actorId) => {
-    const shipment = await suratJalanRepository.findById(suratJalanId);
-
-    if (!shipment) {
-      throw new AppError("Surat Jalan tidak ditemukan.", 404);
-    }
-
-    if (shipment.tipe !== "inbound") {
-      throw new AppError("Hanya inbound yang dapat diproses putaway.", 400);
-    }
-
-    if (!Array.isArray(items) || items.length === 0) {
-      throw new AppError("Daftar item putaway kosong.", 400);
-    }
-
-    await prisma.$transaction(async (tx) => {
-      const gudangTujuanId = Number(shipment.gudang_tujuan_id);
-
-      for (const item of items) {
-        const qty = Number(item.qty || 0);
-        const binLokasiId = item.bin_lokasi_id ? Number(item.bin_lokasi_id) : null;
-
-        if (qty <= 0) continue;
-        if (!binLokasiId) continue;
-
-        const suratItem = shipment.items.find((si) => Number(si.item_id) === Number(item.item_id));
-        if (!suratItem) continue;
-
-        const barangId = Number(suratItem.barang_id);
-
-        const genericStock = await tx.stok_gudang.findFirst({
-          where: {
-            gudang_id: gudangTujuanId,
-            barang_id: barangId,
-            kondisi: "baik",
-            bin_lokasi_id: null,
-            project_id: shipment.project_id,
-          },
-          orderBy: { qty: "desc" },
+      let saldoSetelah = qty;
+      if (targetStock) {
+        saldoSetelah = Number(targetStock.qty || 0) + qty;
+        await tx.stok_gudang.update({
+          where: { stok_id: targetStock.stok_id },
+          data: { qty: saldoSetelah, updated_at: new Date() },
         });
-
-        if (!genericStock || Number(genericStock.qty || 0) < qty) {
-          throw new AppError(
-            `Stok generic untuk barang ${barangId} tidak mencukupi untuk putaway (Dibutuhkan: ${qty}, Tersedia: ${genericStock ? Number(genericStock.qty) : 0}).`,
-            400
-          );
-        }
-
-        const newGenericQty = Number(genericStock.qty || 0) - qty;
-
-        if (newGenericQty <= 0) {
-          await tx.stok_gudang.delete({
-            where: { stok_id: genericStock.stok_id },
-          });
-        } else {
-          await tx.stok_gudang.update({
-            where: { stok_id: genericStock.stok_id },
-            data: { qty: newGenericQty, updated_at: new Date() },
-          });
-        }
-
-        const binStock = await tx.stok_gudang.findFirst({
-          where: {
+      } else {
+        const created = await tx.stok_gudang.create({
+          data: {
             gudang_id: gudangTujuanId,
             barang_id: barangId,
             bin_lokasi_id: binLokasiId,
-            kondisi: "baik",
+            zona_id: zonaId,
             project_id: shipment.project_id,
-          },
-        });
-
-        let saldoSetelahBin = qty;
-        if (binStock) {
-          saldoSetelahBin = Number(binStock.qty || 0) + qty;
-          await tx.stok_gudang.update({
-            where: { stok_id: binStock.stok_id },
-            data: { qty: saldoSetelahBin, updated_at: new Date() },
-          });
-        } else {
-          const created = await tx.stok_gudang.create({
-            data: {
-              gudang_id: gudangTujuanId,
-              barang_id: barangId,
-              bin_lokasi_id: binLokasiId,
-              project_id: shipment.project_id,
-              kondisi: "baik",
-              qty: qty,
-            },
-          });
-          saldoSetelahBin = Number(created.qty);
-        }
-
-        await tx.stok_ledger.create({
-          data: {
-            surat_jalan_item_id: suratItem.item_id,
-            barang_id: barangId,
-            jenis_mutasi: "transfer",
-            qty: qty,
-            saldo_setelah: saldoSetelahBin,
-          },
-        });
-      }
-
-      // FIX (bug #6 looping): sebelumnya di-set "disetujui" lagi di sini —
-      // sama persis kayak status yang di-set approveInbound(), jadi item
-      // yang UDAH selesai ditempatkan nggak bisa dibedain dari yang BARU
-      // di-ACC Supervisor. Sekarang pakai "diterima_didistribusikan"
-      // sebagai penanda akhir proses inbound (barang sudah diterima &
-      // ditempatkan tuntas).
-      await suratJalanRepository.updateStatus(suratJalanId, "diterima_didistribusikan", tx);
-
-      if (actorId) {
-        await suratJalanRepository.createApprovalLog(suratJalanId, actorId, "inbound_putaway", "disetujui", null, tx);
-        await tx.audit_log.create({
-          data: {
-            entity_type: "surat_jalan",
-            entity_id: BigInt(suratJalanId),
-            aksi: "putaway",
-            actor_id: BigInt(actorId),
-            data_sebelum: { status: shipment.status },
-            data_sesudah: { status: "diterima_didistribusikan", surat_jalan_id: suratJalanId },
-          },
-        });
-      }
-    });
-
-    return await suratJalanRepository.findById(suratJalanId);
-  };
-
-  const retrieve = async (suratJalanId, items = [], actorId) => {
-    const shipment = await suratJalanRepository.findById(suratJalanId);
-
-    if (!shipment) {
-      throw new AppError("Surat Jalan tidak ditemukan.", 404);
-    }
-
-    if (shipment.tipe !== "outbound") {
-      throw new AppError("Hanya outbound yang dapat diproses retrieval.", 400);
-    }
-
-    if (!Array.isArray(items) || items.length === 0) {
-      throw new AppError("Daftar item retrieval kosong.", 400);
-    }
-
-    await prisma.$transaction(async (tx) => {
-      const gudangAsalId = Number(shipment.gudang_asal_id);
-
-      for (const item of items) {
-        const qty = Number(item.qty || 0);
-        const binLokasiId = item.bin_lokasi_id ? Number(item.bin_lokasi_id) : null;
-
-        if (qty <= 0) continue;
-        if (!binLokasiId) continue;
-
-        const suratItem = shipment.items.find((si) => Number(si.item_id) === Number(item.item_id));
-        if (!suratItem) continue;
-
-        const barangId = Number(suratItem.barang_id);
-
-        const stock = await tx.stok_gudang.findFirst({
-          where: {
-            gudang_id: gudangAsalId,
-            barang_id: barangId,
-            bin_lokasi_id: binLokasiId,
             kondisi: "baik",
-            project_id: shipment.project_id,
-          },
-          orderBy: { qty: "desc" },
-        });
-
-        if (!stock) {
-          throw new AppError(
-            `Stok barang ${barangId} di bin tidak ditemukan.`,
-            400
-          );
-        }
-
-        const existingQty = Number(stock.qty || 0);
-        if (existingQty < qty) {
-          throw new AppError(
-            `Stok barang ${barangId} di bin tidak mencukupi (Tersedia: ${existingQty}, Dibutuhkan: ${qty}).`,
-            400
-          );
-        }
-
-        const updatedQty = existingQty - qty;
-
-        if (updatedQty <= 0) {
-          await tx.stok_gudang.delete({
-            where: { stok_id: stock.stok_id },
-          });
-        } else {
-          await tx.stok_gudang.update({
-            where: { stok_id: stock.stok_id },
-            data: { qty: updatedQty, updated_at: new Date() },
-          });
-        }
-
-        await tx.stok_ledger.create({
-          data: {
-            surat_jalan_item_id: suratItem.item_id,
-            barang_id: barangId,
-            jenis_mutasi: "out",
             qty: qty,
-            saldo_setelah: Math.max(0, updatedQty),
           },
+        });
+        saldoSetelah = Number(created.qty);
+      }
+
+      await tx.stok_ledger.create({
+        data: {
+          surat_jalan_item_id: suratItem.item_id,
+          barang_id: barangId,
+          // FIX: enum mutasi_jenis di schema cuma punya "in" dan "out",
+          // sebelumnya di sini pakai "transfer" yang nggak terdaftar sama
+          // sekali -> Prisma nolak (PrismaClientValidationError). Putaway
+          // secara efektif adalah barang yang "masuk" ke lokasi rak/zona
+          // untuk pertama kali, jadi "in" itu yang paling pas.
+          jenis_mutasi: "in",
+          qty: qty,
+          saldo_setelah: saldoSetelah,
+        },
+      });
+
+      // 3. Catat lokasi akhir di surat_jalan_item juga.
+      await tx.surat_jalan_item.update({
+        where: { item_id: suratItem.item_id },
+        data: {
+          zona_id: zonaId,
+          bin_lokasi_id: binLokasiId,
+        },
+      });
+    }
+
+    await suratJalanRepository.updateStatus(suratJalanId, "diterima_didistribusikan", tx);
+
+    if (actorId) {
+      await suratJalanRepository.createApprovalLog(suratJalanId, actorId, "inbound_putaway", "disetujui", null, tx);
+      await tx.audit_log.create({
+        data: {
+          entity_type: "surat_jalan",
+          entity_id: BigInt(suratJalanId),
+          aksi: "putaway",
+          actor_id: BigInt(actorId),
+          data_sebelum: { status: shipment.status },
+          data_sesudah: { status: "diterima_didistribusikan", surat_jalan_id: suratJalanId },
+        },
+      });
+    }
+  });
+
+  return await suratJalanRepository.findById(suratJalanId);
+};
+
+const retrieve = async (suratJalanId, items = [], actorId) => {
+  const shipment = await suratJalanRepository.findById(suratJalanId);
+
+  if (!shipment) {
+    throw new AppError("Surat Jalan tidak ditemukan.", 404);
+  }
+
+  if (shipment.tipe !== "outbound") {
+    throw new AppError("Hanya outbound yang dapat diproses retrieval.", 400);
+  }
+
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new AppError("Daftar item retrieval kosong.", 400);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const gudangAsalId = Number(shipment.gudang_asal_id);
+
+    for (const item of items) {
+      const qty = Number(item.qty || 0);
+      const binLokasiId = item.bin_lokasi_id ? Number(item.bin_lokasi_id) : null;
+
+      if (qty <= 0) continue;
+      if (!binLokasiId) continue;
+
+      const suratItem = shipment.items.find((si) => Number(si.item_id) === Number(item.item_id));
+      if (!suratItem) continue;
+
+      const barangId = Number(suratItem.barang_id);
+
+      const stock = await tx.stok_gudang.findFirst({
+        where: {
+          gudang_id: gudangAsalId,
+          barang_id: barangId,
+          bin_lokasi_id: binLokasiId,
+          kondisi: "baik",
+          project_id: shipment.project_id,
+        },
+        orderBy: { qty: "desc" },
+      });
+
+      if (!stock) {
+        throw new AppError(`Stok barang ${barangId} di bin tidak ditemukan.`, 400);
+      }
+
+      const existingQty = Number(stock.qty || 0);
+      if (existingQty < qty) {
+        throw new AppError(`Stok barang ${barangId} di bin tidak mencukupi (Tersedia: ${existingQty}, Dibutuhkan: ${qty}).`, 400);
+      }
+
+      const updatedQty = existingQty - qty;
+
+      if (updatedQty <= 0) {
+        await tx.stok_gudang.delete({
+          where: { stok_id: stock.stok_id },
+        });
+      } else {
+        await tx.stok_gudang.update({
+          where: { stok_id: stock.stok_id },
+          data: { qty: updatedQty, updated_at: new Date() },
         });
       }
 
-      await suratJalanRepository.updateStatus(suratJalanId, "disetujui", tx);
+      await tx.stok_ledger.create({
+        data: {
+          surat_jalan_item_id: suratItem.item_id,
+          barang_id: barangId,
+          jenis_mutasi: "out",
+          qty: qty,
+          saldo_setelah: Math.max(0, updatedQty),
+        },
+      });
+    }
 
-      if (actorId) {
-        await suratJalanRepository.createApprovalLog(suratJalanId, actorId, "outbound_approval", "disetujui", null, tx);
-        await tx.audit_log.create({
-          data: {
-            entity_type: "surat_jalan",
-            entity_id: BigInt(suratJalanId),
-            aksi: "retrieve",
-            actor_id: BigInt(actorId),
-            data_sebelum: { status: shipment.status },
-            data_sesudah: { status: "disetujui", surat_jalan_id: suratJalanId },
-          },
-        });
-      }
-    });
+    await suratJalanRepository.updateStatus(suratJalanId, "disetujui", tx);
 
-    return await suratJalanRepository.findById(suratJalanId);
-  };
+    if (actorId) {
+      await suratJalanRepository.createApprovalLog(suratJalanId, actorId, "outbound_approval", "disetujui", null, tx);
+      await tx.audit_log.create({
+        data: {
+          entity_type: "surat_jalan",
+          entity_id: BigInt(suratJalanId),
+          aksi: "retrieve",
+          actor_id: BigInt(actorId),
+          data_sebelum: { status: shipment.status },
+          data_sesudah: { status: "disetujui", surat_jalan_id: suratJalanId },
+        },
+      });
+    }
+  });
 
-  module.exports = {
-    create,
-    createStaffInbound,
-    receiveInbound,
-    findOutboundQueue,
-    findInboundList,
-    findById,
-    findVerificationQueue,
-    findOutboundForApproval,
-    findOutboundForDelivery,
-    approveInbound,
-    approveOutbound,
-    confirmDistributed,
-    rejectInbound,
-    rejectOutbound,
-    putaway,
-    retrieve,
-  };
+  return await suratJalanRepository.findById(suratJalanId);
+};
+
+module.exports = {
+  create,
+  createStaffInbound,
+  receiveInbound,
+  findOutboundQueue,
+  findInboundList,
+  findById,
+  findVerificationQueue,
+  findOutboundForApproval,
+  findOutboundForDelivery,
+  approveInbound,
+  approveOutbound,
+  confirmDistributed,
+  rejectInbound,
+  rejectOutbound,
+  putaway,
+  retrieve,
+};
