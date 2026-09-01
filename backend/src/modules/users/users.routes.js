@@ -3,10 +3,20 @@ const express = require("express");
 const router = express.Router();
 
 const usersController = require("./users.controller");
+const { avatarUpload } = require("./users.controller");
 const { createUserSchema, updateUserSchema } = require("./users.validation");
 const validate = require("../../middlewares/validation.middleware");
 const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
+
+router.patch(
+  "/me/avatar",
+  authenticate,
+  avatarUpload,
+  usersController.updateAvatar
+);
+
+router.delete("/me/avatar", authenticate, usersController.deleteAvatar);
 
 router.post(
   "/",

@@ -39,6 +39,7 @@ model user_account {
   zona_dinilai_oleh       zona_gudang[]       @relation("ZonaGudangDinilaiOleh")
   surat_jalan_item_diperiksa_oleh surat_jalan_item[] @relation("SuratJalanItemDiperiksaOleh")
   reconciliation_upload_logs reconciliation_upload_log[] @relation("ReconciliationUploadLogActor")
+  notifications           notification[]
 
   @@index([email])
 }
@@ -596,4 +597,30 @@ enum audit_aksi {
   reject_outbound
   putaway
   retrieve
+}
+
+enum notification_type {
+  info
+  approval
+  warning
+  success
+  error
+}
+
+model notification {
+  id         BigInt               @id @default(autoincrement())
+  user_id    BigInt?
+  role       user_role?
+  type       notification_type    @default(info)
+  title      String               @db.Text
+  message    String               @db.Text
+  link       String?              @db.Text
+  is_read    Boolean              @default(false)
+  read_at    DateTime?
+  created_at DateTime             @default(now())
+  user       user_account?        @relation(fields: [user_id], references: [user_id])
+
+  @@index([user_id, is_read])
+  @@index([role, is_read])
+  @@index([created_at])
 }

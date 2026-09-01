@@ -1,4 +1,4 @@
-import { LayoutDashboard, Database, ClipboardList, Truck, Warehouse, RefreshCw, FileBarChart, UserCog, ClipboardCheck, Home, PackageCheck, MapPin, LucideIcon } from "lucide-react";
+import { LayoutDashboard, Database, ClipboardList, Truck, Warehouse, RefreshCw, FileBarChart, UserCog, ClipboardCheck, Home, PackageCheck, MapPin, Bell, LucideIcon } from "lucide-react";
 
 export type UserRole = "admin" | "supervisor" | "staff";
 
@@ -192,5 +192,13 @@ export const navigationConfig: NavItem[] = [
     icon: MapPin,
     roles: ["staff"],
     section: "operasional",
+  },
+  {
+    id: "notifications-all",
+    title: "Notifikasi",
+    href: "/notifications",
+    icon: Bell,
+    roles: ["admin", "supervisor", "staff"],
+    section: "utama",
   },
 ];

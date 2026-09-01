@@ -14,6 +14,7 @@ interface User {
   email?: string;
   role: string;
   isActive?: boolean;
+  avatar_url?: string | null;
 }
 
 interface AuthContextType {
@@ -23,6 +24,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (user: User, token: string) => void;
   logout: () => void;
+  updateUser: (data: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -88,6 +90,15 @@ export function AuthProvider({
     setUser(null);
   };
 
+  const updateUser = (data: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, ...data };
+      localStorage.setItem("user", JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   // ============================================================
   // PROVIDER
   // ============================================================
@@ -101,6 +112,7 @@ export function AuthProvider({
         isAuthenticated: !!token && !!user,
         login,
         logout,
+        updateUser,
       }}
     >
       {children}
