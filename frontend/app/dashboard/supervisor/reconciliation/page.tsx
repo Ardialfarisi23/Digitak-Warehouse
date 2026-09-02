@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import { Search, PackageCheck, PackageMinus, Package, ClipboardCheck, X, ArrowUpRight, AlertTriangle, Loader2, Upload, FileSpreadsheet, CheckCircle2, FileText, Plus, Trash2, Download } from "lucide-react";
+import { Search, PackageCheck, PackageMinus, Package, ClipboardCheck, X, AlertTriangle, Loader2, Upload, FileSpreadsheet, CheckCircle2, FileText, Plus, Trash2, Download } from "lucide-react";
 
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -365,13 +365,14 @@ export default function SupervisorReconciliationPage() {
         {error && <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
 
         {/* KPI Cards */}
-        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-6">
+        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-7">
           <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
           <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
           <KpiCard title="MOS Sistem" value={formatNumber(summary.mos_sistem)} description="Material on Site (Sistem)" icon={PackageCheck} tone="slate" />
           <KpiCard title="MOS Mitra" value={formatNumber(summary.mos_mitra)} description="Material on Site (Mitra)" icon={PackageCheck} tone="slate" />
           <KpiCard title="Selisih" value={formatNumber(summary.selisih)} description="MOS Mitra - MOS Sistem" icon={AlertTriangle} tone={summary.selisih !== 0 ? "rose" : "slate"} />
           <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan" icon={PackageMinus} tone="slate" />
+          <KpiCard title="Remains" value={formatNumber(summary.remains)} description="Sisa ketersediaan" icon={Package} tone={summary.remains < 0 ? "rose" : "slate"} />
         </div>
 
         {/* Filters */}
@@ -668,73 +669,61 @@ export default function SupervisorReconciliationPage() {
                   <button
                     type="button"
                     onClick={() => setMitraFlow("manual")}
-                    className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center transition-colors hover:border-blue-400 hover:bg-blue-50/50"
+                    className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center transition-colors hover:border-orange-400 hover:bg-orange-50/50"
                   >
-                    <FileText size={36} className="text-blue-500" />
+                    <FileText size={36} className="text-orange-500" />
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">Input Manual Data</p>
+                      <p className="text-sm font-semibold text-slate-900">Input Manual</p>
                       <p className="mt-1 text-xs text-slate-400">Masukkan data laporan mitra secara manual per kode tiket.</p>
                     </div>
                   </button>
                 </div>
               )}
 
+              {/* Flow Upload Excel */}
               {mitraFlow === "upload" && (
                 <div className="space-y-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMitraFlow("select");
-                      setMitraFile(null);
-                      setMitraPreview(null);
-                      setMitraError(null);
-                    }}
-                    className="flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-slate-600"
-                  >
-                    <ArrowUpRight size={12} className="-rotate-90" />
-                    Kembali ke pilihan
-                  </button>
-
                   {!mitraPreview ? (
-                    <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center">
-                      <FileSpreadsheet size={32} className="mx-auto text-slate-400" />
-                      <p className="mt-2 text-sm font-semibold text-slate-700">Upload Laporan Compile Material</p>
-                      <p className="mt-1 text-xs text-slate-400">Format Excel (.xlsx, .xls). Multi Kode Tiket dalam satu file didukung.</p>
-
-                      <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600">
-                        <Upload size={16} />
-                        Pilih File
-                        <input type="file" accept=".xlsx, .xls" onChange={handleMitraFileChange} className="hidden" />
-                      </label>
-
-                      {mitraFile && <p className="mt-3 text-xs font-medium text-slate-600">File terpilih: {mitraFile.name}</p>}
+                    <>
+                      <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 p-8 text-center">
+                        <Upload size={32} className="text-slate-400" />
+                        <p className="mt-2 text-sm font-medium text-slate-700">Pilih file Excel laporan mitra</p>
+                        <p className="mt-1 text-xs text-slate-400">Format yang didukung: .xlsx, .xls</p>
+                        <input
+                          type="file"
+                          accept=".xlsx, .xls"
+                          onChange={handleMitraFileChange}
+                          className="mt-4 text-xs text-slate-500 file:mr-4 file:rounded-full file:border-0 file:bg-orange-500 file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white hover:file:bg-orange-600"
+                        />
+                      </div>
 
                       {mitraFile && (
-                        <div className="mt-4">
+                        <div className="flex items-center justify-between rounded-xl bg-slate-100 p-3 text-xs text-slate-700">
+                          <span className="truncate font-medium">{mitraFile.name}</span>
                           <button
                             type="button"
                             onClick={handleMitraUpload}
                             disabled={mitraLoading}
-                            className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                            className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
                           >
-                            {mitraLoading && <Loader2 size={14} className="animate-spin" />}
-                            {mitraLoading ? "Memproses..." : "Pratinjau Data"}
+                            {mitraLoading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                            Unggah & Pratinjau
                           </button>
                         </div>
                       )}
-                    </div>
+                    </>
                   ) : (
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between rounded-xl bg-emerald-50 p-3 text-xs text-emerald-800">
-                        <span className="flex items-center gap-2 font-medium">
-                          <CheckCircle2 size={16} className="text-emerald-600" /> File berhasil diproses
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Hasil Pratinjau Excel</p>
+                        <span className="flex items-center gap-1 text-xs font-medium text-emerald-600">
+                          <CheckCircle2 size={14} /> Berhasil dibaca
                         </span>
-                        <span className="font-semibold">{mitraPreview?.preview?.length || 0} baris ditemukan</span>
                       </div>
 
                       <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200">
                         <table className="w-full text-left text-xs">
-                          <thead className="sticky top-0 bg-slate-100">
+                          <thead className="sticky top-0 bg-slate-100 text-slate-600">
                             <tr>
                               <th className="p-2.5">Kode Tiket</th>
                               <th className="p-2.5">Project</th>
@@ -744,11 +733,11 @@ export default function SupervisorReconciliationPage() {
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {(mitraPreview?.preview || []).map((row: any, idx: number) => (
-                              <tr key={idx}>
-                                <td className="p-2.5 font-medium">{row.kode_tiket}</td>
-                                <td className="p-2.5">{row.project_nama}</td>
-                                <td className="p-2.5 text-right">{formatNumber(row.mos || 0)}</td>
-                                <td className="p-2.5 text-right">{formatNumber(row.used || 0)}</td>
+                              <tr key={idx} className="hover:bg-slate-50">
+                                <td className="p-2.5 font-medium text-slate-800">{row.kode_tiket || "-"}</td>
+                                <td className="p-2.5 text-slate-600">{row.project_nama || "-"}</td>
+                                <td className="p-2.5 text-right font-medium text-slate-700">{formatNumber(row.mos || 0)}</td>
+                                <td className="p-2.5 text-right text-slate-600">{formatNumber(row.used || 0)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -759,44 +748,32 @@ export default function SupervisorReconciliationPage() {
                 </div>
               )}
 
+              {/* Flow Input Manual */}
               {mitraFlow === "manual" && (
                 <div className="space-y-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMitraFlow("select");
-                      setManualRows([]);
-                      setMitraError(null);
-                    }}
-                    className="flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-slate-600"
-                  >
-                    <ArrowUpRight size={12} className="-rotate-90" />
-                    Kembali ke pilihan
-                  </button>
-
-                  <div className="grid grid-cols-2 gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-3 rounded-2xl border border-slate-200 bg-slate-50/50 p-4 sm:grid-cols-4">
                     <div>
-                      <label className="text-[11px] font-medium text-slate-500">Kode Tiket</label>
+                      <label className="block text-[11px] font-medium text-slate-500">Kode Tiket</label>
                       <input
                         type="text"
                         value={manualForm.kode_tiket}
                         onChange={(e) => setManualForm({ ...manualForm, kode_tiket: e.target.value })}
-                        placeholder="TKT-..."
+                        placeholder="TKT-xxx"
                         className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-medium text-slate-500">Project</label>
+                      <label className="block text-[11px] font-medium text-slate-500">Project</label>
                       <input
                         type="text"
                         value={manualForm.project_nama}
                         onChange={(e) => setManualForm({ ...manualForm, project_nama: e.target.value })}
-                        placeholder="Nama project"
+                        placeholder="Nama Project"
                         className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-medium text-slate-500">MOS Mitra</label>
+                      <label className="block text-[11px] font-medium text-slate-500">MOS Mitra</label>
                       <input
                         type="number"
                         value={manualForm.mos}
@@ -806,7 +783,7 @@ export default function SupervisorReconciliationPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-medium text-slate-500">Used Mitra</label>
+                      <label className="block text-[11px] font-medium text-slate-500">Used</label>
                       <input
                         type="number"
                         value={manualForm.used}
@@ -815,18 +792,21 @@ export default function SupervisorReconciliationPage() {
                         className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
                       />
                     </div>
-                    <div className="col-span-2 flex items-end sm:col-span-4">
-                      <button type="button" onClick={handleAddManualRow} className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2 text-xs font-semibold text-white hover:bg-orange-600">
-                        <Plus size={14} />
-                        Tambah Baris Data
+                    <div className="col-span-2 flex justify-end sm:col-span-4">
+                      <button
+                        type="button"
+                        onClick={handleAddManualRow}
+                        className="flex items-center gap-1 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900"
+                      >
+                        <Plus size={14} /> Tambah Baris
                       </button>
                     </div>
                   </div>
 
                   {manualRows.length > 0 && (
-                    <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200">
+                    <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200">
                       <table className="w-full text-left text-xs">
-                        <thead className="sticky top-0 bg-slate-100">
+                        <thead className="sticky top-0 bg-slate-100 text-slate-600">
                           <tr>
                             <th className="p-2.5">Kode Tiket</th>
                             <th className="p-2.5">Project</th>
@@ -837,13 +817,17 @@ export default function SupervisorReconciliationPage() {
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {manualRows.map((row, idx) => (
-                            <tr key={idx}>
-                              <td className="p-2.5 font-medium">{row.kode_tiket}</td>
-                              <td className="p-2.5">{row.project_nama}</td>
-                              <td className="p-2.5 text-right">{formatNumber(row.mos)}</td>
-                              <td className="p-2.5 text-right">{formatNumber(row.used)}</td>
+                            <tr key={idx} className="hover:bg-slate-50">
+                              <td className="p-2.5 font-medium text-slate-800">{row.kode_tiket}</td>
+                              <td className="p-2.5 text-slate-600">{row.project_nama}</td>
+                              <td className="p-2.5 text-right font-medium text-slate-700">{formatNumber(row.mos)}</td>
+                              <td className="p-2.5 text-right text-slate-600">{formatNumber(row.used)}</td>
                               <td className="p-2.5 text-center">
-                                <button type="button" onClick={() => handleRemoveManualRow(idx)} className="text-rose-500 hover:text-rose-700">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveManualRow(idx)}
+                                  className="text-rose-500 hover:text-rose-700"
+                                >
                                   <Trash2 size={14} />
                                 </button>
                               </td>
@@ -857,16 +841,39 @@ export default function SupervisorReconciliationPage() {
               )}
             </div>
 
-            <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
-              <button type="button" onClick={closeMitraModal} className="rounded-full border border-slate-200 px-5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">
-                Batal
-              </button>
-              {(mitraPreview || manualRows.length > 0) && (
-                <button type="button" onClick={handleMitraConfirm} disabled={mitraConfirming} className="flex items-center gap-2 rounded-full bg-orange-500 px-5 py-2 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
-                  {mitraConfirming && <Loader2 size={14} className="animate-spin" />}
-                  {mitraConfirming ? "Menyimpan..." : "Simpan & Konfirmasi"}
+            <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4">
+              {mitraFlow !== "select" ? (
+                <button
+                  type="button"
+                  onClick={() => setMitraFlow("select")}
+                  className="text-xs font-semibold text-slate-500 hover:text-slate-800"
+                >
+                  ← Kembali ke Pilihan
                 </button>
+              ) : (
+                <div />
               )}
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={closeMitraModal}
+                  className="rounded-full border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+                {(mitraPreview || manualRows.length > 0) && (
+                  <button
+                    type="button"
+                    onClick={handleMitraConfirm}
+                    disabled={mitraConfirming}
+                    className="flex items-center gap-1.5 rounded-full bg-orange-500 px-4 py-2 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
+                  >
+                    {mitraConfirming && <Loader2 size={14} className="animate-spin" />}
+                    Simpan Laporan
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

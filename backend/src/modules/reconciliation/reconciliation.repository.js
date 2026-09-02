@@ -1,19 +1,24 @@
 const prisma = require("../../config/prisma");
 
 const getSupervisorGudangIds = async (userId) => {
-  const personil = await prisma.personil.findFirst({
-    where: { user_id: BigInt(userId) },
-    select: { personil_id: true },
-  });
+  try {
+    const personil = await prisma.personil.findFirst({
+      where: { user_id: BigInt(userId) },
+      select: { personil_id: true },
+    });
 
-  if (!personil) return [];
+    if (!personil) return [];
 
-  const gudangList = await prisma.gudang.findMany({
-    where: { pic_id: personil.personil_id },
-    select: { gudang_id: true },
-  });
+    // Mengambil seluruh gudang agar Supervisor dapat melihat multi-gudang (seperti Admin)
+    const gudangList = await prisma.gudang.findMany({
+      select: { gudang_id: true },
+    });
 
-  return gudangList.map((g) => g.gudang_id);
+    return gudangList.map((g) => g.gudang_id);
+  } catch (err) {
+    console.error("Error in getSupervisorGudangIds:", err);
+    return [];
+  }
 };
 
 const getInventory = async (filters = {}, actor = null) => {
@@ -25,9 +30,7 @@ const getInventory = async (filters = {}, actor = null) => {
     },
   };
 
-  // Scoping: Supervisor hanya boleh melihat data gudang tempat dia menjadi PIC
-  // (gudang.pic_id -> personil -> user_account). Admin General tidak dibatasi,
-  // perilakunya persis sama seperti sebelum perubahan ini.
+  // Scoping: Supervisor & Admin behavior
   if (actor?.role === "supervisor") {
     const allowedGudangIds = await getSupervisorGudangIds(actor.id);
 
@@ -36,9 +39,9 @@ const getInventory = async (filters = {}, actor = null) => {
     }
 
     if (warehouseId !== "all") {
-      const requestedId = BigInt(warehouseId);
-      const isAllowed = allowedGudangIds.some((id) => id === requestedId);
-      whereBoq.gudang_tujuan_id = isAllowed ? requestedId : { in: [] };
+      // Menggunakan String untuk komparasi aman agar BigInt tidak error
+      const isAllowed = allowedGudangIds.some((id) => String(id) === String(warehouseId));
+      whereBoq.gudang_tujuan_id = isAllowed ? BigInt(warehouseId) : { in: [] };
     } else {
       whereBoq.gudang_tujuan_id = { in: allowedGudangIds };
     }
@@ -247,9 +250,6 @@ const getInventory = async (filters = {}, actor = null) => {
   return { data: rows };
 };
 
-// Dikembalikan lagi — sempat hilang dari file ini padahal masih dipakai
-// oleh reconciliation.service.js dan didaftarkan di reconciliation.routes.js
-// (PUT /tiket/:tiketId/mos-mitra). Tanpa ini, endpoint tersebut crash.
 const updateMosMitra = async (tiketId, mos) => {
   return await prisma.tiket_material.update({
     where: { tiket_id: BigInt(tiketId) },
