@@ -323,6 +323,7 @@ model surat_jalan {
   personil_pengantar_id BigInt?
   status                surat_jalan_status @default(draft_diajukan)
   kategori_approval     String?
+  pic_pemohon_nama      String?
   tanggal               DateTime           @default(now())
   tanggal_disetujui     DateTime?
   tanggal_digenerate    DateTime?
@@ -596,4 +597,6 @@ enum audit_aksi {
   reject_outbound
   putaway
   retrieve
+  create_inbound
+  create_outbound
 }

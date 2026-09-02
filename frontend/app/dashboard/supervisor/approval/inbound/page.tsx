@@ -39,6 +39,9 @@ export default function SupervisorApprovalPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [query, setQuery] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [confirmTarget, setConfirmTarget] = useState<InboundRequest | null>(null);
+  const [approveLoading, setApproveLoading] = useState<boolean>(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   // Fetch Data dari API
   const fetchInboundList = async () => {
@@ -70,6 +73,12 @@ export default function SupervisorApprovalPage() {
     fetchInboundList();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   // Filter Data
   const filteredRequests = useMemo(() => {
@@ -103,33 +112,37 @@ export default function SupervisorApprovalPage() {
     return { totalAntrean, fisikRusak, selisihPo, diLuarPo };
   }, [filteredRequests]);
 
-  // Handler Approve
-  const handleApprove = async (id: string) => {
+  // Handler Approve — dipisah jadi 2 langkah (openConfirm lalu executeApprove)
+  // supaya bisa pakai modal konfirmasi sebelum API benar-benar dipanggil.
+  const openApproveConfirm = (req: InboundRequest) => {
+    setConfirmTarget(req);
+  };
+
+  const cancelApproveConfirm = () => {
+    setConfirmTarget(null);
+  };
+
+  const executeApprove = async () => {
+    const target = confirmTarget;
+    if (!target) return;
+    setConfirmTarget(null);
+    setApproveLoading(true);
     try {
       // Endpoint asli di surat-jalan.routes.js: PUT /api/surat-jalan/:id/approve-inbound
-      const res = await put(`${API_BASE_URL}/api/surat-jalan/${id}/approve-inbound`, {});
-
+      const res = await put(`${API_BASE_URL}/api/surat-jalan/${target.id}/approve-inbound`, {});
       if (res.ok) {
-        setRequests((prev) => (Array.isArray(prev) ? prev.filter((item) => item.id !== id) : []));
+        setRequests((prev) => (Array.isArray(prev) ? prev.filter((item) => item.id !== target.id) : []));
+        setToast({ message: "Inbound berhasil disetujui.", type: "success" });
       } else {
         const err = await res.json().catch(() => null);
-        alert(err?.message || "Gagal menyetujui dokumen.");
+        setToast({ message: err?.message || "Gagal menyetujui dokumen.", type: "error" });
       }
     } catch (error) {
       console.error("Error approving request:", error);
+      setToast({ message: "Gagal menyetujui dokumen.", type: "error" });
+    } finally {
+      setApproveLoading(false);
     }
-  };
-
-  const openDetail = (item: any) => {
-    setSelectedItem(item);
-    setShowRejectBox(false);
-    setRejectReason("");
-  };
-
-  const closeDetail = () => {
-    setSelectedItem(null);
-    setShowRejectBox(false);
-    setRejectReason("");
   };
 
   return (
@@ -271,8 +284,12 @@ export default function SupervisorApprovalPage() {
                 >
                   Review Detail
                 </button>
-                <button onClick={() => handleApprove(req.id)} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm shadow-emerald-600/20">
-                  Setujui & Tambah Stok
+                <button
+                  onClick={() => openApproveConfirm(req)}
+                  disabled={approveLoading}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm shadow-emerald-600/20 disabled:opacity-60"
+                >
+                  Setujui &amp; Tambah Stok
                 </button>
               </div>
             </div>
@@ -280,6 +297,80 @@ export default function SupervisorApprovalPage() {
         </div>
       ) : (
         <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400 font-medium shadow-sm">Tidak ada pengajuan inbound yang menunggu persetujuan.</div>
+      )}
+
+      {/* Modal Konfirmasi Persetujuan — reuse pola BOQ "Tandai Selesai" */}
+      {confirmTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-base font-semibold text-slate-900">Setujui Inbound?</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Surat Jalan <span className="font-semibold text-slate-700">{confirmTarget.nomor_surat_jalan}</span> akan disetujui dan stok barang akan ditambahkan ke gudang.
+            </p>
+            <div className="mt-6 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelApproveConfirm}
+                disabled={approveLoading}
+                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={executeApprove}
+                disabled={approveLoading}
+                className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-emerald-600 disabled:opacity-60"
+              >
+                {approveLoading ? "Memproses..." : "Ya, Setujui"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast — reuse pola BOQ (top-right, slide-in) */}
+      {toast && (
+        <div
+          className={[
+            "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
+            toast.type === "success"
+              ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
+              : "border-rose-200/80 bg-rose-50/95 text-rose-800",
+          ].join(" ")}
+        >
+          <div
+            className={[
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+              toast.type === "success" ? "bg-emerald-100" : "bg-rose-100",
+            ].join(" ")}
+          >
+            {toast.type === "success" ? (
+              <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+          </div>
+          <p className="flex-1 leading-snug">{toast.message}</p>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className={[
+              "ml-2 shrink-0 rounded-full p-1 transition-colors",
+              toast.type === "success"
+                ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
+                : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
+            ].join(" ")}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       )}
 
       <style jsx global>{`

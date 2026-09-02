@@ -40,6 +40,7 @@ import {
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
+import BarangPicker, { type BarangPickerItem } from "@/components/BarangPicker";
 import Image from "next/image";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -241,6 +242,7 @@ export default function BoqPage() {
   const [selectedBoq, setSelectedBoq] = useState<Boq | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailBoq, setDetailBoq] = useState<Boq | null>(null);
+  const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
   const [confirmSelesaiOpen, setConfirmSelesaiOpen] = useState(false);
   const [confirmSelesaiBoq, setConfirmSelesaiBoq] = useState<Boq | null>(null);
 
@@ -249,8 +251,6 @@ export default function BoqPage() {
   const [areas, setAreas] = useState<string[]>([]);
   const [items, setItems] = useState<{ id: string; kode_perangkat: string; nama_barang: string; satuan?: { kode_satuan: string } }[]>([]);
   const [itemSearch, setItemSearch] = useState("");
-  const [itemPickerIndex, setItemPickerIndex] = useState<number | null>(null);
-  const [itemPickerSearch, setItemPickerSearch] = useState("");
 
   const [form, setForm] = useState({
     projectId: "",
@@ -517,34 +517,6 @@ export default function BoqPage() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  useEffect(() => {
-    if (itemPickerIndex === null) return;
-
-    function handleClick(e: MouseEvent) {
-      const target = e.target as HTMLElement;
-      if (!target.closest('[data-item-picker]')) {
-        setItemPickerIndex(null);
-      }
-    }
-
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [itemPickerIndex]);
-
-  useEffect(() => {
-    if (itemPickerIndex === null) return;
-
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        setItemPickerIndex(null);
-        setItemPickerSearch('');
-      }
-    }
-
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [itemPickerIndex]);
-
   /* ---------------------------------------------------------------- */
   /* Modal handlers                                                     */
   /* ---------------------------------------------------------------- */
@@ -567,8 +539,6 @@ export default function BoqPage() {
       referenceFile: "",
       items: [{ itemCode: "", itemName: "", quantity: 1, unit: "", destinationWarehouseId: "", notes: "" }],
     });
-    setItemPickerIndex(null);
-    setItemPickerSearch("");
     setFormError(null);
     setModalOpen(true);
   }
@@ -599,8 +569,6 @@ export default function BoqPage() {
         notes: item.notes || "",
       })),
     });
-    setItemPickerIndex(null);
-    setItemPickerSearch("");
     setFormError(null);
     setModalOpen(true);
   }
@@ -1433,12 +1401,6 @@ export default function BoqPage() {
                   </div>
                 </div>
 
-                <datalist id="boq-item-codes">
-                  {items.map((item) => (
-                    <option key={item.id} value={item.kode_perangkat} />
-                  ))}
-                </datalist>
-
                 {/* Items */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -1489,91 +1451,24 @@ export default function BoqPage() {
                    <div className="space-y-2">
                      {form.items.map((item, index) => (
                        <div key={index} className="grid grid-cols-12 gap-2 rounded-xl border border-slate-100 p-3">
-                          <div className="col-span-3 relative">
-                            <input
-                              type="text"
+                          <div className="col-span-3">
+                            <BarangPicker
                               value={item.itemCode}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                updateItem(index, "itemCode", val);
-                                const matched = items.find((it) => it.kode_perangkat === val);
-                                if (matched) {
-                                  updateItem(index, "itemName", matched.nama_barang);
-                                  updateItem(index, "unit", matched.satuan?.kode_satuan || "");
+                              onSelect={(picked: BarangPickerItem) => {
+                                if (picked.id) {
+                                  updateItem(index, "itemCode", picked.kode_perangkat);
+                                  updateItem(index, "itemName", picked.nama_barang);
+                                  updateItem(
+                                    index,
+                                    "unit",
+                                    picked.satuan_default_kode || "",
+                                  );
+                                } else {
+                                  updateItem(index, "itemCode", picked.kode_perangkat);
                                 }
                               }}
-                              onFocus={() => {
-                                setItemPickerIndex(null);
-                                setItemPickerSearch("");
-                              }}
                               placeholder="Kode perangkat"
-                              list="boq-item-codes"
-                              className="w-full rounded-lg border border-slate-200 pl-2 pr-8 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
                             />
-                            <button
-                              type="button"
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                              }}
-                              onClick={() => {
-                                setItemPickerIndex(itemPickerIndex === index ? null : index);
-                                setItemPickerSearch("");
-                              }}
-                              className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-slate-600"
-                            >
-                              <ChevronDown size={12} />
-                            </button>
-
-                            {itemPickerIndex === index && (
-                              <div
-                                data-item-picker
-                                className="absolute left-0 top-full z-[60] mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg"
-                              >
-                                <div className="p-1">
-                                  <input
-                                    type="text"
-                                    value={itemPickerSearch}
-                                    onChange={(e) => setItemPickerSearch(e.target.value)}
-                                    placeholder="Cari barang..."
-                                    className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs outline-none focus:border-orange-400"
-                                    autoFocus
-                                  />
-                                </div>
-                                <div className="max-h-32 overflow-y-auto">
-                                  {items
-                                    .filter((it) => {
-                                      const q = itemPickerSearch.toLowerCase();
-                                      return (
-                                        !q ||
-                                        it.kode_perangkat.toLowerCase().includes(q) ||
-                                        it.nama_barang.toLowerCase().includes(q)
-                                      );
-                                    })
-                                    .map((it) => (
-                                      <button
-                                        key={it.id}
-                                        type="button"
-                                        onMouseDown={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                        }}
-                                        onClick={() => {
-                                          updateItem(index, "itemCode", it.kode_perangkat);
-                                          updateItem(index, "itemName", it.nama_barang);
-                                          updateItem(index, "unit", it.satuan?.kode_satuan || "");
-                                          setItemPickerIndex(null);
-                                          setItemPickerSearch("");
-                                        }}
-                                        className="flex w-full items-center justify-between px-2 py-1.5 text-left text-xs hover:bg-slate-50"
-                                      >
-                                        <span className="font-medium text-slate-700">{it.kode_perangkat}</span>
-                                        <span className="truncate text-slate-500">{it.nama_barang}</span>
-                                      </button>
-                                    ))}
-                                </div>
-                              </div>
-                            )}
                           </div>
                         <div className="col-span-3">
                           <input
@@ -1854,13 +1749,17 @@ export default function BoqPage() {
                             <td className="px-4 py-2.5 text-slate-700">{item.itemCode}</td>
                             <td className="px-4 py-2.5 font-medium text-slate-800">
                               <div className="flex items-center gap-2">
-                                {item.barang?.foto && (
+                                {item.barang?.foto && !brokenImages.has(item.barang.foto) && (
                                   <Image
                                     src={item.barang.foto}
                                     alt={item.itemName}
                                     width={32}
                                     height={32}
                                     className="h-8 w-8 rounded-lg border border-slate-100 object-contain"
+                                    onError={() => {
+                                      const fotoUrl = item.barang?.foto;
+                                      if (fotoUrl) setBrokenImages((prev) => new Set(prev).add(fotoUrl));
+                                    }}
                                   />
                                 )}
                                 <span>{item.itemName}</span>
