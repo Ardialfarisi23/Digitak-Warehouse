@@ -33,6 +33,7 @@ const login = async (email, password) => {
             id: String(user.user_id),
             email: user.email,
             role: user.role,
+            avatar_url: user.personils?.foto || null,
         },
         JWT_SECRET,
         {

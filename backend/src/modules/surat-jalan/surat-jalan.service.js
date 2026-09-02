@@ -1,6 +1,7 @@
 const suratJalanRepository = require("./surat-jalan.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
+const notificationService = require("../notifications/notifications.service");
 
 const create = async (data, actorId) => {
   if (!data.tipe || !["inbound", "outbound"].includes(data.tipe)) {
@@ -57,7 +58,17 @@ const createStaffInbound = async (data, actorId) => {
     status: "menunggu_verifikasi",
   };
 
-  return await create(payload, actorId);
+  const result = await create(payload, actorId);
+
+  await notificationService.create({
+    role: "supervisor",
+    type: "approval",
+    title: "Inbound Menunggu Verifikasi",
+    message: `Pengajuan inbound ${result?.nomor_surat_jalan || ""} menunggu verifikasi supervisor.`,
+    link: "/dashboard/supervisor/approval/inbound",
+  });
+
+  return result;
 };
 
 const receiveInbound = async (id, items, actorId) => {
