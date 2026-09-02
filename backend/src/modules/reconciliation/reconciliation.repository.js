@@ -1,12 +1,28 @@
 const prisma = require("../../config/prisma");
 
-const getInventory = async (filters = {}) => {
-  const {
-    search = "",
-    projectId = "all",
-    warehouseId = "all",
-    status = "all",
-  } = filters;
+const getSupervisorGudangIds = async (userId) => {
+  try {
+    const personil = await prisma.personil.findFirst({
+      where: { user_id: BigInt(userId) },
+      select: { personil_id: true },
+    });
+
+    if (!personil) return [];
+
+    // Mengambil seluruh gudang agar Supervisor dapat melihat multi-gudang (seperti Admin)
+    const gudangList = await prisma.gudang.findMany({
+      select: { gudang_id: true },
+    });
+
+    return gudangList.map((g) => g.gudang_id);
+  } catch (err) {
+    console.error("Error in getSupervisorGudangIds:", err);
+    return [];
+  }
+};
+
+const getInventory = async (filters = {}, actor = null) => {
+  const { search = "", projectId = "all", warehouseId = "all", status = "all" } = filters;
 
   const whereBoq = {
     boq: {
@@ -14,12 +30,27 @@ const getInventory = async (filters = {}) => {
     },
   };
 
-  if (projectId !== "all") {
-    whereBoq.boq.tiket = { project_id: BigInt(projectId) };
+  // Scoping: Supervisor & Admin behavior
+  if (actor?.role === "supervisor") {
+    const allowedGudangIds = await getSupervisorGudangIds(actor.id);
+
+    if (allowedGudangIds.length === 0) {
+      return { data: [] };
+    }
+
+    if (warehouseId !== "all") {
+      // Menggunakan String untuk komparasi aman agar BigInt tidak error
+      const isAllowed = allowedGudangIds.some((id) => String(id) === String(warehouseId));
+      whereBoq.gudang_tujuan_id = isAllowed ? BigInt(warehouseId) : { in: [] };
+    } else {
+      whereBoq.gudang_tujuan_id = { in: allowedGudangIds };
+    }
+  } else if (warehouseId !== "all") {
+    whereBoq.gudang_tujuan_id = BigInt(warehouseId);
   }
 
-  if (warehouseId !== "all") {
-    whereBoq.gudang_tujuan_id = BigInt(warehouseId);
+  if (projectId !== "all") {
+    whereBoq.boq.tiket = { project_id: BigInt(projectId) };
   }
 
   const boqItems = await prisma.boq_item.findMany({
@@ -98,23 +129,14 @@ const getInventory = async (filters = {}) => {
 
     if (item.surat_jalan?.tipe === "inbound") {
       if (item.is_kelebihan) {
-        additionalByProjectBarang.set(
-          key,
-          (additionalByProjectBarang.get(key) || 0) + qty
-        );
+        additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + qty);
       } else {
-        inboundByProjectBarang.set(
-          key,
-          (inboundByProjectBarang.get(key) || 0) + qty
-        );
+        inboundByProjectBarang.set(key, (inboundByProjectBarang.get(key) || 0) + qty);
       }
     }
 
     if (item.surat_jalan?.tipe === "outbound") {
-      outboundByProjectBarang.set(
-        key,
-        (outboundByProjectBarang.get(key) || 0) + qty
-      );
+      outboundByProjectBarang.set(key, (outboundByProjectBarang.get(key) || 0) + qty);
     }
   }
 
@@ -218,18 +240,7 @@ const getInventory = async (filters = {}) => {
 
   if (search.trim()) {
     const q = search.toLowerCase();
-    rows = rows.filter((row) =>
-      [
-        row.project_nama,
-        row.kode_tiket,
-        row.kode_perangkat,
-        row.nama_barang,
-        row.gudang_nama,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(q)
-    );
+    rows = rows.filter((row) => [row.project_nama, row.kode_tiket, row.kode_perangkat, row.nama_barang, row.gudang_nama].join(" ").toLowerCase().includes(q));
   }
 
   if (status !== "all") {
@@ -239,6 +250,15 @@ const getInventory = async (filters = {}) => {
   return { data: rows };
 };
 
+const updateMosMitra = async (tiketId, mos) => {
+  return await prisma.tiket_material.update({
+    where: { tiket_id: BigInt(tiketId) },
+    data: { mos },
+  });
+};
+
 module.exports = {
   getInventory,
+  updateMosMitra,
+  getSupervisorGudangIds,
 };
