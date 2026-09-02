@@ -271,18 +271,24 @@ function DashboardPageContent() {
           : Array.isArray(reconPayload?.data)
             ? reconPayload.data
             : [];
-        setReconciliationRows(
-          reconList.map((row) => ({
-            project_id: String(row?.project_id ?? ""),
-            project_nama: row?.project_nama ?? row?.project?.nama_project ?? undefined,
-            boq: Number(row?.boq ?? 0) || 0,
-            additional: Number(row?.additional ?? 0) || 0,
-            mos_sistem: Number(row?.mos_sistem ?? 0) || 0,
-            used: Number(row?.used ?? 0) || 0,
-            remains: Number(row?.remains ?? 0) || 0,
-            status: row?.status ? String(row.status) : undefined,
-          }))
-        );
+        const mappedReconRows = reconList.map((row) => ({
+          project_id: String(row?.project_id ?? ""),
+          project_nama: row?.project_nama ?? row?.project?.nama_project ?? undefined,
+          boq: Number(row?.boq ?? 0) || 0,
+          additional: Number(row?.additional ?? 0) || 0,
+          mos_sistem: Number(row?.mos_sistem ?? 0) || 0,
+          used: Number(row?.used ?? 0) || 0,
+          remains: Number(row?.remains ?? 0) || 0,
+          status: row?.status ? String(row.status) : undefined,
+        }));
+        const seenRecon = new Set<string>();
+        const dedupedReconRows = mappedReconRows.filter((r) => {
+          if (!r.project_id) return true;
+          if (seenRecon.has(r.project_id)) return false;
+          seenRecon.add(r.project_id);
+          return true;
+        });
+        setReconciliationRows(dedupedReconRows);
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
         setDashboardStats(defaultDashboardStats);
@@ -631,7 +637,13 @@ function DashboardPageContent() {
       const bt = b.timestamp ? new Date(b.timestamp).getTime() : 0;
       return bt - at;
     });
-    return ordered.slice(0, 5);
+    const seenIds = new Set<string>();
+    const dedupedOrdered = ordered.filter((i) => {
+      if (seenIds.has(i.id)) return false;
+      seenIds.add(i.id);
+      return true;
+    });
+    return dedupedOrdered.slice(0, 5);
   };
 
   const activityItems = buildActivityItems();
@@ -871,7 +883,7 @@ function DashboardPageContent() {
                 Tidak ada aktivitas terbaru
               </li>
             ) : (
-              activityItems.map((a) => {
+              activityItems.map((a, idx) => {
                 const Icon = iconForKey(a.iconKey);
                 const ts = timeAgo(a.timestamp);
                 const inner = (
@@ -893,7 +905,7 @@ function DashboardPageContent() {
                   </>
                 );
                 return (
-                  <li key={a.id}>
+                  <li key={`${a.type}-${a.id}-${idx}`}>
                     {a.actionUrl ? (
                       <Link
                         href={a.actionUrl}

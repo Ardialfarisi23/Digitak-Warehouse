@@ -65,7 +65,17 @@ const createStaffInbound = async (data, actorId) => {
     status: "menunggu_verifikasi",
   };
 
-  return await create(payload, actorId);
+  const result = await create(payload, actorId);
+
+  await notificationService.create({
+    role: "supervisor",
+    type: "approval",
+    title: "Inbound Menunggu Verifikasi",
+    message: `Pengajuan inbound ${result?.nomor_surat_jalan || ""} menunggu verifikasi supervisor.`,
+    link: "/dashboard/supervisor/approval/inbound",
+  });
+
+  return result;
 };
 
 const receiveInbound = async (id, items, actorId) => {

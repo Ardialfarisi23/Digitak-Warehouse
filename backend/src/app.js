@@ -25,6 +25,7 @@ const boqRoutes = require("./modules/boq/boq.routes");
 const permintaanBoqRoutes = require("./modules/permintaan-boq/permintaan-boq.routes");
 const reportsRoutes = require("./modules/reports/reports.routes");
 const reconciliationRoutes = require("./modules/reconciliation/reconciliation.routes");
+const notificationRoutes = require("./modules/notifications/notifications.routes");
 const errorMiddleware = require("./middlewares/error.middleware");
 
 const app = express();
@@ -87,6 +88,7 @@ app.use("/api/upload", uploadRoutes);
 app.use("/api/boqs", boqRoutes);
 app.use("/api/permintaan-boqs", permintaanBoqRoutes);
 app.use("/api/reports", reportsRoutes);
+app.use("/api/notifications", notificationRoutes);
 app.use("/api/reconciliation", reconciliationRoutes);
 
 // Error Handler (HARUS PALING BAWAH)
