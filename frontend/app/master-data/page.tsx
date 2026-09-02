@@ -25,6 +25,10 @@ import {
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
+import {
+  PERSONNEL_PERMISSIONS,
+  canPerformPersonnelAction,
+} from "@/lib/permissions";
 import Image from "next/image";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -190,9 +194,9 @@ const TAB_PERMISSIONS: Record<
     delete: [ROLE.ADMIN],
   },
   personnel: {
-    create: [ROLE.ADMIN, ROLE.SUPERVISOR],
-    edit: [ROLE.ADMIN, ROLE.SUPERVISOR],
-    delete: [ROLE.ADMIN],
+    create: PERSONNEL_PERMISSIONS.create,
+    edit: PERSONNEL_PERMISSIONS.edit,
+    delete: PERSONNEL_PERMISSIONS.delete,
   },
   vehicles: {
     create: [ROLE.ADMIN, ROLE.SUPERVISOR],
