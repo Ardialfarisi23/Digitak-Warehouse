@@ -15,6 +15,11 @@ const baseInclude = {
           kode_satuan: true,
         },
       },
+      // Ditambahkan: sebelumnya nggak di-include, jadi frontend nggak bisa
+      // nampilin barang ini ditempatkan di zona/bin mana pas riwayat
+      // "Sudah Ditempatkan" dibuka.
+      zona: true,
+      bin_lokasi: true,
     },
   },
   boq: {
@@ -42,7 +47,7 @@ const baseInclude = {
   kendaraan: true,
   personil_pengantar: true,
   project: true,
-   creator: true,
+  creator: true,
 };
 
 const APPROVAL_STATUS = "draft_diajukan";
@@ -56,11 +61,7 @@ function applyListFilters(where, params = {}) {
   }
 
   if (search) {
-    where.OR = [
-      { nomor_surat_jalan: { contains: search, mode: "insensitive" } },
-      { boq: { boq_number: { contains: search, mode: "insensitive" } } },
-      { boq: { tiket: { kode_tiket: { contains: search, mode: "insensitive" } } } },
-    ];
+    where.OR = [{ nomor_surat_jalan: { contains: search, mode: "insensitive" } }, { boq: { boq_number: { contains: search, mode: "insensitive" } } }, { boq: { tiket: { kode_tiket: { contains: search, mode: "insensitive" } } } }];
   }
 
   if (startDate || endDate) {
@@ -147,11 +148,6 @@ const findInboundList = async () => {
     where: {
       tipe: "inbound",
       status: {
-        // Ditambahkan "diterima_didistribusikan" — sebelumnya status ini
-        // dikecualikan dari list, jadi Surat Jalan yang udah selesai
-        // di-putaway (lihat fix putaway() di service.js) jadi nggak
-        // kelihatan sama sekali, termasuk di tab "Sudah Ditempatkan"
-        // halaman Putaway staf.
         in: ["draft_diajukan", "menunggu_verifikasi", "ready_putaway", "disetujui", "digenerate", "diterima_didistribusikan"],
       },
     },
@@ -194,10 +190,7 @@ const findVerificationQueue = async ({ status, tipe, kategori_approval, search, 
 const findOutboundForApproval = async (params = {}) => {
   const { kategori_approval, search, startDate, endDate, page, limit } = params;
 
-  const where = applyListFilters(
-    { tipe: "outbound", status: APPROVAL_STATUS },
-    { kategori_approval, search, startDate, endDate }
-  );
+  const where = applyListFilters({ tipe: "outbound", status: APPROVAL_STATUS }, { kategori_approval, search, startDate, endDate });
 
   const { page: sanitizedPage, limit: sanitizedLimit } = sanitizePagination(page, limit);
 
@@ -218,10 +211,7 @@ const findOutboundForApproval = async (params = {}) => {
 const findOutboundForDelivery = async (params = {}) => {
   const { search, startDate, endDate, page, limit } = params;
 
-  const where = applyListFilters(
-    { tipe: "outbound", status: { in: DELIVERY_STATUSES } },
-    { search, startDate, endDate }
-  );
+  const where = applyListFilters({ tipe: "outbound", status: { in: DELIVERY_STATUSES } }, { search, startDate, endDate });
 
   const { page: sanitizedPage, limit: sanitizedLimit } = sanitizePagination(page, limit);
 
@@ -420,18 +410,12 @@ const deductOutboundStock = async (suratJalan, tx = prisma) => {
     }
 
     if (!stockRecord) {
-      throw new AppError(
-        `Stok barang ${barangNama} di ${gudangAsalNama} tidak ditemukan.`,
-        400
-      );
+      throw new AppError(`Stok barang ${barangNama} di ${gudangAsalNama} tidak ditemukan.`, 400);
     }
 
     const existingQty = Number(stockRecord.qty || 0);
     if (existingQty < qty) {
-      throw new AppError(
-        `Stok barang ${barangNama} di ${gudangAsalNama} tidak mencukupi (Tersedia: ${existingQty}, Dibutuhkan: ${qty}).`,
-        400
-      );
+      throw new AppError(`Stok barang ${barangNama} di ${gudangAsalNama} tidak mencukupi (Tersedia: ${existingQty}, Dibutuhkan: ${qty}).`, 400);
     }
 
     const updatedQty = existingQty - qty;
@@ -473,19 +457,14 @@ const reduceBoqAllocation = async (suratJalan, tx = prisma) => {
   }
 
   for (const [barangId, totalQty] of barangToQty) {
-    const boqItem = suratJalan.boq.items.find(
-      (bi) => Number(bi.barang_id) === Number(barangId)
-    );
+    const boqItem = suratJalan.boq.items.find((bi) => Number(bi.barang_id) === Number(barangId));
     if (!boqItem) continue;
 
     const currentQty = Number(boqItem.qty_rencana || 0);
     const newQty = currentQty - totalQty;
 
     if (newQty < 0) {
-      throw new AppError(
-        `Sisa alokasi BOQ untuk barang ${barangId} tidak mencukupi. Sisa: ${currentQty}, Dibutuhkan: ${totalQty}.`,
-        400
-      );
+      throw new AppError(`Sisa alokasi BOQ untuk barang ${barangId} tidak mencukupi. Sisa: ${currentQty}, Dibutuhkan: ${totalQty}.`, 400);
     }
 
     await tx.boq_item.update({
