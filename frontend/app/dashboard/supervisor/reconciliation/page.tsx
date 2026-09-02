@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import { Search, PackageCheck, PackageMinus, Package, ClipboardCheck, X, ArrowUpRight, AlertTriangle, Loader2, Upload, FileSpreadsheet, CheckCircle2, FileText, Plus, Trash2, RefreshCw } from "lucide-react";
+import { Search, PackageCheck, PackageMinus, Package, ClipboardCheck, X, ArrowUpRight, AlertTriangle, Loader2, Upload, FileSpreadsheet, CheckCircle2, FileText, Plus, Trash2, Download } from "lucide-react";
 
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -55,6 +55,28 @@ function getStatusBadge(status: ReconciliationRecord["status"]) {
   }
 }
 
+function KpiCard({ title, value, description, icon: Icon, tone = "slate" }: { title: string; value: string; description: string; icon: any; tone?: "slate" | "rose" }) {
+  return (
+    <div className={`rounded-2xl border p-4 shadow-sm ${tone === "rose" ? "border-rose-200 bg-rose-50/50" : "border-slate-200 bg-white"}`}>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{title}</p>
+        <Icon size={18} className={tone === "rose" ? "text-rose-500" : "text-slate-400"} />
+      </div>
+      <p className={`mt-2 text-xl font-bold ${tone === "rose" ? "text-rose-700" : "text-slate-900"}`}>{value}</p>
+      <p className="mt-1 text-[11px] text-slate-400">{description}</p>
+    </div>
+  );
+}
+
+function DetailRow({ label, value, highlight = false }: { label: string; value: number; highlight?: boolean }) {
+  return (
+    <div className="flex items-center justify-between py-1 text-sm">
+      <span className={highlight ? "font-semibold text-slate-900" : "text-slate-500"}>{label}</span>
+      <span className={highlight ? "font-bold text-slate-900" : "font-medium text-slate-700"}>{formatNumber(value)}</span>
+    </div>
+  );
+}
+
 export default function SupervisorReconciliationPage() {
   const { user } = useAuth();
   const { get, post } = useApi();
@@ -68,7 +90,6 @@ export default function SupervisorReconciliationPage() {
   const [selectedRecord, setSelectedRecord] = useState<ReconciliationRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
 
   const [showMitraModal, setShowMitraModal] = useState(false);
   const [mitraFlow, setMitraFlow] = useState<"select" | "upload" | "manual">("select");
@@ -80,11 +101,6 @@ export default function SupervisorReconciliationPage() {
   const [manualRows, setManualRows] = useState<any[]>([]);
   const [manualForm, setManualForm] = useState({ kode_tiket: "", project_nama: "", mos: "", used: "" });
 
-  // ==========================================
-  // Ambil data rekonsiliasi. Cakupan (project/gudang) sudah otomatis
-  // dibatasi di backend untuk role Supervisor (hanya gudang tempat dia
-  // menjadi PIC), jadi tidak perlu filter tambahan di sisi frontend.
-  // ==========================================
   const fetchReconciliation = async () => {
     setIsLoading(true);
     setError(null);
@@ -133,7 +149,6 @@ export default function SupervisorReconciliationPage() {
       }));
 
       setRecords(mapped);
-      setLastRefreshed(new Date());
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Terjadi kesalahan saat mengambil data rekonsiliasi.");
       setRecords([]);
@@ -194,11 +209,45 @@ export default function SupervisorReconciliationPage() {
 
   const totalPerhatian = useMemo(() => filteredRecords.filter((r) => r.status === "perhatian").length, [filteredRecords]);
 
-  // ==========================================
-  // Input Laporan Mitra — sama seperti Admin: upload Excel atau input manual,
-  // keduanya lewat endpoint reports/reconciliation yang sama-sama diizinkan
-  // untuk ADMIN dan SUPERVISOR.
-  // ==========================================
+  const handleExportCSV = () => {
+    if (filteredRecords.length === 0) return;
+
+    const headers = ["Project", "Area", "Cluster", "Kode Tiket", "Kode Perangkat", "Nama Barang", "Gudang", "Satuan", "BOQ", "Additional", "MOS Sistem", "MOS Mitra", "Selisih", "Used", "Remains", "Status"];
+
+    const csvRows = [
+      headers.join(","),
+      ...filteredRecords.map((r) =>
+        [
+          `"${r.project_nama}"`,
+          `"${r.area}"`,
+          `"${r.cluster_id}"`,
+          `"${r.kode_tiket}"`,
+          `"${r.kode_perangkat}"`,
+          `"${r.nama_barang}"`,
+          `"${r.gudang_nama}"`,
+          `"${r.satuan}"`,
+          r.boq,
+          r.additional,
+          r.mos_sistem,
+          r.mos_mitra,
+          r.selisih,
+          r.used,
+          r.remains,
+          `"${r.status}"`,
+        ].join(","),
+      ),
+    ];
+
+    const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `rekonsiliasi_inventory_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleMitraFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -316,7 +365,7 @@ export default function SupervisorReconciliationPage() {
         {error && <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
 
         {/* KPI Cards */}
-        <div className="mb-6 grid grid-cols-2 lg:grid-cols-6 gap-4">
+        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-6">
           <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
           <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
           <KpiCard title="MOS Sistem" value={formatNumber(summary.mos_sistem)} description="Material on Site (Sistem)" icon={PackageCheck} tone="slate" />
@@ -376,10 +425,14 @@ export default function SupervisorReconciliationPage() {
             </div>
 
             <div className="flex items-center gap-3">
-              {lastRefreshed && <span className="text-xs text-slate-400">Terakhir diperbarui: {lastRefreshed.toLocaleTimeString("id-ID")}</span>}
-              <button type="button" onClick={fetchReconciliation} className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
-                <RefreshCw size={16} />
-                Refresh
+              <button
+                type="button"
+                onClick={handleExportCSV}
+                disabled={filteredRecords.length === 0}
+                className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+              >
+                <Download size={16} />
+                Export
               </button>
               <button type="button" onClick={openMitraModal} className="flex items-center gap-2 rounded-full bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600">
                 <Upload size={16} />
@@ -389,7 +442,7 @@ export default function SupervisorReconciliationPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="min-w-[1100px] w-full text-left text-sm">
+            <table className="w-full min-w-[1100px] text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
@@ -511,7 +564,7 @@ export default function SupervisorReconciliationPage() {
       {/* Detail Modal */}
       {selectedRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setSelectedRecord(null)}>
-          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h2 className="text-base font-semibold text-slate-900">Detail Rekonsiliasi</h2>
@@ -522,7 +575,7 @@ export default function SupervisorReconciliationPage() {
               </button>
             </div>
 
-            <div className="px-6 py-5 space-y-5">
+            <div className="space-y-5 px-6 py-5">
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs font-medium text-slate-400">Project</p>
                 <p className="mt-1 font-semibold text-slate-900">{selectedRecord.project_nama}</p>
@@ -584,7 +637,7 @@ export default function SupervisorReconciliationPage() {
       {/* Input Laporan Mitra Modal */}
       {showMitraModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={closeMitraModal}>
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h2 className="text-base font-semibold text-slate-900">Input Laporan Mitra</h2>
@@ -595,13 +648,15 @@ export default function SupervisorReconciliationPage() {
               </button>
             </div>
 
-            <div className="px-6 py-5 space-y-5">
+            <div className="space-y-5 px-6 py-5">
+              {mitraError && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{mitraError}</div>}
+
               {mitraFlow === "select" && (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <button
                     type="button"
                     onClick={() => setMitraFlow("upload")}
-                    className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center hover:border-orange-400 hover:bg-orange-50/50 transition-colors"
+                    className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center transition-colors hover:border-orange-400 hover:bg-orange-50/50"
                   >
                     <FileSpreadsheet size={36} className="text-orange-500" />
                     <div>
@@ -613,7 +668,7 @@ export default function SupervisorReconciliationPage() {
                   <button
                     type="button"
                     onClick={() => setMitraFlow("manual")}
-                    className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center hover:border-blue-400 hover:bg-blue-50/50 transition-colors"
+                    className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center transition-colors hover:border-blue-400 hover:bg-blue-50/50"
                   >
                     <FileText size={36} className="text-blue-500" />
                     <div>
@@ -649,73 +704,51 @@ export default function SupervisorReconciliationPage() {
                       <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600">
                         <Upload size={16} />
                         Pilih File
-                        <input type="file" accept=".xlsx,.xls" onChange={handleMitraFileChange} className="hidden" />
+                        <input type="file" accept=".xlsx, .xls" onChange={handleMitraFileChange} className="hidden" />
                       </label>
 
+                      {mitraFile && <p className="mt-3 text-xs font-medium text-slate-600">File terpilih: {mitraFile.name}</p>}
+
                       {mitraFile && (
-                        <div className="mt-4 flex items-center justify-center gap-3">
-                          <p className="text-xs text-slate-600">
-                            File terpilih: <span className="font-semibold">{mitraFile.name}</span> ({(mitraFile.size / 1024).toFixed(1)} KB)
-                          </p>
+                        <div className="mt-4">
                           <button
                             type="button"
                             onClick={handleMitraUpload}
                             disabled={mitraLoading}
-                            className="flex items-center gap-2 rounded-full bg-blue-500 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-600 disabled:opacity-60"
+                            className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
                           >
-                            {mitraLoading && <Loader2 size={13} className="animate-spin" />}
-                            {mitraLoading ? "Memproses..." : "Proses File"}
+                            {mitraLoading && <Loader2 size={14} className="animate-spin" />}
+                            {mitraLoading ? "Memproses..." : "Pratinjau Data"}
                           </button>
                         </div>
                       )}
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-semibold text-slate-900">Pratinjau Hasil Parsing</p>
-                        <span className="text-xs text-slate-400">
-                          {mitraPreview.preview?.length || 0} baris berhasil, {mitraPreview.failed?.length || 0} baris gagal
+                      <div className="flex items-center justify-between rounded-xl bg-emerald-50 p-3 text-xs text-emerald-800">
+                        <span className="flex items-center gap-2 font-medium">
+                          <CheckCircle2 size={16} className="text-emerald-600" /> File berhasil diproses
                         </span>
+                        <span className="font-semibold">{mitraPreview?.preview?.length || 0} baris ditemukan</span>
                       </div>
 
                       <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200">
-                        <table className="min-w-full text-left text-sm">
-                          <thead>
-                            <tr className="border-b border-slate-100 bg-slate-50">
-                              <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
-                              <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
-                              <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
-                              <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
-                              <th className="px-4 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+                        <table className="w-full text-left text-xs">
+                          <thead className="sticky top-0 bg-slate-100">
+                            <tr>
+                              <th className="p-2.5">Kode Tiket</th>
+                              <th className="p-2.5">Project</th>
+                              <th className="p-2.5 text-right">MOS</th>
+                              <th className="p-2.5 text-right">Used</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-50">
-                            {(mitraPreview.preview || []).map((row: any, idx: number) => (
-                              <tr key={idx} className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-mono text-xs font-semibold text-orange-600">{row.kode_tiket}</td>
-                                <td className="px-4 py-2 text-slate-700">{row.project_nama}</td>
-                                <td className="px-4 py-2 text-right font-mono text-slate-600">{row.mos}</td>
-                                <td className="px-4 py-2 text-right font-mono text-slate-600">{row.used}</td>
-                                <td className="px-4 py-2 text-center">
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                                    <CheckCircle2 size={12} />
-                                    OK
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                            {(mitraPreview.failed || []).map((row: any, idx: number) => (
-                              <tr key={`fail-${idx}`} className="bg-rose-50/50 hover:bg-rose-50">
-                                <td className="px-4 py-2 font-mono text-xs font-semibold text-slate-700">{row.kode_tiket || "-"}</td>
-                                <td className="px-4 py-2 text-slate-700">-</td>
-                                <td className="px-4 py-2 text-right font-mono text-slate-400">-</td>
-                                <td className="px-4 py-2 text-right font-mono text-slate-400">-</td>
-                                <td className="px-4 py-2 text-center">
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700">
-                                    <AlertTriangle size={12} />
-                                    {row.reason}
-                                  </span>
-                                </td>
+                          <tbody className="divide-y divide-slate-100">
+                            {(mitraPreview?.preview || []).map((row: any, idx: number) => (
+                              <tr key={idx}>
+                                <td className="p-2.5 font-medium">{row.kode_tiket}</td>
+                                <td className="p-2.5">{row.project_nama}</td>
+                                <td className="p-2.5 text-right">{formatNumber(row.mos || 0)}</td>
+                                <td className="p-2.5 text-right">{formatNumber(row.used || 0)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -734,7 +767,6 @@ export default function SupervisorReconciliationPage() {
                       setMitraFlow("select");
                       setManualRows([]);
                       setMitraError(null);
-                      setManualForm({ kode_tiket: "", project_nama: "", mos: "", used: "" });
                     }}
                     className="flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-slate-600"
                   >
@@ -742,65 +774,76 @@ export default function SupervisorReconciliationPage() {
                     Kembali ke pilihan
                   </button>
 
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">Tambah Data Manual</p>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-4">
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500">Kode Tiket</label>
                       <input
                         type="text"
                         value={manualForm.kode_tiket}
                         onChange={(e) => setManualForm({ ...manualForm, kode_tiket: e.target.value })}
-                        placeholder="Kode Tiket"
-                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
+                        placeholder="TKT-..."
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
                       />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500">Project</label>
                       <input
                         type="text"
                         value={manualForm.project_nama}
                         onChange={(e) => setManualForm({ ...manualForm, project_nama: e.target.value })}
-                        placeholder="Project"
-                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
+                        placeholder="Nama project"
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
                       />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500">MOS Mitra</label>
                       <input
                         type="number"
                         value={manualForm.mos}
                         onChange={(e) => setManualForm({ ...manualForm, mos: e.target.value })}
-                        placeholder="MOS"
-                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
+                        placeholder="0"
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
                       />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500">Used Mitra</label>
                       <input
                         type="number"
                         value={manualForm.used}
                         onChange={(e) => setManualForm({ ...manualForm, used: e.target.value })}
-                        placeholder="Used (opsional)"
-                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
+                        placeholder="0"
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
                       />
                     </div>
-                    <button type="button" onClick={handleAddManualRow} className="mt-3 flex items-center gap-2 rounded-full bg-blue-500 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-600">
-                      <Plus size={14} />
-                      Tambah Baris
-                    </button>
+                    <div className="col-span-2 flex items-end sm:col-span-4">
+                      <button type="button" onClick={handleAddManualRow} className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2 text-xs font-semibold text-white hover:bg-orange-600">
+                        <Plus size={14} />
+                        Tambah Baris Data
+                      </button>
+                    </div>
                   </div>
 
                   {manualRows.length > 0 && (
                     <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200">
-                      <table className="min-w-full text-left text-sm">
-                        <thead>
-                          <tr className="border-b border-slate-100 bg-slate-50">
-                            <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
-                            <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
-                            <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
-                            <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
-                            <th className="px-4 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
+                      <table className="w-full text-left text-xs">
+                        <thead className="sticky top-0 bg-slate-100">
+                          <tr>
+                            <th className="p-2.5">Kode Tiket</th>
+                            <th className="p-2.5">Project</th>
+                            <th className="p-2.5 text-right">MOS</th>
+                            <th className="p-2.5 text-right">Used</th>
+                            <th className="p-2.5 text-center">Aksi</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
+                        <tbody className="divide-y divide-slate-100">
                           {manualRows.map((row, idx) => (
-                            <tr key={idx} className="hover:bg-slate-50">
-                              <td className="px-4 py-2 font-mono text-xs font-semibold text-orange-600">{row.kode_tiket}</td>
-                              <td className="px-4 py-2 text-slate-700">{row.project_nama}</td>
-                              <td className="px-4 py-2 text-right font-mono text-slate-600">{row.mos}</td>
-                              <td className="px-4 py-2 text-right font-mono text-slate-600">{row.used}</td>
-                              <td className="px-4 py-2 text-center">
-                                <button type="button" onClick={() => handleRemoveManualRow(idx)} className="rounded-lg p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Hapus baris">
+                            <tr key={idx}>
+                              <td className="p-2.5 font-medium">{row.kode_tiket}</td>
+                              <td className="p-2.5">{row.project_nama}</td>
+                              <td className="p-2.5 text-right">{formatNumber(row.mos)}</td>
+                              <td className="p-2.5 text-right">{formatNumber(row.used)}</td>
+                              <td className="p-2.5 text-center">
+                                <button type="button" onClick={() => handleRemoveManualRow(idx)} className="text-rose-500 hover:text-rose-700">
                                   <Trash2 size={14} />
                                 </button>
                               </td>
@@ -814,57 +857,20 @@ export default function SupervisorReconciliationPage() {
               )}
             </div>
 
-            {mitraError && (
-              <div className="mx-6 mb-4 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                <AlertTriangle size={16} className="shrink-0" />
-                {mitraError}
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4">
-              <button type="button" onClick={closeMitraModal} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+            <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
+              <button type="button" onClick={closeMitraModal} className="rounded-full border border-slate-200 px-5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">
                 Batal
               </button>
-              {(mitraPreview || manualRows.length > 0) && mitraFlow !== "select" && (
-                <button
-                  type="button"
-                  onClick={handleMitraConfirm}
-                  disabled={mitraConfirming}
-                  className="flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-600 disabled:opacity-60"
-                >
+              {(mitraPreview || manualRows.length > 0) && (
+                <button type="button" onClick={handleMitraConfirm} disabled={mitraConfirming} className="flex items-center gap-2 rounded-full bg-orange-500 px-5 py-2 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
                   {mitraConfirming && <Loader2 size={14} className="animate-spin" />}
-                  {mitraConfirming ? "Menyimpan…" : "Konfirmasi & Simpan"}
+                  {mitraConfirming ? "Menyimpan..." : "Simpan & Konfirmasi"}
                 </button>
               )}
             </div>
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function KpiCard({ title, value, description, icon: Icon, tone = "slate" }: { title: string; value: string; description: string; icon: React.ElementType; tone?: "slate" | "rose" }) {
-  const isRose = tone === "rose";
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-medium tracking-wide text-slate-400">{title.toUpperCase()}</span>
-        <span className={`flex h-6 w-6 items-center justify-center rounded-md ${isRose ? "text-rose-500 bg-rose-50" : "text-slate-500 bg-slate-100"}`}>
-          <Icon size={13} strokeWidth={2.5} />
-        </span>
-      </div>
-      <div className={`mt-2 text-2xl font-bold ${isRose ? "text-rose-600" : "text-slate-900"}`}>{value}</div>
-      <div className={`mt-1 text-xs font-medium ${isRose ? "text-rose-500" : "text-slate-400"}`}>{description}</div>
-    </div>
-  );
-}
-
-function DetailRow({ label, value, highlight = false }: { label: string; value: number; highlight?: boolean }) {
-  return (
-    <div className="flex items-center justify-between rounded-xl px-3 py-2 hover:bg-slate-50">
-      <span className="text-sm text-slate-500">{label}</span>
-      <span className={highlight ? "text-sm font-semibold text-emerald-700" : "text-sm font-semibold text-slate-800"}>{formatNumber(value)}</span>
     </div>
   );
 }
