@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import { Search, PackageCheck, PackageMinus, Package, ClipboardCheck, X, AlertTriangle, Loader2, Upload, FileSpreadsheet, CheckCircle2, FileText, Plus, Trash2, Download } from "lucide-react";
+import { Search, PackageCheck, PackageMinus, Package, ClipboardCheck, X, AlertTriangle, Download, History, CheckCircle, Clock, AlertCircle } from "lucide-react";
 
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -14,6 +14,7 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 const RECONCILIATION_ENDPOINT = `${API_BASE}/api/reconciliation/inventory`;
+const HISTORY_ENDPOINT = `${API_BASE}/api/reports/reconciliation/history`;
 
 interface ReconciliationRecord {
   id: string;
@@ -38,6 +39,17 @@ interface ReconciliationRecord {
   status: "sesuai" | "berjalan" | "perhatian";
 }
 
+interface HistoryRecord {
+  id: string;
+  filename: string;
+  actor_nama: string;
+  created_at: string;
+  total_items: number;
+  success_count: number;
+  failed_count: number;
+  status: "processed" | "pending" | "failed" | "completed" | "success";
+}
+
 const formatNumber = (value: number) => {
   return new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(value);
 };
@@ -52,6 +64,21 @@ function getStatusBadge(status: ReconciliationRecord["status"]) {
       return { label: "Perhatian", bg: "bg-amber-50", text: "text-amber-600", icon: AlertTriangle };
     default:
       return { label: status, bg: "bg-slate-100", text: "text-slate-600", icon: Package };
+  }
+}
+
+function getHistoryStatusBadge(status: HistoryRecord["status"]) {
+  switch (status) {
+    case "processed":
+    case "completed":
+    case "success":
+      return { label: "Selesai", bg: "bg-emerald-50", text: "text-emerald-600", icon: CheckCircle };
+    case "pending":
+      return { label: "Menunggu", bg: "bg-amber-50", text: "text-amber-600", icon: Clock };
+    case "failed":
+      return { label: "Gagal", bg: "bg-rose-50", text: "text-rose-600", icon: AlertCircle };
+    default:
+      return { label: status, bg: "bg-slate-100", text: "text-slate-600", icon: Clock };
   }
 }
 
@@ -79,8 +106,12 @@ function DetailRow({ label, value, highlight = false }: { label: string; value: 
 
 export default function SupervisorReconciliationPage() {
   const { user } = useAuth();
-  const { get, post } = useApi();
+  const { get } = useApi();
 
+  // Tab Navigation State
+  const [activeTab, setActiveTab] = useState<"rekonsiliasi" | "riwayat">("rekonsiliasi");
+
+  // State Rekonsiliasi
   const [records, setRecords] = useState<ReconciliationRecord[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -91,15 +122,11 @@ export default function SupervisorReconciliationPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [showMitraModal, setShowMitraModal] = useState(false);
-  const [mitraFlow, setMitraFlow] = useState<"select" | "upload" | "manual">("select");
-  const [mitraFile, setMitraFile] = useState<File | null>(null);
-  const [mitraPreview, setMitraPreview] = useState<any>(null);
-  const [mitraLoading, setMitraLoading] = useState(false);
-  const [mitraError, setMitraError] = useState<string | null>(null);
-  const [mitraConfirming, setMitraConfirming] = useState(false);
-  const [manualRows, setManualRows] = useState<any[]>([]);
-  const [manualForm, setManualForm] = useState({ kode_tiket: "", project_nama: "", mos: "", used: "" });
+  // State Riwayat Input Laporan Mitra
+  const [historyRecords, setHistoryRecords] = useState<HistoryRecord[]>([]);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
   const fetchReconciliation = async () => {
     setIsLoading(true);
@@ -115,6 +142,11 @@ export default function SupervisorReconciliationPage() {
         setError("Anda tidak memiliki akses ke data rekonsiliasi ini.");
         setRecords([]);
         return;
+      }
+
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Endpoint Rekonsiliasi mengembalikan respons non-JSON (404/500).");
       }
 
       const json = await response.json();
@@ -157,9 +189,44 @@ export default function SupervisorReconciliationPage() {
     }
   };
 
+  const fetchHistory = async () => {
+    setIsHistoryLoading(true);
+    try {
+      const res = await get(HISTORY_ENDPOINT);
+
+      const contentType = res.headers.get("content-type");
+      if (!res.ok || !contentType || !contentType.includes("application/json")) {
+        setHistoryRecords([]);
+        return;
+      }
+
+      const json = await res.json();
+      const payload = json?.data ?? [];
+      const list: any[] = Array.isArray(payload) ? payload : [];
+      setHistoryRecords(
+        list.map((item: any) => ({
+          id: String(item.id ?? ""),
+          filename: item.filename ?? "laporan_mitra.xlsx",
+          actor_nama: item.actor_nama ?? item.actor?.name ?? "-",
+          created_at: item.created_at ?? new Date().toISOString(),
+          total_items: Number(item.total_items ?? item.total ?? 0),
+          success_count: Number(item.success_count ?? item.berhasil ?? item.total_items ?? 0),
+          failed_count: Number(item.failed_count ?? item.gagal ?? 0),
+          status: item.status ?? "processed",
+        })),
+      );
+    } catch (err) {
+      console.error("Gagal mengambil riwayat input mitra:", err);
+      setHistoryRecords([]);
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!user) return;
     fetchReconciliation();
+    fetchHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
@@ -190,6 +257,16 @@ export default function SupervisorReconciliationPage() {
       return matchesProject && matchesWarehouse;
     });
   }, [records, projectFilter, warehouseFilter]);
+
+  const filteredHistoryRecords = useMemo(() => {
+    return historyRecords.filter((item) => {
+      if (!startDate && !endDate) return true;
+      const itemDate = new Date(item.created_at).getTime();
+      const start = startDate ? new Date(startDate).getTime() : 0;
+      const end = endDate ? new Date(endDate).setHours(23, 59, 59, 999) : Infinity;
+      return itemDate >= start && itemDate <= end;
+    });
+  }, [historyRecords, startDate, endDate]);
 
   const summary = useMemo(() => {
     return filteredRecords.reduce(
@@ -248,109 +325,6 @@ export default function SupervisorReconciliationPage() {
     document.body.removeChild(link);
   };
 
-  const handleMitraFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setMitraFile(file);
-    setMitraError(null);
-    setMitraPreview(null);
-  };
-
-  const handleMitraUpload = async () => {
-    if (!mitraFile) return;
-    setMitraLoading(true);
-    setMitraError(null);
-    setMitraPreview(null);
-    try {
-      const formData = new FormData();
-      formData.append("file", mitraFile);
-
-      const res = await post(`${API_BASE}/api/reports/reconciliation/upload`, formData);
-      const json = await res.json();
-
-      if (!res.ok) {
-        throw new Error(json?.message || "Gagal mengunggah file laporan mitra.");
-      }
-
-      setMitraPreview(json?.data || json);
-    } catch (err) {
-      setMitraError(err instanceof Error ? err.message : "Terjadi kesalahan saat upload.");
-    } finally {
-      setMitraLoading(false);
-    }
-  };
-
-  const handleMitraConfirm = async () => {
-    if (!mitraPreview && manualRows.length === 0) return;
-    if (!user?.id) return;
-    setMitraConfirming(true);
-    setMitraError(null);
-    try {
-      const payload = {
-        filename: mitraPreview?.filename || "manual-input",
-        preview: mitraPreview?.preview || manualRows,
-        actorId: user.id,
-      };
-
-      const res = await post(`${API_BASE}/api/reports/reconciliation/confirm`, payload);
-      const json = await res.json();
-
-      if (!res.ok) {
-        throw new Error(json?.message || "Gagal menyimpan hasil laporan mitra.");
-      }
-
-      closeMitraModal();
-      fetchReconciliation();
-    } catch (err) {
-      setMitraError(err instanceof Error ? err.message : "Terjadi kesalahan saat konfirmasi.");
-    } finally {
-      setMitraConfirming(false);
-    }
-  };
-
-  const handleAddManualRow = () => {
-    if (!manualForm.kode_tiket.trim() || !manualForm.project_nama.trim() || !manualForm.mos.trim()) {
-      setMitraError("Kode Tiket, Project, dan MOS wajib diisi.");
-      return;
-    }
-    setMitraError(null);
-    setManualRows([
-      ...manualRows,
-      {
-        kode_tiket: manualForm.kode_tiket.trim(),
-        project_nama: manualForm.project_nama.trim(),
-        mos: Number(manualForm.mos) || 0,
-        used: Number(manualForm.used) || 0,
-      },
-    ]);
-    setManualForm({ kode_tiket: "", project_nama: "", mos: "", used: "" });
-  };
-
-  const handleRemoveManualRow = (idx: number) => {
-    setManualRows(manualRows.filter((_, i) => i !== idx));
-  };
-
-  const openMitraModal = () => {
-    setShowMitraModal(true);
-    setMitraFlow("select");
-    setMitraFile(null);
-    setMitraPreview(null);
-    setMitraError(null);
-    setManualRows([]);
-    setManualForm({ kode_tiket: "", project_nama: "", mos: "", used: "" });
-  };
-
-  const closeMitraModal = () => {
-    setShowMitraModal(false);
-    setMitraFlow("select");
-    setMitraFile(null);
-    setMitraPreview(null);
-    setMitraError(null);
-    setMitraConfirming(false);
-    setManualRows([]);
-    setManualForm({ kode_tiket: "", project_nama: "", mos: "", used: "" });
-  };
-
   return (
     <div className={`${plusJakartaSans.className}`}>
       <div className="flex flex-1 flex-col p-6">
@@ -362,207 +336,330 @@ export default function SupervisorReconciliationPage() {
           </div>
         </header>
 
-        {error && <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
-
-        {/* KPI Cards */}
-        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-7">
-          <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
-          <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
-          <KpiCard title="MOS Sistem" value={formatNumber(summary.mos_sistem)} description="Material on Site (Sistem)" icon={PackageCheck} tone="slate" />
-          <KpiCard title="MOS Mitra" value={formatNumber(summary.mos_mitra)} description="Material on Site (Mitra)" icon={PackageCheck} tone="slate" />
-          <KpiCard title="Selisih" value={formatNumber(summary.selisih)} description="MOS Mitra - MOS Sistem" icon={AlertTriangle} tone={summary.selisih !== 0 ? "rose" : "slate"} />
-          <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan" icon={PackageMinus} tone="slate" />
-          <KpiCard title="Remains" value={formatNumber(summary.remains)} description="Sisa ketersediaan" icon={Package} tone={summary.remains < 0 ? "rose" : "slate"} />
+        {/* Tab Navigation */}
+        <div className="mb-6 flex border-b border-slate-200">
+          <button
+            type="button"
+            onClick={() => setActiveTab("rekonsiliasi")}
+            className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
+              activeTab === "rekonsiliasi" ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700"
+            }`}
+          >
+            <ClipboardCheck size={16} />
+            Rekonsiliasi
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("riwayat")}
+            className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
+              activeTab === "riwayat" ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700"
+            }`}
+          >
+            <History size={16} />
+            Riwayat Input Laporan Mitra
+          </button>
         </div>
 
-        {/* Filters */}
-        <div className="mb-6 flex flex-wrap items-center gap-2">
-          <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
-            <Search size={16} className="shrink-0 text-slate-400" />
-            <input
-              type="text"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Cari project, tiket, kode perangkat..."
-              className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
-            />
-          </div>
+        {/* Tab Content 1: Rekonsiliasi Inventory */}
+        {activeTab === "rekonsiliasi" && (
+          <>
+            {error && <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
 
-          <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400">
-            <option value="all">Semua Project</option>
-            {projectOptions.map(([id, nama]) => (
-              <option key={id} value={id}>
-                {nama}
-              </option>
-            ))}
-          </select>
-
-          <select value={warehouseFilter} onChange={(e) => setWarehouseFilter(e.target.value)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400">
-            <option value="all">Semua Gudang</option>
-            {warehouseOptions.map((warehouse) => (
-              <option key={warehouse} value={warehouse}>
-                {warehouse}
-              </option>
-            ))}
-          </select>
-
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400">
-            <option value="all">Semua Status</option>
-            <option value="sesuai">Sesuai</option>
-            <option value="berjalan">Berjalan</option>
-            <option value="perhatian">Perhatian</option>
-          </select>
-        </div>
-
-        {/* Table */}
-        <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-            <div>
-              <h2 className="text-base font-semibold text-slate-900">Daftar Rekonsiliasi</h2>
-              <p className="text-xs text-slate-400">
-                {filteredRecords.length} data
-                {totalPerhatian > 0 && <span className="ml-2 text-amber-600">{totalPerhatian} perhatian</span>}
-              </p>
+            {/* KPI Cards */}
+            <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-7">
+              <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
+              <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
+              <KpiCard title="MOS Sistem" value={formatNumber(summary.mos_sistem)} description="Material on Site (Sistem)" icon={PackageCheck} tone="slate" />
+              <KpiCard title="MOS Mitra" value={formatNumber(summary.mos_mitra)} description="Material on Site (Mitra)" icon={PackageCheck} tone="slate" />
+              <KpiCard title="Selisih" value={formatNumber(summary.selisih)} description="MOS Mitra - MOS Sistem" icon={AlertTriangle} tone={summary.selisih !== 0 ? "rose" : "slate"} />
+              <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan" icon={PackageMinus} tone="slate" />
+              <KpiCard title="Remains" value={formatNumber(summary.remains)} description="Sisa ketersediaan" icon={Package} tone={summary.remains < 0 ? "rose" : "slate"} />
             </div>
 
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleExportCSV}
-                disabled={filteredRecords.length === 0}
-                className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
-              >
-                <Download size={16} />
-                Export
-              </button>
-              <button type="button" onClick={openMitraModal} className="flex items-center gap-2 rounded-full bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600">
-                <Upload size={16} />
-                Input laporan mitra
-              </button>
+            {/* Filters */}
+            <div className="mb-6 flex flex-wrap items-center gap-2">
+              <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+                <Search size={16} className="shrink-0 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Cari project, tiket, kode perangkat..."
+                  className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+                />
+              </div>
+
+              <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400">
+                <option value="all">Semua Project</option>
+                {projectOptions.map(([id, nama]) => (
+                  <option key={id} value={id}>
+                    {nama}
+                  </option>
+                ))}
+              </select>
+
+              <select value={warehouseFilter} onChange={(e) => setWarehouseFilter(e.target.value)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400">
+                <option value="all">Semua Gudang</option>
+                {warehouseOptions.map((warehouse) => (
+                  <option key={warehouse} value={warehouse}>
+                    {warehouse}
+                  </option>
+                ))}
+              </select>
+
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400">
+                <option value="all">Semua Status</option>
+                <option value="sesuai">Sesuai</option>
+                <option value="berjalan">Berjalan</option>
+                <option value="perhatian">Perhatian</option>
+              </select>
             </div>
-          </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
-                  <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
-                  <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
-                  <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS Sistem</th>
-                  <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS Mitra</th>
-                  <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Selisih</th>
-                  <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
-                  <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Remains</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                  <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
-                </tr>
-              </thead>
+            {/* Table */}
+            <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+                <div>
+                  <h2 className="text-base font-semibold text-slate-900">Daftar Rekonsiliasi</h2>
+                  <p className="text-xs text-slate-400">
+                    {filteredRecords.length} data
+                    {totalPerhatian > 0 && <span className="ml-2 text-amber-600">{totalPerhatian} perhatian</span>}
+                  </p>
+                </div>
 
-              <tbody className="divide-y divide-slate-50">
-                {isLoading ? (
-                  Array.from({ length: 7 }).map((_, rowIndex) => (
-                    <tr key={rowIndex}>
-                      {Array.from({ length: 12 }).map((_, colIndex) => (
-                        <td key={colIndex} className="px-6 py-4">
-                          <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
-                        </td>
-                      ))}
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleExportCSV}
+                    disabled={filteredRecords.length === 0}
+                    className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    <Download size={16} />
+                    Export
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1100px] text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50">
+                      <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
+                      <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
+                      <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
+                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
+                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
+                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS Sistem</th>
+                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS Mitra</th>
+                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Selisih</th>
+                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
+                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Remains</th>
+                      <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+                      <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
                     </tr>
-                  ))
-                ) : filteredRecords.length === 0 ? (
-                  <tr>
-                    <td colSpan={12} className="px-6 py-16 text-center">
-                      <Package size={28} className="mx-auto text-slate-300" />
-                      <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data rekonsiliasi</p>
-                      <p className="mt-1 text-xs text-slate-400">Coba ubah filter, atau pastikan Anda sudah ditugaskan sebagai PIC gudang.</p>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredRecords.map((record) => {
-                    const statusBadge = getStatusBadge(record.status);
-                    const isSelisih = record.selisih !== 0;
-                    return (
-                      <tr key={record.id} className={`group transition-colors ${isSelisih ? "bg-yellow-50" : "hover:bg-slate-50"}`}>
-                        <td className="px-6 py-4">
-                          <p className="font-medium text-slate-900">{record.project_nama}</p>
-                          <p className="text-xs text-slate-400">
-                            {record.area}
-                            {record.cluster_id !== "-" && ` • ${record.cluster_id}`}
-                          </p>
-                        </td>
+                  </thead>
 
-                        <td className="px-6 py-4">
-                          <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{record.kode_tiket}</span>
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <p className="font-medium text-slate-800">{record.nama_barang}</p>
-                          <p className="text-xs text-slate-400">
-                            {record.kode_perangkat} • {record.gudang_nama}
-                          </p>
-                        </td>
-
-                        <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.boq)}</td>
-                        <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.additional)}</td>
-                        <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos_sistem)}</td>
-                        <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos_mitra)}</td>
-                        <td className="px-6 py-4 text-right">
-                          <span className={isSelisih ? "font-semibold text-amber-700" : "font-semibold text-slate-700"}>{formatNumber(record.selisih)}</span>
-                        </td>
-
-                        <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.used)}</td>
-
-                        <td className="px-6 py-4 text-right">
-                          <span className={record.remains < 0 ? "font-semibold text-rose-600" : "font-semibold text-emerald-700"}>{formatNumber(record.remains)}</span>
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
-                            <statusBadge.icon size={12} />
-                            {statusBadge.label}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <div className="flex items-center justify-end gap-1">
-                            <button type="button" onClick={() => setSelectedRecord(record)} title="Lihat detail" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
-                              <ClipboardCheck size={15} />
-                            </button>
-                          </div>
+                  <tbody className="divide-y divide-slate-50">
+                    {isLoading ? (
+                      Array.from({ length: 7 }).map((_, rowIndex) => (
+                        <tr key={rowIndex}>
+                          {Array.from({ length: 12 }).map((_, colIndex) => (
+                            <td key={colIndex} className="px-6 py-4">
+                              <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    ) : filteredRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={12} className="px-6 py-16 text-center">
+                          <Package size={28} className="mx-auto text-slate-300" />
+                          <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data rekonsiliasi</p>
+                          <p className="mt-1 text-xs text-slate-400">Coba ubah filter, atau pastikan Anda sudah ditugaskan sebagai PIC gudang.</p>
                         </td>
                       </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                    ) : (
+                      filteredRecords.map((record) => {
+                        const statusBadge = getStatusBadge(record.status);
+                        const isSelisih = record.selisih !== 0;
+                        return (
+                          <tr key={record.id} className={`group transition-colors ${isSelisih ? "bg-yellow-50" : "hover:bg-slate-50"}`}>
+                            <td className="px-6 py-4">
+                              <p className="font-medium text-slate-900">{record.project_nama}</p>
+                              <p className="text-xs text-slate-400">
+                                {record.area}
+                                {record.cluster_id !== "-" && ` • ${record.cluster_id}`}
+                              </p>
+                            </td>
 
-        {/* Catatan / Keterangan Rumus */}
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Catatan & Rumus Kalkulasi</p>
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-              <p className="text-xs font-semibold text-amber-800">Selisih = MOS Mitra - MOS Sistem</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-amber-700">
-                Menampilkan perbedaan jumlah material yang tercatat mitra dibanding sistem. Jika <span className="font-semibold">Selisih ≠ 0</span>, baris akan diberi highlight kuning sebagai tanda ketidaksesuaian data.
-              </p>
+                            <td className="px-6 py-4">
+                              <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{record.kode_tiket}</span>
+                            </td>
+
+                            <td className="px-6 py-4">
+                              <p className="font-medium text-slate-800">{record.nama_barang}</p>
+                              <p className="text-xs text-slate-400">
+                                {record.kode_perangkat} • {record.gudang_nama}
+                              </p>
+                            </td>
+
+                            <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.boq)}</td>
+                            <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.additional)}</td>
+                            <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos_sistem)}</td>
+                            <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos_mitra)}</td>
+                            <td className="px-6 py-4 text-right">
+                              <span className={isSelisih ? "font-semibold text-amber-700" : "font-semibold text-slate-700"}>{formatNumber(record.selisih)}</span>
+                            </td>
+
+                            <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.used)}</td>
+
+                            <td className="px-6 py-4 text-right">
+                              <span className={record.remains < 0 ? "font-semibold text-rose-600" : "font-semibold text-emerald-700"}>{formatNumber(record.remains)}</span>
+                            </td>
+
+                            <td className="px-6 py-4">
+                              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
+                                <statusBadge.icon size={12} />
+                                {statusBadge.label}
+                              </span>
+                            </td>
+
+                            <td className="px-4 py-4">
+                              <div className="flex items-center justify-end gap-1">
+                                <button type="button" onClick={() => setSelectedRecord(record)} title="Lihat detail" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                                  <ClipboardCheck size={15} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-              <p className="text-xs font-semibold text-emerald-800">Remains = MOS - (BOQ Plan + Additional)</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-emerald-700">
-                Sisa material yang masih tersedia setelah memenuhi rencana BOQ dan tambahan. Jika <span className="font-semibold">Remains &lt; 0</span>, berarti material yang digunakan melebihi yang tersedia.
-              </p>
+
+            {/* Section Catatan & Rumus Kalkulasi */}
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">CATATAN & RUMUS KALKULASI</h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Box Selisih */}
+                <div className="rounded-xl border border-amber-200/80 bg-amber-50/50 p-4">
+                  <p className="text-xs font-bold text-amber-900">Selisih = MOS Sistem - MOS Mitra</p>
+                  <p className="mt-2 text-xs leading-relaxed text-amber-800/90">
+                    Menampilkan perbedaan jumlah material yang tercatat mitra dibanding sistem. Jika <span className="font-semibold text-amber-900">Selisih &ne; 0</span>, baris akan diberi highlight kuning sebagai tanda ketidaksesuaian
+                    data.
+                  </p>
+                </div>
+
+                {/* Box Remains */}
+                <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-4">
+                  <p className="text-xs font-bold text-emerald-900">Remains = MOS - (BOQ Plan + Additional)</p>
+                  <p className="mt-2 text-xs leading-relaxed text-emerald-800/90">
+                    Sisa material yang masih tersedia setelah memenuhi rencana BOQ dan tambahan. Jika <span className="font-semibold text-emerald-900">Remains &lt; 0</span>, berarti material yang digunakan melebihi yang tersedia.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Tab Content 2: Riwayat Input Laporan Mitra */}
+        {activeTab === "riwayat" && (
+          <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+            {/* Banner Informasi Oranye */}
+            <div className="border-b border-orange-100 bg-orange-50/60 px-6 py-3.5 text-xs text-orange-700">Tabel ini menampilkan histori upload laporan mitra. Setiap baris merepresentasikan 1 sesi upload file Excel.</div>
+
+            <div className="p-6">
+              {/* Date Filters */}
+              <div className="mb-6 flex items-center gap-3">
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    placeholder="dd/mm/yyyy"
+                    className="rounded-full border border-slate-200 bg-white px-5 py-2 text-xs text-slate-600 shadow-sm outline-none focus:border-orange-400"
+                  />
+                </div>
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    placeholder="dd/mm/yyyy"
+                    className="rounded-full border border-slate-200 bg-white px-5 py-2 text-xs text-slate-600 shadow-sm outline-none focus:border-orange-400"
+                  />
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] uppercase tracking-wider text-slate-400">
+                      <th className="py-3 px-4 font-semibold">Waktu Upload</th>
+                      <th className="py-3 px-4 font-semibold">Nama File</th>
+                      <th className="py-3 px-4 font-semibold">Diunggah Oleh</th>
+                      <th className="py-3 px-4 font-semibold">Total</th>
+                      <th className="py-3 px-4 font-semibold">Berhasil</th>
+                      <th className="py-3 px-4 font-semibold">Gagal</th>
+                      <th className="py-3 px-4 font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {isHistoryLoading ? (
+                      Array.from({ length: 4 }).map((_, idx) => (
+                        <tr key={idx}>
+                          {Array.from({ length: 7 }).map((_, cIdx) => (
+                            <td key={cIdx} className="p-4">
+                              <div className="h-4 animate-pulse rounded bg-slate-100" />
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    ) : filteredHistoryRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-20 text-center text-sm font-medium text-slate-400">
+                          Belum ada riwayat upload laporan mitra.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredHistoryRecords.map((item) => {
+                        const badge = getHistoryStatusBadge(item.status);
+                        return (
+                          <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3.5 px-4 text-slate-600">
+                              {new Date(item.created_at).toLocaleString("id-ID", {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              })}
+                            </td>
+                            <td className="py-3.5 px-4 font-medium text-slate-800">{item.filename}</td>
+                            <td className="py-3.5 px-4 text-slate-600">{item.actor_nama}</td>
+                            <td className="py-3.5 px-4 font-semibold text-slate-700">{item.total_items}</td>
+                            <td className="py-3.5 px-4 font-medium text-emerald-600">{item.success_count}</td>
+                            <td className="py-3.5 px-4 font-medium text-rose-500">{item.failed_count}</td>
+                            <td className="py-3.5 px-4">
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${badge.bg} ${badge.text}`}>
+                                <badge.icon size={11} />
+                                {badge.label}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Detail Modal */}
+      {/* Detail Modal Rekonsiliasi */}
       {selectedRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setSelectedRecord(null)}>
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
@@ -614,266 +711,12 @@ export default function SupervisorReconciliationPage() {
                   {getStatusBadge(selectedRecord.status).label}
                 </span>
               </div>
-
-              {selectedRecord.remains < 0 && (
-                <div className="flex gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4">
-                  <AlertTriangle size={18} className="mt-0.5 shrink-0 text-rose-600" />
-                  <div>
-                    <p className="text-sm font-semibold text-rose-800">Remains tidak valid</p>
-                    <p className="mt-1 text-xs leading-relaxed text-rose-600">Qty Used melebihi Hardware on Site. Kondisi ini perlu diperiksa sebelum transaksi outbound berikutnya diproses.</p>
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="flex justify-end border-t border-slate-100 px-6 py-4">
               <button type="button" onClick={() => setSelectedRecord(null)} className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
                 Tutup
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Input Laporan Mitra Modal */}
-      {showMitraModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={closeMitraModal}>
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
-              <div>
-                <h2 className="text-base font-semibold text-slate-900">Input Laporan Mitra</h2>
-                <p className="text-xs text-slate-500">Pilih metode input untuk memperbarui nilai MOS Mitra.</p>
-              </div>
-              <button type="button" onClick={closeMitraModal} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="space-y-5 px-6 py-5">
-              {mitraError && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{mitraError}</div>}
-
-              {mitraFlow === "select" && (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => setMitraFlow("upload")}
-                    className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center transition-colors hover:border-orange-400 hover:bg-orange-50/50"
-                  >
-                    <FileSpreadsheet size={36} className="text-orange-500" />
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Upload File Excel</p>
-                      <p className="mt-1 text-xs text-slate-400">Unggah file Excel laporan compile material mitra untuk diproses otomatis.</p>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setMitraFlow("manual")}
-                    className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center transition-colors hover:border-orange-400 hover:bg-orange-50/50"
-                  >
-                    <FileText size={36} className="text-orange-500" />
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Input Manual</p>
-                      <p className="mt-1 text-xs text-slate-400">Masukkan data laporan mitra secara manual per kode tiket.</p>
-                    </div>
-                  </button>
-                </div>
-              )}
-
-              {/* Flow Upload Excel */}
-              {mitraFlow === "upload" && (
-                <div className="space-y-4">
-                  {!mitraPreview ? (
-                    <>
-                      <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 p-8 text-center">
-                        <Upload size={32} className="text-slate-400" />
-                        <p className="mt-2 text-sm font-medium text-slate-700">Pilih file Excel laporan mitra</p>
-                        <p className="mt-1 text-xs text-slate-400">Format yang didukung: .xlsx, .xls</p>
-                        <input
-                          type="file"
-                          accept=".xlsx, .xls"
-                          onChange={handleMitraFileChange}
-                          className="mt-4 text-xs text-slate-500 file:mr-4 file:rounded-full file:border-0 file:bg-orange-500 file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white hover:file:bg-orange-600"
-                        />
-                      </div>
-
-                      {mitraFile && (
-                        <div className="flex items-center justify-between rounded-xl bg-slate-100 p-3 text-xs text-slate-700">
-                          <span className="truncate font-medium">{mitraFile.name}</span>
-                          <button
-                            type="button"
-                            onClick={handleMitraUpload}
-                            disabled={mitraLoading}
-                            className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
-                          >
-                            {mitraLoading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                            Unggah & Pratinjau
-                          </button>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Hasil Pratinjau Excel</p>
-                        <span className="flex items-center gap-1 text-xs font-medium text-emerald-600">
-                          <CheckCircle2 size={14} /> Berhasil dibaca
-                        </span>
-                      </div>
-
-                      <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200">
-                        <table className="w-full text-left text-xs">
-                          <thead className="sticky top-0 bg-slate-100 text-slate-600">
-                            <tr>
-                              <th className="p-2.5">Kode Tiket</th>
-                              <th className="p-2.5">Project</th>
-                              <th className="p-2.5 text-right">MOS</th>
-                              <th className="p-2.5 text-right">Used</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {(mitraPreview?.preview || []).map((row: any, idx: number) => (
-                              <tr key={idx} className="hover:bg-slate-50">
-                                <td className="p-2.5 font-medium text-slate-800">{row.kode_tiket || "-"}</td>
-                                <td className="p-2.5 text-slate-600">{row.project_nama || "-"}</td>
-                                <td className="p-2.5 text-right font-medium text-slate-700">{formatNumber(row.mos || 0)}</td>
-                                <td className="p-2.5 text-right text-slate-600">{formatNumber(row.used || 0)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Flow Input Manual */}
-              {mitraFlow === "manual" && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3 rounded-2xl border border-slate-200 bg-slate-50/50 p-4 sm:grid-cols-4">
-                    <div>
-                      <label className="block text-[11px] font-medium text-slate-500">Kode Tiket</label>
-                      <input
-                        type="text"
-                        value={manualForm.kode_tiket}
-                        onChange={(e) => setManualForm({ ...manualForm, kode_tiket: e.target.value })}
-                        placeholder="TKT-xxx"
-                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-medium text-slate-500">Project</label>
-                      <input
-                        type="text"
-                        value={manualForm.project_nama}
-                        onChange={(e) => setManualForm({ ...manualForm, project_nama: e.target.value })}
-                        placeholder="Nama Project"
-                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-medium text-slate-500">MOS Mitra</label>
-                      <input
-                        type="number"
-                        value={manualForm.mos}
-                        onChange={(e) => setManualForm({ ...manualForm, mos: e.target.value })}
-                        placeholder="0"
-                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-medium text-slate-500">Used</label>
-                      <input
-                        type="number"
-                        value={manualForm.used}
-                        onChange={(e) => setManualForm({ ...manualForm, used: e.target.value })}
-                        placeholder="0"
-                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
-                      />
-                    </div>
-                    <div className="col-span-2 flex justify-end sm:col-span-4">
-                      <button
-                        type="button"
-                        onClick={handleAddManualRow}
-                        className="flex items-center gap-1 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900"
-                      >
-                        <Plus size={14} /> Tambah Baris
-                      </button>
-                    </div>
-                  </div>
-
-                  {manualRows.length > 0 && (
-                    <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200">
-                      <table className="w-full text-left text-xs">
-                        <thead className="sticky top-0 bg-slate-100 text-slate-600">
-                          <tr>
-                            <th className="p-2.5">Kode Tiket</th>
-                            <th className="p-2.5">Project</th>
-                            <th className="p-2.5 text-right">MOS</th>
-                            <th className="p-2.5 text-right">Used</th>
-                            <th className="p-2.5 text-center">Aksi</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {manualRows.map((row, idx) => (
-                            <tr key={idx} className="hover:bg-slate-50">
-                              <td className="p-2.5 font-medium text-slate-800">{row.kode_tiket}</td>
-                              <td className="p-2.5 text-slate-600">{row.project_nama}</td>
-                              <td className="p-2.5 text-right font-medium text-slate-700">{formatNumber(row.mos)}</td>
-                              <td className="p-2.5 text-right text-slate-600">{formatNumber(row.used)}</td>
-                              <td className="p-2.5 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveManualRow(idx)}
-                                  className="text-rose-500 hover:text-rose-700"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4">
-              {mitraFlow !== "select" ? (
-                <button
-                  type="button"
-                  onClick={() => setMitraFlow("select")}
-                  className="text-xs font-semibold text-slate-500 hover:text-slate-800"
-                >
-                  ← Kembali ke Pilihan
-                </button>
-              ) : (
-                <div />
-              )}
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={closeMitraModal}
-                  className="rounded-full border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                >
-                  Batal
-                </button>
-                {(mitraPreview || manualRows.length > 0) && (
-                  <button
-                    type="button"
-                    onClick={handleMitraConfirm}
-                    disabled={mitraConfirming}
-                    className="flex items-center gap-1.5 rounded-full bg-orange-500 px-4 py-2 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
-                  >
-                    {mitraConfirming && <Loader2 size={14} className="animate-spin" />}
-                    Simpan Laporan
-                  </button>
-                )}
-              </div>
             </div>
           </div>
         </div>
