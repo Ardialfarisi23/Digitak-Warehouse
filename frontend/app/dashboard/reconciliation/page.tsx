@@ -485,7 +485,7 @@ export default function ReconciliationInventoryPage() {
         </header>
 
         {/* KPI Cards */}
-        <div className="mb-6 grid grid-cols-2 lg:grid-cols-6 gap-4">
+        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-7">
           <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
           <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
           <KpiCard title="MOS Sistem" value={formatNumber(summary.mos_sistem)} description="Material on Site (Sistem)" icon={PackageCheck} tone="slate" />
@@ -1358,30 +1358,15 @@ export default function ReconciliationInventoryPage() {
    );
 }
 
-function KpiCard({
-  title,
-  value,
-  description,
-  icon: Icon,
-  tone = "slate",
-}: {
-  title: string;
-  value: string;
-  description: string;
-  icon: React.ElementType;
-  tone?: "slate" | "rose";
-}) {
-  const isRose = tone === "rose";
+function KpiCard({ title, value, description, icon: Icon, tone = "slate" }: { title: string; value: string; description: string; icon: any; tone?: "slate" | "rose" }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className={`rounded-2xl border p-4 shadow-sm ${tone === "rose" ? "border-rose-200 bg-rose-50/50" : "border-slate-200 bg-white"}`}>
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-medium tracking-wide text-slate-400">{title.toUpperCase()}</span>
-        <span className={`flex h-6 w-6 items-center justify-center rounded-md ${isRose ? "text-rose-500 bg-rose-50" : "text-slate-500 bg-slate-100"}`}>
-          <Icon size={13} strokeWidth={2.5} />
-        </span>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{title}</p>
+        <Icon size={18} className={tone === "rose" ? "text-rose-500" : "text-slate-400"} />
       </div>
-      <div className={`mt-2 text-2xl font-bold ${isRose ? "text-rose-600" : "text-slate-900"}`}>{value}</div>
-      <div className={`mt-1 text-xs font-medium ${isRose ? "text-rose-500" : "text-slate-400"}`}>{description}</div>
+      <p className={`mt-2 text-xl font-bold ${tone === "rose" ? "text-rose-700" : "text-slate-900"}`}>{value}</p>
+      <p className="mt-1 text-[11px] text-slate-400">{description}</p>
     </div>
   );
 }
