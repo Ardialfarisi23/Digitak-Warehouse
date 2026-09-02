@@ -36,6 +36,7 @@ interface SuratJalan {
     boq_number?: string;
     tiket?: { kode_tiket: string };
   } | null;
+  pic_pemohon_nama?: string;
 }
 
 // Baris label:nilai yang selalu sejajar, berapa pun panjang labelnya.
@@ -130,7 +131,7 @@ export default function SuratJalanDetailPage() {
     tujuan: tujuanText,
     tanggal,
     projectName: suratJalan.project?.nama_project || "-",
-    namaPicPemohon: user?.name || user?.username || "-",
+    namaPicPemohon: suratJalan.pic_pemohon_nama || "-",
     kendaraan: suratJalan.kendaraan?.jenis_kendaraan || "-",
     noPolisi: suratJalan.kendaraan?.no_polisi || "-",
     namaDriver: suratJalan.personil_pengantar?.nama || "-",

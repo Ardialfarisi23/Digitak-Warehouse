@@ -17,7 +17,37 @@ const create = async (data, actorId) => {
     }
   }
 
-  return await suratJalanRepository.create(data, actorId);
+  const suratJalan = await prisma.$transaction(async (tx) => {
+    const created = await suratJalanRepository.create(data, actorId, tx);
+
+    const aksi = data.tipe === "inbound" ? "create_inbound" : "create_outbound";
+
+    await tx.audit_log.create({
+      data: {
+        entity_type: "surat_jalan",
+        entity_id: BigInt(created.surat_jalan_id),
+        aksi: aksi,
+        actor_id: BigInt(actorId),
+        data_sebelum: null,
+        data_sesudah: {
+          status: created.status,
+          surat_jalan_id: created.surat_jalan_id,
+          tipe: created.tipe,
+          nomor_surat_jalan: created.nomor_surat_jalan,
+          ...(created.tipe === "inbound"
+            ? { gudang_tujuan_id: created.gudang_tujuan_id }
+            : {
+                gudang_asal_id: created.gudang_asal_id,
+                gudang_tujuan_id: created.gudang_tujuan_id,
+              }),
+        },
+      },
+    });
+
+    return created;
+  });
+
+  return suratJalan;
 };
 
 const createStaffInbound = async (data, actorId) => {

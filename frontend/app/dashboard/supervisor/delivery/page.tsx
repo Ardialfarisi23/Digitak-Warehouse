@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Search, ChevronDown, Filter, X, Eye, CheckSquare, AlertTriangle } from "lucide-react";
 import { useApi } from "@/lib/api";
+import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
 
 const STATUS_LABEL: Record<string, string> = {
   stok_kurang: "Stok Tidak Cukup",
@@ -31,6 +32,7 @@ interface OutboundRow {
   surat_jalan_id: number;
   nomor_surat_jalan: string;
   created_at: string;
+  tanggal?: string;
   kategori_approval?: string;
   project?: { nama_project?: string } | null;
   gudang_asal?: { nama_gudang?: string } | null;
@@ -39,16 +41,10 @@ interface OutboundRow {
   kendaraan?: { jenis_kendaraan?: string; no_polisi?: string } | null;
   creator?: { nama?: string } | null;
   items?: OutboundItem[];
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid grid-cols-[130px_10px_1fr] items-start leading-snug">
-      <span className="text-gray-500">{label}</span>
-      <span className="text-gray-500">:</span>
-      <span className="font-semibold text-gray-900">{value}</span>
-    </div>
-  );
+  boq_id?: number | null;
+  boq?: { boq_number?: string; tiket?: { kode_tiket?: string } } | null;
+  tipe?: string;
+  pic_pemohon_nama?: string;
 }
 
 export default function SupervisorApprovalOutboundPage() {
@@ -372,117 +368,10 @@ export default function SupervisorApprovalOutboundPage() {
 
             {/* Dokumen Surat Jalan — ini yang ke-print */}
             <div className="overflow-y-auto p-6">
-              <div
-                id="surat-jalan-document"
-                className="mx-auto max-w-3xl rounded-2xl border border-[#F3D9C7] bg-white p-10 print:rounded-none print:border-0 print:p-0"
-              >
-                {/* Kop surat dengan logo */}
-                <div className="mb-8 flex items-start justify-between border-b-2 border-[#E8632C] pb-6">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src="/logo digitak grdasi.png"
-                    alt="Digitak Studio — PT Metanouva Informatika"
-                    className="h-16 w-auto object-contain"
-                  />
-                  <div className="flex flex-col items-end">
-                    <h1 className="text-3xl font-bold tracking-wide text-gray-900">SURAT JALAN</h1>
-                    <p className="mt-1 text-xs text-gray-500">Surat Jalan Internal — Digitak Studio</p>
-                    <div className="mt-2 text-right">
-                      <p className="text-xs font-bold text-[#E8632C]">PT Metanouva Informatika</p>
-                      <p className="text-[10px] text-gray-400">Digitak Studio</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Info grid — 2 kolom */}
-                <div className="mb-8 grid grid-cols-2 gap-x-12 gap-y-3 text-sm">
-                  <div className="space-y-3">
-                    <InfoRow label="No Surat Jalan" value={selectedItem.nomor_surat_jalan} />
-                    <InfoRow label="Project" value={selectedItem.project?.nama_project || "-"} />
-                    <InfoRow label="Gudang Asal" value={selectedItem.gudang_asal?.nama_gudang || "-"} />
-                  </div>
-                  <div className="space-y-3">
-                    <InfoRow label="Tanggal" value={formatDate(selectedItem.created_at)} />
-                    <InfoRow label="Gudang Tujuan" value={selectedItem.gudang_tujuan?.nama_gudang || "-"} />
-                    <InfoRow label="Driver" value={selectedItem.personil_pengantar?.nama || "-"} />
-                    <InfoRow label="Kendaraan" value={selectedItem.kendaraan?.jenis_kendaraan || "-"} />
-                    <InfoRow label="No Polisi" value={selectedItem.kendaraan?.no_polisi || "-"} />
-                  </div>
-                </div>
-
-                {/* Tabel item */}
-                <table className="mb-10 w-full border-collapse text-sm">
-                  <thead>
-                    <tr className="bg-[#FFF7ED]">
-                      <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">No</th>
-                      <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Kode Barang</th>
-                      <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Nama Barang</th>
-                      <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">QTY</th>
-                      <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">UOM</th>
-                      <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Keterangan</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedItem.items && selectedItem.items.length > 0 ? (
-                      selectedItem.items.map((item, i) => (
-                        <tr key={item.item_id || i} className="even:bg-gray-50">
-                          <td className="border border-gray-200 px-3 py-2.5">{i + 1}</td>
-                          <td className="border border-gray-200 px-3 py-2.5 font-medium">
-                            {item.barang?.kode_perangkat || "-"}
-                          </td>
-                          <td className="border border-gray-200 px-3 py-2.5">
-                            {item.barang?.nama_barang || "-"}
-                          </td>
-                          <td className="border border-gray-200 px-3 py-2.5 text-center font-semibold">
-                            {item.qty}
-                          </td>
-                          <td className="border border-gray-200 px-3 py-2.5 text-center">
-                            {item.satuan?.kode_satuan || item.barang?.satuan_default?.kode_satuan || "-"}
-                          </td>
-                          <td className="border border-gray-200 px-3 py-2.5 text-gray-500">
-                            {item.catatan || "-"}
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={6} className="border border-gray-200 px-3 py-6 text-center text-gray-400">
-                          Tidak ada rincian barang.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-
-                {/* Tanda tangan */}
-                <div className="mb-8 grid grid-cols-3 gap-6 text-center text-sm">
-                    <div>
-                      <p className="mb-16 font-medium text-gray-700">Material Handler</p>
-                      <div className="border-t border-gray-400 pt-1">
-                        <p className="font-semibold text-gray-900">{selectedItem.creator?.nama || "-"}</p>
-                      </div>
-                    </div>
-                  <div>
-                    <p className="mb-16 font-medium text-gray-700">Driver</p>
-                    <div className="border-t border-gray-400 pt-1">
-                      <p className="font-semibold text-gray-900">
-                        {selectedItem.personil_pengantar?.nama || "-"}
-                      </p>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="mb-16 font-medium text-gray-700">PIC Pemohon (Penerima)</p>
-                    <div className="border-t border-gray-400 pt-1">
-                      <p className="font-semibold text-gray-900">-</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Footer dokumen */}
-                <div className="border-t border-gray-200 pt-3 flex items-center justify-between text-[10px] text-gray-400">
-                  <span>{selectedItem.nomor_surat_jalan} | {formatDate(selectedItem.created_at)}</span>
-                </div>
-              </div>
+              <DetailSuratJalanDocument
+                data={{ ...selectedItem, tanggal: selectedItem.tanggal ?? selectedItem.created_at }}
+                variant="full"
+              />
             </div>
 
             {/* Actions */}

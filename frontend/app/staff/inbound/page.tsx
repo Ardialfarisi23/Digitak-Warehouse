@@ -2,8 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { PackageCheck, Plus, X, ChevronDown } from "lucide-react";
+import { PackageCheck, Plus, X, ChevronDown, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import BarangPicker, {
+  type BarangPickerItem,
+} from "@/components/BarangPicker";
 import { useApi } from "@/lib/api";
 
 type InboundStatus = "draft_diajukan" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "ditolak" | "menunggu_verifikasi" | "ready_putaway" | "sedang_dikirim";
@@ -70,7 +73,9 @@ interface WarehouseOption {
 interface ModalItemRow {
   id: string;
   barang_id: string;
-  qty: string;
+  kode_perangkat: string;
+  nama_barang: string;
+  qty: number;
   satuan_id: string;
   satuan_label: string;
 }
@@ -284,7 +289,15 @@ export default function InboundListPage() {
   const addModalItem = () => {
     setModalItems((prev) => [
       ...prev,
-      { id: `${Date.now()}-${prev.length}`, barang_id: "", qty: "", satuan_id: "", satuan_label: "" },
+      {
+        id: `${Date.now()}-${prev.length}`,
+        barang_id: "",
+        kode_perangkat: "",
+        nama_barang: "",
+        qty: 1,
+        satuan_id: "",
+        satuan_label: "",
+      },
     ]);
   };
 
@@ -292,21 +305,38 @@ export default function InboundListPage() {
     setModalItems((prev) => prev.filter((row) => row.id !== id));
   };
 
-  const updateModalItem = (id: string, field: keyof ModalItemRow, value: string) => {
+  const pickModalItem = (id: string, picked: BarangPickerItem) => {
     setModalItems((prev) =>
       prev.map((row) => {
         if (row.id !== id) return row;
-        if (field === "barang_id") {
-          const barang = barangOptions.find((b) => String(b.barang_id) === value);
+        if (!picked.id) {
           return {
             ...row,
-            barang_id: value,
-            satuan_id: barang?.satuan_default_id ? String(barang.satuan_default_id) : row.satuan_id,
-            satuan_label: String(barang?.satuan_default?.kode_satuan || barang?.satuan_default_id || ""),
+            barang_id: "",
+            kode_perangkat: picked.kode_perangkat,
+            nama_barang: "",
+            satuan_id: "",
+            satuan_label: "",
           };
         }
-        return { ...row, [field]: value };
-      })
+        const satuanId = picked.satuan_default_id
+          ? String(picked.satuan_default_id)
+          : "";
+        return {
+          ...row,
+          barang_id: picked.id,
+          kode_perangkat: picked.kode_perangkat,
+          nama_barang: picked.nama_barang,
+          satuan_id: satuanId,
+          satuan_label: picked.satuan_default_kode || "",
+        };
+      }),
+    );
+  };
+
+  const setModalItemQty = (id: string, value: number) => {
+    setModalItems((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, qty: Math.max(0, value) } : row)),
     );
   };
 
@@ -318,7 +348,17 @@ export default function InboundListPage() {
     tanggalMasuk &&
     selectedProjectId &&
     modalItems.length > 0 &&
-    modalItems.every((row) => row.barang_id && Number(row.qty) > 0 && row.satuan_id);
+    modalItems.every((row) => row.barang_id && row.qty > 0 && row.satuan_id);
+
+  const validModalItems = useMemo(
+    () => modalItems.filter((row) => row.barang_id && row.qty > 0 && row.satuan_id),
+    [modalItems],
+  );
+
+  const totalModalQty = useMemo(
+    () => validModalItems.reduce((sum, row) => sum + row.qty, 0),
+    [validModalItems],
+  );
 
   const handleSubmitInbound = async () => {
     if (!canSubmitModal) return;
@@ -342,7 +382,7 @@ export default function InboundListPage() {
         surat_jalan_url: suratJalanPdfUrl || null,
         items: modalItems.map((row) => ({
           barang_id: row.barang_id,
-          qty: Number(row.qty),
+          qty: row.qty,
           satuan_id: row.satuan_id,
           kondisi: "baik",
           is_kelebihan: false,
@@ -642,64 +682,94 @@ export default function InboundListPage() {
 
         <div className="mt-6">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-700">Daftar Barang</p>
-            <Button
-              variant="outline"
-              size="sm"
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Daftar Barang <span className="text-rose-500">*</span></p>
+            <button
+              type="button"
               onClick={addModalItem}
-              className="rounded-lg border-[#E8632C] text-[#E8632C] hover:bg-[#FDECE1]"
+              className="flex items-center gap-1 text-xs font-semibold text-orange-500 hover:text-orange-600"
             >
-              <Plus size={14} className="mr-1" />
-              Add Item
-            </Button>
+              <Plus size={14} />
+              Tambah Item
+            </button>
           </div>
 
           <div className="mt-3 space-y-2">
-            {modalItems.map((row) => {
-              const barang = barangOptions.find((b) => String(b.barang_id) === row.barang_id);
-              return (
-                <div
-                  key={row.id}
-                  className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-gray-50/50 p-3 sm:flex-row sm:items-center"
-                >
-                  <div className="flex-1">
-                    <select
-                      value={row.barang_id}
-                      onChange={(e) => updateModalItem(row.id, "barang_id", e.target.value)}
-                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+            {modalItems.map((row) => (
+              <div
+                key={row.id}
+                className="grid grid-cols-12 gap-2 rounded-xl border border-slate-100 p-3"
+              >
+                <div className="col-span-4">
+                  <BarangPicker
+                    value={row.kode_perangkat}
+                    onSelect={(picked) => pickModalItem(row.id, picked)}
+                    placeholder="Kode perangkat"
+                  />
+                </div>
+                <div className="col-span-4">
+                  <input
+                    type="text"
+                    value={row.nama_barang}
+                    readOnly
+                    placeholder="Nama barang"
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-700 outline-none"
+                  />
+                </div>
+                <div className="col-span-3">
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setModalItemQty(row.id, row.qty - 1)}
+                      className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50"
                     >
-                      <option value="">Pilih Barang / SKU...</option>
-                      {barangOptions.map((b) => (
-                        <option key={b.barang_id} value={String(b.barang_id)}>
-                          {b.kode_perangkat} — {b.nama_barang}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex items-center gap-2">
+                      −
+                    </button>
                     <input
                       type="number"
-                      min={0}
+                      min={1}
                       value={row.qty}
-                      onChange={(e) => updateModalItem(row.id, "qty", e.target.value)}
-                      placeholder="Qty"
-                      className="w-24 rounded-lg border border-gray-200 px-3 py-2 text-center text-sm focus:border-[#E8632C] focus:outline-none"
+                      onChange={(e) => setModalItemQty(row.id, Number(e.target.value))}
+                      className="w-16 rounded-md border border-slate-200 py-1 text-center text-xs text-slate-800 outline-none focus:border-orange-400"
                     />
-                    <span className="text-xs text-gray-500 w-16">{row.satuan_label || "UOM"}</span>
                     <button
-                      onClick={() => removeModalItem(row.id)}
-                      className="rounded-full p-1.5 text-gray-400 hover:bg-rose-50 hover:text-rose-600"
+                      type="button"
+                      onClick={() => setModalItemQty(row.id, row.qty + 1)}
+                      className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50"
                     >
-                      <X size={14} />
+                      +
                     </button>
                   </div>
                 </div>
-              );
-            })}
+                <div className="col-span-1 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={() => removeModalItem(row.id)}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
             {modalItems.length === 0 && (
-              <p className="py-4 text-center text-xs text-gray-400">Belum ada barang. Klik Add Item untuk menambah.</p>
+              <div className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-xs text-slate-400">
+                Belum ada barang. Klik "Tambah Item" untuk menambah.
+              </div>
             )}
           </div>
+
+          {modalItems.length > 0 && (
+            <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5 text-xs text-slate-600">
+              <span>
+                Total Item:{" "}
+                <span className="font-semibold text-slate-800">{validModalItems.length}</span>
+              </span>
+              <span>
+                Total Qty:{" "}
+                <span className="font-semibold text-slate-800">{totalModalQty}</span>
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="mt-6 flex items-center justify-end gap-3">
