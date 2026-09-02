@@ -38,6 +38,7 @@ interface OutboundRow {
   personil_pengantar?: { nama?: string } | null;
   kendaraan?: { jenis_kendaraan?: string; no_polisi?: string } | null;
   creator?: { nama?: string } | null;
+  pic_pemohon_nama?: string;
   items?: OutboundItem[];
 }
 
@@ -473,7 +474,7 @@ export default function SupervisorApprovalOutboundPage() {
                   <div>
                     <p className="mb-16 font-medium text-gray-700">PIC Pemohon (Penerima)</p>
                     <div className="border-t border-gray-400 pt-1">
-                      <p className="font-semibold text-gray-900">-</p>
+                      <p className="font-semibold text-gray-900">{selectedItem.pic_pemohon_nama || "-"}</p>
                     </div>
                   </div>
                 </div>

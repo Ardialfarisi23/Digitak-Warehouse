@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import { Search, Eye, X, ArrowUpRight, ArrowDownLeft, CheckCircle2, Clock, FileText, Loader2, AlertCircle, PackageCheck, Truck, ChevronDown, ExternalLink } from "lucide-react";
-import Link from "next/link";
+import { Search, Eye, X, ArrowUpRight, ArrowDownLeft, CheckCircle2, Clock, FileText, Loader2, AlertCircle, PackageCheck, Truck, ChevronDown } from "lucide-react";
 
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
+import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -72,16 +72,6 @@ const STATUS_META: Record<string, { label: string; bg: string; text: string }> =
 };
 
 type TabType = "SEMUA" | "INBOUND" | "OUTBOUND";
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid grid-cols-[130px_10px_1fr] items-start leading-snug">
-      <span className="text-gray-500">{label}</span>
-      <span className="text-gray-500">:</span>
-      <span className="font-semibold text-gray-900">{value}</span>
-    </div>
-  );
-}
 
 export default function AdminDeliveryPage() {
   const { user } = useAuth();
@@ -446,123 +436,20 @@ export default function AdminDeliveryPage() {
 
               {/* Dokumen Surat Jalan — ini yang ke-print */}
               <div className="p-6">
-                <div id="surat-jalan-document" className="mx-auto max-w-3xl rounded-2xl border border-[#F3D9C7] bg-white p-10 print:rounded-none print:border-0 print:p-0">
-                  {/* Kop surat dengan logo */}
-                  <div className="mb-8 flex items-start justify-between border-b-2 border-[#E8632C] pb-6">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src="/logo digitak grdasi.png" alt="Digitak Studio — PT Metanouva Informatika" className="h-16 w-auto object-contain" />
-                    <div className="flex flex-col items-end">
-                      <h1 className="text-3xl font-bold tracking-wide text-gray-900">SURAT JALAN</h1>
-                      <p className="mt-1 text-xs text-gray-500">Surat Jalan Internal — Digitak Studio</p>
-                      <div className="mt-2 text-right">
-                        <p className="text-xs font-bold text-[#E8632C]">PT Metanouva Informatika</p>
-                        <p className="text-[10px] text-gray-400">Digitak Studio</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Info grid — 2 kolom */}
-                  <div className="mb-8 grid grid-cols-2 gap-x-12 gap-y-3 text-sm">
-                    <div className="space-y-3">
-                      <InfoRow label="No Surat Jalan" value={selectedRecord.nomor_surat_jalan} />
-                      <InfoRow label="Tipe" value={selectedRecord.tipe === "OUTBOUND" ? "Outbound" : "Inbound"} />
-                      <InfoRow label="Project" value={selectedRecord.project?.nama_project || "-"} />
-                      <InfoRow label="Gudang Asal" value={selectedRecord.gudang_asal?.nama_gudang || "-"} />
-                    </div>
-                    <div className="space-y-3">
-                      <InfoRow label="Tanggal" value={selectedRecord.tanggal ? new Date(selectedRecord.tanggal).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "-"} />
-                      <InfoRow label="Gudang Tujuan" value={selectedRecord.gudang_tujuan?.nama_gudang || "-"} />
-                      <InfoRow label="Kendaraan" value={selectedRecord.kendaraan?.jenis_kendaraan || "-"} />
-                      <InfoRow label="No Polisi" value={selectedRecord.kendaraan?.no_polisi || "-"} />
-                      <InfoRow label="Driver" value={selectedRecord.personil_pengantar?.nama || "-"} />
-                      {selectedRecord.boq_id ? (
-                        <InfoRow
-                          label="BOQ / Tiket"
-                          value={
-                            <span className="inline-flex items-center gap-2">
-                              <Link
-                                href="/dashboard/boq"
-                                className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
-                              >
-                                <ExternalLink size={12} />
-                                {selectedRecord.boq?.boq_number || `BOQ #${selectedRecord.boq_id}`}
-                              </Link>
-                              <span className="text-xs text-slate-500">
-                                Tiket: {selectedRecord.boq?.tiket?.kode_tiket || "-"}
-                              </span>
-                            </span>
-                          }
-                        />
-                      ) : (
-                        <InfoRow
-                          label="BOQ / Tiket"
-                          value={<span className="text-xs text-slate-400">Tidak terhubung ke BOQ/Tiket</span>}
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Tabel item */}
-                  <table className="mb-10 w-full border-collapse text-sm">
-                    <thead>
-                      <tr className="bg-[#FFF7ED]">
-                        <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">No</th>
-                        <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Kode Barang</th>
-                        <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Nama Barang</th>
-                        <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">QTY</th>
-                        <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">UOM</th>
-                        <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Keterangan</th>
-                        <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">Aksi</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedRecord.items.map((item, i) => (
-                        <tr key={item.item_id} className="even:bg-gray-50">
-                          <td className="border border-gray-200 px-3 py-2.5">{i + 1}</td>
-                          <td className="border border-gray-200 px-3 py-2.5 font-medium">{item.barang.kode_perangkat}</td>
-                          <td className="border border-gray-200 px-3 py-2.5">{item.barang.nama_barang}</td>
-                          <td className="border border-gray-200 px-3 py-2.5 text-center font-semibold">{Number(item.qty || 0)}</td>
-                          <td className="border border-gray-200 px-3 py-2.5 text-center">{item.satuan?.kode_satuan || item.barang?.satuan_default?.kode_satuan || "-"}</td>
-                          <td className="border border-gray-200 px-3 py-2.5 text-gray-500">{item.kondisi || "-"}</td>
-                          <td className="border border-gray-200 px-3 py-2.5 text-center">
-                            <button type="button" onClick={() => setSelectedItem(item)} title="Lihat dokumentasi barang" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
-                              <Eye size={15} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  {/* Tanda tangan */}
-                  <div className="mb-8 grid grid-cols-3 gap-6 text-center text-sm">
-                    <div>
-                      <p className="mb-16 font-medium text-gray-700">Material Handler</p>
-                      <div className="border-t border-gray-400 pt-1">
-                        <p className="font-semibold text-gray-900">{selectedRecord.creator?.nama || "-"}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="mb-16 font-medium text-gray-700">Driver</p>
-                      <div className="border-t border-gray-400 pt-1">
-                        <p className="font-semibold text-gray-900">{selectedRecord.personil_pengantar?.nama || "-"}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="mb-16 font-medium text-gray-700">PIC Pemohon (Penerima)</p>
-                      <div className="border-t border-gray-400 pt-1">
-                        <p className="font-semibold text-gray-900">-</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Footer dokumen */}
-                  <div className="border-t border-gray-200 pt-3 flex items-center justify-between text-[10px] text-gray-400">
-                    <span>
-                    {selectedRecord.nomor_surat_jalan} | {selectedRecord.tanggal ? new Date(selectedRecord.tanggal).toLocaleDateString("id-ID") : "-"}
-                  </span>
-                </div>
-              </div>
+                <DetailSuratJalanDocument
+                  data={selectedRecord}
+                  variant="full"
+                  renderItemAction={(item) => (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedItem(item)}
+                      title="Lihat dokumentasi barang"
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    >
+                      <Eye size={15} />
+                    </button>
+                  )}
+                />
               </div>
 
               {/* Actions */}

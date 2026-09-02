@@ -9,7 +9,7 @@ const createSuratJalanSchema = z.object({
   personil_pengantar_id: z.string().optional().nullable(),
   project_id: z.string().optional().nullable(),
   kategori_approval: z.string().optional().nullable(),
-  notes: z.string().optional().nullable(),
+  pic_pemohon_nama: z.string().optional().nullable(),
   nomor_tiket: z.string().optional().nullable(),
   tanggal: z.string().optional().nullable(),
   surat_jalan_url: z.string().url("URL surat jalan tidak valid.").optional().nullable(),

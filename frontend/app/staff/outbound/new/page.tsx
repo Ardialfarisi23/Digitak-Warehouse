@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardList, ChevronDown, Loader2, AlertCircle, Truck, User, MapPin } from "lucide-react";
+import { ClipboardList, ChevronDown, Loader2, AlertCircle, Truck, User, MapPin, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -72,6 +72,185 @@ function generateNomorSuratJalanOutbound(): string {
   return `${unik}/SJ/OUT/DIGITAK/${bulanRomawi}/${tahun}`;
 }
 
+function ConfirmModal({
+  open,
+  onClose,
+  onConfirm,
+  submitting,
+  selectedItems,
+  selectedGudangAsal,
+  selectedGudangTujuan,
+  selectedProject,
+  picPemohon,
+  selectedVehicle,
+  selectedPersonil,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  submitting: boolean;
+  selectedItems: { nama_barang?: string; qty: number; unit?: string; kode_perangkat?: string }[];
+  selectedGudangAsal: Warehouse | null;
+  selectedGudangTujuan: Warehouse | null;
+  selectedProject: Project | null;
+  picPemohon: string;
+  selectedVehicle: Vehicle | null;
+  selectedPersonil: Personil | null;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">Periksa Kembali Data Barang</h3>
+            <p className="mt-0.5 text-xs text-slate-400">
+              Pastikan semua data sudah benar sebelum diajukan.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="px-6 py-5">
+          <p className="mb-4 text-sm text-slate-600">
+            Pastikan daftar barang, jumlah, dan tujuan pengiriman sudah sesuai sebelum melanjutkan. Perubahan setelah submit memerlukan proses ulang.
+          </p>
+
+          <div className="space-y-3">
+            <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Daftar Barang
+              </p>
+              <div className="space-y-2">
+                {selectedItems.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between text-sm"
+                  >
+                    <div className="flex flex-col">
+                      <span className="font-medium text-slate-800">
+                        {item.nama_barang || item.kode_perangkat || "-"}
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        {item.kode_perangkat || "-"}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-medium text-slate-700">
+                        {item.qty} {item.unit || "unit"}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Rute Pengiriman
+              </p>
+              <div className="space-y-1 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Gudang Asal</span>
+                  <span className="font-medium text-slate-700">
+                    {selectedGudangAsal?.nama_gudang || "-"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Gudang Tujuan</span>
+                  <span className="font-medium text-slate-700">
+                    {selectedGudangTujuan?.nama_gudang || "-"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Project</span>
+                  <span className="font-medium text-slate-700">
+                    {selectedProject?.nama_project || "-"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {(picPemohon || selectedVehicle || selectedPersonil) && (
+              <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Detail Pengiriman
+                </p>
+                <div className="space-y-1 text-sm">
+                  {picPemohon && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">PIC Pemohon</span>
+                      <span className="font-medium text-slate-700">{picPemohon}</span>
+                    </div>
+                  )}
+                  {selectedVehicle && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Kendaraan</span>
+                      <span className="font-medium text-slate-700">
+                        {selectedVehicle.jenis_kendaraan}
+                        {selectedVehicle.merk ? ` (${selectedVehicle.merk})` : ""} — {selectedVehicle.no_polisi}
+                      </span>
+                    </div>
+                  )}
+                  {selectedPersonil && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Driver</span>
+                      <span className="font-medium text-slate-700">
+                        {selectedPersonil.nama}
+                        {selectedPersonil.posisi ? ` — ${selectedPersonil.posisi}` : ""}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6 flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+            >
+              Periksa Kembali
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={submitting}
+              className="rounded-xl bg-[#E8632C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
+            >
+              {submitting ? "Mengajukan..." : "Ya, Ajukan Surat Jalan"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AjukanSuratJalanPage() {
   const router = useRouter();
   const { get, post } = useApi();
@@ -87,7 +266,7 @@ export default function AjukanSuratJalanPage() {
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [qtyByItem, setQtyByItem] = useState<Record<string, number>>({});
-  const [tujuan, setTujuan] = useState("");
+  const [picPemohon, setPicPemohon] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [selectedPersonilId, setSelectedPersonilId] = useState<string>("");
   const [selectedGudangAsalId, setSelectedGudangAsalId] = useState<string>("");
@@ -96,6 +275,15 @@ export default function AjukanSuratJalanPage() {
   const [boqItems, setBoqItems] = useState<ItemBarang[]>([]);
   const [boqItemsLoading, setBoqItemsLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     async function loadData() {
@@ -158,9 +346,6 @@ export default function AjukanSuratJalanPage() {
     setQtyByItem({});
     setBoqItems([]);
 
-    const proj = projects.find((p) => String(p.project_id) === id);
-    setTujuan(proj?.kecamatan || proj?.kota_kabupaten || proj?.klien || "");
-
     if (!id) return;
 
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -217,17 +402,25 @@ export default function AjukanSuratJalanPage() {
   async function handleSubmit() {
     if (!canSubmit || !selectedProject || !selectedPersonil) return;
     if (formError) return;
+    setShowConfirmModal(true);
+  }
+
+  function showToast(message: string, type: "success" | "error") {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ message, type });
+    toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+  }
+
+  async function confirmSubmit() {
+    if (!canSubmit || !selectedProject || !selectedPersonil) return;
 
     setSubmitting(true);
+    setShowConfirmModal(false);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
       const payload = {
         tipe: "outbound",
-        // FIX: field ini wajib menurut surat-jalan.validation.js
-        // (createSuratJalanSchema) tapi sebelumnya kelupaan dikirim sama
-        // sekali dari frontend, makanya selalu gagal "expected string,
-        // received undefined". Backend tidak auto-generate nomor ini.
         nomor_surat_jalan: generateNomorSuratJalanOutbound(),
         gudang_asal_id: selectedGudangAsalId,
         gudang_tujuan_id: selectedGudangTujuanId,
@@ -235,7 +428,7 @@ export default function AjukanSuratJalanPage() {
         personil_pengantar_id: selectedPersonilId,
         project_id: selectedProjectId,
         kategori_approval: "manual_override",
-        notes: tujuan || null,
+        pic_pemohon_nama: picPemohon || null,
         items: selectedItems.map((i) => ({
           barang_id: String(i.barang_id || i.id),
           qty: i.qty,
@@ -260,9 +453,13 @@ export default function AjukanSuratJalanPage() {
         throw new Error("Respons API tidak mengembalikan ID Surat Jalan.");
       }
 
-      router.push(`/staff/outbound/${suratJalanId}`);
+      showToast(`Surat Jalan Outbound berhasil diajukan — ${result?.data?.nomor_surat_jalan || suratJalanId}`, "success");
+
+      setTimeout(() => {
+        router.push(`/staff/outbound/${suratJalanId}`);
+      }, 1500);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Terjadi kesalahan saat membuat Surat Jalan.");
+      showToast(err instanceof Error ? err.message : "Terjadi kesalahan saat membuat Surat Jalan.", "error");
     } finally {
       setSubmitting(false);
     }
@@ -453,8 +650,8 @@ export default function AjukanSuratJalanPage() {
             <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Detail Pengiriman</p>
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-xs text-gray-500">Tujuan / Keterangan</label>
-                <input value={tujuan} onChange={(e) => setTujuan(e.target.value)} placeholder="Nama tujuan/klien" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none" />
+                <label className="mb-1 block text-xs text-gray-500">PIC / Pemohon</label>
+                <input value={picPemohon} onChange={(e) => setPicPemohon(e.target.value)} placeholder="Nama pemohon barang" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none" />
               </div>
 
               {/* Dropdown Kendaraan — dari master data */}
@@ -522,6 +719,61 @@ export default function AjukanSuratJalanPage() {
           <Button disabled={!canSubmit || submitting} onClick={handleSubmit} className="h-auto rounded-xl bg-[#E8632C] py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40">
             {submitting ? "Memproses..." : "Ajukan Surat Jalan"}
           </Button>
+
+          <ConfirmModal
+            open={showConfirmModal}
+            onClose={() => setShowConfirmModal(false)}
+            onConfirm={confirmSubmit}
+            submitting={submitting}
+            selectedItems={selectedItems}
+            selectedGudangAsal={selectedGudangAsal}
+            selectedGudangTujuan={selectedGudangTujuan}
+            selectedProject={selectedProject}
+            picPemohon={picPemohon}
+            selectedVehicle={selectedVehicle}
+            selectedPersonil={selectedPersonil}
+          />
+
+          {toast && (
+            <div
+              className={[
+                "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
+                toast.type === "success"
+                  ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
+                  : "border-rose-200/80 bg-rose-50/95 text-rose-800",
+              ].join(" ")}
+            >
+              <div
+                className={[
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+                  toast.type === "success" ? "bg-emerald-100" : "bg-rose-100",
+                ].join(" ")}
+              >
+                {toast.type === "success" ? (
+                  <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : (
+                  <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                )}
+              </div>
+              <p className="flex-1 leading-snug">{toast.message}</p>
+              <button
+                type="button"
+                onClick={() => setToast(null)}
+                className={[
+                  "ml-2 shrink-0 rounded-full p-1 transition-colors",
+                  toast.type === "success"
+                    ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
+                    : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
+                ].join(" ")}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

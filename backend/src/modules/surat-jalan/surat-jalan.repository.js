@@ -96,15 +96,15 @@ const buildListMeta = (total, { page, limit }) => ({
   totalPages: Math.ceil(total / limit),
 });
 
-const create = async (data, actorId) => {
-  const count = await prisma.surat_jalan.count();
+const create = async (data, actorId, tx = prisma) => {
+  const count = await tx.surat_jalan.count();
   const year = new Date().getFullYear();
   const nomor = data.nomor_surat_jalan?.trim() || `001/SJ/${data.tipe.toUpperCase()}/DIGITAK/${String(year).slice(-2)}/${String(count + 1).padStart(3, "0")}`;
 
   const status = data.status || (data.tipe === "inbound" ? "menunggu_verifikasi" : "draft_diajukan");
   const tanggal = data.tanggal ? new Date(data.tanggal) : new Date();
 
-  const suratJalan = await prisma.surat_jalan.create({
+  const suratJalan = await tx.surat_jalan.create({
     data: {
       nomor_surat_jalan: nomor,
       tipe: data.tipe,
@@ -115,6 +115,7 @@ const create = async (data, actorId) => {
       personil_pengantar_id: data.personil_pengantar_id ? Number(data.personil_pengantar_id) : null,
       status: status,
       kategori_approval: data.kategori_approval || null,
+      pic_pemohon_nama: data.pic_pemohon_nama || null,
       project_id: data.project_id ? Number(data.project_id) : null,
       surat_jalan_url: data.surat_jalan_url || null,
       tanggal: tanggal,
