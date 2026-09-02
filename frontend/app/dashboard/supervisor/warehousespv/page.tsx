@@ -10,6 +10,8 @@ import { mapRole } from "@/lib/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
+const SUPERVISOR_ALLOWED_WAREHOUSES = ["Gudang Ciamis", "Gudang Rancamanyar", "Gudang Transit"];
+
 type WarehouseRecord = {
   gudang_id: string;
   nama_gudang: string;
@@ -92,7 +94,10 @@ export default function SpvWarehouseLayoutPage() {
         throw new Error(json?.message || "Gagal mengambil daftar gudang.");
       }
 
-      const data = Array.isArray(json?.data?.data) ? json.data.data : Array.isArray(json?.data) ? json.data : [];
+      const rawData = Array.isArray(json?.data?.data) ? json.data.data : Array.isArray(json?.data) ? json.data : [];
+
+      const allowed = new Set(SUPERVISOR_ALLOWED_WAREHOUSES);
+      const data = rawData.filter((w: WarehouseRecord) => allowed.has(w.nama_gudang));
 
       setWarehouses(data);
 
