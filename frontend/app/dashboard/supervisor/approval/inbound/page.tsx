@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Search, Filter, Clock, AlertTriangle, Layers, FileText, ArrowLeft, ArrowDownLeft } from "lucide-react";
 import { useApi } from "@/lib/api";
 
-// Interface disesuaikan dengan struktur data proyek
 interface GudangTujuan {
   id: string;
   nama_gudang: string;
@@ -28,11 +27,6 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export default function SupervisorApprovalPage() {
   const router = useRouter();
-  // FIX: sebelumnya halaman ini pakai fetch() polos, nggak nyertain token
-  // auth sama sekali -> endpoint yang dilindungi authenticate middleware
-  // (GET /api/surat-jalan/inbound) selalu balikin 401. useApi() otomatis
-  // nempelin header Authorization: Bearer <token>, sama kayak semua
-  // halaman Staf yang udah connect ke API.
   const { get, put } = useApi();
 
   const [requests, setRequests] = useState<InboundRequest[]>([]);
@@ -41,9 +35,11 @@ export default function SupervisorApprovalPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [confirmTarget, setConfirmTarget] = useState<InboundRequest | null>(null);
   const [approveLoading, setApproveLoading] = useState<boolean>(false);
+  const [showRejectConfirm, setShowRejectConfirm] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState<InboundRequest | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
-  // Fetch Data dari API
   const fetchInboundList = async () => {
     setLoading(true);
     try {
@@ -52,9 +48,6 @@ export default function SupervisorApprovalPage() {
 
       const rawList = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : Array.isArray(data?.result) ? data.result : [];
 
-      // API asli balikin field "surat_jalan_id" (angka), bukan "id".
-      // Tanpa normalisasi ini, key React & pemanggilan approve/detail bakal
-      // dapet id undefined.
       const normalized: InboundRequest[] = rawList.map((r: any) => ({
         ...r,
         id: String(r.surat_jalan_id ?? r.id),
@@ -71,7 +64,6 @@ export default function SupervisorApprovalPage() {
 
   useEffect(() => {
     fetchInboundList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -80,14 +72,10 @@ export default function SupervisorApprovalPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // Filter Data
   const filteredRequests = useMemo(() => {
     if (!Array.isArray(requests)) return [];
 
     return requests.filter((r) => {
-      // Surat Jalan Inbound yang staf submit statusnya "menunggu_verifikasi"
-      // (di-set di createStaffInbound() backend) — "draft_diajukan" itu
-      // status default buat Outbound, bukan Inbound.
       const isPending = r.status === "menunggu_verifikasi";
 
       const matchSearch =
@@ -102,7 +90,6 @@ export default function SupervisorApprovalPage() {
     });
   }, [requests, query, selectedCategory]);
 
-  // Ringkasan Statistik Atas
   const stats = useMemo(() => {
     const totalAntrean = filteredRequests.length;
     const fisikRusak = filteredRequests.filter((r) => r.ada_fisik_rusak).length;
@@ -112,8 +99,6 @@ export default function SupervisorApprovalPage() {
     return { totalAntrean, fisikRusak, selisihPo, diLuarPo };
   }, [filteredRequests]);
 
-  // Handler Approve — dipisah jadi 2 langkah (openConfirm lalu executeApprove)
-  // supaya bisa pakai modal konfirmasi sebelum API benar-benar dipanggil.
   const openApproveConfirm = (req: InboundRequest) => {
     setConfirmTarget(req);
   };
@@ -122,13 +107,47 @@ export default function SupervisorApprovalPage() {
     setConfirmTarget(null);
   };
 
+  const openRejectConfirm = (req: InboundRequest) => {
+    setRejectTarget(req);
+    setShowRejectConfirm(true);
+  };
+
+  const cancelRejectConfirm = () => {
+    setShowRejectConfirm(false);
+    setRejectReason("");
+  };
+
+  const executeReject = async () => {
+    const target = rejectTarget;
+    if (!target || !rejectReason.trim()) return;
+    setShowRejectConfirm(false);
+    setApproveLoading(true);
+    try {
+      const res = await put(`${API_BASE_URL}/api/surat-jalan/${target.id}/reject-inbound`, {
+        catatan: rejectReason.trim() || null,
+      });
+      if (res.ok) {
+        setRequests((prev) => (Array.isArray(prev) ? prev.filter((item) => item.id !== target.id) : []));
+        setToast({ message: "Inbound berhasil ditolak.", type: "success" });
+      } else {
+        const err = await res.json().catch(() => null);
+        setToast({ message: err?.message || "Gagal menolak dokumen.", type: "error" });
+      }
+    } catch (error) {
+      console.error("Error rejecting request:", error);
+      setToast({ message: "Gagal menolak dokumen.", type: "error" });
+    } finally {
+      setApproveLoading(false);
+      setRejectTarget(null);
+    }
+  };
+
   const executeApprove = async () => {
     const target = confirmTarget;
     if (!target) return;
     setConfirmTarget(null);
     setApproveLoading(true);
     try {
-      // Endpoint asli di surat-jalan.routes.js: PUT /api/surat-jalan/:id/approve-inbound
       const res = await put(`${API_BASE_URL}/api/surat-jalan/${target.id}/approve-inbound`, {});
       if (res.ok) {
         setRequests((prev) => (Array.isArray(prev) ? prev.filter((item) => item.id !== target.id) : []));
@@ -147,7 +166,6 @@ export default function SupervisorApprovalPage() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6 bg-[#FAFAFA] min-h-screen text-slate-800">
-      {/* Header & Navigasi Kembali */}
       <div className="flex items-center gap-4">
         <button onClick={() => router.back()} className="p-2.5 bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-colors shadow-sm text-slate-600 cursor-pointer" title="Kembali ke halaman sebelumnya">
           <ArrowLeft className="w-5 h-5" />
@@ -162,9 +180,7 @@ export default function SupervisorApprovalPage() {
         </div>
       </div>
 
-      {/* Ringkasan Kartu Stat Atas */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Antrean */}
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex justify-between items-start">
           <div>
             <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">TOTAL ANTREAN</p>
@@ -176,7 +192,6 @@ export default function SupervisorApprovalPage() {
           </div>
         </div>
 
-        {/* Ada Fisik Rusak */}
         <div className="bg-rose-50/40 border border-rose-100 rounded-2xl p-5 shadow-sm flex justify-between items-start">
           <div>
             <p className="text-xs font-bold tracking-wider text-rose-600 uppercase mb-2">ADA FISIK RUSAK</p>
@@ -188,7 +203,6 @@ export default function SupervisorApprovalPage() {
           </div>
         </div>
 
-        {/* Selisih Qty / PO */}
         <div className="bg-amber-50/40 border border-amber-100 rounded-2xl p-5 shadow-sm flex justify-between items-start">
           <div>
             <p className="text-xs font-bold tracking-wider text-amber-600 uppercase mb-2">SELISIH QTY / PO</p>
@@ -200,7 +214,6 @@ export default function SupervisorApprovalPage() {
           </div>
         </div>
 
-        {/* Di Luar PO */}
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex justify-between items-start">
           <div>
             <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">DI LUAR PO</p>
@@ -213,7 +226,6 @@ export default function SupervisorApprovalPage() {
         </div>
       </div>
 
-      {/* Control Bar: Search & Filter */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-sm flex flex-col sm:flex-row gap-3 items-center justify-between">
         <div className="relative w-full sm:w-96">
           <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -246,14 +258,12 @@ export default function SupervisorApprovalPage() {
         </select>
       </div>
 
-      {/* List Antrean Inbound */}
       {loading ? (
         <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400 font-medium">Memuat data antrean...</div>
       ) : filteredRequests.length > 0 ? (
         <div className="space-y-4">
           {filteredRequests.map((req) => (
             <div key={req.id} className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col md:flex-row justify-between md:items-center gap-4">
-              {/* Detail Informasi */}
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-bold text-slate-900 text-lg">{req.nomor_surat_jalan}</span>
@@ -276,7 +286,6 @@ export default function SupervisorApprovalPage() {
                 </p>
               </div>
 
-              {/* Tombol Aksi */}
               <div className="flex items-center gap-3 self-end md:self-center">
                 <button
                   onClick={() => router.push(`/dashboard/supervisor/approval/inbound/${req.id}`)}
@@ -291,6 +300,13 @@ export default function SupervisorApprovalPage() {
                 >
                   Setujui &amp; Tambah Stok
                 </button>
+                <button
+                  onClick={() => openRejectConfirm(req)}
+                  disabled={approveLoading}
+                  className="px-4 py-2.5 border border-rose-200 text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-semibold transition-colors disabled:opacity-60"
+                >
+                  Tolak
+                </button>
               </div>
             </div>
           ))}
@@ -299,13 +315,12 @@ export default function SupervisorApprovalPage() {
         <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400 font-medium shadow-sm">Tidak ada pengajuan inbound yang menunggu persetujuan.</div>
       )}
 
-      {/* Modal Konfirmasi Persetujuan — reuse pola BOQ "Tandai Selesai" */}
       {confirmTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
             <h3 className="text-base font-semibold text-slate-900">Setujui Inbound?</h3>
             <p className="mt-1 text-sm text-slate-500">
-              Surat Jalan <span className="font-semibold text-slate-700">{confirmTarget.nomor_surat_jalan}</span> akan disetujui dan stok barang akan ditambahkan ke gudang.
+               Surat Jalan <span className="font-semibold text-slate-700">{confirmTarget.nomor_surat_jalan}</span> akan disetujui dan stok barang akan ditambahkan ke gudang.
             </p>
             <div className="mt-6 flex items-center justify-end gap-2">
               <button
@@ -329,7 +344,47 @@ export default function SupervisorApprovalPage() {
         </div>
       )}
 
-      {/* Toast — reuse pola BOQ (top-right, slide-in) */}
+      {showRejectConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-base font-semibold text-slate-900">Tolak Inbound?</h3>
+            <p className="mt-1 text-sm text-slate-500">
+               Surat Jalan akan berstatus "ditolak" dan stok tidak akan ditambahkan. Staf Gudang perlu membuat pengajuan inbound baru untuk transaksi ini.
+            </p>
+            <div className="mt-4">
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+                Alasan Penolakan
+              </label>
+              <textarea
+                rows={3}
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Tuliskan alasan penolakan/klarifikasi..."
+                className="w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-rose-500 focus:outline-none"
+              />
+            </div>
+            <div className="mt-6 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelRejectConfirm}
+                disabled={approveLoading}
+                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={executeReject}
+                disabled={approveLoading || !rejectReason.trim()}
+                className="rounded-full bg-rose-600 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-rose-700 disabled:opacity-60"
+              >
+                {approveLoading ? "Memproses..." : "Ya, Tolak"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div
           className={[

@@ -74,14 +74,6 @@ export const navigationConfig: NavItem[] = [
     section: "operasional",
   },
   {
-    id: "delivery-supervisor",
-    title: "Surat Jalan",
-    href: "/dashboard/supervisor/delivery",
-    icon: Truck,
-    roles: ["supervisor"],
-    section: "operasional",
-  },
-  {
     id: "warehouse-admin",
     title: "Gudang & Layout",
     href: "/dashboard/warehouse",

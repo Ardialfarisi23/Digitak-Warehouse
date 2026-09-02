@@ -23,7 +23,6 @@ const SUPERVISOR_ORDER = [
   "/dashboard/supervisor/approval",
   "/dashboard/supervisor/operasional",
   "/master-data",
-  "/dashboard/supervisor/delivery",
   "/dashboard/supervisor/reconciliation",
 ];
 

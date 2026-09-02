@@ -43,7 +43,12 @@ const getInventory = async (filters = {}, actor = null) => {
       const isAllowed = allowedGudangIds.some((id) => String(id) === String(warehouseId));
       whereBoq.gudang_tujuan_id = isAllowed ? BigInt(warehouseId) : { in: [] };
     } else {
-      whereBoq.gudang_tujuan_id = { in: allowedGudangIds };
+      // Izinkan juga boq_item yang belum di-assign ke gudang (gudang_tujuan_id = null)
+      // agar Supervisor dapat melihat data rekonsiliasi seperti Admin.
+      whereBoq.OR = [
+        { gudang_tujuan_id: { in: allowedGudangIds } },
+        { gudang_tujuan_id: null },
+      ];
     }
   } else if (warehouseId !== "all") {
     whereBoq.gudang_tujuan_id = BigInt(warehouseId);

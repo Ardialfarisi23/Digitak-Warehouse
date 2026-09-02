@@ -65,7 +65,7 @@ export default function SupervisorApprovalOutboundDetailPage() {
         throw new Error(err?.message || "Gagal menyetujui outbound.");
       }
       setToast({ message: "Surat Jalan berhasil disetujui & stok berhasil direservasi.", type: "success" });
-      setTimeout(() => router.push("/dashboard/supervisor/approval/outbound"), 1500);
+      setTimeout(() => router.push("/dashboard/supervisor/approval"), 1500);
     } catch (error) {
       setToast({ message: (error as Error).message || "Gagal menyetujui outbound.", type: "error" });
       setTimeout(() => setToast(null), 4000);
@@ -89,7 +89,7 @@ export default function SupervisorApprovalOutboundDetailPage() {
         throw new Error(err?.message || "Gagal menolak outbound.");
       }
       setToast({ message: "Pengajuan outbound berhasil ditolak.", type: "success" });
-      setTimeout(() => router.push("/dashboard/supervisor/approval/outbound"), 1500);
+      setTimeout(() => router.push("/dashboard/supervisor/approval"), 1500);
     } catch (error) {
       setToast({ message: (error as Error).message || "Gagal menolak outbound.", type: "error" });
       setTimeout(() => setToast(null), 4000);
@@ -107,7 +107,7 @@ export default function SupervisorApprovalOutboundDetailPage() {
         throw new Error(err?.message || "Gagal menandai diterima/didistribusikan.");
       }
       setToast({ message: "Surat Jalan berhasil ditandai diterima/didistribusikan.", type: "success" });
-      setTimeout(() => router.push("/dashboard/supervisor/approval/outbound"), 1500);
+      setTimeout(() => router.push("/dashboard/supervisor/approval"), 1500);
     } catch (error) {
       setToast({ message: (error as Error).message || "Gagal menandai diterima/didistribusikan.", type: "error" });
       setTimeout(() => setToast(null), 4000);

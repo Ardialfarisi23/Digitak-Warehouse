@@ -134,7 +134,6 @@ export default function SupervisorReconciliationPage() {
     try {
       const params = new URLSearchParams();
       if (search.trim()) params.set("search", search.trim());
-      if (statusFilter !== "all") params.set("status", statusFilter);
 
       const response = await get(`${RECONCILIATION_ENDPOINT}?${params.toString()}`);
 
@@ -157,28 +156,45 @@ export default function SupervisorReconciliationPage() {
       const payload = json?.data ?? [];
       const list: any[] = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
 
-      const mapped: ReconciliationRecord[] = list.map((item: any) => ({
-        id: String(item.id ?? ""),
-        project_id: String(item.project_id ?? ""),
-        project_nama: item.project_nama ?? "-",
-        cluster_id: item.cluster_id ?? "-",
-        area: item.area ?? "-",
-        tiket_id: String(item.tiket_id ?? ""),
-        kode_tiket: item.kode_tiket ?? "-",
-        barang_id: String(item.barang_id ?? ""),
-        kode_perangkat: item.kode_perangkat ?? "-",
-        nama_barang: item.nama_barang ?? "-",
-        gudang_nama: item.gudang_nama ?? "-",
-        satuan: item.satuan ?? "-",
-        boq: Number(item.boq ?? 0),
-        additional: Number(item.additional ?? 0),
-        mos_sistem: Number(item.mos_sistem ?? 0),
-        mos_mitra: Number(item.mos_mitra ?? 0),
-        selisih: Number(item.selisih ?? 0),
-        used: Number(item.used ?? 0),
-        remains: Number(item.remains ?? 0),
-        status: (item.status as ReconciliationRecord["status"]) ?? "berjalan",
-      }));
+      const mapped: ReconciliationRecord[] = list.map((item: any) => {
+        const boq = Number(item.boq ?? item.qty_boq ?? item.qty_rencana ?? 0);
+        const additional = Number(item.additional ?? item.qty_additional ?? 0);
+        const mosSistem = Number(item.mos_sistem ?? item.hardware_on_site ?? item.qty_on_site ?? 0);
+        const mosMitra = Number(item.mos_mitra ?? 0);
+        const used = Number(item.used ?? item.qty_used ?? 0);
+        const remains = mosSistem - (boq + additional);
+        const selisih = mosSistem - mosMitra;
+
+        let recStatus: ReconciliationRecord["status"] = "berjalan";
+        if (remains < 0) {
+          recStatus = "perhatian";
+        } else if (mosSistem >= boq + additional && boq > 0) {
+          recStatus = "sesuai";
+        }
+
+        return {
+          id: String(item.id ?? ""),
+          project_id: String(item.project_id ?? ""),
+          project_nama: item.project_nama ?? "-",
+          cluster_id: item.cluster_id ?? "-",
+          area: item.area ?? "-",
+          tiket_id: String(item.tiket_id ?? ""),
+          kode_tiket: item.kode_tiket ?? "-",
+          barang_id: String(item.barang_id ?? ""),
+          kode_perangkat: item.kode_perangkat ?? "-",
+          nama_barang: item.nama_barang ?? "-",
+          gudang_nama: item.gudang_nama ?? "-",
+          satuan: item.satuan ?? "-",
+          boq,
+          additional,
+          mos_sistem: mosSistem,
+          mos_mitra: mosMitra,
+          selisih,
+          used,
+          remains,
+          status: recStatus,
+        };
+      });
 
       setRecords(mapped);
     } catch (caughtError) {
@@ -269,7 +285,7 @@ export default function SupervisorReconciliationPage() {
   }, [historyRecords, startDate, endDate]);
 
   const summary = useMemo(() => {
-    return filteredRecords.reduce(
+    return records.reduce(
       (total, item) => {
         total.boq += item.boq;
         total.additional += item.additional;
@@ -282,7 +298,7 @@ export default function SupervisorReconciliationPage() {
       },
       { boq: 0, additional: 0, mos_sistem: 0, mos_mitra: 0, selisih: 0, used: 0, remains: 0 },
     );
-  }, [filteredRecords]);
+  }, [records]);
 
   const totalPerhatian = useMemo(() => filteredRecords.filter((r) => r.status === "perhatian").length, [filteredRecords]);
 

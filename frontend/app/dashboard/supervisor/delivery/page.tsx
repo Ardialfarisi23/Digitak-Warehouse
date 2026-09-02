@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Search, ChevronDown, Filter, X, Eye, CheckSquare, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Search, ChevronDown, Filter, X, Eye, CheckSquare, AlertTriangle, Clock, PackageCheck, Truck } from "lucide-react";
 import { useApi } from "@/lib/api";
 import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
 
 const STATUS_LABEL: Record<string, string> = {
   stok_kurang: "Stok Tidak Cukup",
   melewati_batas: "Melewati Limit Kuota",
-  manual_override: "Manual / Direct Outbound",
+  manual_override: "Manual Outbound",
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -92,7 +92,6 @@ export default function SupervisorApprovalOutboundPage() {
   }, [get, currentPage, query, selectedCategory]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchApprovalQueue();
   }, [fetchApprovalQueue]);
 
@@ -104,6 +103,14 @@ export default function SupervisorApprovalOutboundPage() {
       return matchCat;
     });
   }, [requests, selectedCategory]);
+
+  const stats = useMemo(() => {
+    const totalAntrean = filteredRequests.length;
+    const stokTidakCukup = filteredRequests.filter((r) => r.kategori_approval === "stok_kurang").length;
+    const melewatiLimit = filteredRequests.filter((r) => r.kategori_approval === "melewati_batas").length;
+    const manualOutbound = filteredRequests.filter((r) => r.kategori_approval === "manual_override").length;
+    return { totalAntrean, stokTidakCukup, melewatiLimit, manualOutbound };
+  }, [filteredRequests]);
 
   const formatDate = (value: string) => {
     if (!value) return "-";
@@ -159,82 +166,99 @@ export default function SupervisorApprovalOutboundPage() {
 
   return (
     <div className="min-h-screen bg-slate-50/50 p-6 md:p-8 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Link
-            href="/dashboard/supervisor/approval"
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-900"
-          >
-            <ArrowLeft size={18} />
-          </Link>
+      <div className="flex items-center gap-4">
+        <Link
+          href="/dashboard/supervisor/approval"
+          className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-900"
+        >
+          <ArrowLeft size={18} />
+        </Link>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
+              Supervisor Portal
+            </span>
+            <span className="text-slate-300">•</span>
+            <span className="text-xs font-medium text-slate-500">
+              Otorisasi Barang Keluar
+            </span>
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900">
+            Approval Pengeluaran Barang (Outbound)
+          </h1>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex justify-between items-start">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
-                Supervisor Portal
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="text-xs font-medium text-slate-500">
-                Otorisasi Barang Keluar
-              </span>
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900">
-              Approval Pengeluaran Barang (Outbound)
-            </h1>
+            <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">Total Antrean</p>
+            <h3 className="text-3xl font-bold text-slate-900 mb-1">{stats.totalAntrean}</h3>
+            <p className="text-xs text-slate-400">Menunggu persetujuan</p>
+          </div>
+          <div className="p-2 bg-slate-50 rounded-lg text-slate-400">
+            <Clock className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-rose-50/40 border border-rose-100 rounded-2xl p-5 shadow-sm flex justify-between items-start">
+          <div>
+            <p className="text-xs font-bold tracking-wider text-rose-600 uppercase mb-2">Stok Tidak Cukup</p>
+            <h3 className="text-3xl font-bold text-rose-600 mb-1">{stats.stokTidakCukup}</h3>
+            <p className="text-xs text-rose-500 font-medium">Perlu penyesuaian stok</p>
+          </div>
+          <div className="p-2 bg-rose-100/50 rounded-lg text-rose-500">
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-orange-50/40 border border-orange-100 rounded-2xl p-5 shadow-sm flex justify-between items-start">
+          <div>
+            <p className="text-xs font-bold tracking-wider text-orange-600 uppercase mb-2">Melewati Limit</p>
+            <h3 className="text-3xl font-bold text-orange-600 mb-1">{stats.melewatiLimit}</h3>
+            <p className="text-xs text-orange-500 font-medium">Melebihi kuota</p>
+          </div>
+          <div className="p-2 bg-orange-100/50 rounded-lg text-orange-500">
+            <Truck className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex justify-between items-start">
+          <div>
+            <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">Manual Outbound</p>
+            <h3 className="text-3xl font-bold text-slate-900 mb-1">{stats.manualOutbound}</h3>
+            <p className="text-xs text-slate-400">Tanpa approval otomatis</p>
+          </div>
+          <div className="p-2 bg-slate-50 rounded-lg text-slate-400">
+            <PackageCheck className="w-5 h-5" />
           </div>
         </div>
       </div>
 
-      {error && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          {error}
-          <button
-            onClick={fetchApprovalQueue}
-            className="ml-3 rounded-lg border border-rose-300 px-3 py-1 text-xs font-semibold text-rose-800 hover:bg-rose-100"
-          >
-            Coba Lagi
-          </button>
-        </div>
-      )}
-
-      {toast && (
-        <div
-          className={`fixed top-4 right-4 z-50 rounded-xl border px-4 py-3 shadow-lg ${
-            toast.type === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-              : "border-rose-200 bg-rose-50 text-rose-800"
-          }`}
-        >
-          <div className="flex items-center gap-2 text-sm font-medium">
-            {toast.type === "success" ? "✓" : "✕"}
-            {toast.message}
-          </div>
-        </div>
-      )}
-
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-sm">
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-sm flex flex-col sm:flex-row gap-3 items-center justify-between">
+        <div className="relative w-full sm:w-96">
+          <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Cari No. SJ, Proyek, Gudang..."
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-4 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none"
+            placeholder="Cari No. SJ, Project, Gudang..."
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-50/60 border-none rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 placeholder-slate-400"
           />
         </div>
 
-        <div className="relative w-full sm:w-auto">
-          <Filter size={16} className="absolute left-3 top-3 text-slate-400 pointer-events-none" />
+        <div className="relative w-full sm:w-56">
+          <Filter className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="w-full sm:w-auto appearance-none rounded-xl border border-slate-200 bg-slate-50/50 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 focus:border-indigo-500 focus:bg-white focus:outline-none"
+            className="w-full pl-10 pr-8 py-2.5 bg-slate-50/60 border-none rounded-xl text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer appearance-none font-medium"
           >
             <option value="all">Semua Kategori</option>
             <option value="stok_kurang">Stok Tidak Cukup</option>
             <option value="melewati_batas">Melewati Limit Kuota</option>
-            <option value="manual_override">Manual / Direct</option>
+            <option value="manual_override">Manual</option>
           </select>
-          <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
+          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
         </div>
       </div>
 
@@ -270,7 +294,7 @@ export default function SupervisorApprovalOutboundPage() {
                 filteredRequests.map((r) => {
                   const kategori = r.kategori_approval || "manual_override";
                   const badgeClass = STATUS_BADGE[kategori] || STATUS_BADGE.manual_override;
-                  const label = STATUS_LABEL[kategori] || "Manual / Direct Outbound";
+                  const label = STATUS_LABEL[kategori] || "Manual Outbound";
 
                   return (
                     <tr key={r.surat_jalan_id} className="hover:bg-slate-50/50 transition">
@@ -307,10 +331,10 @@ export default function SupervisorApprovalOutboundPage() {
                             onClick={() => openConfirmDialog(r.surat_jalan_id)}
                             disabled={actionLoading === String(r.surat_jalan_id)}
                             className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-100 disabled:opacity-50"
-                            title="Verifikasi"
+                            title="Setujui"
                           >
                             <CheckSquare size={14} />
-                            <span className="hidden sm:inline">Verifikasi</span>
+                            <span className="hidden sm:inline">Setujui</span>
                           </button>
                         </div>
                       </td>
@@ -348,7 +372,6 @@ export default function SupervisorApprovalOutboundPage() {
       {selectedItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
           <div className="relative w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-3xl bg-white shadow-2xl flex flex-col">
-            {/* Toolbar */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 print:hidden">
               <div>
                 <h3 className="text-lg font-bold text-slate-900">
@@ -366,7 +389,6 @@ export default function SupervisorApprovalOutboundPage() {
               </button>
             </div>
 
-            {/* Dokumen Surat Jalan — ini yang ke-print */}
             <div className="overflow-y-auto p-6">
               <DetailSuratJalanDocument
                 data={{ ...selectedItem, tanggal: selectedItem.tanggal ?? selectedItem.created_at }}
@@ -374,7 +396,6 @@ export default function SupervisorApprovalOutboundPage() {
               />
             </div>
 
-            {/* Actions */}
             <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2 print:hidden">
               <button
                 type="button"
@@ -409,10 +430,10 @@ export default function SupervisorApprovalOutboundPage() {
               </div>
               <div className="flex-1">
                 <h3 className="text-base font-bold text-slate-900">
-                  Konfirmasi Verifikasi Surat Jalan
+                  Konfirmasi Setujui Surat Jalan
                 </h3>
                 <p className="mt-2 text-sm text-slate-600">
-                  Apakah Anda yakin ingin memverifikasi dan menyetujui Surat Jalan ini? Tindakan ini akan mengurangi stok gudang dan tidak dapat dibatalkan.
+                  Apakah Anda yakin ingin menyetujui Surat Jalan ini? Tindakan ini akan mengurangi stok gudang dan tidak dapat dibatalkan.
                 </p>
               </div>
             </div>
@@ -431,10 +452,53 @@ export default function SupervisorApprovalOutboundPage() {
                 disabled={actionLoading !== null}
                 className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
               >
-                {actionLoading !== null ? "Memproses..." : "Ya, Verifikasi"}
+                 {actionLoading !== null ? "Memproses..." : "Ya, Setujui"}
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {toast && (
+        <div
+          className={[
+            "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
+            toast.type === "success"
+              ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
+              : "border-rose-200/80 bg-rose-50/95 text-rose-800",
+          ].join(" ")}
+        >
+          <div
+            className={[
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+              toast.type === "success" ? "bg-emerald-100" : "bg-rose-100",
+            ].join(" ")}
+          >
+            {toast.type === "success" ? (
+              <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+          </div>
+          <p className="flex-1 leading-snug">{toast.message}</p>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className={[
+              "ml-2 shrink-0 rounded-full p-1 transition-colors",
+              toast.type === "success"
+                ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
+                : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
+            ].join(" ")}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       )}
 
