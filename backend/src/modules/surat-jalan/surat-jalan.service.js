@@ -160,6 +160,10 @@ const findOutboundQueue = async (filters = {}) => {
   return await suratJalanRepository.findOutboundQueue(filters);
 };
 
+const findStaffHistory = async (userId, query = {}) => {
+  return await suratJalanRepository.findStaffHistory(userId, query);
+};
+
 const findInboundList = async (filters = {}) => {
   return await suratJalanRepository.findInboundList(filters);
 };
@@ -769,4 +773,5 @@ const rejectInbound = async (id, catatan = null, actorId) => {
     updateDeliveryStatus,
     addItemFoto,
     deleteItemFoto,
+    findStaffHistory,
   };

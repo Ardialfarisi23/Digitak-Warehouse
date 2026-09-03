@@ -73,6 +73,15 @@ const findOutboundForDelivery = async (req, res, next) => {
   }
 };
 
+const findStaffHistory = async (req, res, next) => {
+  try {
+    const result = await suratJalanService.findStaffHistory(req.user.id, req.query);
+    return response.success(res, "Riwayat aktivitas staf berhasil diambil.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 const findById = async (req, res, next) => {
   try {
     const result = await suratJalanService.findById(req.params.id);
@@ -204,4 +213,5 @@ module.exports = {
   updateDeliveryStatus,
   addItemFoto,
   deleteItemFoto,
+  findStaffHistory,
 };
