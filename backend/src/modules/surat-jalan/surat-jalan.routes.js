@@ -26,6 +26,7 @@ router.get("/outbound/approval", authenticate, suratJalanController.findOutbound
 router.get("/outbound/delivery", authenticate, suratJalanController.findOutboundForDelivery);
 router.get("/inbound", authenticate, suratJalanController.findInboundList);
 router.get("/verification/queue", authenticate, suratJalanController.findVerificationQueue);
+router.get("/staff/history", authenticate, suratJalanController.findStaffHistory);
 router.get("/:id", authenticate, suratJalanController.findById);
 
 router.put(

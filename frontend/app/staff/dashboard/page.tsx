@@ -43,7 +43,9 @@ const NEXT_TASK = {
   description:
     "Tugas prioritas tinggi untuk pelanggan VIP. Diperlukan pengambilan 12 item berbeda.",
   startLocation: "Lorong B, Rak B-04",
-  href: "/staff/outbound/SJ-2023-991",
+  suratJalanId: 991,
+  tipe: "outbound",
+  href: "/staff/outbound/991",
 };
 
 // ---------------------------------------------------------------------------

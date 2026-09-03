@@ -613,6 +613,61 @@ const deleteItemFoto = async (fotoId) => {
   });
 };
 
+const findStaffHistory = async (userId, { page = 1, pageSize = 50 } = {}) => {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safePageSize = Math.min(200, Math.max(1, Number(pageSize) || 50));
+  const skip = (safePage - 1) * safePageSize;
+
+  const whereClause = {
+    actor_id: Number(userId),
+    entity_type: "surat_jalan",
+  };
+
+  const [logs, total] = await Promise.all([
+    prisma.audit_log.findMany({
+      where: whereClause,
+      orderBy: { created_at: "desc" },
+      skip,
+      take: safePageSize,
+      include: {
+        actor: { select: { user_id: true, nama: true, email: true } },
+      },
+    }),
+    prisma.audit_log.count({ where: whereClause }),
+  ]);
+
+  const suratJalanIds = logs
+    .map((log) => Number(log.entity_id))
+    .filter((id) => Number.isFinite(id) && id > 0);
+
+  const suratJalans = suratJalanIds.length
+    ? await prisma.surat_jalan.findMany({
+        where: { surat_jalan_id: { in: suratJalanIds } },
+        select: {
+          surat_jalan_id: true,
+          nomor_surat_jalan: true,
+          tipe: true,
+          status: true,
+          tanggal: true,
+        },
+      })
+    : [];
+
+  const sjMap = new Map(suratJalans.map((sj) => [String(sj.surat_jalan_id), sj]));
+
+  const items = logs.map((log) => {
+    const sj = sjMap.get(String(log.entity_id));
+    return {
+      audit_id: log.audit_id,
+      aksi: log.aksi,
+      created_at: log.created_at,
+      surat_jalan: sj || null,
+    };
+  });
+
+  return { items, total, page: safePage, pageSize: safePageSize };
+};
+
 module.exports = {
   create,
   findOutboundQueue,
@@ -631,4 +686,5 @@ module.exports = {
   addItemFoto,
   updateItemVerification,
   deleteItemFoto,
+  findStaffHistory,
 };
