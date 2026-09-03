@@ -2,6 +2,7 @@
 
 import { ArrowDownLeft, ArrowUpRight, Box, CheckCircle2, ChevronDown, Clock, FileText, Radio, ShieldAlert, SlidersHorizontal, Truck, User, Warehouse } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { useSupervisorDashboard } from "@/hooks/use-supervisor-dashboard";
 
 // 1. Summary Cards Top
 const summaryCards = [
@@ -81,72 +82,7 @@ const approvalCards = [
   },
 ];
 
-// 3. Approval Table Data (Status Resmi PRD: Menunggu / Disetujui / Ditolak)
-const recentApprovals = [
-  {
-    id: "SJ-2024001",
-    direction: "Inbound",
-    partner: "PT Supplier A",
-    status: "Menunggu",
-    isOutbound: false,
-  },
-  {
-    id: "SJ-2024002",
-    direction: "Outbound",
-    partner: "Project RW 05",
-    status: "Menunggu",
-    tag: "KRITIS",
-    isOutbound: true,
-  },
-  {
-    id: "SJ-2024003",
-    direction: "Inbound",
-    partner: "Gudang Transit",
-    status: "Disetujui",
-    isOutbound: false,
-  },
-  {
-    id: "SJ-2024004",
-    direction: "Outbound",
-    partner: "Project Cluster Depok",
-    status: "Ditolak",
-    isOutbound: true,
-  },
-];
-
-// 4. Activity Log
-const latestActivities = [
-  {
-    time: "10:42 WIB",
-    activity: "Approve SJ-2024000",
-    actor: "Andi P.",
-    result: "Disetujui",
-    resultTone: "bg-emerald-100 text-emerald-700",
-  },
-  {
-    time: "10:15 WIB",
-    activity: "Scan Inbound Pallet A",
-    actor: "Budi",
-    result: "Selesai",
-    resultTone: "bg-emerald-100 text-emerald-700",
-  },
-  {
-    time: "09:30 WIB",
-    activity: "Update BOQ Project RW05",
-    actor: "Admin Pusat",
-    result: "Info Baru",
-    resultTone: "bg-blue-100 text-blue-700",
-  },
-  {
-    time: "08:55 WIB",
-    activity: "Gagal Verifikasi Serial",
-    actor: "Siti",
-    result: "Ditolak",
-    resultTone: "bg-rose-100 text-rose-600",
-  },
-];
-
-// 5. Data Rekonsiliasi Per Kode Tiket (5 Komponen Wajib)
+// 3. Data Rekonsiliasi Per Kode Tiket (5 Komponen Wajib)
 const ticketReconciliation = [
   {
     ticketCode: "TKT-2024-001 (RW 05)",
@@ -181,6 +117,17 @@ export function SupervisorDashboard() {
   const { user } = useAuth();
   const currentSupervisorName = user?.name || user?.email || "Supervisor";
 
+  const {
+    selectedWarehouse,
+    selectedProject,
+    warehouses,
+    projects,
+    approvalList,
+    activityLog,
+    handleFilterChange,
+    handleApprove,
+  } = useSupervisorDashboard();
+
   return (
     <div className="flex w-full min-h-screen flex-col bg-slate-50/50">
       <main className="p-8 pt-6 max-w-[1600px] w-full mx-auto space-y-6">
@@ -202,15 +149,33 @@ export function SupervisorDashboard() {
           {/* Filters Dropdown */}
           <div className="flex items-center gap-3">
             <div className="relative">
-              <select className="appearance-none rounded-full border border-stone-300/80 bg-white px-5 py-2.5 pr-10 text-sm font-semibold text-slate-700 shadow-sm focus:outline-none cursor-pointer">
-                <option>Semua Gudang Saya</option>
+              <select
+                value={selectedWarehouse}
+                onChange={(e) => handleFilterChange("warehouse", e.target.value)}
+                className="appearance-none rounded-full border border-stone-300/80 bg-white px-5 py-2.5 pr-10 text-sm font-semibold text-slate-700 shadow-sm focus:outline-none cursor-pointer"
+              >
+                <option value="all">Semua Gudang Saya</option>
+                {warehouses.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.nama_gudang}
+                  </option>
+                ))}
               </select>
               <ChevronDown size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             </div>
 
             <div className="relative">
-              <select className="appearance-none rounded-full border border-stone-300/80 bg-white px-5 py-2.5 pr-10 text-sm font-semibold text-slate-700 shadow-sm focus:outline-none cursor-pointer">
-                <option>Semua Project / Tiket</option>
+              <select
+                value={selectedProject}
+                onChange={(e) => handleFilterChange("project", e.target.value)}
+                className="appearance-none rounded-full border border-stone-300/80 bg-white px-5 py-2.5 pr-10 text-sm font-semibold text-slate-700 shadow-sm focus:outline-none cursor-pointer"
+              >
+                <option value="all">Semua Project / Tiket</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nama_project} ({p.area})
+                  </option>
+                ))}
               </select>
               <ChevronDown size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             </div>
@@ -344,36 +309,41 @@ export function SupervisorDashboard() {
                     <button className="text-xs font-bold text-orange-500 hover:underline">Lihat Semua</button>
                   </div>
 
-                  <div className="space-y-3">
-                    {recentApprovals.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between rounded-xl bg-[#FAF8F3] p-3.5 border border-stone-100">
-                        <div className="flex items-center gap-3">
-                          <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${item.isOutbound ? "bg-orange-100 text-orange-600" : "bg-sky-100 text-sky-600"}`}>
-                            {item.isOutbound ? <ArrowUpRight size={18} /> : <ArrowDownLeft size={18} />}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className="text-xs font-bold text-slate-900">{item.id}</p>
-                              {item.tag && <span className="rounded bg-rose-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white">{item.tag}</span>}
-                            </div>
-                            <p className="text-[11px] text-slate-500 font-medium">
-                              {item.direction} • {item.partner}
-                            </p>
-                          </div>
-                        </div>
+                   <div className="space-y-3">
+                     {approvalList.map((item) => (
+                       <div key={item.id} className="flex items-center justify-between rounded-xl bg-[#FAF8F3] p-3.5 border border-stone-100">
+                         <div className="flex items-center gap-3">
+                           <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${item.isOutbound ? "bg-orange-100 text-orange-600" : "bg-sky-100 text-sky-600"}`}>
+                             {item.isOutbound ? <ArrowUpRight size={18} /> : <ArrowDownLeft size={18} />}
+                           </div>
+                           <div>
+                             <div className="flex items-center gap-2">
+                               <p className="text-xs font-bold text-slate-900">{item.id}</p>
+                               {item.tag && <span className="rounded bg-rose-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white">{item.tag}</span>}
+                             </div>
+                             <p className="text-[11px] text-slate-500 font-medium">
+                               {item.direction} • {item.partner}
+                             </p>
+                           </div>
+                         </div>
 
-                        {item.status === "Menunggu" ? (
-                          <button className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-orange-600 transition">Proses</button>
-                        ) : item.status === "Disetujui" ? (
-                          <span className="flex items-center gap-1 text-xs font-bold text-emerald-600">
-                            <CheckCircle2 size={14} /> Disetujui
-                          </span>
-                        ) : (
-                          <span className="text-xs font-bold text-rose-500">Ditolak</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                         {item.status === "Menunggu" ? (
+                           <button
+                             onClick={() => handleApprove(item)}
+                             className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-orange-600 transition"
+                           >
+                             Proses
+                           </button>
+                         ) : item.status === "Disetujui" ? (
+                           <span className="flex items-center gap-1 text-xs font-bold text-emerald-600">
+                             <CheckCircle2 size={14} /> Disetujui
+                           </span>
+                         ) : (
+                           <span className="text-xs font-bold text-rose-500">Ditolak</span>
+                         )}
+                       </div>
+                     ))}
+                   </div>
                 </div>
               </div>
 
@@ -397,7 +367,7 @@ export function SupervisorDashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-100/60 font-medium text-slate-700">
-                      {latestActivities.map((act, i) => (
+                      {activityLog.map((act, i) => (
                         <tr key={i} className="hover:bg-stone-50/50">
                           <td className="py-2.5 text-slate-400 font-semibold">{act.time}</td>
                           <td className="py-2.5 font-semibold text-slate-800">{act.activity}</td>

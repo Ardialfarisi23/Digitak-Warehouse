@@ -1,4 +1,6 @@
 const dashboardRepository = require("./dashboard.repository");
+const prisma = require("../../config/prisma");
+const AppError = require("../../shared/errors");
 
 const getStats = async () => {
   return await dashboardRepository.getStats();
@@ -8,7 +10,480 @@ const getProjectSummary = async () => {
   return await dashboardRepository.getProjectSummary();
 };
 
+const getApprovalQueue = async (actor) => {
+  const role = actor?.role || "staff";
+  const userId = Number(actor?.id || 0);
+
+  const whereInbound = {
+    status: { in: ["menunggu_verifikasi", "ready_putaway"] },
+    tipe: "inbound",
+  };
+
+  const whereOutbound = {
+    status: { in: ["draft_diajukan", "diterima_didistribusikan"] },
+    tipe: "outbound",
+  };
+
+  const whereVerification = {
+    status: { in: ["draft_diajukan", "menunggu_verifikasi"] },
+  };
+
+  const whereDiscrepancy = {
+    status: { in: ["ditolak", "draft_diajukan"] },
+  };
+
+  const [
+    inboundMenunggu,
+    outboundMenunggu,
+    verifikasiMenunggu,
+    discrepancyMenunggu,
+    permintaanBoqMenunggu,
+  ] = await Promise.all([
+    prisma.surat_jalan.count({ where: whereInbound }),
+    prisma.surat_jalan.count({ where: whereOutbound }),
+    prisma.surat_jalan.count({ where: whereVerification }),
+    prisma.surat_jalan.count({ where: whereDiscrepancy }),
+    prisma.permintaan_boq.count({ where: { status: "diajukan" } }),
+  ]);
+
+  const inboundList = await prisma.surat_jalan.findMany({
+    where: whereInbound,
+    take: 5,
+    orderBy: { created_at: "asc" },
+    select: {
+      surat_jalan_id: true,
+      nomor_surat_jalan: true,
+      tipe: true,
+      status: true,
+      created_at: true,
+      pic_pemohon_nama: true,
+      project: { select: { nama_project: true, area: true } },
+      gudang_tujuan: { select: { nama_gudang: true } },
+      items: { select: { qty: true } },
+    },
+  });
+
+  const outboundList = await prisma.surat_jalan.findMany({
+    where: whereOutbound,
+    take: 5,
+    orderBy: { created_at: "asc" },
+    select: {
+      surat_jalan_id: true,
+      nomor_surat_jalan: true,
+      tipe: true,
+      status: true,
+      created_at: true,
+      pic_pemohon_nama: true,
+      project: { select: { nama_project: true, area: true } },
+      gudang_tujuan: { select: { nama_gudang: true } },
+      items: { select: { qty: true } },
+    },
+  });
+
+  const verificationList = await prisma.surat_jalan.findMany({
+    where: whereVerification,
+    take: 5,
+    orderBy: { created_at: "asc" },
+    select: {
+      surat_jalan_id: true,
+      nomor_surat_jalan: true,
+      tipe: true,
+      status: true,
+      created_at: true,
+      pic_pemohon_nama: true,
+      project: { select: { nama_project: true, area: true } },
+      gudang_tujuan: { select: { nama_gudang: true } },
+      items: { select: { qty: true } },
+    },
+  });
+
+  const formatApproval = (records, type) =>
+    records.map((r) => {
+      const totalQty = r.items.reduce((sum, it) => sum + Number(it.qty || 0), 0);
+      return {
+        id: String(r.surat_jalan_id),
+        nomorSuratJalan: r.nomor_surat_jalan,
+        type,
+        direction: r.tipe,
+        status: r.status,
+        partner: r.pic_pemohon_nama || r.project?.nama_project || "-",
+        projectName: r.project?.nama_project || "-",
+        area: r.project?.area || "-",
+        warehouse: r.gudang_tujuan?.nama_gudang || "-",
+        totalQty,
+        createdAt: r.created_at,
+      };
+    });
+
+  return {
+    inboundCount: inboundMenunggu,
+    outboundCount: outboundMenunggu,
+    verificationCount: verifikasiMenunggu,
+    discrepancyCount: discrepancyMenunggu,
+    permintaanBoqCount: permintaanBoqMenunggu,
+    items: [
+      ...formatApproval(inboundList, "inbound_verifikasi"),
+      ...formatApproval(outboundList, "outbound_approval"),
+      ...formatApproval(verificationList, "verifikasi_sj"),
+    ],
+  };
+};
+
+const getHardwareReconciliation = async (filters = {}, actor) => {
+  const { warehouseId = "all", projectId = "all", search = "" } = filters;
+
+  const whereBoq = {
+    boq: { status: { in: ["draft", "aktif", "selesai"] } },
+  };
+
+  if (actor?.role === "supervisor") {
+    const allowedGudangIds = await dashboardRepository.getSupervisorGudangIds(actor.id);
+    if (allowedGudangIds.length === 0) {
+      return { data: [] };
+    }
+    if (warehouseId !== "all") {
+      const isAllowed = allowedGudangIds.some((id) => String(id) === String(warehouseId));
+      whereBoq.gudang_tujuan_id = isAllowed ? BigInt(warehouseId) : { in: [] };
+    } else {
+      whereBoq.OR = [
+        { gudang_tujuan_id: { in: allowedGudangIds } },
+        { gudang_tujuan_id: null },
+      ];
+    }
+  } else if (warehouseId !== "all") {
+    whereBoq.gudang_tujuan_id = BigInt(warehouseId);
+  }
+
+  if (projectId !== "all") {
+    whereBoq.boq.tiket = { project_id: BigInt(projectId) };
+  }
+
+  const boqItems = await prisma.boq_item.findMany({
+    where: whereBoq,
+    include: {
+      boq: {
+        include: {
+          tiket: {
+            select: {
+              tiket_id: true,
+              kode_tiket: true,
+              mos: true,
+              used: true,
+              project: {
+                select: {
+                  project_id: true,
+                  nama_project: true,
+                  area: true,
+                  cluster_id: true,
+                },
+              },
+            },
+          },
+        },
+      },
+      barang: {
+        select: {
+          kode_perangkat: true,
+          nama_barang: true,
+        },
+      },
+      satuan: {
+        select: { kode_satuan: true },
+      },
+      gudang_tujuan: {
+        select: { nama_gudang: true },
+      },
+    },
+  });
+
+  const shipmentWhere = {
+    surat_jalan: { status: { in: ["disetujui", "diterima_didistribusikan"] } },
+  };
+
+  if (projectId !== "all") {
+    shipmentWhere.surat_jalan.project_id = BigInt(projectId);
+  }
+
+  const shipmentItems = await prisma.surat_jalan_item.findMany({
+    where: shipmentWhere,
+    include: {
+      surat_jalan: {
+        select: {
+          tipe: true,
+          project_id: true,
+          boq_id: true,
+        },
+      },
+    },
+  });
+
+  const inboundByProjectBarang = new Map();
+  const outboundByProjectBarang = new Map();
+  const additionalByProjectBarang = new Map();
+
+  for (const item of shipmentItems) {
+    const projectIdNum = Number(item.surat_jalan?.project_id);
+    const barangId = String(item.barang_id);
+    const qty = Number(item.qty || 0);
+    const key = `${projectIdNum}-${barangId}`;
+
+    if (item.surat_jalan?.tipe === "inbound") {
+      if (item.is_kelebihan) {
+        additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + qty);
+      } else {
+        inboundByProjectBarang.set(key, (inboundByProjectBarang.get(key) || 0) + qty);
+      }
+    }
+    if (item.surat_jalan?.tipe === "outbound") {
+      outboundByProjectBarang.set(key, (outboundByProjectBarang.get(key) || 0) + qty);
+    }
+  }
+
+  const tiketMosMap = new Map();
+  for (const item of boqItems) {
+    const kodeTiket = item.boq?.tiket?.kode_tiket;
+    if (kodeTiket && !tiketMosMap.has(kodeTiket)) {
+      tiketMosMap.set(kodeTiket, Number(item.boq?.tiket?.mos || 0));
+    }
+  }
+
+  const aggregatedMap = new Map();
+  const gudangByKey = new Map();
+  const satuanByKey = new Map();
+
+  for (const item of boqItems) {
+    const tiket = item.boq?.tiket;
+    const project = tiket?.project;
+    const projectIdNum = Number(project?.project_id || 0);
+    const barangId = String(item.barang_id);
+    const key = `${projectIdNum}-${barangId}`;
+
+    if (!aggregatedMap.has(key)) {
+      aggregatedMap.set(key, {
+        project_id: String(projectIdNum),
+        project_nama: project?.nama_project || "-",
+        cluster_id: project?.cluster_id || "-",
+        area: project?.area || "-",
+        barang_id: barangId,
+        kode_perangkat: item.barang?.kode_perangkat || "-",
+        nama_barang: item.barang?.nama_barang || "-",
+        satuan: item.satuan?.kode_satuan || "-",
+        boq: 0,
+        kode_tiket_list: [],
+      });
+      gudangByKey.set(key, new Set());
+      satuanByKey.set(key, new Set());
+    }
+
+    const agg = aggregatedMap.get(key);
+    agg.boq += Number(item.qty_rencana || 0);
+    agg.kode_tiket_list.push(tiket?.kode_tiket);
+
+    if (item.gudang_tujuan?.nama_gudang) {
+      gudangByKey.get(key).add(item.gudang_tujuan.nama_gudang);
+    }
+    if (item.satuan?.kode_satuan) {
+      satuanByKey.get(key).add(item.satuan.kode_satuan);
+    }
+  }
+
+  let rows = Array.from(aggregatedMap.values()).map((agg) => {
+    const key = `${agg.project_id}-${agg.barang_id}`;
+    const additional = Number(additionalByProjectBarang.get(key) || 0);
+    const mosSistem = Number(inboundByProjectBarang.get(key) || 0);
+    const uniqueTiketsForMos = [...new Set(agg.kode_tiket_list)].filter(Boolean);
+    const mosMitra = uniqueTiketsForMos.reduce((sum, kodeTiket) => sum + (tiketMosMap.get(kodeTiket) || 0), 0);
+    const used = Number(outboundByProjectBarang.get(key) || 0);
+    const remains = mosSistem - (agg.boq + additional);
+    const selisih = mosSistem - mosMitra;
+
+    let recStatus = "berjalan";
+    if (remains < 0) {
+      recStatus = "perhatian";
+    } else if (mosSistem >= agg.boq + additional && agg.boq > 0) {
+      recStatus = "sesuai";
+    }
+
+    const uniqueTikets = [...new Set(agg.kode_tiket_list)].filter(Boolean);
+    const kodeTiketStr = uniqueTikets.join(", ") || "-";
+    const gudangList = [...(gudangByKey.get(key) || [])];
+    const gudangNama = gudangList.join(", ") || "-";
+    const satuanList = [...(satuanByKey.get(key) || [])];
+    const satuanStr = satuanList.join(", ") || "-";
+
+    return {
+      id: key,
+      project_id: agg.project_id,
+      project_nama: agg.project_nama,
+      cluster_id: agg.cluster_id,
+      area: agg.area,
+      tiket_id: "",
+      kode_tiket: kodeTiketStr,
+      barang_id: agg.barang_id,
+      kode_perangkat: agg.kode_perangkat,
+      nama_barang: agg.nama_barang,
+      gudang_nama: gudangNama,
+      satuan: satuanStr,
+      boq: agg.boq,
+      additional,
+      mos_sistem: mosSistem,
+      mos_mitra: mosMitra,
+      selisih,
+      used,
+      remains,
+      status: recStatus,
+    };
+  });
+
+  if (search.trim()) {
+    const q = search.toLowerCase();
+    rows = rows.filter((row) =>
+      [row.project_nama, row.kode_tiket, row.kode_perangkat, row.nama_barang, row.gudang_nama]
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
+    );
+  }
+
+  return { data: rows };
+};
+
+const getActivityLog = async (filters = {}) => {
+  const { limit = 20, search = "" } = filters;
+
+  const where = {};
+  if (search.trim()) {
+    where.OR = [
+      { aksi: { contains: search } },
+      { entity_type: { contains: search } },
+    ];
+  }
+
+  const logs = await prisma.audit_log.findMany({
+    where,
+    take: Number(limit) || 20,
+    orderBy: { created_at: "desc" },
+    include: {
+      actor: {
+        select: {
+          nama: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  return logs.map((log) => ({
+    auditId: String(log.audit_id),
+    entityType: log.entity_type,
+    entityId: String(log.entity_id),
+    action: log.aksi,
+    actorName: log.actor?.nama || log.actor?.email || "System",
+    dataBefore: log.data_sebelum,
+    dataAfter: log.data_sesudah,
+    createdAt: log.created_at,
+  }));
+};
+
+const getWarehouseAssessment = async (filters = {}, actor) => {
+  const { gudangId = "all" } = filters;
+
+  const where = {};
+  if (gudangId !== "all") {
+    where.gudang_id = BigInt(gudangId);
+  }
+
+  const zonas = await prisma.zona_gudang.findMany({
+    where,
+    include: {
+      gudang: {
+        select: {
+          gudang_id: true,
+          nama_gudang: true,
+          tipe: true,
+          project: {
+            select: {
+              project_id: true,
+              nama_project: true,
+              area: true,
+            },
+          },
+        },
+      },
+      dinilai_oleh_user: {
+        select: {
+          nama: true,
+          email: true,
+        },
+      },
+    },
+    orderBy: [{ gudang_id: "asc" }, { kode_zona: "asc" }],
+  });
+
+  return zonas.map((z) => ({
+    zonaId: String(z.zona_id),
+    gudangId: String(z.gudang_id),
+    gudangNama: z.gudang?.nama_gudang || "-",
+    gudangTipe: z.gudang?.tipe || "-",
+    projectNama: z.gudang?.project?.nama_project || "-",
+    area: z.gudang?.project?.area || "-",
+    kodeZona: z.kode_zona,
+    namaZona: z.nama_zona || z.kode_zona,
+    statusKecukupan: z.status_kecukupan || "CUKUP",
+    dinilaiOleh: z.dinilai_oleh_user?.nama || z.dinilai_oleh_user?.email || null,
+    dinilaiPada: z.dinilai_pada || null,
+  }));
+};
+
+const updateWarehouseAssessment = async (gudangId, body, actor) => {
+  const { status_kecukupan, catatan } = body;
+
+  if (!["CUKUP", "MENDEKATI_PENUH", "TIDAK_CUKUP"].includes(status_kecukupan)) {
+    throw new AppError("Status kecukupan tidak valid.", 400);
+  }
+
+  const userId = BigInt(actor?.id || 0);
+
+  if (gudangId && gudangId !== "all") {
+    const updated = await prisma.zona_gudang.updateMany({
+      where: { gudang_id: BigInt(gudangId) },
+      data: {
+        status_kecukupan,
+        dinilai_oleh: userId,
+        dinilai_pada: new Date(),
+      },
+    });
+
+    if (updated.count > 0 && catatan) {
+      const zonas = await prisma.zona_gudang.findMany({
+        where: { gudang_id: BigInt(gudangId) },
+        select: { zona_id: true },
+      });
+
+      for (const zona of zonas) {
+        await prisma.zona_utilisasi_log.create({
+          data: {
+            zona_id: zona.zona_id,
+            status: status_kecukupan,
+            diperbarui_oleh: userId,
+            catatan: catatan || null,
+          },
+        });
+      }
+    }
+
+    return { gudangId, status_kecukupan, updatedCount: updated.count };
+  }
+
+  throw new AppError("Gudang ID wajib diisi.", 400);
+};
+
 module.exports = {
   getStats,
   getProjectSummary,
+  getApprovalQueue,
+  getHardwareReconciliation,
+  getActivityLog,
+  getWarehouseAssessment,
+  updateWarehouseAssessment,
 };
