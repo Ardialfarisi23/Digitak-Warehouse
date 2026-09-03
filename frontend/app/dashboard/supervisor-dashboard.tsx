@@ -274,7 +274,9 @@ export function SupervisorDashboard() {
                         </div>
                         <div className="rounded bg-amber-50 text-amber-800 p-1.5">
                           <span className="block text-[10px] text-amber-600">Remains</span>
-                          {tkt.remains}
+                          <span className={tkt.mos - (tkt.boqPlan + tkt.additional) < 0 ? "text-rose-600 font-bold" : ""}>
+                            {tkt.mos - (tkt.boqPlan + tkt.additional)}
+                          </span>
                         </div>
                       </div>
                     </div>
