@@ -2,6 +2,7 @@ const suratJalanRepository = require("./surat-jalan.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
 const { PrismaClientKnownRequestError } = require("@prisma/client");
+const notificationService = require("../notifications/notifications.service");
 
 const create = async (data, actorId) => {
   if (!data.tipe || !["inbound", "outbound"].includes(data.tipe)) {
@@ -18,44 +19,61 @@ const create = async (data, actorId) => {
     }
   }
 
-  try {
-    const suratJalan = await prisma.$transaction(async (tx) => {
-      const created = await suratJalanRepository.create(data, actorId, tx);
+  const MAX_ATTEMPTS = 5;
+  let attempt = 0;
 
-      const aksi = data.tipe === "inbound" ? "create_inbound" : "create_outbound";
+  while (attempt < MAX_ATTEMPTS) {
+    attempt += 1;
+    try {
+      const suratJalan = await prisma.$transaction(async (tx) => {
+        const created = await suratJalanRepository.create(data, actorId, tx);
 
-      await tx.audit_log.create({
-        data: {
-          entity_type: "surat_jalan",
-          entity_id: BigInt(created.surat_jalan_id),
-          aksi: aksi,
-          actor_id: BigInt(actorId),
-          data_sebelum: null,
-          data_sesudah: {
-            status: created.status,
-            surat_jalan_id: created.surat_jalan_id,
-            tipe: created.tipe,
-            nomor_surat_jalan: created.nomor_surat_jalan,
-            ...(created.tipe === "inbound"
-              ? { gudang_tujuan_id: created.gudang_tujuan_id }
-              : {
-                  gudang_asal_id: created.gudang_asal_id,
-                  gudang_tujuan_id: created.gudang_tujuan_id,
-                }),
+        const aksi = data.tipe === "inbound" ? "create_inbound" : "create_outbound";
+
+        await tx.audit_log.create({
+          data: {
+            entity_type: "surat_jalan",
+            entity_id: BigInt(created.surat_jalan_id),
+            aksi: aksi,
+            actor_id: BigInt(actorId),
+            data_sebelum: null,
+            data_sesudah: {
+              status: created.status,
+              surat_jalan_id: created.surat_jalan_id,
+              tipe: created.tipe,
+              nomor_surat_jalan: created.nomor_surat_jalan,
+              ...(created.tipe === "inbound"
+                ? { gudang_tujuan_id: created.gudang_tujuan_id }
+                : {
+                    gudang_asal_id: created.gudang_asal_id,
+                    gudang_tujuan_id: created.gudang_tujuan_id,
+                  }),
+            },
           },
-        },
+        });
+
+        return created;
       });
 
-      return created;
-    });
-
-    return suratJalan;
-  } catch (err) {
-    if (err instanceof PrismaClientKnownRequestError && err.code === "P2002") {
-      throw new AppError("Nomor surat jalan sudah digunakan. Silakan gunakan nomor lain.", 400);
+      return suratJalan;
+    } catch (err) {
+      if (err instanceof PrismaClientKnownRequestError && err.code === "P2002" && attempt < MAX_ATTEMPTS) {
+        const target = err.meta?.target;
+        const isNomor =
+          (Array.isArray(target) && target.includes("nomor_surat_jalan")) ||
+          target === "nomor_surat_jalan";
+        if (isNomor) {
+          continue;
+        }
+      }
+      if (err instanceof PrismaClientKnownRequestError && err.code === "P2002") {
+        throw new AppError("Nomor surat jalan sudah digunakan. Silakan gunakan nomor lain.", 400);
+      }
+      throw err;
     }
-    throw err;
   }
+
+  throw new AppError("Nomor surat jalan sudah digunakan. Silakan gunakan nomor lain.", 400);
 };
 
 const createStaffInbound = async (data, actorId) => {
