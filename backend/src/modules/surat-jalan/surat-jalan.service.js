@@ -182,6 +182,10 @@ const findStaffHistory = async (userId, query = {}) => {
   return await suratJalanRepository.findStaffHistory(userId, query);
 };
 
+const findRejectedList = async (query = {}) => {
+  return await suratJalanRepository.findRejectedList(query);
+};
+
 const findInboundList = async (filters = {}) => {
   return await suratJalanRepository.findInboundList(filters);
 };
@@ -376,7 +380,7 @@ const rejectInbound = async (id, catatan = null, actorId) => {
   }
 
     await prisma.$transaction(async (tx) => {
-      await suratJalanRepository.updateStatus(id, "ditolak", tx);
+      await suratJalanRepository.updateStatus(id, "ditolak", { catatan }, tx);
 
       if (actorId) {
         await suratJalanRepository.createApprovalLog(id, actorId, "inbound_verifikasi", "ditolak", catatan, tx);
@@ -408,7 +412,7 @@ const rejectInbound = async (id, catatan = null, actorId) => {
   }
 
     await prisma.$transaction(async (tx) => {
-      await suratJalanRepository.updateStatus(id, "ditolak", tx);
+      await suratJalanRepository.updateStatus(id, "ditolak", { catatan }, tx);
 
       if (actorId) {
         await suratJalanRepository.createApprovalLog(id, actorId, "outbound_approval", "ditolak", catatan, tx);
@@ -791,5 +795,6 @@ const rejectInbound = async (id, catatan = null, actorId) => {
     updateDeliveryStatus,
     addItemFoto,
     deleteItemFoto,
-    findStaffHistory,
-  };
+findStaffHistory,
+  findRejectedList,
+};

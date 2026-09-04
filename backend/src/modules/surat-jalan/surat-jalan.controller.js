@@ -82,6 +82,15 @@ const findStaffHistory = async (req, res, next) => {
   }
 };
 
+const findRejectedList = async (req, res, next) => {
+  try {
+    const result = await suratJalanService.findRejectedList(req.query);
+    return response.success(res, "Daftar surat jalan yang ditolak berhasil diambil.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 const findById = async (req, res, next) => {
   try {
     const result = await suratJalanService.findById(req.params.id);
@@ -214,4 +223,5 @@ module.exports = {
   addItemFoto,
   deleteItemFoto,
   findStaffHistory,
+  findRejectedList,
 };
