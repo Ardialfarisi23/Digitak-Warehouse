@@ -22,6 +22,7 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isLoggingOut: boolean;
   login: (user: User, token: string) => void;
   logout: () => void;
   updateUser: (data: Partial<User>) => void;
@@ -37,33 +38,50 @@ export function AuthProvider({
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // ============================================================
   // RESTORE SESSION
   // ============================================================
 
   useEffect(() => {
-    try {
-      const storedToken = localStorage.getItem("token");
-      const storedUser = localStorage.getItem("user");
+    const validateSession = async () => {
+      try {
+        const storedToken = localStorage.getItem("token");
+        const storedUser = localStorage.getItem("user");
 
-      if (storedToken && storedUser) {
-        const parsedUser: User = JSON.parse(storedUser);
+        if (storedToken && storedUser) {
+          const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-        setToken(storedToken);
-        setUser(parsedUser);
+          const res = await fetch(`${baseUrl}/api/auth/me`, {
+            headers: { Authorization: `Bearer ${storedToken}` },
+          });
+
+          if (!res.ok) {
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+            setToken(null);
+            setUser(null);
+            setIsLoading(false);
+            return;
+          }
+
+          const parsedUser: User = JSON.parse(storedUser);
+          setToken(storedToken);
+          setUser(parsedUser);
+        }
+      } catch (error) {
+        console.error("Gagal membaca session:", error);
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        setToken(null);
+        setUser(null);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error("Gagal membaca session:", error);
+    };
 
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
-
-      setToken(null);
-      setUser(null);
-    } finally {
-      setIsLoading(false);
-    }
+    validateSession();
   }, []);
 
   // ============================================================
@@ -71,6 +89,7 @@ export function AuthProvider({
   // ============================================================
 
   const login = (user: User, token: string) => {
+    setIsLoggingOut(false);
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(user));
 
@@ -83,6 +102,7 @@ export function AuthProvider({
   // ============================================================
 
   const logout = () => {
+    setIsLoggingOut(true);
     localStorage.removeItem("token");
     localStorage.removeItem("user");
 
@@ -110,6 +130,7 @@ export function AuthProvider({
         token,
         isLoading,
         isAuthenticated: !!token && !!user,
+        isLoggingOut,
         login,
         logout,
         updateUser,
