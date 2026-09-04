@@ -23,9 +23,15 @@ type ActivityLogItem = {
   resultTone: string;
 };
 
-const MOCK_WAREHOUSES: Warehouse[] = [{ id: "all", nama_gudang: "Semua Gudang Saya" }];
+const MOCK_WAREHOUSES: Warehouse[] = [
+  { id: "wh-1", nama_gudang: "Gudang Utama" },
+  { id: "wh-2", nama_gudang: "Gudang Transit" },
+];
 
-const MOCK_PROJECTS: Project[] = [{ id: "all", nama_project: "Semua Project", area: "-" }];
+const MOCK_PROJECTS: Project[] = [
+  { id: "prj-1", nama_project: "RW 05", area: "Jakarta Selatan" },
+  { id: "prj-2", nama_project: "Backbone JKT", area: "Jakarta Pusat" },
+];
 
 const MOCK_APPROVAL_LIST: ApprovalItem[] = [
   { id: "SJ-2024001", isOutbound: false, direction: "Inbound", partner: "PT Supplier A", status: "Menunggu" },
@@ -82,9 +88,11 @@ export function useSupervisorDashboard() {
     }
   }, []);
 
-  const handleApprove = useCallback((item: any) => {
+  const handleApprove = useCallback((id: string) => {
     setApprovalList((prev) =>
-      prev.map((a) => (a.id === item.id && a.status === "Menunggu" ? { ...a, status: "Disetujui" } : a))
+      prev.map((item) =>
+        item.id === id ? { ...item, status: "Disetujui" } : item
+      )
     );
 
     const now = new Date();
@@ -93,7 +101,7 @@ export function useSupervisorDashboard() {
     setActivityLog((prev) => [
       {
         time: timeString,
-        activity: `Approve ${item.id}`,
+        activity: `Approve ${id}`,
         actor: "Anda",
         result: "Sukses",
         resultTone: "bg-emerald-100 text-emerald-700",

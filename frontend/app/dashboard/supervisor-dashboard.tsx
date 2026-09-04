@@ -104,12 +104,12 @@ const ticketReconciliation = [
   },
   {
     ticketCode: "TKT-2024-003 (Cluster Depok)",
-    boqPlan: 300,
-    additional: 20,
-    mos: 150,
-    used: 100,
-    remains: 70,
-    totalUnit: "320 Unit Total",
+    boqPlan: 500,
+    additional: 50,
+    mos: 100,
+    used: 250,
+    remains: -200,
+    totalUnit: "550 Unit Total",
   },
 ];
 
@@ -117,16 +117,7 @@ export function SupervisorDashboard() {
   const { user } = useAuth();
   const currentSupervisorName = user?.name || user?.email || "Supervisor";
 
-  const {
-    selectedWarehouse,
-    selectedProject,
-    warehouses,
-    projects,
-    approvalList,
-    activityLog,
-    handleFilterChange,
-    handleApprove,
-  } = useSupervisorDashboard();
+  const { selectedWarehouse, selectedProject, warehouses, projects, approvalList, activityLog, handleFilterChange, handleApprove } = useSupervisorDashboard();
 
   return (
     <div className="flex w-full min-h-screen flex-col bg-slate-50/50">
@@ -272,11 +263,9 @@ export function SupervisorDashboard() {
                           <span className="block text-[10px] text-orange-600">Used</span>
                           {tkt.used}
                         </div>
-                        <div className="rounded bg-amber-50 text-amber-800 p-1.5">
-                          <span className="block text-[10px] text-amber-600">Remains</span>
-                          <span className={tkt.mos - (tkt.boqPlan + tkt.additional) < 0 ? "text-rose-600 font-bold" : ""}>
-                            {tkt.mos - (tkt.boqPlan + tkt.additional)}
-                          </span>
+                        <div className={`rounded p-1.5 ${tkt.remains < 0 ? 'bg-rose-50 text-rose-600 font-extrabold border border-rose-200' : 'bg-amber-50 text-amber-800'}`}>
+                          <span className="block text-[10px] text-rose-600">Remains</span>
+                          <span>{tkt.remains}</span>
                         </div>
                       </div>
                     </div>
@@ -311,41 +300,38 @@ export function SupervisorDashboard() {
                     <button className="text-xs font-bold text-orange-500 hover:underline">Lihat Semua</button>
                   </div>
 
-                   <div className="space-y-3">
-                     {approvalList.map((item) => (
-                       <div key={item.id} className="flex items-center justify-between rounded-xl bg-[#FAF8F3] p-3.5 border border-stone-100">
-                         <div className="flex items-center gap-3">
-                           <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${item.isOutbound ? "bg-orange-100 text-orange-600" : "bg-sky-100 text-sky-600"}`}>
-                             {item.isOutbound ? <ArrowUpRight size={18} /> : <ArrowDownLeft size={18} />}
-                           </div>
-                           <div>
-                             <div className="flex items-center gap-2">
-                               <p className="text-xs font-bold text-slate-900">{item.id}</p>
-                               {item.tag && <span className="rounded bg-rose-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white">{item.tag}</span>}
-                             </div>
-                             <p className="text-[11px] text-slate-500 font-medium">
-                               {item.direction} • {item.partner}
-                             </p>
-                           </div>
-                         </div>
+                  <div className="space-y-3">
+                    {approvalList.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between rounded-xl bg-[#FAF8F3] p-3.5 border border-stone-100">
+                        <div className="flex items-center gap-3">
+                          <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${item.isOutbound ? "bg-orange-100 text-orange-600" : "bg-sky-100 text-sky-600"}`}>
+                            {item.isOutbound ? <ArrowUpRight size={18} /> : <ArrowDownLeft size={18} />}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-bold text-slate-900">{item.id}</p>
+                              {item.tag && <span className="rounded bg-rose-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white">{item.tag}</span>}
+                            </div>
+                            <p className="text-[11px] text-slate-500 font-medium">
+                              {item.direction} • {item.partner}
+                            </p>
+                          </div>
+                        </div>
 
-                         {item.status === "Menunggu" ? (
-                           <button
-                             onClick={() => handleApprove(item)}
-                             className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-orange-600 transition"
-                           >
-                             Proses
-                           </button>
-                         ) : item.status === "Disetujui" ? (
-                           <span className="flex items-center gap-1 text-xs font-bold text-emerald-600">
-                             <CheckCircle2 size={14} /> Disetujui
-                           </span>
-                         ) : (
-                           <span className="text-xs font-bold text-rose-500">Ditolak</span>
-                         )}
-                       </div>
-                     ))}
-                   </div>
+                        {item.status === "Menunggu" ? (
+                          <button onClick={() => handleApprove(item.id)} className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-orange-600 transition">
+                            Proses
+                          </button>
+                        ) : item.status === "Disetujui" ? (
+                          <span className="flex items-center gap-1 text-xs font-bold text-emerald-600">
+                            <CheckCircle2 size={14} /> Disetujui
+                          </span>
+                        ) : (
+                          <span className="text-xs font-bold text-rose-500">Ditolak</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
