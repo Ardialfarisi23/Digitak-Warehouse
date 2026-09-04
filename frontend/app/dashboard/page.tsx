@@ -19,8 +19,6 @@ import {
   Clock,
   PackageCheck,
   FileCheck2,
-  Database,
-  UserCog,
 } from "lucide-react";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -177,7 +175,6 @@ function KpiCard({
 // ---------------------------------------------------------------------------
 
 function DashboardPageContent() {
-  const { user } = useAuth();
   const { get } = useApi();
   const [projectFilter, setProjectFilter] = useState("");
   const [projectSummary, setProjectSummary] = useState<ProjectSummaryRow[]>([]);
@@ -266,21 +263,24 @@ function DashboardPageContent() {
         setProjectSummary(Array.isArray(projectSummaryJson?.data) ? projectSummaryJson.data : []);
 
         const reconPayload = reconciliationJson?.data;
-        const reconList: any[] = Array.isArray(reconPayload)
+        const reconList: Array<Record<string, unknown>> = Array.isArray(reconPayload)
           ? reconPayload
           : Array.isArray(reconPayload?.data)
             ? reconPayload.data
             : [];
-        const mappedReconRows = reconList.map((row) => ({
-          project_id: String(row?.project_id ?? ""),
-          project_nama: row?.project_nama ?? row?.project?.nama_project ?? undefined,
-          boq: Number(row?.boq ?? 0) || 0,
-          additional: Number(row?.additional ?? 0) || 0,
-          mos_sistem: Number(row?.mos_sistem ?? 0) || 0,
-          used: Number(row?.used ?? 0) || 0,
-          remains: Number(row?.remains ?? 0) || 0,
-          status: row?.status ? String(row.status) : undefined,
-        }));
+        const mappedReconRows = reconList.map((row) => {
+          const proj = row?.project as { nama_project?: string } | undefined;
+          return {
+            project_id: String(row?.project_id ?? ""),
+            project_nama: (row?.project_nama ?? proj?.nama_project ?? undefined) as string | undefined,
+            boq: Number(row?.boq ?? 0) || 0,
+            additional: Number(row?.additional ?? 0) || 0,
+            mos_sistem: Number(row?.mos_sistem ?? 0) || 0,
+            used: Number(row?.used ?? 0) || 0,
+            remains: Number(row?.remains ?? 0) || 0,
+            status: row?.status ? String(row.status) : undefined,
+          };
+        });
         const seenRecon = new Set<string>();
         const dedupedReconRows = mappedReconRows.filter((r) => {
           if (!r.project_id) return true;
