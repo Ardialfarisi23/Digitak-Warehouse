@@ -1,21 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useApi } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-type Warehouse = { id: string; nama_gudang: string };
+type Warehouse = { id: string; nama_gudang: string; tipe?: string; createdAt?: string };
 type Project = { id: string; nama_project: string; area: string };
 type ApprovalItem = {
   id: string;
+  rawId: string;
+  numericId?: string;
   isOutbound: boolean;
   tag?: string;
   direction: string;
   partner: string;
   status: "Menunggu" | "Disetujui" | "Ditolak";
+  createdAt?: string;
 };
 type ActivityLogItem = {
+  auditId?: string;
   time: string;
   activity: string;
   actor: string;
@@ -23,62 +27,514 @@ type ActivityLogItem = {
   resultTone: string;
 };
 
-const MOCK_WAREHOUSES: Warehouse[] = [
+const FALLBACK_WAREHOUSES: Warehouse[] = [
   { id: "wh-1", nama_gudang: "Gudang Utama" },
   { id: "wh-2", nama_gudang: "Gudang Transit" },
 ];
 
-const MOCK_PROJECTS: Project[] = [
+const FALLBACK_PROJECTS: Project[] = [
   { id: "prj-1", nama_project: "RW 05", area: "Jakarta Selatan" },
   { id: "prj-2", nama_project: "Backbone JKT", area: "Jakarta Pusat" },
 ];
 
-const MOCK_APPROVAL_LIST: ApprovalItem[] = [
-  { id: "SJ-2024001", isOutbound: false, direction: "Inbound", partner: "PT Supplier A", status: "Menunggu" },
-  { id: "SJ-2024002", isOutbound: true, tag: "KRITIS", direction: "Outbound", partner: "Project RW 05", status: "Menunggu" },
-  { id: "SJ-2024003", isOutbound: false, direction: "Inbound", partner: "Gudang Transit", status: "Menunggu" },
+const FALLBACK_APPROVAL_LIST: ApprovalItem[] = [
+  { id: "inbound::SJ-2024001", rawId: "SJ-2024001", isOutbound: false, direction: "Inbound", partner: "PT Supplier A", status: "Menunggu" },
+  { id: "outbound::SJ-2024002", rawId: "SJ-2024002", isOutbound: true, tag: "KRITIS", direction: "Outbound", partner: "Project RW 05", status: "Menunggu" },
+  { id: "inbound::SJ-2024003", rawId: "SJ-2024003", isOutbound: false, direction: "Inbound", partner: "Gudang Transit", status: "Menunggu" },
 ];
 
-const MOCK_ACTIVITY_LOG: ActivityLogItem[] = [
-  { time: "10:42 WIB", activity: "Approve SJ-2024000", actor: "Andi P.", result: "Sukses", resultTone: "bg-emerald-100 text-emerald-700" },
-  { time: "10:15 WIB", activity: "Scan Inbound Pallet A", actor: "Budi", result: "Selesai", resultTone: "bg-emerald-100 text-emerald-700" },
+const FALLBACK_ACTIVITY_LOG: ActivityLogItem[] = [
+  { auditId: "fb-1", time: "10:42 WIB", activity: "Approve SJ-2024000", actor: "Andi P.", result: "Sukses", resultTone: "bg-emerald-100 text-emerald-700" },
+  { auditId: "fb-2", time: "10:15 WIB", activity: "Scan Inbound Pallet A", actor: "Budi", result: "Selesai", resultTone: "bg-emerald-100 text-emerald-700" },
 ];
+
+type TicketReconciliation = {
+  ticketCode: string;
+  boqPlan: number;
+  additional: number;
+  mos: number;
+  used: number;
+  remains: number;
+  totalUnit: string;
+};
+
+const FALLBACK_TICKET_RECONCILIATION: TicketReconciliation[] = [
+  {
+    ticketCode: "TKT-2024-001 (RW 05)",
+    boqPlan: 500,
+    additional: 50,
+    mos: 200,
+    used: 250,
+    remains: 100,
+    totalUnit: "550 Unit Total",
+  },
+  {
+    ticketCode: "TKT-2024-002 (Backbone JKT)",
+    boqPlan: 1000,
+    additional: 200,
+    mos: 400,
+    used: 600,
+    remains: 200,
+    totalUnit: "1,200 Unit Total",
+  },
+  {
+    ticketCode: "TKT-2024-003 (Cluster Depok)",
+    boqPlan: 500,
+    additional: 50,
+    mos: 100,
+    used: 250,
+    remains: -200,
+    totalUnit: "550 Unit Total",
+  },
+];
+
+export type WarehouseAssessment = "CUKUP" | "MENDEKATI_PENUH" | "TIDAK_CUKUP" | null;
+
+export type SupervisorMetrics = {
+  totalDevices: number | null;
+  activeProjects: number | null;
+  todayTransactions: number | null;
+  activeStaff: number | null;
+};
+
+export type SupervisorQueue = {
+  inboundPending: number | null;
+  outboundPending: number | null;
+  outboundCritical: number | null;
+  suratJalanPending: number | null;
+  boqNewRequests: number | null;
+  discrepancyCount: number | null;
+  inboundOldestLabel: string;
+  outboundOldestLabel: string;
+  suratJalanOldestLabel: string;
+  discrepancyOldestLabel: string;
+};
+
+const FALLBACK_METRICS: SupervisorMetrics = {
+  totalDevices: 1420,
+  activeProjects: 12,
+  todayTransactions: 48,
+  activeStaff: 8,
+};
+
+const FALLBACK_QUEUE: SupervisorQueue = {
+  inboundPending: 14,
+  outboundPending: 8,
+  outboundCritical: 2,
+  suratJalanPending: 5,
+  boqNewRequests: 3,
+  discrepancyCount: 2,
+  inboundOldestLabel: "1 hari",
+  outboundOldestLabel: "3 jam",
+  suratJalanOldestLabel: "4 hari",
+  discrepancyOldestLabel: "5 jam",
+};
+
+function formatAge(ms: number): string {
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 60) return `${minutes} mnt`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} jam`;
+  const days = Math.floor(hours / 24);
+  return `${days} hari`;
+}
+
+const PENDING_STATUSES = new Set([
+  "menunggu",
+  "menunggu_verifikasi",
+  "draft_diajukan",
+  "ready_putaway",
+  "pending",
+]);
+const APPROVED_STATUSES = new Set([
+  "disetujui",
+  "diterima_didistribusikan",
+  "approved",
+  "selesai",
+]);
+const REJECTED_STATUSES = new Set(["ditolak", "rejected", "gagal"]);
+
+function normalizeStatus(raw: string): ApprovalItem["status"] {
+  const s = (raw || "").toLowerCase().trim();
+  if (PENDING_STATUSES.has(s)) return "Menunggu";
+  if (APPROVED_STATUSES.has(s)) return "Disetujui";
+  if (REJECTED_STATUSES.has(s)) return "Ditolak";
+  return "Menunggu";
+}
+
+const SUCCESS_ACTIONS = new Set([
+  "create_inbound",
+  "create_outbound",
+  "receive_inbound",
+  "approve_inbound",
+  "approve_outbound",
+  "confirm_distributed",
+  "putaway",
+  "retrieve",
+  "selesai",
+  "sukses",
+  "berhasil",
+]);
+const FAIL_ACTIONS = new Set([
+  "reject_inbound",
+  "reject_outbound",
+  "ditolak",
+  "gagal",
+]);
+
+function normalizeResult(action: string): { label: "Sukses" | "Gagal" | "Menunggu"; tone: string } {
+  const a = (action || "").toLowerCase();
+  if (FAIL_ACTIONS.has(a) || a.includes("reject") || a.includes("gagal") || a.includes("ditolak")) {
+    return { label: "Gagal", tone: "bg-rose-100 text-rose-700" };
+  }
+  if (SUCCESS_ACTIONS.has(a) || a.includes("approve") || a.includes("sukses") || a.includes("berhasil") || a.includes("selesai") || a.includes("confirm")) {
+    return { label: "Sukses", tone: "bg-emerald-100 text-emerald-700" };
+  }
+  return { label: "Menunggu", tone: "bg-amber-100 text-amber-700" };
+}
 
 export function useSupervisorDashboard() {
-  const { get } = useApi();
+  const { get, put } = useApi();
 
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>("all");
   const [selectedProject, setSelectedProject] = useState<string>("all");
-  const [warehouses, setWarehouses] = useState<Warehouse[]>(MOCK_WAREHOUSES);
-  const [projects, setProjects] = useState<Project[]>(MOCK_PROJECTS);
-  const [approvalList, setApprovalList] = useState<ApprovalItem[]>(MOCK_APPROVAL_LIST);
-  const [activityLog, setActivityLog] = useState<ActivityLogItem[]>(MOCK_ACTIVITY_LOG);
+  const [isLoading, setIsLoading] = useState(false);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>(FALLBACK_WAREHOUSES);
+  const [projects, setProjects] = useState<Project[]>(FALLBACK_PROJECTS);
+  const [approvalList, setApprovalList] = useState<ApprovalItem[]>(FALLBACK_APPROVAL_LIST);
+  const approvalListRef = useRef<ApprovalItem[]>(FALLBACK_APPROVAL_LIST);
+  useEffect(() => {
+    approvalListRef.current = approvalList;
+  }, [approvalList]);
+  const [activityLog, setActivityLog] = useState<ActivityLogItem[]>(FALLBACK_ACTIVITY_LOG);
+  const [ticketReconciliation, setTicketReconciliation] = useState<TicketReconciliation[]>(FALLBACK_TICKET_RECONCILIATION);
+  const [metrics, setMetrics] = useState<SupervisorMetrics>(FALLBACK_METRICS);
+  const [queue, setQueue] = useState<SupervisorQueue>(FALLBACK_QUEUE);
+  const [assessment, setAssessment] = useState<WarehouseAssessment>(null);
+  const [currentTimeLabel, setCurrentTimeLabel] = useState<string>("");
+  const [boqStats, setBoqStats] = useState<{ draft: number | null; active: number | null; total: number | null }>({
+    draft: 15,
+    active: 28,
+    total: 43,
+  });
+  const [stagingSites, setStagingSites] = useState<Warehouse[]>([]);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [approveError, setApproveError] = useState<string | null>(null);
+
+  const fetchWarehouses = useCallback(async () => {
+    try {
+      const res = await get(`${API_BASE}/api/warehouses?limit=1000`);
+      if (!res.ok) return;
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) return;
+      const json = await res.json();
+      const list = json?.data?.map((w: { gudang_id: string | number; nama_gudang: string; tipe?: string; created_at?: string; createdAt?: string }) => ({
+        id: String(w.gudang_id),
+        nama_gudang: w.nama_gudang,
+        tipe: w.tipe,
+        createdAt: w.created_at || w.createdAt,
+      })) || [];
+      if (list.length) setWarehouses(list);
+    } catch {
+      // keep fallback
+    }
+  }, [get]);
+
+  const fetchProjects = useCallback(async () => {
+    try {
+      const res = await get(`${API_BASE}/api/projects?all=true`);
+      if (!res.ok) return;
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) return;
+      const json = await res.json();
+      const list = json?.data?.map((p: { project_id: string | number; nama_project: string; area: string; status?: string }) => ({
+        id: String(p.project_id),
+        nama_project: p.nama_project,
+        area: p.area,
+      })) || [];
+      if (list.length) {
+        setProjects(list);
+        const activeCount = json?.data?.filter((p: { status?: string }) => {
+          const s = (p.status || "").toLowerCase();
+          return s === "aktif" || s === "active" || s === "berjalan";
+        }).length ?? list.length;
+        setMetrics((prev) => ({ ...prev, activeProjects: activeCount }));
+      }
+    } catch {
+      // keep fallback
+    }
+  }, [get]);
+
+  const fetchDashboardData = useCallback(async (warehouseId: string, projectId: string) => {
+    setIsLoading(true);
+    try {
+      const qs = new URLSearchParams();
+      if (warehouseId !== "all") qs.set("warehouseId", warehouseId);
+      if (projectId !== "all") qs.set("projectId", projectId);
+
+      const [approvalsRes, reconRes, activitiesRes, assessmentRes, statsRes, itemsRes, projectsRes, boqRes] = await Promise.all([
+        get(`${API_BASE}/api/dashboard/approvals`),
+        get(`${API_BASE}/api/dashboard/reconciliation?${qs.toString()}`),
+        get(`${API_BASE}/api/dashboard/activities`),
+        get(`${API_BASE}/api/dashboard/warehouse-assessment?gudangId=${warehouseId}`),
+        get(`${API_BASE}/api/dashboard/`),
+        get(`${API_BASE}/api/items?limit=1`),
+        get(`${API_BASE}/api/dashboard/project-summary`),
+        get(`${API_BASE}/api/boqs?limit=1000`),
+      ]);
+
+      if (approvalsRes.ok) {
+        const contentType = approvalsRes.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const json = await approvalsRes.json();
+          const items: Array<{
+            id?: string;
+            type?: string;
+            direction: string;
+            tipe?: string;
+            nomorSuratJalan?: string;
+            partner: string;
+            status: string;
+            createdAt?: string;
+            isKritis?: boolean;
+          }> = json?.data?.items || json?.items || [];
+
+          const seen = new Set<string>();
+          const mapped: ApprovalItem[] = [];
+          for (const it of items) {
+            const baseId = it.id || it.nomorSuratJalan || "-";
+            const compositeKey = `${it.type || it.tipe || it.direction}::${baseId}`;
+            if (seen.has(compositeKey)) continue;
+            seen.add(compositeKey);
+
+            const isOutbound = it.direction === "outbound" || it.tipe === "outbound";
+            const tag = it.isKritis || it.nomorSuratJalan?.toLowerCase().includes("kritis") ? "KRITIS" : undefined;
+            mapped.push({
+              id: compositeKey,
+              rawId: baseId,
+              numericId: it.id ? String(it.id) : undefined,
+              isOutbound,
+              tag,
+              direction: it.direction,
+              partner: it.partner,
+              status: normalizeStatus(it.status),
+              createdAt: it.createdAt,
+            });
+          }
+          if (mapped.length) setApprovalList(mapped);
+
+          const now = Date.now();
+          const pendingInbound = mapped.filter((it) => !it.isOutbound && it.status === "Menunggu");
+          const pendingOutbound = mapped.filter((it) => it.isOutbound && it.status === "Menunggu");
+          const criticalOutbound = mapped.filter(
+            (it) => it.isOutbound && (it.tag === "KRITIS" || it.status === "Ditolak")
+          );
+
+          const oldest = (arr: { createdAt?: string }[]) => {
+            const valid = arr
+              .map((x) => (x.createdAt ? new Date(x.createdAt).getTime() : null))
+              .filter((t): t is number => typeof t === "number" && !isNaN(t));
+            if (!valid.length) return null;
+            return now - Math.min(...valid);
+          };
+
+          setQueue((prev) => ({
+            ...prev,
+            inboundPending: pendingInbound.length,
+            outboundPending: pendingOutbound.length,
+            outboundCritical: criticalOutbound.length,
+            inboundOldestLabel: oldest(pendingInbound) ? formatAge(oldest(pendingInbound)!) : prev.inboundOldestLabel,
+            outboundOldestLabel: oldest(pendingOutbound) ? formatAge(oldest(pendingOutbound)!) : prev.outboundOldestLabel,
+          }));
+        }
+      }
+
+      if (reconRes.ok) {
+        const contentType = reconRes.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const json = await reconRes.json();
+          const data = json?.data || [];
+          const grouped = new Map<string, {
+            ticketCode: string;
+            boqPlan: number;
+            additional: number;
+            mos: number;
+            used: number;
+            remains: number;
+            totalUnit: string;
+          }>();
+          for (const row of data) {
+            const tickets = (row.kode_tiket || "-").split(",").map((t: string) => t.trim()).filter(Boolean);
+            const first = tickets[0] || "-";
+            const projectName = row.project_nama || "-";
+            const key = `${projectName}-${first}`;
+            const boq = Number(row.boq || 0);
+            const additional = Number(row.additional || 0);
+            const mos = Number(row.mos_sistem || 0);
+            const used = Number(row.used || 0);
+            const remains = Number(row.remains || 0);
+            const total = boq + additional;
+
+            if (!grouped.has(key)) {
+              grouped.set(key, {
+                ticketCode: `${first} (${projectName})`,
+                boqPlan: boq,
+                additional,
+                mos,
+                used,
+                remains,
+                totalUnit: `${(total).toLocaleString("id-ID")} Unit Total`,
+              });
+            } else {
+              const g = grouped.get(key)!;
+              g.boqPlan += boq;
+              g.additional += additional;
+              g.mos += mos;
+              g.used += used;
+              g.remains += remains;
+            }
+          }
+          if (grouped.size) {
+            setTicketReconciliation(Array.from(grouped.values()));
+          } else {
+            setTicketReconciliation(FALLBACK_TICKET_RECONCILIATION);
+          }
+        }
+      }
+
+      if (activitiesRes.ok) {
+        const contentType = activitiesRes.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const json = await activitiesRes.json();
+          const logs: Array<{
+            auditId?: string;
+            action: string;
+            actorName: string;
+            entityType?: string;
+            createdAt: string;
+          }> = json?.data || [];
+          const mapped: ActivityLogItem[] = logs.map((log) => {
+            const norm = normalizeResult(log.action);
+            const time = log.createdAt
+              ? new Date(log.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB"
+              : "-";
+            return {
+              auditId: log.auditId,
+              time,
+              activity: log.action,
+              actor: log.actorName || "System",
+              result: norm.label,
+              resultTone: norm.tone,
+            };
+          });
+          if (mapped.length) setActivityLog(mapped);
+        }
+      }
+
+      if (assessmentRes.ok) {
+        const contentType = assessmentRes.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const json = await assessmentRes.json();
+          const zonas = json?.data || [];
+          if (zonas.length) {
+            const status = zonas[0]?.statusKecukupan || "CUKUP";
+            setAssessment(status as WarehouseAssessment);
+            setQueue((prev) => ({
+              ...prev,
+              discrepancyCount: zonas.length,
+            }));
+          }
+        }
+      }
+
+      if (statsRes && statsRes.ok) {
+        const ct = statsRes.headers.get("content-type");
+        if (ct && ct.includes("application/json")) {
+          const json = await statsRes.json();
+          const data = json?.data || {};
+          setMetrics((prev) => {
+            const next = { ...prev };
+            if (typeof data.items === "number") next.totalDevices = data.items;
+            else if (typeof data.totalItems === "number") next.totalDevices = data.totalItems;
+            if (typeof data.projects === "number") next.activeProjects = data.projects;
+            if (typeof data.personnels === "number") next.activeStaff = data.personnels;
+            if (typeof data.pendingShipments === "number") next.todayTransactions = data.pendingShipments;
+            return next;
+          });
+        }
+      }
+
+      if (itemsRes && itemsRes.ok) {
+        const ct = itemsRes.headers.get("content-type");
+        if (ct && ct.includes("application/json")) {
+          const json = await itemsRes.json();
+          const total =
+            typeof json?.total === "number"
+              ? json.total
+              : typeof json?.data?.total === "number"
+                ? json.data.total
+                : Array.isArray(json?.data)
+                  ? json.data.length
+                  : null;
+          if (typeof total === "number" && total > 0) {
+            setMetrics((prev) => ({ ...prev, totalDevices: total }));
+          }
+        }
+      }
+
+      if (projectsRes && projectsRes.ok) {
+        const ct = projectsRes.headers.get("content-type");
+        if (ct && ct.includes("application/json")) {
+          const json = await projectsRes.json();
+          const arr = Array.isArray(json?.data) ? json.data : [];
+          if (arr.length) {
+            setMetrics((prev) => ({ ...prev, activeProjects: arr.length }));
+          }
+        }
+      }
+
+      if (boqRes && boqRes.ok) {
+        const ct = boqRes.headers.get("content-type");
+        if (ct && ct.includes("application/json")) {
+          const json = await boqRes.json();
+          const list: Array<{ status?: string }> = Array.isArray(json?.data)
+            ? json.data
+            : Array.isArray(json)
+              ? json
+              : [];
+          if (list.length || typeof json?.total === "number") {
+            const draft = list.filter((b) => (b.status || "").toLowerCase() === "draft").length;
+            const active = list.filter((b) => (b.status || "").toLowerCase() === "aktif").length;
+            const total = typeof json?.total === "number" ? json.total : list.length;
+            setBoqStats({ draft, active, total });
+          }
+        }
+      }
+    } catch {
+      // keep existing state on failure
+    } finally {
+      setIsLoading(false);
+    }
+  }, [get]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const res = await get(`${API_BASE}/api/dashboard/supervisor`);
+    const derived = warehouses.filter((w) => {
+      const t = (w.tipe || "").toLowerCase();
+      return t.includes("dadakan") || t.includes("staging") || t.includes("sementara") || t.includes("temporary");
+    });
+    setStagingSites(derived);
+  }, [warehouses]);
 
-        if (!res.ok) return;
+  useEffect(() => {
+    void fetchWarehouses();
+    void fetchProjects();
+  }, [fetchWarehouses, fetchProjects]);
 
-        const contentType = res.headers.get("content-type");
-        if (!contentType || !contentType.includes("application/json")) return;
-
-        const json = await res.json();
-
-        if (!json) return;
-
-        setWarehouses(json.warehouses?.length ? json.warehouses : MOCK_WAREHOUSES);
-        setProjects(json.projects?.length ? json.projects : MOCK_PROJECTS);
-        setApprovalList(json.approvalList?.length ? json.approvalList : MOCK_APPROVAL_LIST);
-        setActivityLog(json.activityLog?.length ? json.activityLog : MOCK_ACTIVITY_LOG);
-      } catch {
-        // FALLBACK: keep mock data already in state
-      }
-    };
-
-    void fetchData();
-  }, [get]);
+  useEffect(() => {
+    if (warehouses.length && projects.length) {
+      void fetchDashboardData(selectedWarehouse, selectedProject);
+    }
+  }, [selectedWarehouse, selectedProject, warehouses, projects, fetchDashboardData]);
 
   const handleFilterChange = useCallback((type: "warehouse" | "project", value: string) => {
     if (type === "warehouse") {
@@ -88,35 +544,86 @@ export function useSupervisorDashboard() {
     }
   }, []);
 
-  const handleApprove = useCallback((id: string) => {
-    setApprovalList((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, status: "Disetujui" } : item
-      )
-    );
+  const handleApprove = useCallback(
+    async (compositeId: string) => {
+      const target = approvalListRef.current.find((it) => it.id === compositeId);
+      if (!target) return;
+      const numericId = target.numericId || target.rawId;
+      if (!numericId || !/^\d+$/.test(String(numericId))) {
+        setApproveError("ID surat jalan tidak valid untuk diproses.");
+        return;
+      }
 
-    const now = new Date();
-    const timeString = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")} WIB`;
+      setApprovingId(compositeId);
+      setApproveError(null);
+      const endpoint = target.isOutbound
+        ? `${API_BASE}/api/surat-jalan/${numericId}/approve-outbound`
+        : `${API_BASE}/api/surat-jalan/${numericId}/approve-inbound`;
 
-    setActivityLog((prev) => [
-      {
-        time: timeString,
-        activity: `Approve ${id}`,
-        actor: "Anda",
-        result: "Sukses",
-        resultTone: "bg-emerald-100 text-emerald-700",
-      },
-      ...prev,
-    ]);
+      try {
+        const res = await put(endpoint, { status: "disetujui" });
+        const ct = res.headers.get("content-type");
+        if (!res.ok || (ct && !ct.includes("application/json"))) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        setApprovalList((prev) =>
+          prev.map((item) =>
+            item.id === compositeId ? { ...item, status: "Disetujui" } : item
+          )
+        );
+        const now = new Date();
+        const timeString = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")} WIB`;
+        const actionLabel = target.isOutbound ? "Approve Outbound" : "Approve Inbound";
+        setActivityLog((prev) => [
+          {
+            auditId: `local-${Date.now()}`,
+            time: timeString,
+            activity: `${actionLabel} ${target.rawId}`,
+            actor: "Anda",
+            result: "Sukses",
+            resultTone: "bg-emerald-100 text-emerald-700",
+          },
+          ...prev,
+        ]);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Gagal memproses approval.";
+        setApproveError(`Gagal approve ${target.rawId}: ${message}`);
+      } finally {
+        setApprovingId(null);
+      }
+    },
+    [put]
+  );
+
+  useEffect(() => {
+    const formatNow = () => {
+      const d = new Date();
+      const datePart = d.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+      const timePart = d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+      setCurrentTimeLabel(`${datePart}, ${timePart} WIB`);
+    };
+    formatNow();
+    const t = setInterval(formatNow, 60000);
+    return () => clearInterval(t);
   }, []);
 
   return {
     selectedWarehouse,
     selectedProject,
+    isLoading,
     warehouses,
     projects,
     approvalList,
     activityLog,
+    ticketReconciliation,
+    metrics,
+    queue,
+    assessment,
+    currentTimeLabel,
+    boqStats,
+    stagingSites,
+    approvingId,
+    approveError,
     handleFilterChange,
     handleApprove,
   };
