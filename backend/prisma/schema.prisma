@@ -330,6 +330,7 @@ model surat_jalan {
   tanggal_digenerate    DateTime?
   tanggal_diterima      DateTime?
   surat_jalan_url       String?
+  catatan               String?
   project_id            BigInt?
   created_at            DateTime           @default(now())
   updated_at            DateTime           @default(now())

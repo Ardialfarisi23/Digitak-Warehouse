@@ -331,7 +331,7 @@ const findById = async (id) => {
   });
 };
 
-const updateStatus = async (id, status, tx = prisma) => {
+const updateStatus = async (id, status, options = {}, tx = prisma) => {
   const data = {
     status,
   };
@@ -342,6 +342,10 @@ const updateStatus = async (id, status, tx = prisma) => {
 
   if (status === "diterima_didistribusikan") {
     data.tanggal_diterima = new Date();
+  }
+
+  if (status === "ditolak" && options && options.catatan !== undefined) {
+    data.catatan = options.catatan || null;
   }
 
   return await tx.surat_jalan.update({
@@ -613,6 +617,113 @@ const deleteItemFoto = async (fotoId) => {
   });
 };
 
+const findRejectedList = async ({ tipe = "all", search = "", startDate, endDate, page = 1, limit = 10 } = {}) => {
+  const where = { status: "ditolak" };
+
+  if (tipe && tipe !== "all" && ["inbound", "outbound"].includes(tipe)) {
+    where.tipe = tipe;
+  }
+
+  if (search && search.trim()) {
+    const s = search.trim();
+    where.OR = [
+      { nomor_surat_jalan: { contains: s, mode: "insensitive" } },
+      { project: { nama_project: { contains: s, mode: "insensitive" } } },
+      { gudang_asal: { nama_gudang: { contains: s, mode: "insensitive" } } },
+      { gudang_tujuan: { nama_gudang: { contains: s, mode: "insensitive" } } },
+    ];
+  }
+
+  if (startDate || endDate) {
+    const dateCondition = {};
+    if (startDate) dateCondition.gte = new Date(startDate);
+    if (endDate) dateCondition.lte = new Date(endDate + "T23:59:59");
+    where.updated_at = dateCondition;
+  }
+
+  const { page: sanitizedPage, limit: sanitizedLimit } = sanitizePagination(page, limit);
+
+  const [total, rows] = await Promise.all([
+    prisma.surat_jalan.count({ where }),
+    prisma.surat_jalan.findMany({
+      where,
+      orderBy: [{ updated_at: "desc" }],
+      skip: (sanitizedPage - 1) * sanitizedLimit,
+      take: sanitizedLimit,
+      select: {
+        surat_jalan_id: true,
+        nomor_surat_jalan: true,
+        tipe: true,
+        status: true,
+        tanggal: true,
+        updated_at: true,
+        created_at: true,
+        catatan: true,
+        kategori_approval: true,
+        pic_pemohon_nama: true,
+        project: { select: { project_id: true, nama_project: true } },
+        gudang_asal: { select: { gudang_id: true, nama_gudang: true } },
+        gudang_tujuan: { select: { gudang_id: true, nama_gudang: true } },
+      },
+    }),
+  ]);
+
+  if (rows.length === 0) {
+    return { data: [], meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }) };
+  }
+
+  const ids = rows.map((r) => Number(r.surat_jalan_id));
+  const rejectLogs = await prisma.approval_log.findMany({
+    where: {
+      entity_type: "surat_jalan",
+      entity_id: { in: ids },
+      status: "ditolak",
+      tahap: { in: ["inbound_verifikasi", "outbound_approval"] },
+    },
+    orderBy: { created_at: "desc" },
+    include: {
+      approver: { select: { user_id: true, nama: true, email: true } },
+    },
+  });
+
+  const latestBySj = new Map();
+  for (const log of rejectLogs) {
+    const key = String(log.entity_id);
+    if (!latestBySj.has(key)) {
+      latestBySj.set(key, log);
+    }
+  }
+
+  const data = rows.map((r) => {
+    const log = latestBySj.get(String(Number(r.surat_jalan_id)));
+    return {
+      surat_jalan_id: Number(r.surat_jalan_id),
+      nomor_surat_jalan: r.nomor_surat_jalan,
+      tipe: r.tipe,
+      status: r.status,
+      tanggal: r.tanggal,
+      kategori_approval: r.kategori_approval,
+      pic_pemohon_nama: r.pic_pemohon_nama,
+      project: r.project,
+      gudang_asal: r.gudang_asal,
+      gudang_tujuan: r.gudang_tujuan,
+      catatan: r.catatan ?? log?.catatan ?? null,
+      ditolak_oleh: log?.approver
+        ? {
+            user_id: Number(log.approver.user_id),
+            nama: log.approver.nama,
+            email: log.approver.email,
+          }
+        : null,
+      ditolak_pada: log?.created_at ?? r.updated_at ?? null,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+    };
+  });
+
+  return { data, meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }) };
+};
+
 const findStaffHistory = async (userId, { page = 1, pageSize = 50 } = {}) => {
   const safePage = Math.max(1, Number(page) || 1);
   const safePageSize = Math.min(200, Math.max(1, Number(pageSize) || 50));
@@ -687,4 +798,5 @@ module.exports = {
   updateItemVerification,
   deleteItemFoto,
   findStaffHistory,
+  findRejectedList,
 };

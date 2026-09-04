@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowDownLeft, ArrowUpRight, ArrowRight } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, ArrowRight, XCircle } from "lucide-react";
 
 export default function SupervisorApprovalIndexPage() {
   return (
@@ -16,7 +16,7 @@ export default function SupervisorApprovalIndexPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-3">
         <Link
           href="/dashboard/supervisor/approval/inbound"
           className="group rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
@@ -63,6 +63,34 @@ export default function SupervisorApprovalIndexPage() {
               className="flex w-full items-center justify-between rounded-xl border border-orange-200 bg-orange-50 px-4 py-2.5 text-sm font-semibold text-orange-900 transition-all duration-150 group-hover:border-orange-300 group-hover:bg-orange-100"
             >
               <span>Buka Antrian Outbound</span>
+              <ArrowRight
+                size={16}
+                className="transition-transform duration-150 group-hover:translate-x-0.5"
+              />
+            </button>
+          </div>
+        </Link>
+        <Link
+          href="/dashboard/supervisor/approval/rejected"
+          className="group rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+        >
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-700 transition-colors group-hover:bg-rose-100">
+              <XCircle size={20} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-700">Riwayat Penolakan</p>
+              <p className="mt-2 text-sm text-slate-500">
+                Lihat daftar surat jalan inbound &amp; outbound yang pernah ditolak beserta alasan penolakannya.
+              </p>
+            </div>
+          </div>
+          <div className="mt-6">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-900 transition-all duration-150 group-hover:border-rose-300 group-hover:bg-rose-100"
+            >
+              <span>Buka Riwayat Penolakan</span>
               <ArrowRight
                 size={16}
                 className="transition-transform duration-150 group-hover:translate-x-0.5"
