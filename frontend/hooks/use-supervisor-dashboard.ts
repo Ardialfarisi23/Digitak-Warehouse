@@ -267,6 +267,7 @@ export function useSupervisorDashboard() {
       const qs = new URLSearchParams();
       if (warehouseId !== "all") qs.set("warehouseId", warehouseId);
       if (projectId !== "all") qs.set("projectId", projectId);
+      qs.set("status", "all");
 
       const [approvalsRes, reconRes, activitiesRes, assessmentRes, statsRes, itemsRes, projectsRes, boqRes] = await Promise.all([
         get(`${API_BASE}/api/dashboard/approvals`),
@@ -349,6 +350,7 @@ export function useSupervisorDashboard() {
         const contentType = reconRes.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const json = await reconRes.json();
+          const raw: unknown = json?.data;
           const data: Array<{
             kode_tiket?: string;
             project_nama?: string;
@@ -361,7 +363,23 @@ export function useSupervisorDashboard() {
             used?: number;
             remains?: number;
             status?: string;
-          }> = Array.isArray(json?.data) ? json.data : [];
+          }> = Array.isArray(raw)
+            ? raw
+            : Array.isArray((raw as { data?: unknown[] })?.data)
+              ? ((raw as { data: unknown[] }).data as Array<{
+                  kode_tiket?: string;
+                  project_nama?: string;
+                  project_id?: string;
+                  barang_id?: string;
+                  nama_barang?: string;
+                  boq?: number;
+                  additional?: number;
+                  mos_sistem?: number;
+                  used?: number;
+                  remains?: number;
+                  status?: string;
+                }>)
+              : [];
 
           const grouped = new Map<string, {
             ticketCode: string;
