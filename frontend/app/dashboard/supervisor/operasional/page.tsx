@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useApi } from "@/lib/api";
 import { X, Plus, Loader2, User, Truck, Package, MapPin, Warehouse as WarehouseIcon } from "lucide-react";
 
@@ -16,7 +16,8 @@ type Personnel = {
   email?: string;
   nik?: string;
   role?: string;
-  gudang_id?: number | string;
+  gudang_id?: number | string | null;
+  gudang?: { gudang_id?: number | string; nama_gudang?: string } | null;
 };
 
 type Vehicle = {
@@ -26,7 +27,8 @@ type Vehicle = {
   no_polisi: string;
   kapasitas_angkut?: string;
   keterangan?: string;
-  gudang_id?: number | string;
+  gudang_id?: number | string | null;
+  gudang?: { gudang_id?: number | string; nama_gudang?: string } | null;
 };
 
 type Item = {
@@ -36,7 +38,8 @@ type Item = {
   satuan_default?: {
     kode_satuan?: string;
   };
-  gudang_id?: number | string;
+  gudang_id?: number | string | null;
+  gudang?: { gudang_id?: number | string; nama_gudang?: string } | null;
 };
 
 type Warehouse = {
@@ -88,6 +91,7 @@ export default function SupervisorOperasionalPage() {
     role: "",
     bisa_menyetir: false,
     is_material_handler: false,
+    gudang_id: "" as string,
   });
 
   const [kendaraanForm, setKendaraanForm] = useState({
@@ -96,6 +100,7 @@ export default function SupervisorOperasionalPage() {
     no_polisi: "",
     kapasitas_angkut: "",
     keterangan: "",
+    gudang_id: "" as string,
   });
 
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
@@ -106,107 +111,135 @@ export default function SupervisorOperasionalPage() {
     return Number.isFinite(num) ? String(num) : "";
   };
 
-  const normalizeList = (payload: unknown) => {
+  const normalizeList = (payload: any) => {
     if (!payload) return [];
     if (Array.isArray(payload)) return payload;
-    if (payload && typeof payload === "object" && "data" in payload && Array.isArray((payload as { data: unknown[] }).data)) return (payload as { data: unknown[] }).data;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.data?.data)) return payload.data.data;
     return [];
   };
 
-  useEffect(() => {
-    let mounted = true;
+  const mountedRef = useRef(true);
 
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        const [personnelRes, vehicleRes, itemsRes, warehousesRes] = await Promise.allSettled([
-          get(`${apiBase}/api/personnels`),
-          get(`${apiBase}/api/vehicles`),
-          get(`${apiBase}/api/items`),
-          get(`${apiBase}/api/warehouses?limit=1000&is_aktif=true&sortBy=nama_gudang&sortOrder=asc`),
-        ]);
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [personnelRes, vehicleRes, itemsRes, warehousesRes] = await Promise.allSettled([
+        get(`${apiBase}/api/personnels`),
+        get(`${apiBase}/api/vehicles`),
+        get(`${apiBase}/api/items`),
+        get(`${apiBase}/api/warehouses?limit=1000&is_aktif=true&sortBy=nama_gudang&sortOrder=asc`),
+      ]);
 
-        if (!mounted) return;
+      if (!mountedRef.current) return;
 
-        if (personnelRes.status === "fulfilled" && personnelRes.value?.ok) {
-          const json = await personnelRes.value.json().catch(() => null);
-          setPersonnels(normalizeList(json));
-        } else {
-          console.warn("Gagal memuat data personil");
-          setPersonnels([]);
-        }
-
-        if (vehicleRes.status === "fulfilled" && vehicleRes.value?.ok) {
-          const json = await vehicleRes.value.json().catch(() => null);
-          setVehicles(normalizeList(json));
-        } else {
-          console.warn("Gagal memuat data kendaraan");
-          setVehicles([]);
-        }
-
-        if (itemsRes.status === "fulfilled" && itemsRes.value?.ok) {
-          const json = await itemsRes.value.json().catch(() => null);
-          setItems(normalizeList(json));
-        } else {
-          console.warn("Gagal memuat data inventori");
-          setItems([]);
-        }
-
-        if (warehousesRes.status === "fulfilled" && warehousesRes.value?.ok) {
-          const json = await warehousesRes.value.json().catch(() => null);
-          const rawList = Array.isArray(json?.data) ? json.data : [];
-          const list = rawList.map((w) => ({
-            gudang_id: w.gudang_id,
-            nama_gudang: w.nama_gudang,
-          }));
-          if (list.length) {
-            setWarehouses(list);
-          } else {
-            setWarehouses(FALLBACK_WAREHOUSES);
-          }
-        }
-      } catch (err) {
-        console.error("Error loading operasional data:", err);
-        setWarehouses(FALLBACK_WAREHOUSES);
-      } finally {
-        if (mounted) setLoading(false);
+      if (personnelRes.status === "fulfilled" && personnelRes.value?.ok) {
+        const json = await personnelRes.value.json().catch(() => null);
+        setPersonnels(normalizeList(json));
+      } else {
+        console.warn("Gagal memuat data personil");
+        setPersonnels([]);
       }
-    };
 
-    loadData();
-    return () => {
-      mounted = false;
-    };
+      if (vehicleRes.status === "fulfilled" && vehicleRes.value?.ok) {
+        const json = await vehicleRes.value.json().catch(() => null);
+        setVehicles(normalizeList(json));
+      } else {
+        console.warn("Gagal memuat data kendaraan");
+        setVehicles([]);
+      }
+
+      if (itemsRes.status === "fulfilled" && itemsRes.value?.ok) {
+        const json = await itemsRes.value.json().catch(() => null);
+        setItems(normalizeList(json));
+      } else {
+        console.warn("Gagal memuat data inventori");
+        setItems([]);
+      }
+
+      if (warehousesRes.status === "fulfilled" && warehousesRes.value?.ok) {
+        const json = await warehousesRes.value.json().catch(() => null);
+        const rawList = Array.isArray(json?.data)
+          ? json.data
+          : Array.isArray(json?.data?.data)
+          ? json.data.data
+          : [];
+        const list = rawList.map((w: any) => ({
+          gudang_id: w.gudang_id,
+          nama_gudang: w.nama_gudang,
+        }));
+        if (list.length) {
+          setWarehouses(list);
+        } else {
+          setWarehouses(FALLBACK_WAREHOUSES);
+        }
+      }
+    } catch (err) {
+      console.error("Error loading operasional data:", err);
+      setWarehouses(FALLBACK_WAREHOUSES);
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
   }, [get, apiBase]);
 
-  const filteredPersonnels = useMemo(() => {
-    if (!warehouseFilter) return personnels;
-    return personnels.filter((p) => {
-      const gid = String(p.gudang_id ?? "");
-      return gid === "" || gid === String(warehouseFilter);
-    });
-  }, [personnels, warehouseFilter]);
+  useEffect(() => {
+    mountedRef.current = true;
+    fetchData();
+    return () => {
+      mountedRef.current = false;
+    };
+  }, [fetchData]);
 
-  const filteredVehicles = useMemo(() => {
-    if (!warehouseFilter) return vehicles;
-    return vehicles.filter((v) => {
-      const gid = String(v.gudang_id ?? "");
-      return gid === "" || gid === String(warehouseFilter);
-    });
-  }, [vehicles, warehouseFilter]);
+  const getItemGudangId = (rec: { gudang_id?: number | string | null; gudang?: { gudang_id?: number | string } | null }) => {
+    const fromObj = rec.gudang?.gudang_id;
+    if (fromObj !== undefined && fromObj !== null && fromObj !== "") return fromObj;
+    if (rec.gudang_id !== undefined && rec.gudang_id !== null && rec.gudang_id !== "") return rec.gudang_id;
+    return null;
+  };
 
-  const filteredItems = useMemo(() => {
-    if (!warehouseFilter) return items;
-    return items.filter((it) => {
-      const gid = String(it.gudang_id ?? "");
-      return gid === "" || gid === String(warehouseFilter);
-    });
-  }, [items, warehouseFilter]);
+  const getItemGudangName = (rec: { gudang?: { nama_gudang?: string } | null }) => {
+    return rec.gudang?.nama_gudang || null;
+  };
+
+  const resolveGudangName = (rec: { gudang_id?: number | string | null; gudang?: { gudang_id?: number | string; nama_gudang?: string } | null }): string | null => {
+    const fromRelation = getItemGudangName(rec);
+    if (fromRelation) return fromRelation;
+    const gid = getItemGudangId(rec);
+    if (gid === null) return null;
+    return warehouses.find((w) => String(w.gudang_id) === String(gid))?.nama_gudang || null;
+  };
 
   const selectedWarehouseName = useMemo(() => {
     if (!warehouseFilter) return null;
     return warehouses.find((w) => String(w.gudang_id) === String(warehouseFilter))?.nama_gudang || null;
   }, [warehouseFilter, warehouses]);
+
+  const matchesWarehouse = (rec: { gudang_id?: number | string | null; gudang?: { gudang_id?: number | string; nama_gudang?: string } | null }) => {
+    if (!warehouseFilter) return true;
+    const selected = Number(warehouseFilter);
+    if (Number.isFinite(selected) && selected > 0) {
+      const gid = getItemGudangId(rec);
+      if (gid !== null) return Number(gid) === selected;
+    }
+    const gname = getItemGudangName(rec);
+    if (gname && selectedWarehouseName) return String(gname) === String(selectedWarehouseName);
+    return false;
+  };
+
+  const filteredPersonnels = useMemo(() => {
+    if (!warehouseFilter) return personnels;
+    return personnels.filter(matchesWarehouse);
+  }, [personnels, warehouseFilter, selectedWarehouseName]);
+
+  const filteredVehicles = useMemo(() => {
+    if (!warehouseFilter) return vehicles;
+    return vehicles.filter(matchesWarehouse);
+  }, [vehicles, warehouseFilter, selectedWarehouseName]);
+
+  const filteredItems = useMemo(() => {
+    if (!warehouseFilter) return items;
+    return items.filter(matchesWarehouse);
+  }, [items, warehouseFilter, selectedWarehouseName]);
 
   const summary = useMemo(() => {
     return {
@@ -217,12 +250,12 @@ export default function SupervisorOperasionalPage() {
   }, [filteredPersonnels.length, filteredVehicles.length, filteredItems.length]);
 
   const resetPersonilForm = () => {
-    setPersonilForm({ nama: "", posisi: "", no_hp: "", email: "", nik: "", role: "", bisa_menyetir: false, is_material_handler: false });
+    setPersonilForm({ nama: "", posisi: "", no_hp: "", email: "", nik: "", role: "", bisa_menyetir: false, is_material_handler: false, gudang_id: warehouseFilter ? String(warehouseFilter) : "" });
     setFormError(null);
   };
 
   const resetKendaraanForm = () => {
-    setKendaraanForm({ jenis_kendaraan: "", merk: "", no_polisi: "", kapasitas_angkut: "", keterangan: "" });
+    setKendaraanForm({ jenis_kendaraan: "", merk: "", no_polisi: "", kapasitas_angkut: "", keterangan: "", gudang_id: warehouseFilter ? String(warehouseFilter) : "" });
     setFormError(null);
   };
 
@@ -238,11 +271,14 @@ export default function SupervisorOperasionalPage() {
         email: personilForm.email || null,
         nik: personilForm.nik || null,
         role: personilForm.role || null,
-        bisa_menyetir: personilForm.bisa_menyetir || null,
-        is_material_handler: personilForm.is_material_handler || null,
+        bisa_menyetir: Boolean(personilForm.bisa_menyetir),
+        is_material_handler: Boolean(personilForm.is_material_handler),
       };
-      if (warehouseFilter) {
-        payload.gudang_id = Number(warehouseFilter);
+
+      const gudangRaw = personilForm.gudang_id || warehouseFilter;
+      const gudangIdNum = Number(gudangRaw);
+      if (gudangRaw && Number.isFinite(gudangIdNum) && gudangIdNum > 0) {
+        payload.gudang_id = gudangIdNum;
       }
 
       const res = await post(`${apiBase}/api/personnels`, payload);
@@ -254,11 +290,7 @@ export default function SupervisorOperasionalPage() {
       }
       setPersonilModalOpen(false);
       resetPersonilForm();
-      const [personnelRes] = await Promise.allSettled([get(`${apiBase}/api/personnels`)]);
-      if (personnelRes.status === "fulfilled" && personnelRes.value?.ok) {
-        const pJson = await personnelRes.value.json().catch(() => null);
-        setPersonnels(normalizeList(pJson));
-      }
+      await fetchData();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
       setFormError(errorMessage);
@@ -272,22 +304,24 @@ export default function SupervisorOperasionalPage() {
     setSubmitting(true);
     setFormError(null);
     try {
-      const res = await post(`${apiBase}/api/vehicles`, {
+      const payload: Record<string, unknown> = {
         jenis_kendaraan: kendaraanForm.jenis_kendaraan || null,
         merk: kendaraanForm.merk || null,
         no_polisi: kendaraanForm.no_polisi || null,
         kapasitas_angkut: parseDecimalInput(kendaraanForm.kapasitas_angkut) || null,
         keterangan: kendaraanForm.keterangan || null,
-      });
+      };
+      const gudangRaw = kendaraanForm.gudang_id || warehouseFilter;
+      const gudangIdNum = Number(gudangRaw);
+      if (gudangRaw && Number.isFinite(gudangIdNum) && gudangIdNum > 0) {
+        payload.gudang_id = gudangIdNum;
+      }
+      const res = await post(`${apiBase}/api/vehicles`, payload);
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.message || "Gagal menambah kendaraan.");
       setKendaraanModalOpen(false);
       resetKendaraanForm();
-      const [vehicleRes] = await Promise.allSettled([get(`${apiBase}/api/vehicles`)]);
-      if (vehicleRes.status === "fulfilled" && vehicleRes.value?.ok) {
-        const vJson = await vehicleRes.value.json().catch(() => null);
-        setVehicles(normalizeList(vJson));
-      }
+      await fetchData();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.");
     } finally {
@@ -459,10 +493,13 @@ export default function SupervisorOperasionalPage() {
                   <th className="px-4 py-3">No. HP</th>
                   <th className="px-4 py-3">Email</th>
                   <th className="px-4 py-3">NIK</th>
+                  <th className="px-4 py-3">Gudang</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredPersonnels.map((person, index) => (
+                {filteredPersonnels.map((person, index) => {
+                  const gname = resolveGudangName(person);
+                  return (
                   <tr key={person.personil_id || index} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                     <td className="px-4 py-4 font-medium text-slate-900">{person.nama || "-"}</td>
                     <td className="px-4 py-4">
@@ -475,11 +512,22 @@ export default function SupervisorOperasionalPage() {
                     <td className="px-4 py-4">{person.no_hp || "-"}</td>
                     <td className="px-4 py-4">{person.email || "-"}</td>
                     <td className="px-4 py-4">{person.nik || "-"}</td>
+                    <td className="px-4 py-4">
+                      {gname ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                          <WarehouseIcon size={11} />
+                          {gname}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400">Belum terikat</span>
+                      )}
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {filteredPersonnels.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8">
+                    <td colSpan={6} className="px-4 py-8">
                       <EmptyState
                         title="Belum ada data personil"
                         description={warehouseFilter ? "Coba ubah filter gudang untuk melihat data lainnya." : "Belum ada personil yang terdaftar di sistem."}
@@ -504,10 +552,13 @@ export default function SupervisorOperasionalPage() {
                   <th className="px-4 py-3">Merk</th>
                   <th className="px-4 py-3">Kapasitas Angkut</th>
                   <th className="px-4 py-3">Keterangan</th>
+                  <th className="px-4 py-3">Gudang</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredVehicles.map((vehicle, index) => (
+                {filteredVehicles.map((vehicle, index) => {
+                  const gname = resolveGudangName(vehicle);
+                  return (
                   <tr key={vehicle.kendaraan_id || index} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                     <td className="px-4 py-4 font-medium text-slate-900">{vehicle.no_polisi || "-"}</td>
                     <td className="px-4 py-4">
@@ -520,11 +571,22 @@ export default function SupervisorOperasionalPage() {
                     <td className="px-4 py-4">{vehicle.merk || "-"}</td>
                     <td className="px-4 py-4">{vehicle.kapasitas_angkut || "-"}</td>
                     <td className="px-4 py-4">{vehicle.keterangan || "-"}</td>
+                    <td className="px-4 py-4">
+                      {gname ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                          <WarehouseIcon size={11} />
+                          {gname}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400">Belum terikat</span>
+                      )}
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {filteredVehicles.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8">
+                    <td colSpan={6} className="px-4 py-8">
                       <EmptyState
                         title="Belum ada data kendaraan"
                         description={warehouseFilter ? "Tidak ada kendaraan yang terasosiasi dengan gudang ini." : "Belum ada kendaraan operasional yang terdaftar."}
@@ -633,12 +695,21 @@ export default function SupervisorOperasionalPage() {
                     Material Handler
                   </label>
                 </div>
-                {warehouseFilter && (
-                  <div className="sm:col-span-2">
-                    <label className="mb-1.5 block text-xs font-medium text-slate-500">Gudang</label>
-                    <input type="text" value={selectedWarehouseName || ""} disabled className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none cursor-not-allowed" />
-                  </div>
-                )}
+                <div className="sm:col-span-2">
+                  <label className="mb-1.5 block text-xs font-medium text-slate-500">Gudang</label>
+                  <select
+                    value={personilForm.gudang_id}
+                    onChange={(e) => setPersonilForm((p) => ({ ...p, gudang_id: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                  >
+                    <option value="">Pilih gudang (opsional)</option>
+                    {warehouses.map((wh) => (
+                      <option key={wh.gudang_id} value={String(wh.gudang_id)}>
+                        {wh.nama_gudang}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {formError && (
@@ -695,6 +766,21 @@ export default function SupervisorOperasionalPage() {
                 <div className="sm:col-span-2">
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">Keterangan</label>
                   <input type="text" value={kendaraanForm.keterangan} onChange={(e) => setKendaraanForm((p) => ({ ...p, keterangan: e.target.value }))} placeholder="Catatan tambahan" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="mb-1.5 block text-xs font-medium text-slate-500">Gudang</label>
+                  <select
+                    value={kendaraanForm.gudang_id}
+                    onChange={(e) => setKendaraanForm((p) => ({ ...p, gudang_id: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                  >
+                    <option value="">Pilih gudang (opsional)</option>
+                    {warehouses.map((wh) => (
+                      <option key={wh.gudang_id} value={String(wh.gudang_id)}>
+                        {wh.nama_gudang}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
