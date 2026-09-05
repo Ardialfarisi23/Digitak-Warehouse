@@ -207,17 +207,22 @@ export function useSupervisorDashboard() {
 
   const fetchWarehouses = useCallback(async () => {
     try {
-      const res = await get(`${API_BASE}/api/warehouses?limit=1000`);
+      const res = await get(`${API_BASE}/api/warehouses?limit=1000&is_aktif=true&sortBy=nama_gudang&sortOrder=asc`);
       if (!res.ok) return;
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) return;
       const json = await res.json();
-      const list = json?.data?.map((w: { gudang_id: string | number; nama_gudang: string; tipe?: string; created_at?: string; createdAt?: string }) => ({
+      const rawList: unknown[] = Array.isArray(json?.data)
+        ? json.data
+        : Array.isArray(json?.data?.data)
+          ? json.data.data
+          : [];
+      const list = (rawList as Array<{ gudang_id: string | number; nama_gudang: string; tipe?: string; created_at?: string; createdAt?: string }>).map((w) => ({
         id: String(w.gudang_id),
         nama_gudang: w.nama_gudang,
         tipe: w.tipe,
         createdAt: w.created_at || w.createdAt,
-      })) || [];
+      }));
       if (list.length) setWarehouses(list);
     } catch {
       // keep fallback
@@ -226,22 +231,29 @@ export function useSupervisorDashboard() {
 
   const fetchProjects = useCallback(async () => {
     try {
-      const res = await get(`${API_BASE}/api/projects?all=true`);
+      const res = await get(`${API_BASE}/api/projects?all=true&sortBy=nama_project&sortOrder=asc`);
       if (!res.ok) return;
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) return;
       const json = await res.json();
-      const list = json?.data?.map((p: { project_id: string | number; nama_project: string; area: string; status?: string }) => ({
+      const rawList: unknown[] = Array.isArray(json?.data)
+        ? json.data
+        : Array.isArray(json?.data?.data)
+          ? json.data.data
+          : [];
+      const list = (rawList as Array<{ project_id: string | number; nama_project: string; area: string; status?: string; status_aktif?: boolean }>).map((p) => ({
         id: String(p.project_id),
         nama_project: p.nama_project,
         area: p.area,
-      })) || [];
+      }));
       if (list.length) {
         setProjects(list);
-        const activeCount = json?.data?.filter((p: { status?: string }) => {
-          const s = (p.status || "").toLowerCase();
+        const activeCount = rawList.filter((p) => {
+          const obj = p as { status?: string; status_aktif?: boolean };
+          if (obj.status_aktif === true) return true;
+          const s = (obj.status || "").toLowerCase();
           return s === "aktif" || s === "active" || s === "berjalan";
-        }).length ?? list.length;
+        }).length;
         setMetrics((prev) => ({ ...prev, activeProjects: activeCount }));
       }
     } catch {
@@ -585,9 +597,16 @@ export function useSupervisorDashboard() {
 
       try {
         const res = await put(endpoint, { itemAdjustments: [] });
-        const ct = res.headers.get("content-type");
-        if (!res.ok || (ct && !ct.includes("application/json"))) {
-          throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const errJson = await res.json();
+            if (errJson?.message) detail = errJson.message;
+            else if (errJson?.error) detail = errJson.error;
+          } catch {
+            // body bukan JSON
+          }
+          throw new Error(detail);
         }
         setApprovalList((prev) =>
           prev.map((item) =>
