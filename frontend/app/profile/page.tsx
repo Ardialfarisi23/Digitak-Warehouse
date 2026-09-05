@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Camera, Upload, X, CheckCircle2, AlertCircle, Trash2 } from "lucide-react";
+import { Camera, Upload, X, CheckCircle2, AlertCircle, Trash2, Mail, Phone, Briefcase, Building2, CalendarDays } from "lucide-react";
 
 import { ProtectedRoute } from "@/lib/protected-route";
 import { useAuth } from "@/lib/auth-context";
@@ -11,8 +11,23 @@ import { useSidebar } from "@/components/sidebar-context";
 import { useApi } from "@/lib/api";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
+import { PhotoCropModal } from "@/components/profile/PhotoCropModal";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+interface ProfileDetails {
+  no_hp?: string | null;
+  posisi?: string | null;
+  gudang_nama?: string | null;
+  created_at?: string | null;
+}
+
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+}
 
 function ProfilePageContent() {
   const { user, updateUser } = useAuth();
@@ -27,9 +42,11 @@ function ProfilePageContent() {
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [profileDetails, setProfileDetails] = useState<ProfileDetails>({});
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   const userRole = mapRole(user?.role);
   const displayName = user?.name || user?.email || "User";
 
@@ -43,6 +60,12 @@ function ProfilePageContent() {
             updateUser({
               name: json.data.nama || json.data.name,
               avatar_url: json.data.foto || json.data.avatar_url,
+            });
+            setProfileDetails({
+              no_hp: json.data.no_hp || json.data.no_telepon || null,
+              posisi: json.data.posisi || null,
+              gudang_nama: json.data.gudang_nama || json.data.gudang?.nama_gudang || null,
+              created_at: json.data.created_at || null,
             });
           }
         }
@@ -64,8 +87,6 @@ function ProfilePageContent() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     setError(null);
-    setPreviewUrl(null);
-    setSelectedFile(null);
 
     if (!file) return;
 
@@ -81,8 +102,25 @@ function ProfilePageContent() {
       return;
     }
 
+    const objectUrl = URL.createObjectURL(file);
+    setCropImageSrc(objectUrl);
+    setCropModalOpen(true);
+  };
+
+  const handleCropConfirm = async (blob: Blob) => {
+    const file = new File([blob], "cropped-avatar.jpg", { type: "image/jpeg" });
     setSelectedFile(file);
-    setPreviewUrl(URL.createObjectURL(file));
+    setPreviewUrl(URL.createObjectURL(blob));
+    setCropModalOpen(false);
+    setCropImageSrc(null);
+  };
+
+  const handleCropCancel = () => {
+    setCropModalOpen(false);
+    setCropImageSrc(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const handleUpload = async () => {
@@ -128,6 +166,8 @@ function ProfilePageContent() {
     setPreviewUrl(null);
     setSelectedFile(null);
     setError(null);
+    setCropModalOpen(false);
+    setCropImageSrc(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -177,102 +217,126 @@ function ProfilePageContent() {
         className="flex-1 mt-16 p-6 overflow-y-auto transition-all duration-300"
         style={{ marginLeft: `${width}px` }}
       >
-        <div className="mx-auto max-w-2xl">
-          <div className="rounded-3xl border border-slate-100 bg-white shadow-xs p-6 md:p-8">
-            <div className="flex items-center gap-2 mb-6">
-              <h1 className="text-2xl font-bold text-slate-900">Profil Saya</h1>
-            </div>
+        <div className="mx-auto max-w-5xl">
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-slate-900">Profil Saya</h1>
+            <p className="mt-1 text-xs text-slate-500">Kelola informasi akun dan foto profil Anda.</p>
+          </div>
 
-            <div className="flex flex-col items-center gap-4 mb-8">
-              <UserAvatar src={previewUrl || user?.avatar_url} name={displayName} size={96} />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Kolom kiri: Avatar + Aksi */}
+            <div className="lg:col-span-1">
+              <div className="rounded-3xl border border-slate-100 bg-white shadow-xs p-6">
+                <div className="flex flex-col items-center text-center">
+                  <UserAvatar src={previewUrl || user?.avatar_url} name={displayName} size={120} />
 
-              <div className="text-center">
-                <p className="text-sm font-bold text-slate-900">{displayName}</p>
-                <p className="text-xs text-slate-500 capitalize">{user?.role ? formatRole(user.role) : ""}</p>
-              </div>
-            </div>
+                  <div className="mt-4">
+                    <p className="text-base font-bold text-slate-900">{displayName}</p>
+                    <p className="mt-1 text-xs text-slate-500 capitalize">{user?.role ? formatRole(user.role) : ""}</p>
+                  </div>
 
-            <div className="space-y-4">
-              <div className="flex flex-col items-center gap-3">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/jpg,image/png,image/webp"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
+                  <div className="mt-5 w-full space-y-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/webp"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
 
-                {!previewUrl ? (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="rounded-xl border-stone-200 text-slate-700 hover:bg-slate-50"
-                    >
-                      <Camera size={14} />
-                      <span className="ml-1.5">Ganti Foto</span>
-                    </Button>
+                    {!previewUrl ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full rounded-xl border-stone-200 text-slate-700 hover:bg-slate-50"
+                      >
+                        <Camera size={14} />
+                        <span className="ml-1.5">Ganti Foto</span>
+                      </Button>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleCancel}
+                          disabled={isSaving}
+                          className="flex-1 rounded-xl border-stone-200 text-slate-700 hover:bg-slate-50"
+                        >
+                          <X size={14} />
+                          <span className="ml-1.5">Batal</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={handleUpload}
+                          disabled={isSaving}
+                          className="flex-1 rounded-xl bg-slate-900 text-white hover:bg-slate-800"
+                        >
+                          {isSaving ? (
+                            <>
+                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                              <span className="ml-1.5">Menyimpan...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Upload size={14} />
+                              <span className="ml-1.5">Simpan</span>
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
 
-                    {user?.avatar_url && (
+                    {user?.avatar_url && !previewUrl && (
                       <Button
                         variant="destructive"
                         size="sm"
                         onClick={() => setShowDeleteConfirm(true)}
                         disabled={isSaving || isDeleting}
-                        className="rounded-xl"
+                        className="w-full rounded-xl"
                       >
                         <Trash2 size={14} />
                         <span className="ml-1.5">Hapus Foto</span>
                       </Button>
                     )}
                   </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleCancel}
-                      disabled={isSaving}
-                      className="rounded-xl border-stone-200 text-slate-700 hover:bg-slate-50"
-                    >
-                      <X size={14} />
-                      <span className="ml-1.5">Batal</span>
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={handleUpload}
-                      disabled={isSaving}
-                      className="rounded-xl bg-slate-900 text-white hover:bg-slate-800"
-                    >
-                      {isSaving ? (
-                        <>
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                          <span className="ml-1.5">Menyimpan...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Upload size={14} />
-                          <span className="ml-1.5">Simpan</span>
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                )}
-              </div>
 
-              {error && (
-                <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
-                  <AlertCircle size={16} className="shrink-0" />
-                  <p>{error}</p>
+                  {error && (
+                    <div className="mt-4 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
+                      <AlertCircle size={16} className="shrink-0" />
+                      <p>{error}</p>
+                    </div>
+                  )}
+
+                  {selectedFile && !error && (
+                    <p className="mt-3 text-center text-[11px] text-slate-400">
+                      File terpilih: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(0)} KB)
+                    </p>
+                  )}
                 </div>
-              )}
+              </div>
+            </div>
 
-              {selectedFile && !error && (
-                <p className="text-center text-[11px] text-slate-400">
-                  File terpilih: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(0)} KB)
-                </p>
-              )}
+            {/* Kolom kanan: Informasi Akun */}
+            <div className="lg:col-span-2">
+              <div className="rounded-3xl border border-slate-100 bg-white shadow-xs p-6">
+                <h2 className="text-sm font-bold text-slate-900 mb-5">Informasi Akun</h2>
+                <div className="divide-y divide-slate-50">
+                  <DetailRow icon={Mail} label="Email" value={user?.email ?? "-"} />
+                  <DetailRow icon={Phone} label="No. HP" value={profileDetails.no_hp ?? "-"} />
+                  <DetailRow
+                    icon={Briefcase}
+                    label="Posisi / Jabatan"
+                    value={profileDetails.posisi ?? (user?.role ? formatRole(user.role) : "-")}
+                  />
+                  <DetailRow icon={Building2} label="Gudang" value={profileDetails.gudang_nama ?? "-"} />
+                  <DetailRow
+                    icon={CalendarDays}
+                    label="Tanggal Bergabung"
+                    value={formatDate(profileDetails.created_at)}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -315,6 +379,13 @@ function ProfilePageContent() {
         </div>
       )}
 
+      <PhotoCropModal
+        open={cropModalOpen}
+        imageSrc={cropImageSrc || ""}
+        onConfirm={handleCropConfirm}
+        onCancel={handleCropCancel}
+      />
+
       {/* Toast notification */}
       {toast && (
         <div
@@ -347,6 +418,28 @@ function ProfilePageContent() {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function DetailRow({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center gap-4 py-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-500">
+        <Icon size={18} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[11px] font-medium text-slate-400">{label}</p>
+        <p className="mt-0.5 text-sm text-slate-900 break-words">{value}</p>
+      </div>
     </div>
   );
 }

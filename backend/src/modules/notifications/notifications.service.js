@@ -1,6 +1,17 @@
 const prisma = require("../../config/prisma");
 const AppError = require("../../shared/errors");
 
+const buildUserScope = (user) => {
+  const or = [];
+  if (user?.id !== undefined && user.id !== null) {
+    or.push({ user_id: BigInt(user.id) });
+  }
+  if (user?.role) {
+    or.push({ role: user.role });
+  }
+  return or.length > 0 ? { OR: or } : {};
+};
+
 const list = async (user, query = {}) => {
   const page = Number(query.page || 1);
   const limit = Number(query.limit || 20);
@@ -9,7 +20,7 @@ const list = async (user, query = {}) => {
     query.is_read === "true" ? true : query.is_read === "false" ? false : null;
 
   const where = {
-    OR: [{ user_id: Number(user.id) }, { role: user.role }],
+    ...buildUserScope(user),
     ...(isReadFilter !== null ? { is_read: isReadFilter } : {}),
   };
 
@@ -35,7 +46,7 @@ const list = async (user, query = {}) => {
 
 const unreadCount = async (user) => {
   const where = {
-    OR: [{ user_id: Number(user.id) }, { role: user.role }],
+    ...buildUserScope(user),
     is_read: false,
   };
 
@@ -45,7 +56,7 @@ const unreadCount = async (user) => {
 const markRead = async (user, id) => {
   const where = {
     id,
-    OR: [{ user_id: Number(user.id) }, { role: user.role }],
+    ...buildUserScope(user),
     is_read: false,
   };
 
@@ -66,7 +77,7 @@ const markRead = async (user, id) => {
 
 const markAllRead = async (user, isRead = true) => {
   const where = {
-    OR: [{ user_id: Number(user.id) }, { role: user.role }],
+    ...buildUserScope(user),
     is_read: !isRead,
   };
 
@@ -86,7 +97,7 @@ const markAllRead = async (user, isRead = true) => {
 const create = async ({ userId, role, type, title, message, link }) => {
   return prisma.notification.create({
     data: {
-      user_id: userId ? Number(userId) : null,
+      user_id: userId !== undefined && userId !== null ? BigInt(userId) : null,
       role: role || null,
       type: type || "info",
       title,
