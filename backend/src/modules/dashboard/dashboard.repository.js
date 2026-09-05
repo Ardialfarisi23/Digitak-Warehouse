@@ -155,7 +155,29 @@ const getProjectSummary = async () => {
   });
 };
 
+const getSupervisorGudangIds = async (userId) => {
+  try {
+    const personil = await prisma.personil.findFirst({
+      where: { user_id: BigInt(userId) },
+      select: { personil_id: true },
+    });
+
+    if (!personil) return [];
+
+    const gudangList = await prisma.gudang.findMany({
+      select: { gudang_id: true },
+    });
+
+    return gudangList.map((g) => g.gudang_id);
+  } catch (err) {
+    console.error("Error in getSupervisorGudangIds:", err);
+    return [];
+  }
+};
+
 module.exports = {
   getStats,
   getProjectSummary,
+  getSupervisorGudangIds,
 };
+
