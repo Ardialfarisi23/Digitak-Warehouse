@@ -193,51 +193,72 @@ export function SupervisorDashboard() {
 
                <p className="text-xs text-slate-500 mb-6">Rincian material berdasarkan 5 komponen wajib PRD: BOQ Plan, Additional, MOS (Material on Site), Used, dan Remains.</p>
 
-               {isLoading ? (
-                 <div className="flex items-center justify-center py-10 text-sm font-semibold text-slate-400">Memuat data rekonsiliasi...</div>
-               ) : (
-                 <div className="space-y-6">
-                 {ticketReconciliation.map((tkt) => {
-                   const maxVal = tkt.boqPlan + tkt.additional;
-                   return (
-                     <div key={tkt.ticketCode} className="space-y-2 border-b border-stone-100 pb-4 last:border-0 last:pb-0">
-                       <div className="flex justify-between text-xs font-bold text-slate-800">
-                         <span>Kode Tiket: {tkt.ticketCode}</span>
-                         <span className="text-slate-400 font-semibold">{tkt.totalUnit}</span>
-                       </div>
+                {isLoading ? (
+                  <div className="flex items-center justify-center py-10 text-sm font-semibold text-slate-400">Memuat data rekonsiliasi...</div>
+                ) : ticketReconciliation.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-10 text-center text-sm font-semibold text-slate-400">
+                    <span>Belum ada data rekonsiliasi untuk filter ini.</span>
+                    <span className="text-[11px] font-medium text-slate-400 mt-1">
+                      Pilih "Semua Gudang" & "Semua Project" untuk melihat semua tiket.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                  {ticketReconciliation.map((tkt) => {
+                    const maxVal = Math.max(1, tkt.boqPlan + tkt.additional);
+                    const statusLabel =
+                      tkt.status === "sesuai" ? "Sesuai" : tkt.status === "perhatian" ? "Perhatian" : "Berjalan";
+                    const statusTone =
+                      tkt.status === "sesuai"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : tkt.status === "perhatian"
+                          ? "bg-rose-100 text-rose-700"
+                          : "bg-amber-100 text-amber-700";
+                    return (
+                      <div key={`${tkt.ticketCode}-${tkt.projectName}`} className="space-y-2 border-b border-stone-100 pb-4 last:border-0 last:pb-0">
+                        <div className="flex justify-between items-center text-xs font-bold text-slate-800">
+                          <div className="flex items-center gap-2">
+                            <span>Kode Tiket: {tkt.ticketCode}</span>
+                            <span className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold ${statusTone}`}>{statusLabel}</span>
+                          </div>
+                          <span className="text-slate-400 font-semibold">{tkt.totalUnit}</span>
+                        </div>
+                        <div className="text-[10px] font-semibold text-slate-400">
+                          {tkt.projectName} {tkt.items > 1 ? `• ${tkt.items} item` : ""}
+                        </div>
 
-                       <div className="flex h-3.5 w-full overflow-hidden rounded-full bg-slate-100">
-                         <div style={{ width: `${(tkt.mos / maxVal) * 100}%` }} className="bg-emerald-600" title={`MOS: ${tkt.mos}`} />
-                         <div style={{ width: `${(tkt.used / maxVal) * 100}%` }} className="bg-orange-500" title={`Used: ${tkt.used}`} />
-                         <div style={{ width: `${(tkt.remains / maxVal) * 100}%` }} className="bg-amber-400" title={`Remains: ${tkt.remains}`} />
-                       </div>
+                        <div className="flex h-3.5 w-full overflow-hidden rounded-full bg-slate-100">
+                          <div style={{ width: `${(tkt.mos / maxVal) * 100}%` }} className="bg-emerald-600" title={`MOS: ${tkt.mos}`} />
+                          <div style={{ width: `${(tkt.used / maxVal) * 100}%` }} className="bg-orange-500" title={`Used: ${tkt.used}`} />
+                          <div style={{ width: `${Math.max(0, tkt.remains) / maxVal * 100}%` }} className="bg-amber-400" title={`Remains: ${tkt.remains}`} />
+                        </div>
 
-                       <div className="grid grid-cols-5 gap-2 pt-1 text-center text-[11px] font-semibold text-slate-600">
-                         <div className="rounded bg-slate-50 p-1.5">
-                           <span className="block text-[10px] text-slate-400">BOQ Plan</span>
-                           {tkt.boqPlan}
-                         </div>
-                         <div className="rounded bg-slate-50 p-1.5">
-                           <span className="block text-[10px] text-slate-400">Additional</span>+{tkt.additional}
-                         </div>
-                         <div className="rounded bg-emerald-50 text-emerald-800 p-1.5">
-                           <span className="block text-[10px] text-emerald-600">MOS</span>
-                           {tkt.mos}
-                         </div>
-                         <div className="rounded bg-orange-50 text-orange-800 p-1.5">
-                           <span className="block text-[10px] text-orange-600">Used</span>
-                           {tkt.used}
-                         </div>
-                         <div className={`rounded p-1.5 ${tkt.remains < 0 ? 'bg-rose-50 text-rose-600 font-extrabold border border-rose-200' : 'bg-amber-50 text-amber-800'}`}>
-                           <span className="block text-[10px] text-rose-600">Remains</span>
-                           <span>{tkt.remains}</span>
-                         </div>
-                       </div>
-                     </div>
-                   );
-                 })}
-                 </div>
-               )}
+                        <div className="grid grid-cols-5 gap-2 pt-1 text-center text-[11px] font-semibold text-slate-600">
+                          <div className="rounded bg-slate-50 p-1.5">
+                            <span className="block text-[10px] text-slate-400">BOQ Plan</span>
+                            {tkt.boqPlan.toLocaleString("id-ID")}
+                          </div>
+                          <div className="rounded bg-slate-50 p-1.5">
+                            <span className="block text-[10px] text-slate-400">Additional</span>+{tkt.additional.toLocaleString("id-ID")}
+                          </div>
+                          <div className="rounded bg-emerald-50 text-emerald-800 p-1.5">
+                            <span className="block text-[10px] text-emerald-600">MOS</span>
+                            {tkt.mos.toLocaleString("id-ID")}
+                          </div>
+                          <div className="rounded bg-orange-50 text-orange-800 p-1.5">
+                            <span className="block text-[10px] text-orange-600">Used</span>
+                            {tkt.used.toLocaleString("id-ID")}
+                          </div>
+                          <div className={`rounded p-1.5 ${tkt.remains < 0 ? 'bg-rose-50 text-rose-600 font-extrabold border border-rose-200' : 'bg-amber-50 text-amber-800'}`}>
+                            <span className="block text-[10px] text-rose-600">Remains</span>
+                            <span>{tkt.remains.toLocaleString("id-ID")}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  </div>
+                )}
 
                <div className="mt-6 flex flex-wrap items-center gap-6 text-xs font-semibold text-slate-500 pt-3 border-t border-stone-100">
                  <div className="flex items-center gap-2">

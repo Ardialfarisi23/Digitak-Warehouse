@@ -50,43 +50,16 @@ const FALLBACK_ACTIVITY_LOG: ActivityLogItem[] = [
 
 type TicketReconciliation = {
   ticketCode: string;
+  projectName: string;
   boqPlan: number;
   additional: number;
   mos: number;
   used: number;
   remains: number;
   totalUnit: string;
+  status: string;
+  items: number;
 };
-
-const FALLBACK_TICKET_RECONCILIATION: TicketReconciliation[] = [
-  {
-    ticketCode: "TKT-2024-001 (RW 05)",
-    boqPlan: 500,
-    additional: 50,
-    mos: 200,
-    used: 250,
-    remains: 100,
-    totalUnit: "550 Unit Total",
-  },
-  {
-    ticketCode: "TKT-2024-002 (Backbone JKT)",
-    boqPlan: 1000,
-    additional: 200,
-    mos: 400,
-    used: 600,
-    remains: 200,
-    totalUnit: "1,200 Unit Total",
-  },
-  {
-    ticketCode: "TKT-2024-003 (Cluster Depok)",
-    boqPlan: 500,
-    additional: 50,
-    mos: 100,
-    used: 250,
-    remains: -200,
-    totalUnit: "550 Unit Total",
-  },
-];
 
 export type WarehouseAssessment = "CUKUP" | "MENDEKATI_PENUH" | "TIDAK_CUKUP" | null;
 
@@ -143,12 +116,12 @@ const PENDING_STATUSES = new Set([
   "menunggu",
   "menunggu_verifikasi",
   "draft_diajukan",
-  "ready_putaway",
   "pending",
 ]);
 const APPROVED_STATUSES = new Set([
   "disetujui",
   "diterima_didistribusikan",
+  "ready_putaway",
   "approved",
   "selesai",
 ]);
@@ -206,8 +179,19 @@ export function useSupervisorDashboard() {
   useEffect(() => {
     approvalListRef.current = approvalList;
   }, [approvalList]);
+
+  const selectedWarehouseRef = useRef<string>("all");
+  const selectedProjectRef = useRef<string>("all");
+  useEffect(() => {
+    selectedWarehouseRef.current = selectedWarehouse;
+  }, [selectedWarehouse]);
+  useEffect(() => {
+    selectedProjectRef.current = selectedProject;
+  }, [selectedProject]);
+
+  const fetchDashboardDataRef = useRef<((warehouseId: string, projectId: string) => Promise<void>) | null>(null);
   const [activityLog, setActivityLog] = useState<ActivityLogItem[]>(FALLBACK_ACTIVITY_LOG);
-  const [ticketReconciliation, setTicketReconciliation] = useState<TicketReconciliation[]>(FALLBACK_TICKET_RECONCILIATION);
+  const [ticketReconciliation, setTicketReconciliation] = useState<TicketReconciliation[]>([]);
   const [metrics, setMetrics] = useState<SupervisorMetrics>(FALLBACK_METRICS);
   const [queue, setQueue] = useState<SupervisorQueue>(FALLBACK_QUEUE);
   const [assessment, setAssessment] = useState<WarehouseAssessment>(null);
@@ -274,7 +258,7 @@ export function useSupervisorDashboard() {
 
       const [approvalsRes, reconRes, activitiesRes, assessmentRes, statsRes, itemsRes, projectsRes, boqRes] = await Promise.all([
         get(`${API_BASE}/api/dashboard/approvals`),
-        get(`${API_BASE}/api/dashboard/reconciliation?${qs.toString()}`),
+        get(`${API_BASE}/api/reconciliation/inventory?${qs.toString()}`),
         get(`${API_BASE}/api/dashboard/activities`),
         get(`${API_BASE}/api/dashboard/warehouse-assessment?gudangId=${warehouseId}`),
         get(`${API_BASE}/api/dashboard/`),
@@ -353,7 +337,20 @@ export function useSupervisorDashboard() {
         const contentType = reconRes.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const json = await reconRes.json();
-          const data = json?.data || [];
+          const data: Array<{
+            kode_tiket?: string;
+            project_nama?: string;
+            project_id?: string;
+            barang_id?: string;
+            nama_barang?: string;
+            boq?: number;
+            additional?: number;
+            mos_sistem?: number;
+            used?: number;
+            remains?: number;
+            status?: string;
+          }> = Array.isArray(json?.data) ? json.data : [];
+
           const grouped = new Map<string, {
             ticketCode: string;
             boqPlan: number;
@@ -362,42 +359,64 @@ export function useSupervisorDashboard() {
             used: number;
             remains: number;
             totalUnit: string;
+            status: string;
+            projectName: string;
+            items: number;
           }>();
           for (const row of data) {
-            const tickets = (row.kode_tiket || "-").split(",").map((t: string) => t.trim()).filter(Boolean);
-            const first = tickets[0] || "-";
             const projectName = row.project_nama || "-";
-            const key = `${projectName}-${first}`;
+            const tickets = (row.kode_tiket || "-")
+              .split(",")
+              .map((t: string) => t.trim())
+              .filter(Boolean);
+            const ticketList = tickets.length ? tickets : ["-"];
             const boq = Number(row.boq || 0);
             const additional = Number(row.additional || 0);
             const mos = Number(row.mos_sistem || 0);
             const used = Number(row.used || 0);
             const remains = Number(row.remains || 0);
-            const total = boq + additional;
 
-            if (!grouped.has(key)) {
-              grouped.set(key, {
-                ticketCode: `${first} (${projectName})`,
-                boqPlan: boq,
-                additional,
-                mos,
-                used,
-                remains,
-                totalUnit: `${(total).toLocaleString("id-ID")} Unit Total`,
-              });
-            } else {
-              const g = grouped.get(key)!;
-              g.boqPlan += boq;
-              g.additional += additional;
-              g.mos += mos;
-              g.used += used;
-              g.remains += remains;
+            const shareBoq = tickets.length ? boq / ticketList.length : boq;
+            const shareAdd = tickets.length ? additional / ticketList.length : additional;
+            const shareMos = tickets.length ? mos / ticketList.length : mos;
+            const shareUsed = tickets.length ? used / ticketList.length : used;
+            const shareRem = tickets.length ? remains / ticketList.length : remains;
+
+            for (const tkt of ticketList) {
+              const key = `${projectName}::${tkt}`;
+              if (!grouped.has(key)) {
+                const total = shareBoq + shareAdd;
+                grouped.set(key, {
+                  ticketCode: tkt,
+                  boqPlan: shareBoq,
+                  additional: shareAdd,
+                  mos: shareMos,
+                  used: shareUsed,
+                  remains: shareRem,
+                  totalUnit: `${total.toLocaleString("id-ID")} Unit Total`,
+                  status: row.status || "berjalan",
+                  projectName,
+                  items: 1,
+                });
+              } else {
+                const g = grouped.get(key)!;
+                g.boqPlan += shareBoq;
+                g.additional += shareAdd;
+                g.mos += shareMos;
+                g.used += shareUsed;
+                g.remains += shareRem;
+                g.items += 1;
+                g.totalUnit = `${(g.boqPlan + g.additional).toLocaleString("id-ID")} Unit Total`;
+              }
             }
           }
           if (grouped.size) {
-            setTicketReconciliation(Array.from(grouped.values()));
+            const list = Array.from(grouped.values()).sort((a, b) =>
+              a.ticketCode.localeCompare(b.ticketCode, "id-ID", { numeric: true })
+            );
+            setTicketReconciliation(list);
           } else {
-            setTicketReconciliation(FALLBACK_TICKET_RECONCILIATION);
+            setTicketReconciliation([]);
           }
         }
       }
@@ -518,6 +537,10 @@ export function useSupervisorDashboard() {
   }, [get]);
 
   useEffect(() => {
+    fetchDashboardDataRef.current = fetchDashboardData;
+  }, [fetchDashboardData]);
+
+  useEffect(() => {
     const derived = warehouses.filter((w) => {
       const t = (w.tipe || "").toLowerCase();
       return t.includes("dadakan") || t.includes("staging") || t.includes("sementara") || t.includes("temporary");
@@ -561,7 +584,7 @@ export function useSupervisorDashboard() {
         : `${API_BASE}/api/surat-jalan/${numericId}/approve-inbound`;
 
       try {
-        const res = await put(endpoint, { status: "disetujui" });
+        const res = await put(endpoint, { itemAdjustments: [] });
         const ct = res.headers.get("content-type");
         if (!res.ok || (ct && !ct.includes("application/json"))) {
           throw new Error(`HTTP ${res.status}`);
@@ -585,6 +608,9 @@ export function useSupervisorDashboard() {
           },
           ...prev,
         ]);
+        if (fetchDashboardDataRef.current) {
+          await fetchDashboardDataRef.current(selectedWarehouseRef.current, selectedProjectRef.current);
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Gagal memproses approval.";
         setApproveError(`Gagal approve ${target.rawId}: ${message}`);
