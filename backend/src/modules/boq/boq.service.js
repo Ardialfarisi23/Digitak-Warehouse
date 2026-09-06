@@ -129,7 +129,12 @@ const create = async (data, userId) => {
     });
 
     if (unresolvedItems.length > 0) {
-      throw new AppError(`Barang tidak ditemukan untuk: ${unresolvedItems.map((i) => i.itemCode).join(", ")}`, 400);
+      const kodes = unresolvedItems.map((i) => i.itemCode).join(", ");
+      throw new AppError(
+        `Item dengan kode "${kodes}" belum terdaftar di master barang. ` +
+        `Hubungi Admin untuk menambahkan item terlebih dahulu, atau pilih kode barang yang sudah ada.`,
+        400
+      );
     }
 
     boqDataWithMeta.items = {
@@ -266,7 +271,12 @@ const update = async (id, data, userId) => {
     });
 
     if (unresolvedItems.length > 0) {
-      throw new AppError(`Barang tidak ditemukan untuk: ${unresolvedItems.map((i) => i.itemCode).join(", ")}`, 400);
+      const kodes = unresolvedItems.map((i) => i.itemCode).join(", ");
+      throw new AppError(
+        `Item dengan kode "${kodes}" belum terdaftar di master barang. ` +
+        `Hubungi Admin untuk menambahkan item terlebih dahulu, atau pilih kode barang yang sudah ada.`,
+        400
+      );
     }
 
     updateData.items = {

@@ -3,6 +3,8 @@
 import { ArrowDownLeft, ArrowUpRight, Box, CheckCircle2, ChevronDown, Clock, FileText, Radio, ShieldAlert, SlidersHorizontal, Truck, User, Warehouse } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useSupervisorDashboard } from "@/hooks/use-supervisor-dashboard";
+import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity, getStatusSourceLabel } from "@/lib/capacity";
+import Link from "next/link";
 
 function formatNumber(n: number | null | undefined): string {
   if (n === null || n === undefined) return "—";
@@ -26,7 +28,7 @@ export function SupervisorDashboard() {
   const { user } = useAuth();
   const currentSupervisorName = user?.name || user?.email || "Supervisor";
 
-  const { selectedWarehouse, selectedProject, isLoading, warehouses, projects, approvalList, activityLog, ticketReconciliation, metrics, queue, assessment, currentTimeLabel, boqStats, stagingSites, approvingId, approveError, handleFilterChange, handleApprove } = useSupervisorDashboard();
+  const { selectedWarehouse, selectedProject, isLoading, warehouses, projects, approvalList, activityLog, ticketReconciliation, metrics, queue, assessment, kapasitasPerGudang, currentTimeLabel, boqStats, stagingSites, approvingId, approveError, handleFilterChange, handleApprove } = useSupervisorDashboard();
 
   return (
     <div className="flex w-full min-h-screen flex-col bg-slate-50/50">
@@ -388,29 +390,45 @@ export function SupervisorDashboard() {
                 <h3 className="text-lg font-bold text-slate-900">Kondisi & Status Gudang</h3>
               </div>
 
-              {/* Kecukupan Area (Badge Kategorikal + Label Manual) */}
+              {/* Kecukupan Area Gudang */}
               <div className="rounded-xl bg-[#FAF8F3] p-4 border border-stone-100 space-y-2">
                 <p className="text-xs font-semibold text-slate-500">Kecukupan Area Gudang</p>
-                <div className="flex items-center justify-between">
-                  <span className={`inline-block rounded-lg px-3 py-1 text-sm font-extrabold text-white ${
-                    assessment === "MENDEKATI_PENUH"
-                      ? "bg-amber-500"
-                      : assessment === "TIDAK_CUKUP"
-                        ? "bg-rose-500"
-                        : assessment === "CUKUP"
-                          ? "bg-emerald-500"
-                          : "bg-amber-500"
-                  }`}>
-                    {assessment === "MENDEKATI_PENUH"
-                      ? "Mendekati Penuh"
-                      : assessment === "TIDAK_CUKUP"
-                        ? "Tidak Cukup"
-                        : "Cukup"}
-                  </span>
+                <div className="space-y-2">
+                  {kapasitasPerGudang.length === 0 && (
+                    <p className="text-[11px] text-slate-400">Belum ada data kapasitas.</p>
+                  )}
+                  {kapasitasPerGudang
+                    .slice()
+                    .sort((a, b) => {
+                      const order: Record<string, number> = {
+                        "TIDAK_CUKUP": 0,
+                        "MENDEKATI_PENUH": 1,
+                        "CUKUP": 2,
+                      };
+                      return (order[a.status] ?? 99) - (order[b.status] ?? 99);
+                    })
+                    .map((w) => {
+                      const badgeClass = getStatusBadgeClass(w.status);
+                      const label = getStatusLabel(w.status);
+                      const sisaText = formatSisaCapacity(w.sisa, w.kapasitas_maksimum);
+
+                      return (
+                        <Link
+                          href="/dashboard/supervisor/warehousespv"
+                          key={w.gudang_id}
+                          className="flex items-center justify-between rounded-lg border border-stone-100 bg-white px-3 py-2 transition hover:shadow-sm"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-900 truncate">{w.nama_gudang}</p>
+                            <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${badgeClass}`}>{label}</span>
+                            {sisaText && (
+                              <p className="mt-0.5 text-[10px] font-semibold text-slate-600">Sisa: {sisaText}</p>
+                            )}
+                          </div>
+                        </Link>
+                      );
+                    })}
                 </div>
-                <p className="text-[11px] font-medium text-slate-500 pt-1 border-t border-stone-200/60">
-                  Dinilai manual oleh <span className="font-bold text-slate-700">{currentSupervisorName}</span> pada <span className="font-bold text-slate-700">{currentTimeLabel?.split(",")[0] || "—"}</span>
-                </p>
               </div>
 
               {/* Status BOQ */}

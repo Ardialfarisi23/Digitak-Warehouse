@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import Link from "next/link";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import {
   ArrowDownLeft,
@@ -30,6 +31,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole, formatRole } from "@/lib/navigation";
+import { useSupervisorDashboard } from "@/hooks/use-supervisor-dashboard";
+import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity } from "@/lib/capacity";
 
 // Konfigurasi Font Plus Jakarta Sans
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -210,6 +213,8 @@ export default function SupervisorDashboard() {
       </div>
     );
   }
+
+  const { kapasitasPerGudang } = useSupervisorDashboard();
 
   return (
     <div className={`flex min-h-screen bg-[#F8F6F0] text-slate-800 ${plusJakartaSans.className}`}>
@@ -667,25 +672,44 @@ export default function SupervisorDashboard() {
                   </h3>
                 </div>
 
-                {/* Kecukupan Area Gauge */}
-                <div className="rounded-xl bg-[#FAF8F3] p-4 border border-stone-100">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500">
-                        Kecukupan Area
-                      </p>
-                      <div className="flex items-baseline gap-2 mt-1">
-                        <span className="text-3xl font-black text-slate-900 tracking-tight">
-                          75%
-                        </span>
-                        <span className="rounded-full bg-orange-100 px-2.5 py-0.5 text-[10px] font-bold text-orange-600">
-                          Mendekati Penuh
-                        </span>
-                      </div>
-                    </div>
-                    <div className="relative h-12 w-20 flex items-center justify-center">
-                      <div className="h-16 w-16 rounded-full border-4 border-stone-200 border-t-orange-500 border-r-orange-500 rotate-45" />
-                    </div>
+                {/* Kecukupan Area Gudang */}
+                <div className="rounded-xl bg-[#FAF8F3] p-4 border border-stone-100 space-y-2">
+                  <p className="text-xs font-semibold text-slate-500">Kecukupan Area Gudang</p>
+                  <div className="space-y-2">
+                    {kapasitasPerGudang.length === 0 && (
+                      <p className="text-[11px] text-slate-400">Belum ada data kapasitas.</p>
+                    )}
+                    {kapasitasPerGudang
+                      .slice()
+                      .sort((a, b) => {
+                        const order: Record<string, number> = {
+                          "TIDAK_CUKUP": 0,
+                          "MENDEKATI_PENUH": 1,
+                          "CUKUP": 2,
+                        };
+                        return (order[a.status] ?? 99) - (order[b.status] ?? 99);
+                      })
+                      .map((w) => {
+                        const badgeClass = getStatusBadgeClass(w.status);
+                        const label = getStatusLabel(w.status);
+                        const sisaText = formatSisaCapacity(w.sisa, w.kapasitas_maksimum);
+
+                        return (
+                          <Link
+                            href="/dashboard/supervisor/warehousespv"
+                            key={w.gudang_id}
+                            className="flex items-center justify-between rounded-lg border border-stone-100 bg-white px-3 py-2 transition hover:shadow-sm"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-900 truncate">{w.nama_gudang}</p>
+                              <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${badgeClass}`}>{label}</span>
+                              {sisaText && (
+                                <p className="mt-0.5 text-[10px] font-semibold text-slate-600">Sisa: {sisaText}</p>
+                              )}
+                            </div>
+                          </Link>
+                        );
+                      })}
                   </div>
                 </div>
 

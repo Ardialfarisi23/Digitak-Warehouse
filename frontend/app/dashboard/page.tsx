@@ -7,6 +7,7 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
+import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity, getStatusSourceLabel } from "@/lib/capacity";
 
 import {
   Boxes,
@@ -18,6 +19,10 @@ import {
   AlertTriangle,
   Clock,
   PackageCheck,
+  Package,
+  PackageMinus,
+  ClipboardCheck,
+  Wallet,
   FileCheck2,
 } from "lucide-react";
 
@@ -52,55 +57,35 @@ const defaultDashboardStats: DashboardStats = {
   warehouses: 0,
 };
 
-const warehouseCapacity = [
-  {
-    name: "Gudang Pusat Cimahi",
-    percent: 92,
-    status: "Tidak Cukup",
-    tone: "rose",
-  },
-  {
-    name: "Gudang 2",
-    percent: 71,
-    status: "Mendekati Penuh",
-    tone: "amber",
-  },
-  {
-    name: "Gudang Transit (3 lokasi aktif)",
-    percent: 38,
-    status: "Cukup",
-    tone: "emerald",
-  },
-];
-
-const toneMap: Record<
-  string,
-  { badge: string; card: string; iconWrap: string; iconFg: string }
+const STATUS_META: Record<
+  ProjectSummaryRow["status"],
+  { label: string; badge: string; icon: typeof CheckCircle2 }
 > = {
-  rose: {
-    badge: "text-rose-600 bg-rose-50",
-    card: "border-rose-100 bg-rose-50/40",
-    iconWrap: "bg-rose-100",
-    iconFg: "text-rose-600",
+  sesuai: {
+    label: "Sesuai",
+    badge: "bg-emerald-50 text-emerald-600",
+    icon: CheckCircle2,
   },
-  amber: {
-    badge: "text-amber-600 bg-amber-50",
-    card: "border-amber-100 bg-amber-50/40",
-    iconWrap: "bg-amber-100",
-    iconFg: "text-amber-600",
+  perhatian: {
+    label: "Perhatian",
+    badge: "bg-amber-50 text-amber-600",
+    icon: AlertTriangle,
   },
-  emerald: {
-    badge: "text-emerald-600 bg-emerald-50",
-    card: "border-emerald-100 bg-emerald-50/40",
-    iconWrap: "bg-emerald-100",
-    iconFg: "text-emerald-600",
+  berjalan: {
+    label: "Berjalan",
+    badge: "bg-blue-50 text-blue-600",
+    icon: Package,
   },
 };
 
-const statusIconMap: Record<string, typeof CheckCircle2> = {
-  "Cukup": CheckCircle2,
-  "Mendekati Penuh": Clock,
-  "Tidak Cukup": AlertTriangle,
+const METRIC_TONE: Record<
+  "slate" | "emerald" | "orange" | "rose",
+  { box: string; label: string }
+> = {
+  slate: { box: "bg-slate-50 text-slate-700", label: "text-slate-400" },
+  emerald: { box: "bg-emerald-50 text-emerald-800", label: "text-emerald-600" },
+  orange: { box: "bg-orange-50 text-orange-800", label: "text-orange-600" },
+  rose: { box: "bg-rose-50 text-rose-600 border border-rose-200", label: "text-rose-600" },
 };
 
 type ProjectSummaryRow = {
@@ -111,8 +96,12 @@ type ProjectSummaryRow = {
   area: string;
   statusBoq: string;
   hardwareOnSite: number;
+  mos_sistem: number;
+  boq: number;
+  additional: number;
   used: number;
   remains: number;
+  status: "sesuai" | "perhatian" | "berjalan";
   progress: number;
 };
 
@@ -170,6 +159,28 @@ function KpiCard({
   return content;
 }
 
+function MetricBox({
+  label,
+  value,
+  tone,
+  highlight,
+}: {
+  label: string;
+  value: number;
+  tone: keyof typeof METRIC_TONE;
+  highlight?: boolean;
+}) {
+  const t = METRIC_TONE[tone];
+  return (
+    <div className={`rounded-lg px-1 py-2 ${t.box}`}>
+      <span className={`block text-[10px] font-medium ${t.label}`}>{label}</span>
+      <span className={`block text-xs font-bold ${highlight ? "font-extrabold" : ""}`}>
+        {formatNumber(value)}
+      </span>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // MAIN DASHBOARD CONTENT
 // ---------------------------------------------------------------------------
@@ -224,6 +235,20 @@ function DashboardPageContent() {
     }>
   >([]);
   const [isLoadingActivity, setIsLoadingActivity] = useState(true);
+  const [kapasitasPerGudang, setKapasitasPerGudang] = useState<
+    Array<{
+      gudang_id: string;
+      nama_gudang: string;
+      tipe: string;
+      kapasitas_maksimum: number | null;
+      total_qty_di_zona: number;
+      total_qty_generic: number;
+      sisa: number | null;
+      status: string;
+      total_zona: number;
+      total_zona_dengan_kapasitas: number;
+    }>
+  >([]);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -260,6 +285,8 @@ function DashboardPageContent() {
           warehouses: Number(statsData.warehouses ?? 0),
         });
 
+        setKapasitasPerGudang(Array.isArray(statsData.kapasitas_per_gudang) ? statsData.kapasitas_per_gudang : []);
+
         setProjectSummary(Array.isArray(projectSummaryJson?.data) ? projectSummaryJson.data : []);
 
         const reconPayload = reconciliationJson?.data;
@@ -294,6 +321,7 @@ function DashboardPageContent() {
         setDashboardStats(defaultDashboardStats);
         setProjectSummary([]);
         setReconciliationRows([]);
+        setKapasitasPerGudang([]);
       } finally {
         setIsLoadingProjects(false);
         setIsLoadingStats(false);
@@ -435,27 +463,10 @@ function DashboardPageContent() {
     { boq: 0, additional: 0, mos_sistem: 0, used: 0, remains: 0 }
   );
 
-  const reconciliationByProject = reconciliationRows.reduce(
-    (acc, row) => {
-      const key = String(row.project_id ?? "");
-      if (!key) return acc;
-      if (!acc[key]) {
-        acc[key] = { mos_sistem: 0, used: 0, remains: 0 };
-      }
-      acc[key].mos_sistem += row.mos_sistem;
-      acc[key].used += row.used;
-      acc[key].remains += row.remains;
-      return acc;
-    },
-    {} as Record<string, { mos_sistem: number; used: number; remains: number }>
-  );
-
   const projectRows = projectSummary.map((p) => {
-    const key = String(p.projectId);
-    const metrics = reconciliationByProject[key];
-    const hardwareOnSite = metrics?.mos_sistem ?? 0;
-    const used = metrics?.used ?? 0;
-    const remains = metrics?.remains ?? 0;
+    const hardwareOnSite = p.hardwareOnSite;
+    const used = p.used;
+    const remains = p.remains;
     const progress =
       hardwareOnSite > 0
         ? Math.min(Math.round((used / hardwareOnSite) * 100), 100)
@@ -695,45 +706,69 @@ function DashboardPageContent() {
           </div>
 
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {[...warehouseCapacity]
-              .sort((a, b) => {
-                const order: Record<string, number> = {
-                  "Tidak Cukup": 0,
-                  "Mendekati Penuh": 1,
-                  "Cukup": 2,
-                };
-                return (order[a.status] ?? 99) - (order[b.status] ?? 99);
-              })
-              .map((w) => {
-                const tone = toneMap[w.tone];
-                const StatusIcon = statusIconMap[w.status];
-                return (
-                  <div
-                    key={w.name}
-                    className={`rounded-2xl border ${tone.card} p-4 shadow-xs transition hover:shadow-sm`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tone.iconWrap}`}
-                      >
-                        <StatusIcon size={20} className={tone.iconFg} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold text-slate-900 leading-snug">
-                          {w.name}
+            {isLoadingStats ? (
+              <div className="py-6 text-center text-sm text-slate-400 md:col-span-3">
+                Memuat data kapasitas...
+              </div>
+            ) : kapasitasPerGudang.length === 0 ? (
+              <div className="py-6 text-center text-sm text-slate-400 md:col-span-3">
+                Belum ada data kapasitas gudang.
+              </div>
+            ) : (
+              [...kapasitasPerGudang]
+                .sort((a, b) => {
+                  const order: Record<string, number> = {
+                    "TIDAK_CUKUP": 0,
+                    "MENDEKATI_PENUH": 1,
+                    "CUKUP": 2,
+                  };
+                  return (order[a.status] ?? 99) - (order[b.status] ?? 99);
+                })
+                .map((w) => {
+                  const statusBadgeClass = getStatusBadgeClass(w.status);
+                  const statusLabel = getStatusLabel(w.status);
+                  const sisaText = formatSisaCapacity(w.sisa, w.kapasitas_maksimum);
+                  const sourceLabel = getStatusSourceLabel({
+                    status_kecukupan_source: "AUTO",
+                    dinilai_oleh: null,
+                    dinilai_pada: null,
+                  });
+
+                  return (
+                    <Link
+                      href={`/dashboard/warehouse`}
+                      key={w.gudang_id}
+                      className="rounded-2xl border border-slate-100 bg-white p-4 shadow-xs transition hover:shadow-sm block"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-600">
+                          <Boxes size={20} />
                         </div>
-                        <div className="mt-1.5">
-                          <span
-                            className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${tone.badge}`}
-                          >
-                            {w.status}
-                          </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold text-slate-900 leading-snug">
+                            {w.nama_gudang}
+                          </div>
+                          <div className="mt-1.5">
+                            <span
+                              className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusBadgeClass}`}
+                            >
+                              {statusLabel}
+                            </span>
+                          </div>
+                          {sisaText && (
+                            <p className="mt-1 text-[10px] font-semibold text-slate-600">
+                              Sisa: {sisaText}
+                            </p>
+                          )}
+                          <p className="mt-1 text-[10px] text-slate-400">
+                            {sourceLabel}
+                          </p>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                );
-              })}
+                    </Link>
+                  );
+                })
+            )}
           </div>
         </section>
 
@@ -761,81 +796,92 @@ function DashboardPageContent() {
             </div>
           </div>
 
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="text-[11px] uppercase tracking-wide text-slate-400">
-                  <th className="pb-2 font-medium">Project/Cluster</th>
-                  <th className="pb-2 font-medium">Area</th>
-                  <th className="pb-2 font-medium">Status BOQ</th>
-                  <th className="pb-2 font-medium">MOS (Sistem)</th>
-                  <th className="pb-2 font-medium">Used</th>
-                  <th className="pb-2 font-medium">Remains</th>
-                  <th className="pb-2 font-medium">Progres</th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoadingProjects ? (
-                  <tr>
-                    <td colSpan={7} className="py-6 text-center text-sm text-slate-400">
-                      Memuat data project...
-                    </td>
-                  </tr>
-                ) : filteredProjects.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-6 text-center text-sm text-slate-400">
-                      Tidak ada data project/cluster yang sesuai pencarian.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredProjects.map((p) => (
-                    <tr
-                      key={p.projectId}
-                      className="border-t border-slate-50 hover:bg-slate-50/60"
-                    >
-                      <td className="py-2.5 font-medium text-slate-900">
-                        {p.projectName}
-                        {p.clusterId ? (
-                          <div className="text-[10px] uppercase tracking-wide text-slate-400">
-                            {p.clusterLabel}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="py-2.5 text-slate-500">{p.area}</td>
-                      <td className="py-2.5">
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                            p.statusBoq === "Aktif"
-                              ? "text-emerald-600 bg-emerald-50"
-                              : p.statusBoq === "Draft"
-                                ? "text-amber-600 bg-amber-50"
-                                : "text-slate-500 bg-slate-100"
-                          }`}
-                        >
-                          {p.statusBoq}
-                        </span>
-                      </td>
-                      <td className="py-2.5 text-slate-700">{p.hardwareOnSite}</td>
-                      <td className="py-2.5 text-slate-700">{p.used}</td>
-                      <td className="py-2.5 text-slate-700">{p.remains}</td>
-                      <td className="py-2.5">
-                        <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className="h-full rounded-full bg-orange-500"
-                              style={{ width: `${p.progress}%` }}
-                            />
-                          </div>
-                          <span className="text-[11px] text-slate-400">
-                            {p.progress}%
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            {isLoadingProjects ? (
+              <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">
+                Memuat data project...
+              </div>
+            ) : filteredProjects.length === 0 ? (
+              <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">
+                Tidak ada data project/cluster yang sesuai pencarian.
+              </div>
+            ) : (
+              filteredProjects.map((p) => {
+                const statusMeta = STATUS_META[p.status];
+                const StatusIcon = statusMeta.icon;
+                const maxVal = Math.max(1, p.boq + p.additional);
+                const remWidth = Math.max(0, p.remains);
+                return (
+                  <div
+                    key={p.projectId}
+                    className="rounded-2xl border border-slate-100 bg-white p-3 transition-colors hover:border-slate-200"
+                  >
+                    {/* Header baris */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-xs font-bold leading-snug text-slate-900">
+                            {p.projectName}
+                          </span>
+                          <span
+                            className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusMeta.badge}`}
+                          >
+                            <StatusIcon size={11} strokeWidth={2.5} />
+                            {statusMeta.label}
                           </span>
                         </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                        <div className="mt-0.5 text-[11px] text-slate-400">
+                          {p.area}
+                          {p.clusterId ? ` • ${p.clusterLabel}` : ""}
+                          {p.statusBoq ? ` • BOQ ${p.statusBoq}` : ""}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-[10px] uppercase tracking-wide text-slate-400">
+                          Total Unit
+                        </div>
+                        <div className="text-sm font-bold text-slate-900">
+                          {formatNumber(p.hardwareOnSite)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Stacked progress bar */}
+                    <div className="mt-2 flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        style={{ width: `${(p.hardwareOnSite / maxVal) * 100}%` }}
+                        className="bg-emerald-500"
+                        title={`MOS: ${p.hardwareOnSite}`}
+                      />
+                      <div
+                        style={{ width: `${(p.used / maxVal) * 100}%` }}
+                        className="bg-orange-500"
+                        title={`Used: ${p.used}`}
+                      />
+                      <div
+                        style={{ width: `${(remWidth / maxVal) * 100}%` }}
+                        className={p.remains < 0 ? "bg-rose-400" : "bg-slate-300"}
+                        title={`Remains: ${p.remains}`}
+                      />
+                    </div>
+
+                    {/* Grid 5 metric */}
+                    <div className="mt-2 grid grid-cols-5 gap-1.5 text-center">
+                      <MetricBox label="BOQ Plan" value={p.boq} tone="slate" />
+                      <MetricBox label="Additional" value={p.additional} tone="slate" />
+                      <MetricBox label="MOS" value={p.hardwareOnSite} tone="emerald" />
+                      <MetricBox label="Used" value={p.used} tone="orange" />
+                      <MetricBox
+                        label="Remains"
+                        value={p.remains}
+                        tone={p.remains < 0 ? "rose" : "slate"}
+                        highlight={p.remains < 0}
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </section>
       </div>

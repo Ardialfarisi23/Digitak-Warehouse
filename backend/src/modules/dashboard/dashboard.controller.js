@@ -3,7 +3,7 @@ const response = require("../../shared/response");
 
 const getStats = async (req, res, next) => {
   try {
-    const result = await dashboardService.getStats();
+    const result = await dashboardService.getStats(req.user);
     return response.success(res, "Statistik dashboard berhasil diambil.", result);
   } catch (err) {
     next(err);
@@ -34,7 +34,7 @@ const getApprovalQueue = async (req, res, next) => {
 
 const getHardwareReconciliation = async (req, res, next) => {
   try {
-    const result = await dashboardService.getHardwareReconciliation(req.query, req.user);
+    const result = await dashboardService.getHardwareReconciliation(req.query);
     return response.success(res, "Rekonsiliasi hardware berhasil diambil.", result);
   } catch (err) {
     next(err);
@@ -50,6 +50,9 @@ const getActivityLog = async (req, res, next) => {
   }
 };
 
+// @deprecated since 2026-09-05 (Gelombang 3 task) — akan dihapus setelah
+// Gelombang 4 frontend selesai migrasi ke per-zona PATCH.
+// Pengganti: PATCH /api/zones/:zona_id/utilization-status.
 const updateWarehouseAssessment = async (req, res, next) => {
   try {
     const result = await dashboardService.updateWarehouseAssessment(req.params.gudangId, req.body, req.user);
@@ -61,7 +64,7 @@ const updateWarehouseAssessment = async (req, res, next) => {
 
 const getWarehouseAssessment = async (req, res, next) => {
   try {
-    const result = await dashboardService.getWarehouseAssessment(req.query, req.user);
+    const result = await dashboardService.getWarehouseAssessment(req.query);
     return response.success(res, "Data kecukupan gudang berhasil diambil.", result);
   } catch (err) {
     next(err);

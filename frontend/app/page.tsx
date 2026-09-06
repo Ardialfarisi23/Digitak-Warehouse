@@ -301,11 +301,6 @@ export default function Home() {
                   className="w-full rounded-xl border border-slate-200 bg-[#FAF8F5]/60 px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:bg-white focus:outline-none transition"
                 />
 
-                <p className="mt-2 text-xs text-slate-400">
-                  Gunakan email admin:{" "}
-                  <strong>admin@digitakgudang.com</strong>
-                </p>
-
                 {errors.email && (
                   <p className="mt-1 text-xs text-rose-500">
                     {errors.email.message}
