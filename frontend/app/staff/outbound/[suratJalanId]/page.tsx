@@ -146,21 +146,39 @@ export default function SuratJalanDetailPage() {
           <ArrowLeft size={16} />
           Kembali
         </button>
-        <Button
-          disabled={generatingPdf}
-          onClick={async () => {
-            setGeneratingPdf(true);
-            try {
-              await downloadSuratJalanPdf(displaySJ as any, user?.name || user?.username || "-");
-            } finally {
-              setGeneratingPdf(false);
-            }
-          }}
-          className="flex h-auto items-center gap-2 rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-60"
-        >
-          <Download size={16} />
-          {generatingPdf ? "Menyiapkan PDF..." : "Download PDF"}
-        </Button>
+        <div className="flex items-center gap-2">
+          {suratJalan.status === "disetujui" && (
+            <Link
+              href={`/staff/outbound/${suratJalan.surat_jalan_id}/picking`}
+              className="rounded-xl border border-[#F3D9C7] bg-white px-4 py-2.5 text-sm font-semibold text-[#E8632C] hover:bg-[#FDECE1]"
+            >
+              Picking
+            </Link>
+          )}
+          {(suratJalan.status === "disetujui" || suratJalan.status === "sedang_dikirim") && (
+            <Link
+              href={`/staff/outbound/${suratJalan.surat_jalan_id}/distribution`}
+              className="rounded-xl border border-[#F3D9C7] bg-white px-4 py-2.5 text-sm font-semibold text-[#E8632C] hover:bg-[#FDECE1]"
+            >
+              Distribusi
+            </Link>
+          )}
+          <Button
+            disabled={generatingPdf}
+            onClick={async () => {
+              setGeneratingPdf(true);
+              try {
+                await downloadSuratJalanPdf(displaySJ as any, user?.name || user?.username || "-");
+              } finally {
+                setGeneratingPdf(false);
+              }
+            }}
+            className="flex h-auto items-center gap-2 rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-60"
+          >
+            <Download size={16} />
+            {generatingPdf ? "Menyiapkan PDF..." : "Download PDF"}
+          </Button>
+        </div>
       </div>
 
       {/* Dokumen Surat Jalan — ini yang ke-print/ke-download */}
