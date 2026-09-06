@@ -440,6 +440,7 @@ function DashboardPageContent() {
       iconColor: "text-orange-500 bg-orange-50",
       note: "Menunggu konfirmasi Diterima/Didistribusikan",
       noteColor: "text-orange-500",
+      href: "/dashboard/delivery",
     },
     {
       label: "Approval Menunggu",
@@ -448,6 +449,7 @@ function DashboardPageContent() {
       iconColor: "text-rose-500 bg-rose-50",
       note: "Informasi — disetujui oleh Supervisor",
       noteColor: "text-slate-400",
+      href: "/dashboard/delivery",
     },
   ];
 
@@ -473,7 +475,9 @@ function DashboardPageContent() {
         : 0;
     return { ...p, hardwareOnSite, used, remains, progress };
   });
-  const filteredProjects = projectRows.filter((p) =>
+  const activeProjectRows = projectRows.filter((p) => p.statusBoq === "Aktif");
+
+  const filteredProjects = activeProjectRows.filter((p) =>
     `${p.projectName} ${p.area} ${p.clusterLabel}`
       .toLowerCase()
       .includes(projectFilter.toLowerCase())
@@ -800,6 +804,10 @@ function DashboardPageContent() {
             {isLoadingProjects ? (
               <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">
                 Memuat data project...
+              </div>
+            ) : activeProjectRows.length === 0 ? (
+              <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">
+                Belum ada project dengan status BOQ aktif.
               </div>
             ) : filteredProjects.length === 0 ? (
               <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">

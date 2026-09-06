@@ -198,9 +198,13 @@ const findInboundList = async (filters = {}) => {
   const { gudangTujuanId, status, startDate, endDate, search } = filters;
   const where = { tipe: "inbound" };
 
-  where.status = {
-    in: ["draft_diajukan", "menunggu_verifikasi", "ready_putaway", "disetujui", "digenerate", "diterima_didistribusikan"],
-  };
+  if (status && status !== "all") {
+    where.status = status;
+  } else {
+    where.status = {
+      in: ["draft_diajukan", "menunggu_verifikasi", "ready_putaway", "disetujui", "digenerate", "diterima_didistribusikan"],
+    };
+  }
 
   const andConditions = [];
 
