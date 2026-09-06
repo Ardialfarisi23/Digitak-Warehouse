@@ -235,6 +235,7 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
     { key: "no_hp", label: "Telepon", type: "text" },
     { key: "nik", label: "NIK", type: "text" },
     { key: "email", label: "Email", type: "text" },
+    { key: "gudang_id", label: "Gudang Penugasan", type: "select", options: [] },
     { key: "bisa_menyetir", label: "Bisa Menyetir", type: "checkbox" },
     { key: "is_material_handler", label: "Material Handler", type: "checkbox" },
     { key: "foto", label: "Foto Personil", type: "file" },
@@ -717,6 +718,7 @@ function FormModal({
   const [error, setError] = useState<string | null>(null);
   const [categoryOptions, setCategoryOptions] = useState<Array<{ value: number; label: string }>>([]);
   const [unitOptions, setUnitOptions] = useState<Array<{ value: number; label: string }>>([]);
+  const [warehouseOptions, setWarehouseOptions] = useState<Array<{ value: number; label: string }>>([]);
 
   useEffect(() => {
     if (open && tab === "items") {
@@ -744,6 +746,22 @@ function FormModal({
 
       return () => { cancelled = true; };
     }
+
+    if (open && tab === "personnel") {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      let cancelled = false;
+
+      get(`${baseUrl}/api/warehouses`)
+        .then((res) => res.json())
+        .then((result) => {
+          if (cancelled) return;
+          const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+          setWarehouseOptions(list.map((w: any) => ({ value: Number(w.gudang_id), label: w.nama_gudang })));
+        })
+        .catch(() => { if (!cancelled) setWarehouseOptions([]); });
+
+      return () => { cancelled = true; };
+    }
   }, [open, tab, get]);
 
   const formFields = useMemo(() => {
@@ -754,8 +772,16 @@ function FormModal({
         return field;
       });
     }
+
+    if (tab === "personnel") {
+      return fields.map((field) => {
+        if (field.key === "gudang_id") return { ...field, options: warehouseOptions };
+        return field;
+      });
+    }
+
     return fields;
-  }, [tab, fields, categoryOptions, unitOptions]);
+  }, [tab, fields, categoryOptions, unitOptions, warehouseOptions]);
 
   useEffect(() => {
     if (open) {
@@ -1209,7 +1235,7 @@ function MasterDataPageContent() {
       case "projects":
         return ["project_id", "title", "nama_project", "kecamatan", "desa_kelurahan", "status_aktif"];
       case "personnel":
-        return ["personil_id", "nama", "email", "nik", "posisi", "no_hp", "bisa_menyetir", "foto"];
+        return ["personil_id", "nama", "email", "nik", "posisi", "no_hp", "bisa_menyetir", "gudang", "foto"];
       case "vehicles":
         return ["kendaraan_id", "jenis_kendaraan", "merk", "no_polisi", "foto"];
       case "warehouses":
@@ -1238,6 +1264,7 @@ function MasterDataPageContent() {
       email: "Email",
       nik: "NIK",
       bisa_menyetir: "Bisa Menyetir",
+      gudang: "Gudang",
       kendaraan_id: "ID Kendaraan",
       jenis_kendaraan: "Tipe",
       merk: "Merk",
@@ -1588,6 +1615,15 @@ function MasterDataPageContent() {
                               return (
                                 <td key={column} className="px-6 py-4 text-sm text-slate-600">
                                   {value === true ? "Bisa" : "Tidak"}
+                                </td>
+                              );
+                            }
+
+                            if (column === "gudang") {
+                              const gudangNama = (record as any)?.gudang?.nama_gudang;
+                              return (
+                                <td key={column} className="px-6 py-4 text-sm text-slate-600">
+                                  {gudangNama || "-"}
                                 </td>
                               );
                             }
