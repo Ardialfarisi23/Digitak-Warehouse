@@ -83,6 +83,41 @@ export type SupervisorQueue = {
   discrepancyOldestLabel: string;
 };
 
+export type WarehouseCapacityRow = {
+  gudang_id: string;
+  nama_gudang: string;
+  tipe: string;
+  kapasitas_maksimum: number | null;
+  total_qty_di_zona: number;
+  total_qty_generic: number;
+  sisa: number | null;
+  status: string;
+  total_zona: number;
+  total_zona_dengan_kapasitas: number;
+};
+
+export type SupervisorDashboardReturn = {
+  selectedWarehouse: string;
+  selectedProject: string;
+  isLoading: boolean;
+  warehouses: Warehouse[];
+  projects: Project[];
+  approvalList: ApprovalItem[];
+  activityLog: ActivityLogItem[];
+  ticketReconciliation: TicketReconciliation[];
+  metrics: SupervisorMetrics;
+  queue: SupervisorQueue;
+  assessment: WarehouseAssessment;
+  kapasitasPerGudang: WarehouseCapacityRow[];
+  currentTimeLabel: string;
+  boqStats: { draft: number | null; active: number | null; total: number | null };
+  stagingSites: Warehouse[];
+  approvingId: string | null;
+  approveError: string | null;
+  handleFilterChange: (type: "warehouse" | "project", value: string) => void;
+  handleApprove: (compositeId: string) => Promise<void>;
+};
+
 const FALLBACK_METRICS: SupervisorMetrics = {
   totalDevices: 1420,
   activeProjects: 12,
@@ -195,6 +230,7 @@ export function useSupervisorDashboard() {
   const [metrics, setMetrics] = useState<SupervisorMetrics>(FALLBACK_METRICS);
   const [queue, setQueue] = useState<SupervisorQueue>(FALLBACK_QUEUE);
   const [assessment, setAssessment] = useState<WarehouseAssessment>(null);
+  const [kapasitasPerGudang, setKapasitasPerGudang] = useState<WarehouseCapacityRow[]>([]);
   const [currentTimeLabel, setCurrentTimeLabel] = useState<string>("");
   const [boqStats, setBoqStats] = useState<{ draft: number | null; active: number | null; total: number | null }>({
     draft: 15,
@@ -510,6 +546,13 @@ export function useSupervisorDashboard() {
             if (typeof data.pendingShipments === "number") next.todayTransactions = data.pendingShipments;
             return next;
           });
+
+          const kapasitasList = Array.isArray(data.kapasitas_per_gudang)
+            ? data.kapasitas_per_gudang
+            : [];
+          if (kapasitasList.length) {
+            setKapasitasPerGudang(kapasitasList);
+          }
         }
       }
 
@@ -682,6 +725,7 @@ export function useSupervisorDashboard() {
     metrics,
     queue,
     assessment,
+    kapasitasPerGudang,
     currentTimeLabel,
     boqStats,
     stagingSites,

@@ -217,6 +217,7 @@ export default function BoqPage() {
   const [areas, setAreas] = useState<string[]>([]);
   const [items, setItems] = useState<{ id: string; kode_perangkat: string; nama_barang: string; satuan?: { kode_satuan: string } }[]>([]);
   const [itemSearch, setItemSearch] = useState("");
+  const [itemErrors, setItemErrors] = useState<Record<number, string>>({});
   const [itemPickerIndex, setItemPickerIndex] = useState<number | null>(null);
   const [itemPickerSearch, setItemPickerSearch] = useState("");
 
@@ -485,6 +486,12 @@ export default function BoqPage() {
       return;
     }
 
+    const itemErrorMessages = Object.values(itemErrors);
+    if (itemErrorMessages.length > 0) {
+      setFormError(itemErrorMessages[0]);
+      return;
+    }
+
     setSubmitting(true);
     setFormError(null);
     try {
@@ -608,6 +615,33 @@ export default function BoqPage() {
       ...prev,
       items: prev.items.map((item, i) => (i === index ? { ...item, [field]: value } : item)),
     }));
+
+    if (field === "itemCode") {
+      const code = String(value || "");
+      if (!code.trim()) {
+        setItemErrors((prev) => {
+          const next = { ...prev };
+          delete next[index];
+          return next;
+        });
+        return;
+      }
+      const exists = items.some(
+        (it) => it.kode_perangkat.toLowerCase() === code.trim().toLowerCase()
+      );
+      if (!exists) {
+        setItemErrors((prev) => ({
+          ...prev,
+          [index]: `Kode barang "${code}" belum terdaftar di master data. Hubungi Admin untuk menambahkan.`,
+        }));
+      } else {
+        setItemErrors((prev) => {
+          const next = { ...prev };
+          delete next[index];
+          return next;
+        });
+      }
+    }
   }
 
   const totalQty = useMemo(() => form.items.reduce((s, i) => s + (i.quantity || 0), 0), [form.items]);
@@ -920,6 +954,9 @@ export default function BoqPage() {
                         <button type="button" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }} onClick={() => { setItemPickerIndex(itemPickerIndex === index ? null : index); setItemPickerSearch(""); }} className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-slate-600">
                           <ChevronDown size={12} />
                         </button>
+                        {itemErrors[index] && (
+                          <p className="mt-1 text-[10px] text-rose-600">{itemErrors[index]}</p>
+                        )}
                         {itemPickerIndex === index && (
                           <div data-item-picker className="absolute left-0 top-full z-[60] mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
                             <div className="p-1">

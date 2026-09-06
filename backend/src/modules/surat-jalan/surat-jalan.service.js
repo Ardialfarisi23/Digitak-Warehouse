@@ -3,6 +3,7 @@ const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
 const { PrismaClientKnownRequestError } = require("@prisma/client");
 const notificationService = require("../notifications/notifications.service");
+const capacityService = require("../capacity/capacity.service");
 
 const create = async (data, actorId) => {
   if (!data.tipe || !["inbound", "outbound"].includes(data.tipe)) {
@@ -543,6 +544,9 @@ const rejectInbound = async (id, catatan = null, actorId) => {
             saldo_setelah: saldoSetelahZona,
           },
         });
+
+        // Hook recalculateZonaStatus: putaway menambah stok ke zona spesifik.
+        await capacityService.recalculateZonaStatus(tx, gudangTujuanId, zonaId);
       }
 
       // FIX (bug #6 looping): sebelumnya di-set "disetujui" lagi di sini —
@@ -649,6 +653,9 @@ const rejectInbound = async (id, catatan = null, actorId) => {
             saldo_setelah: Math.max(0, updatedQty),
           },
         });
+
+        // Hook recalculateZonaStatus: retrieve mengurangi stok di zona spesifik.
+        await capacityService.recalculateZonaStatus(tx, gudangAsalId, zonaId);
       }
 
       await suratJalanRepository.updateStatus(suratJalanId, "disetujui", tx);

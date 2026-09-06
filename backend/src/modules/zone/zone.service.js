@@ -1,6 +1,7 @@
 const zoneRepository = require("./zone.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
+const capacityService = require("../capacity/capacity.service");
 
 const create = async (data) => {
   const kodeZona = data.kode_zona || data.code;
@@ -59,16 +60,65 @@ const update = async (kode_zona, data) => {
   return await zoneRepository.update(record.zona_id, payload);
 };
 
-const updateUtilizationStatus = async (zona_id, status_kecukupan, userId) => {
+const updateUtilizationStatus = async (zona_id, body, userId) => {
   const zonaId = Number(zona_id);
+  const { status_kecukupan, kapasitas_maksimum } = body;
 
-  const updatedZona = await prisma.zona_gudang.update({
+  const zona = await prisma.zona_gudang.findUnique({
     where: { zona_id: zonaId },
-    data: {
-      status_kecukupan: status_kecukupan,
-      dinilai_oleh: Number(userId),
-      dinilai_pada: new Date(),
+    select: {
+      zona_id: true,
+      gudang_id: true,
+      kapasitas_maksimum: true,
+      status_kecukupan: true,
+      status_kecukupan_source: true,
     },
+  });
+
+  if (!zona) {
+    throw new AppError("Zona tidak ditemukan.", 404);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (kapasitas_maksimum !== undefined) {
+      await tx.zona_gudang.update({
+        where: { zona_id: zonaId },
+        data: {
+          kapasitas_maksimum: kapasitas_maksimum === null ? null : Number(kapasitas_maksimum),
+        },
+      });
+    }
+
+    if (status_kecukupan) {
+      await tx.zona_gudang.update({
+        where: { zona_id: zonaId },
+        data: {
+          status_kecukupan: status_kecukupan,
+          status_kecukupan_source: "MANUAL",
+          dinilai_oleh: Number(userId),
+          dinilai_pada: new Date(),
+        },
+      });
+
+      await tx.zona_utilisasi_log.create({
+        data: {
+          zona_id: zonaId,
+          status: status_kecukupan,
+          diperbarui_oleh: Number(userId),
+          catatan: `Status kecukupan diperbarui menjadi ${status_kecukupan}`,
+        },
+      });
+
+      return;
+    }
+
+    if (kapasitas_maksimum !== undefined) {
+      await capacityService.recalculateZonaStatus(tx, zona.gudang_id, zonaId, Number(userId));
+    }
+  });
+
+  const updatedZona = await prisma.zona_gudang.findUnique({
+    where: { zona_id: zonaId },
     include: {
       dinilai_oleh_user: {
         select: {
@@ -80,16 +130,10 @@ const updateUtilizationStatus = async (zona_id, status_kecukupan, userId) => {
     },
   });
 
-  await prisma.zona_utilisasi_log.create({
-    data: {
-      zona_id: zonaId,
-      status: status_kecukupan,
-      diperbarui_oleh: Number(userId),
-      catatan: `Status kecukupan diperbarui menjadi ${status_kecukupan}`,
-    },
-  });
-
-  return updatedZona;
+  return {
+    ...updatedZona,
+    dinilai_oleh: updatedZona?.dinilai_oleh_user?.nama || null,
+  };
 };
 
 module.exports = {

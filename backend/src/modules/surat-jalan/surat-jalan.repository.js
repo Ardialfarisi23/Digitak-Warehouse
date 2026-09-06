@@ -1,5 +1,6 @@
 const prisma = require("../../config/prisma");
 const AppError = require("../../shared/errors");
+const capacityService = require("../capacity/capacity.service");
 
 const baseInclude = {
   items: {
@@ -437,6 +438,13 @@ const addInboundStock = async (suratJalan, tx = prisma) => {
         },
       });
     }
+
+    // Hook recalculateZonaStatus: addInboundStock selalu menulis ke zona_id=null
+    // (stok generic, belum di-putaway). Fungsi akan otomatis skip karena zonaId null.
+    // Dipanggil di sini supaya alur recalc terdokumentasi eksplisit untuk tahap audit.
+    for (const item of suratJalan.items) {
+      await capacityService.recalculateZonaStatus(tx, gudangTujuanId, null);
+    }
   }
 };
 
@@ -542,6 +550,10 @@ const deductOutboundStock = async (suratJalan, tx = prisma) => {
         saldo_setelah: updatedQty,
       },
     });
+
+    // Hook recalculateZonaStatus: hanya zona yang baru saja ter-mutasi.
+    // Jika item.zona_id null (stok generic) → fungsi skip otomatis.
+    await capacityService.recalculateZonaStatus(tx, gudangAsalId, item.zona_id ?? null);
   }
 };
 

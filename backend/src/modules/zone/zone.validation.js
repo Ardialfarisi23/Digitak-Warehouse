@@ -15,7 +15,13 @@ const updateZoneSchema = createZoneSchema.partial().refine(
 );
 
 const updateZoneUtilizationSchema = z.object({
-  status_kecukupan: z.enum(["CUKUP", "MENDEKATI_PENUH", "TIDAK_CUKUP"]),
+  status_kecukupan: z.enum(["CUKUP", "MENDEKATI_PENUH", "TIDAK_CUKUP"]).optional(),
+  kapasitas_maksimum: z.union([
+    z.coerce.number().int().positive("Kapasitas harus lebih dari 0"),
+    z.literal(null),
+  ]).optional(),
+}).refine((data) => data.status_kecukupan !== undefined || data.kapasitas_maksimum !== undefined, {
+  message: "Minimal satu field harus diisi.",
 });
 
 module.exports = {
