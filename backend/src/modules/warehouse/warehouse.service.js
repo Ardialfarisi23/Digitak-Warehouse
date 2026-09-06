@@ -118,16 +118,29 @@ const getLayout = async (gudang_id) => {
     }
   });
 
+  const gudangKapasitasMaksimum = warehouse.kapasitas_maksimum != null ? Number(warehouse.kapasitas_maksimum) : null;
+
   return {
     ...warehouse,
-    zonas: zonas.map((z) => ({
-      ...z,
-      status_kecukupan: z.status_kecukupan || "CUKUP",
-      dinilai_oleh: z.dinilai_oleh_user?.nama || null,
-      dinilai_pada: z.dinilai_pada ? z.dinilai_pada.toISOString() : null,
-      total_qty: zoneStats[z.zona_id]?.total_qty || 0,
-      total_item: zoneStats[z.zona_id]?.total_item || 0,
-    })),
+    kapasitas_maksimum: gudangKapasitasMaksimum,
+    zonas: zonas.map((z) => {
+      const kapasitasMaksimum = z.kapasitas_maksimum != null ? Number(z.kapasitas_maksimum) : null;
+      const totalQty = zoneStats[z.zona_id]?.total_qty || 0;
+      const sisa = kapasitasMaksimum != null ? kapasitasMaksimum - totalQty : null;
+
+      return {
+        ...z,
+        kapasitas_maksimum: kapasitasMaksimum,
+        gudang_kapasitas_maksimum: gudangKapasitasMaksimum,
+        total_qty: totalQty,
+        total_item: zoneStats[z.zona_id]?.total_item || 0,
+        sisa,
+        status_kecukupan_source: z.status_kecukupan_source || "AUTO",
+        kapasitas_belum_diatur: kapasitasMaksimum == null,
+        dinilai_oleh: z.dinilai_oleh_user?.nama || null,
+        dinilai_pada: z.dinilai_pada ? z.dinilai_pada.toISOString() : null,
+      };
+    }),
   };
 };
 

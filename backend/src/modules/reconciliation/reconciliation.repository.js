@@ -1,26 +1,5 @@
 const prisma = require("../../config/prisma");
 
-const getSupervisorGudangIds = async (userId) => {
-  try {
-    const personil = await prisma.personil.findFirst({
-      where: { user_id: BigInt(userId) },
-      select: { personil_id: true },
-    });
-
-    if (!personil) return [];
-
-    // Mengambil seluruh gudang agar Supervisor dapat melihat multi-gudang (seperti Admin)
-    const gudangList = await prisma.gudang.findMany({
-      select: { gudang_id: true },
-    });
-
-    return gudangList.map((g) => g.gudang_id);
-  } catch (err) {
-    console.error("Error in getSupervisorGudangIds:", err);
-    return [];
-  }
-};
-
 const getInventory = async (filters = {}, actor = null) => {
   const { search = "", projectId = "all", warehouseId = "all", status = "all" } = filters;
 
@@ -30,27 +9,7 @@ const getInventory = async (filters = {}, actor = null) => {
     },
   };
 
-  // Scoping: Supervisor & Admin behavior
-  if (actor?.role === "supervisor") {
-    const allowedGudangIds = await getSupervisorGudangIds(actor.id);
-
-    if (allowedGudangIds.length === 0) {
-      return { data: [] };
-    }
-
-    if (warehouseId !== "all") {
-      // Menggunakan String untuk komparasi aman agar BigInt tidak error
-      const isAllowed = allowedGudangIds.some((id) => String(id) === String(warehouseId));
-      whereBoq.gudang_tujuan_id = isAllowed ? BigInt(warehouseId) : { in: [] };
-    } else {
-      // Izinkan juga boq_item yang belum di-assign ke gudang (gudang_tujuan_id = null)
-      // agar Supervisor dapat melihat data rekonsiliasi seperti Admin.
-      whereBoq.OR = [
-        { gudang_tujuan_id: { in: allowedGudangIds } },
-        { gudang_tujuan_id: null },
-      ];
-    }
-  } else if (warehouseId !== "all") {
+  if (warehouseId !== "all") {
     whereBoq.gudang_tujuan_id = BigInt(warehouseId);
   }
 
@@ -265,5 +224,4 @@ const updateMosMitra = async (tiketId, mos) => {
 module.exports = {
   getInventory,
   updateMosMitra,
-  getSupervisorGudangIds,
 };

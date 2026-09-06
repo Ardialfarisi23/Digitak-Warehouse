@@ -19,6 +19,7 @@ import {
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
+import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity, getStatusSourceLabel } from "@/lib/capacity";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -38,10 +39,14 @@ type Zona = {
   nama_zona?: string;
   tipe_zona?: string;
   status_kecukupan?: string;
+  status_kecukupan_source?: string;
   dinilai_oleh?: string | null;
   dinilai_pada?: string | null;
   total_qty?: number;
   total_item?: number;
+  kapasitas_maksimum?: number | null;
+  sisa?: number | null;
+  kapasitas_belum_diatur?: boolean;
 };
 
 export default function WarehouseLayoutPage() {
@@ -70,6 +75,7 @@ export default function WarehouseLayoutPage() {
   const [statusModalZone, setStatusModalZone] = useState<Zona | null>(null);
   const [statusFormValue, setStatusFormValue] = useState<string>("CUKUP");
   const [statusSaving, setStatusSaving] = useState(false);
+  const [kapasitasMaksimumInput, setKapasitasMaksimumInput] = useState<string>("");
 
   /* =========================================================
      AUTH
@@ -234,45 +240,6 @@ export default function WarehouseLayoutPage() {
     return zone.kode_zona || "";
   }
 
-  function getStatusBadgeClass(status?: string) {
-    switch (status) {
-      case "CUKUP":
-        return "border-green-200 bg-green-100 text-green-800";
-      case "MENDEKATI_PENUH":
-        return "border-orange-200 bg-orange-100 text-orange-800";
-      case "TIDAK_CUKUP":
-        return "border-red-200 bg-red-100 text-red-800";
-      default:
-        return "border-gray-200 bg-gray-100 text-gray-800";
-    }
-  }
-
-  function getStatusLabel(status?: string) {
-    switch (status) {
-      case "CUKUP":
-        return "Cukup";
-      case "MENDEKATI_PENUH":
-        return "Mendekati Penuh";
-      case "TIDAK_CUKUP":
-        return "Tidak Cukup";
-      default:
-        return "Belum dinilai";
-    }
-  }
-
-  function formatDateTime(dateString?: string | null) {
-    if (!dateString) return "-";
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return "-";
-    return date.toLocaleString("id-ID", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-
   const canEditStatus = mapRole(user?.role) === "admin" || mapRole(user?.role) === "supervisor";
 
   /* =========================================================
@@ -329,6 +296,7 @@ export default function WarehouseLayoutPage() {
   function openStatusModal(zone: Zona) {
     setStatusModalZone(zone);
     setStatusFormValue(zone.status_kecukupan || "CUKUP");
+    setKapasitasMaksimumInput(zone.kapasitas_maksimum != null ? String(zone.kapasitas_maksimum) : "");
     setStatusModalOpen(true);
   }
 
@@ -336,6 +304,7 @@ export default function WarehouseLayoutPage() {
     setStatusModalOpen(false);
     setStatusModalZone(null);
     setStatusFormValue("CUKUP");
+    setKapasitasMaksimumInput("");
   }
 
   async function saveStatus() {
@@ -344,11 +313,19 @@ export default function WarehouseLayoutPage() {
     setStatusSaving(true);
 
     try {
+      const body: Record<string, unknown> = {};
+      if (statusFormValue) {
+        body.status_kecukupan = statusFormValue;
+      }
+      if (kapasitasMaksimumInput.trim() !== "") {
+        body.kapasitas_maksimum = Number(kapasitasMaksimumInput);
+      }
+
       const res = await request(
         `${API_BASE}/api/zones/${statusModalZone.zona_id}/utilization-status`,
         {
           method: "PATCH",
-          body: JSON.stringify({ status_kecukupan: statusFormValue }),
+          body: JSON.stringify(body),
         }
       );
 
@@ -526,25 +503,38 @@ export default function WarehouseLayoutPage() {
             </span>
           </div>
 
-          {(zone.total_item > 0 || zone.total_qty > 0) && (
+          {(zone.total_item ?? 0) > 0 || (zone.total_qty ?? 0) > 0 && (
             <div className="mt-2">
               <p className="text-[12px] font-semibold text-[#344054]">
-                {zone.total_item || 0} barang • {Number(zone.total_qty || 0).toLocaleString("id-ID")} unit
+                {(zone.total_item ?? 0)} barang • {Number(zone.total_qty ?? 0).toLocaleString("id-ID")} unit
               </p>
             </div>
           )}
 
           {zone.status_kecukupan ? (
             <div className="mt-2">
-              <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${getStatusBadgeClass(zone.status_kecukupan)}`}>
-                {getStatusLabel(zone.status_kecukupan)}
-              </span>
-
-              {zone.dinilai_oleh && (
-                <p className="mt-1 text-[10px] text-[#667085]">
-                  Dinilai manual oleh {zone.dinilai_oleh} pada {formatDateTime(zone.dinilai_pada)}
-                </p>
-              )}
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${getStatusBadgeClass(zone.status_kecukupan)}`}>
+                  {getStatusLabel(zone.status_kecukupan)}
+                </span>
+                {zone.kapasitas_belum_diatur && (
+                  <span className="inline-block rounded-full border border-[#e5e7eb] bg-[#f2f4f7] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#475467]">
+                    Kapasitas belum diatur
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-[10px] text-[#667085]">
+                {getStatusSourceLabel(zone)}
+              </p>
+              {(() => {
+                const sisaText = formatSisaCapacity(zone.sisa ?? null, zone.kapasitas_maksimum ?? null);
+                if (!sisaText) return null;
+                return (
+                  <p className="mt-1 text-[10px] font-semibold text-[#344054]">
+                    Sisa: {sisaText}
+                  </p>
+                );
+              })()}
             </div>
           ) : (
             <p className="mt-2 text-[10px] text-[#98a2b3]">Belum dinilai</p>
@@ -596,7 +586,7 @@ export default function WarehouseLayoutPage() {
     );
   }
 
-  function StatusInputModal({ open, onClose, zone, value, onChange, onSave, saving }: { open: boolean; onClose: () => void; zone: Zona; value: string; onChange: (v: string) => void; onSave: () => void; saving: boolean }) {
+  function StatusInputModal({ open, onClose, zone, value, onChange, onSave, saving, kapasitasMaksimum, onKapasitasChange }: { open: boolean; onClose: () => void; zone: Zona | null; value: string; onChange: (v: string) => void; onSave: () => void; saving: boolean; kapasitasMaksimum: string; onKapasitasChange: (v: string) => void }) {
     useEffect(() => {
       if (!open) return;
       function handleKey(e: KeyboardEvent) {
@@ -627,6 +617,23 @@ export default function WarehouseLayoutPage() {
           </div>
 
           <div className="px-6 py-5">
+            <div className="mb-4">
+              <label className="mb-1 block text-[12px] font-semibold text-[#344054]">
+                Kapasitas Maksimum (unit)
+              </label>
+              <input
+                type="number"
+                min={1}
+                placeholder="Contoh: 1000"
+                value={kapasitasMaksimum}
+                onChange={(e) => onKapasitasChange(e.target.value)}
+                className="h-[38px] w-full rounded-xl border border-[#d0d5dd] bg-white px-3 text-[13px] text-[#111827] outline-none transition focus:border-[#111827]"
+              />
+              <p className="mt-1 text-[10px] text-[#9ca3af]">
+                Kosongkan jika tidak diubah. Hanya angka bulat lebih dari 0.
+              </p>
+            </div>
+
             <div className="flex flex-col gap-2">
               {options.map((opt) => (
                 <label
@@ -958,8 +965,8 @@ export default function WarehouseLayoutPage() {
             {selectedZone && (
               <p className="mt-1 text-[12px] text-[#6b7280]">
                 {selectedWarehouse?.nama_gudang} — {getZoneType(selectedZone)}
-                {selectedZone.total_item > 0 && (
-                  <span> • {selectedZone.total_item} barang • {Number(selectedZone.total_qty || 0).toLocaleString("id-ID")} unit</span>
+                {(selectedZone.total_item ?? 0) > 0 && (
+                  <span> • {(selectedZone.total_item ?? 0)} barang • {Number(selectedZone.total_qty ?? 0).toLocaleString("id-ID")} unit</span>
                 )}
               </p>
             )}
@@ -1080,6 +1087,8 @@ export default function WarehouseLayoutPage() {
         onChange={setStatusFormValue}
         onSave={saveStatus}
         saving={statusSaving}
+        kapasitasMaksimum={kapasitasMaksimumInput}
+        onKapasitasChange={setKapasitasMaksimumInput}
       />
     </div>
   );

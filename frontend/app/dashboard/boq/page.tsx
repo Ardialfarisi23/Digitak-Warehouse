@@ -251,6 +251,7 @@ export default function BoqPage() {
   const [areas, setAreas] = useState<string[]>([]);
   const [items, setItems] = useState<{ id: string; kode_perangkat: string; nama_barang: string; satuan?: { kode_satuan: string } }[]>([]);
   const [itemSearch, setItemSearch] = useState("");
+  const [itemErrors, setItemErrors] = useState<Record<number, string>>({});
 
   const [form, setForm] = useState({
     projectId: "",
@@ -620,6 +621,12 @@ export default function BoqPage() {
       return;
     }
 
+    const itemErrorMessages = Object.values(itemErrors);
+    if (itemErrorMessages.length > 0) {
+      setFormError(itemErrorMessages[0]);
+      return;
+    }
+
     setSubmitting(true);
     setFormError(null);
 
@@ -792,6 +799,33 @@ export default function BoqPage() {
       ...prev,
       items: prev.items.map((item, i) => (i === index ? { ...item, [field]: value } : item)),
     }));
+
+    if (field === "itemCode") {
+      const code = String(value || "");
+      if (!code.trim()) {
+        setItemErrors((prev) => {
+          const next = { ...prev };
+          delete next[index];
+          return next;
+        });
+        return;
+      }
+      const exists = items.some(
+        (it) => it.kode_perangkat.toLowerCase() === code.trim().toLowerCase()
+      );
+      if (!exists) {
+        setItemErrors((prev) => ({
+          ...prev,
+          [index]: `Kode barang "${code}" belum terdaftar di master data. Hubungi Admin untuk menambahkan.`,
+        }));
+      } else {
+        setItemErrors((prev) => {
+          const next = { ...prev };
+          delete next[index];
+          return next;
+        });
+      }
+    }
   }
 
   const totalQty = useMemo(() => {
@@ -1451,25 +1485,28 @@ export default function BoqPage() {
                    <div className="space-y-2">
                      {form.items.map((item, index) => (
                        <div key={index} className="grid grid-cols-12 gap-2 rounded-xl border border-slate-100 p-3">
-                          <div className="col-span-3">
-                            <BarangPicker
-                              value={item.itemCode}
-                              onSelect={(picked: BarangPickerItem) => {
-                                if (picked.id) {
-                                  updateItem(index, "itemCode", picked.kode_perangkat);
-                                  updateItem(index, "itemName", picked.nama_barang);
-                                  updateItem(
-                                    index,
-                                    "unit",
-                                    picked.satuan_default_kode || "",
-                                  );
-                                } else {
-                                  updateItem(index, "itemCode", picked.kode_perangkat);
-                                }
-                              }}
-                              placeholder="Kode perangkat"
-                            />
-                          </div>
+                           <div className="col-span-3">
+                             <BarangPicker
+                               value={item.itemCode}
+                               onSelect={(picked: BarangPickerItem) => {
+                                 if (picked.id) {
+                                   updateItem(index, "itemCode", picked.kode_perangkat);
+                                   updateItem(index, "itemName", picked.nama_barang);
+                                   updateItem(
+                                     index,
+                                     "unit",
+                                     picked.satuan_default_kode || "",
+                                   );
+                                 } else {
+                                   updateItem(index, "itemCode", picked.kode_perangkat);
+                                 }
+                               }}
+                               placeholder="Kode perangkat"
+                             />
+                             {itemErrors[index] && (
+                               <p className="mt-1 text-[10px] text-rose-600">{itemErrors[index]}</p>
+                             )}
+                           </div>
                         <div className="col-span-3">
                           <input
                             type="text"

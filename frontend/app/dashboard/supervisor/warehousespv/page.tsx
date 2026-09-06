@@ -7,10 +7,13 @@ import { Warehouse as WarehouseIcon, Loader2, AlertCircle, Boxes, X, Info, Sun, 
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
+import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity, getStatusSourceLabel } from "@/lib/capacity";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-const SUPERVISOR_ALLOWED_WAREHOUSES = ["Gudang Ciamis", "Gudang Rancamanyar", "Gudang Transit"];
+// Daftar gudang yang muncul di dropdown diambil dari response API
+// GET /api/dashboard (kapasitas_per_gudang[]). Supervisor dan admin
+// menerima daftar lengkap semua gudang.
 
 type WarehouseRecord = {
   gudang_id: string;
@@ -27,10 +30,14 @@ type Zona = {
   nama_zona?: string;
   tipe_zona?: string;
   status_kecukupan?: string;
+  status_kecukupan_source?: string;
   dinilai_oleh?: string | null;
   dinilai_pada?: string | null;
   total_qty?: number;
   total_item?: number;
+  kapasitas_maksimum?: number | null;
+  sisa?: number | null;
+  kapasitas_belum_diatur?: boolean;
 };
 
 export default function SpvWarehouseLayoutPage() {
@@ -60,6 +67,7 @@ export default function SpvWarehouseLayoutPage() {
   const [statusModalZone, setStatusModalZone] = useState<Zona | null>(null);
   const [statusFormValue, setStatusFormValue] = useState<string>("CUKUP");
   const [statusSaving, setStatusSaving] = useState(false);
+  const [kapasitasMaksimumInput, setKapasitasMaksimumInput] = useState<string>("");
 
   /* =========================================================
      AUTH CHECK (Supervisor & Admin)
@@ -87,17 +95,31 @@ export default function SpvWarehouseLayoutPage() {
     setError(null);
 
     try {
-      const res = await get(`${API_BASE}/api/warehouses`);
+      // Endpoint GET /api/dashboard mengembalikan kapasitas_per_gudang[]
+      // yang berisi SEMUA gudang untuk supervisor maupun admin.
+      const res = await get(`${API_BASE}/api/dashboard`);
       const json = await res.json();
 
       if (!res.ok) {
         throw new Error(json?.message || "Gagal mengambil daftar gudang.");
       }
 
-      const rawData = Array.isArray(json?.data?.data) ? json.data.data : Array.isArray(json?.data) ? json.data : [];
+      const rawList = Array.isArray(json?.data?.kapasitas_per_gudang)
+        ? json.data.kapasitas_per_gudang
+        : [];
 
-      const allowed = new Set(SUPERVISOR_ALLOWED_WAREHOUSES);
-      const data = rawData.filter((w: WarehouseRecord) => allowed.has(w.nama_gudang));
+      // Map ke tipe WarehouseRecord yang dipakai komponen ini.
+      // is_aktif tidak tersedia di getStats (tidak relevan untuk layout), default true.
+      const data: WarehouseRecord[] = rawList.map((g: {
+        gudang_id: string;
+        nama_gudang: string;
+        tipe: string;
+      }) => ({
+        gudang_id: String(g.gudang_id),
+        nama_gudang: g.nama_gudang,
+        tipe: g.tipe,
+        is_aktif: true,
+      }));
 
       setWarehouses(data);
 
@@ -107,6 +129,11 @@ export default function SpvWarehouseLayoutPage() {
 
         setSelectedWarehouseId(warehouseId);
         await loadWarehouseLayout(warehouseId);
+      } else {
+        // Supervisor tidak punya personil.gudang_id yang ter-assign.
+        // Tampilkan pesan informatif, bukan crash.
+        setSelectedWarehouseId("");
+        setWarehouseLayout([]);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal mengambil data gudang.");
@@ -188,45 +215,6 @@ export default function SpvWarehouseLayoutPage() {
     return zone.kode_zona || "";
   }
 
-  function getStatusBadgeClass(status?: string) {
-    switch (status) {
-      case "CUKUP":
-        return "border-green-200 bg-green-100 text-green-800";
-      case "MENDEKATI_PENUH":
-        return "border-orange-200 bg-orange-100 text-orange-800";
-      case "TIDAK_CUKUP":
-        return "border-red-200 bg-red-100 text-red-800";
-      default:
-        return "border-gray-200 bg-gray-100 text-gray-800";
-    }
-  }
-
-  function getStatusLabel(status?: string) {
-    switch (status) {
-      case "CUKUP":
-        return "Cukup";
-      case "MENDEKATI_PENUH":
-        return "Mendekati Penuh";
-      case "TIDAK_CUKUP":
-        return "Tidak Cukup";
-      default:
-        return "Belum dinilai";
-    }
-  }
-
-  function formatDateTime(dateString?: string | null) {
-    if (!dateString) return "-";
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return "-";
-    return date.toLocaleString("id-ID", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-
   const canEditStatus = mapRole(user?.role) === "admin" || mapRole(user?.role) === "supervisor";
 
   const sortedZones = useMemo(() => {
@@ -263,6 +251,7 @@ export default function SpvWarehouseLayoutPage() {
   function openStatusModal(zone: Zona) {
     setStatusModalZone(zone);
     setStatusFormValue(zone.status_kecukupan || "CUKUP");
+    setKapasitasMaksimumInput(zone.kapasitas_maksimum != null ? String(zone.kapasitas_maksimum) : "");
     setStatusModalOpen(true);
   }
 
@@ -270,6 +259,7 @@ export default function SpvWarehouseLayoutPage() {
     setStatusModalOpen(false);
     setStatusModalZone(null);
     setStatusFormValue("CUKUP");
+    setKapasitasMaksimumInput("");
   }
 
   async function saveStatus() {
@@ -278,9 +268,17 @@ export default function SpvWarehouseLayoutPage() {
     setStatusSaving(true);
 
     try {
+      const body: Record<string, unknown> = {};
+      if (statusFormValue) {
+        body.status_kecukupan = statusFormValue;
+      }
+      if (kapasitasMaksimumInput.trim() !== "") {
+        body.kapasitas_maksimum = Number(kapasitasMaksimumInput);
+      }
+
       const res = await request(`${API_BASE}/api/zones/${statusModalZone.zona_id}/utilization-status`, {
         method: "PATCH",
-        body: JSON.stringify({ status_kecukupan: statusFormValue }),
+        body: JSON.stringify(body),
       });
 
       const json = await res.json();
@@ -398,22 +396,38 @@ export default function SpvWarehouseLayoutPage() {
             <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isIndoor ? "bg-[#FFA86B]/20 text-[#8B4513]" : "bg-[#FCEBDD] text-[#6b5647]"}`}>{isIndoor ? "Indoor" : "Outdoor"}</span>
           </div>
 
-          {(zone.total_item > 0 || zone.total_qty > 0) && (
+          {(zone.total_item ?? 0) > 0 || (zone.total_qty ?? 0) > 0 && (
             <div className="mt-2">
               <p className="text-[12px] font-semibold text-[#344054]">
-                {zone.total_item || 0} barang • {Number(zone.total_qty || 0).toLocaleString("id-ID")} unit
+                {(zone.total_item ?? 0)} barang • {Number(zone.total_qty ?? 0).toLocaleString("id-ID")} unit
               </p>
             </div>
           )}
 
           {zone.status_kecukupan ? (
             <div className="mt-2">
-              <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${getStatusBadgeClass(zone.status_kecukupan)}`}>{getStatusLabel(zone.status_kecukupan)}</span>
-              {zone.dinilai_oleh && (
-                <p className="mt-1 text-[10px] text-[#667085]">
-                  Dinilai manual oleh {zone.dinilai_oleh} pada {formatDateTime(zone.dinilai_pada)}
-                </p>
-              )}
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${getStatusBadgeClass(zone.status_kecukupan)}`}>
+                  {getStatusLabel(zone.status_kecukupan)}
+                </span>
+                {zone.kapasitas_belum_diatur && (
+                  <span className="inline-block rounded-full border border-[#e5e7eb] bg-[#f2f4f7] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#475467]">
+                    Kapasitas belum diatur
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-[10px] text-[#667085]">
+                {getStatusSourceLabel(zone)}
+              </p>
+              {(() => {
+                const sisaText = formatSisaCapacity(zone.sisa ?? null, zone.kapasitas_maksimum ?? null);
+                if (!sisaText) return null;
+                return (
+                  <p className="mt-1 text-[10px] font-semibold text-[#344054]">
+                    Sisa: {sisaText}
+                  </p>
+                );
+              })()}
             </div>
           ) : (
             <p className="mt-2 text-[10px] text-[#98a2b3]">Belum dinilai</p>
@@ -451,6 +465,7 @@ export default function SpvWarehouseLayoutPage() {
       </div>
     );
   }
+
 
   /* =========================================================
      MAIN VIEW
@@ -655,36 +670,57 @@ export default function SpvWarehouseLayoutPage() {
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4" onClick={closeStatusModal}>
           <div className="w-full max-w-[450px] rounded-2xl bg-white p-6 shadow-2xl transition-all" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-[18px] font-bold text-[#111827]">Input Status Zona {getCleanZoneCode(statusModalZone)}</h3>
-            <p className="mt-1 text-[12.5px] text-[#6b7280]">Pilih status kecukupan untuk zona ini.</p>
+            <p className="mt-1 text-[12.5px] text-[#6b7280]">Pilih status kecukupan dan/atau kapasitas maksimum zona ini.</p>
 
-            <div className="mt-5 space-y-3">
-              {[
-                { value: "CUKUP", label: "Cukup", colorBg: "bg-emerald-500" },
-                { value: "MENDEKATI_PENUH", label: "Mendekati Penuh", colorBg: "bg-amber-500" },
-                { value: "TIDAK_CUKUP", label: "Tidak Cukup", colorBg: "bg-rose-500" },
-              ].map((opt) => {
-                const isSelected = statusFormValue === opt.value;
-                return (
-                  <label
-                    key={opt.value}
-                    onClick={() => setStatusFormValue(opt.value)}
-                    className={`flex cursor-pointer items-center justify-start gap-3 rounded-xl border px-4 py-3 transition-all ${
-                      isSelected ? "border-[#111827] bg-[#f8fafc] shadow-sm" : "border-[#e5e7eb] hover:border-[#cbd5e1] hover:bg-gray-50/50"
-                    }`}
-                  >
-                    {/* Radio Custom Circle */}
-                    <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition ${isSelected ? "border-[#111827] bg-[#111827]" : "border-[#d1d5db] bg-white"}`}>
-                      {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
-                    </div>
+            <div className="mt-5 space-y-4">
+              <div>
+                <label className="mb-1 block text-[12px] font-semibold text-[#344054]">
+                  Kapasitas Maksimum (unit)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="Contoh: 1000"
+                  value={kapasitasMaksimumInput}
+                  onChange={(e) => setKapasitasMaksimumInput(e.target.value)}
+                  className="h-[38px] w-full rounded-xl border border-[#d0d5dd] bg-white px-3 text-[13px] text-[#111827] outline-none transition focus:border-[#111827]"
+                />
+                <p className="mt-1 text-[10px] text-[#9ca3af]">
+                  Kosongkan jika tidak diubah. Hanya angka bulat lebih dari 0.
+                </p>
+              </div>
 
-                    {/* Color Dot & Text Label */}
-                    <div className="flex items-center gap-2.5">
-                      <span className={`h-2.5 w-2.5 rounded-full ${opt.colorBg}`} />
-                      <span className="text-[13px] font-medium text-[#111827]">{opt.label}</span>
-                    </div>
-                  </label>
-                );
-              })}
+              <div>
+                <label className="mb-2 block text-[12px] font-semibold text-[#344054]">
+                  Status Kecukupan
+                </label>
+                <div className="flex flex-col gap-2">
+                  {[
+                    { value: "CUKUP", label: "Cukup", colorBg: "bg-emerald-500" },
+                    { value: "MENDEKATI_PENUH", label: "Mendekati Penuh", colorBg: "bg-amber-500" },
+                    { value: "TIDAK_CUKUP", label: "Tidak Cukup", colorBg: "bg-rose-500" },
+                  ].map((opt) => {
+                    const isSelected = statusFormValue === opt.value;
+                    return (
+                      <label
+                        key={opt.value}
+                        onClick={() => setStatusFormValue(opt.value)}
+                        className={`flex cursor-pointer items-center justify-start gap-3 rounded-xl border px-4 py-3 transition-all ${
+                          isSelected ? "border-[#111827] bg-[#f8fafc] shadow-sm" : "border-[#e5e7eb] hover:border-[#cbd5e1] hover:bg-gray-50/50"
+                        }`}
+                      >
+                        <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition ${isSelected ? "border-[#111827] bg-[#111827]" : "border-[#d1d5db] bg-white"}`}>
+                          {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+                        </div>
+                        <div className="flex items-center gap-2.5">
+                          <span className={`h-2.5 w-2.5 rounded-full ${opt.colorBg}`} />
+                          <span className="text-[13px] font-medium text-[#111827]">{opt.label}</span>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             {/* Action Buttons */}

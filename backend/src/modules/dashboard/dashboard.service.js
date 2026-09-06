@@ -1,9 +1,10 @@
 const dashboardRepository = require("./dashboard.repository");
 const prisma = require("../../config/prisma");
 const AppError = require("../../shared/errors");
+const reconciliationUtils = require("../reconciliation/reconciliation.utils");
 
-const getStats = async () => {
-  return await dashboardRepository.getStats();
+const getStats = async (actor = null) => {
+  return await dashboardRepository.getStats(actor);
 };
 
 const getProjectSummary = async () => {
@@ -129,28 +130,16 @@ const getApprovalQueue = async (actor) => {
   };
 };
 
-const getHardwareReconciliation = async (filters = {}, actor) => {
+const getHardwareReconciliation = async (filters = {}) => {
+  // 2026-09-05 revert: scoping supervisor per-gudang dihapus. Supervisor setara
+  // admin — bisa melihat semua gudang (sama dengan behavior sebelum Gelombang 2.3).
   const { warehouseId = "all", projectId = "all", search = "" } = filters;
 
   const whereBoq = {
     boq: { status: { in: ["draft", "aktif", "selesai"] } },
   };
 
-  if (actor?.role === "supervisor") {
-    const allowedGudangIds = await dashboardRepository.getSupervisorGudangIds(actor.id);
-    if (allowedGudangIds.length === 0) {
-      return { data: [] };
-    }
-    if (warehouseId !== "all") {
-      const isAllowed = allowedGudangIds.some((id) => String(id) === String(warehouseId));
-      whereBoq.gudang_tujuan_id = isAllowed ? BigInt(warehouseId) : { in: [] };
-    } else {
-      whereBoq.OR = [
-        { gudang_tujuan_id: { in: allowedGudangIds } },
-        { gudang_tujuan_id: null },
-      ];
-    }
-  } else if (warehouseId !== "all") {
+  if (warehouseId !== "all") {
     whereBoq.gudang_tujuan_id = BigInt(warehouseId);
   }
 
@@ -294,15 +283,15 @@ const getHardwareReconciliation = async (filters = {}, actor) => {
     const uniqueTiketsForMos = [...new Set(agg.kode_tiket_list)].filter(Boolean);
     const mosMitra = uniqueTiketsForMos.reduce((sum, kodeTiket) => sum + (tiketMosMap.get(kodeTiket) || 0), 0);
     const used = Number(outboundByProjectBarang.get(key) || 0);
-    const remains = mosSistem - (agg.boq + additional);
+    const remains = reconciliationUtils.computeRemains(mosSistem, agg.boq, additional);
     const selisih = mosSistem - mosMitra;
 
-    let recStatus = "berjalan";
-    if (remains < 0) {
-      recStatus = "perhatian";
-    } else if (mosSistem >= agg.boq + additional && agg.boq > 0) {
-      recStatus = "sesuai";
-    }
+    const recStatus = reconciliationUtils.computeReconciliationStatus(
+      remains,
+      mosSistem,
+      agg.boq,
+      additional
+    );
 
     const uniqueTikets = [...new Set(agg.kode_tiket_list)].filter(Boolean);
     const kodeTiketStr = uniqueTikets.join(", ") || "-";
@@ -385,7 +374,8 @@ const getActivityLog = async (filters = {}) => {
   }));
 };
 
-const getWarehouseAssessment = async (filters = {}, actor) => {
+const getWarehouseAssessment = async (filters = {}) => {
+  // 2026-09-05 revert: scoping supervisor per-gudang dihapus.
   const { gudangId = "all" } = filters;
 
   const where = {};
@@ -401,6 +391,7 @@ const getWarehouseAssessment = async (filters = {}, actor) => {
           gudang_id: true,
           nama_gudang: true,
           tipe: true,
+          kapasitas_maksimum: true,
           project: {
             select: {
               project_id: true,
@@ -420,21 +411,53 @@ const getWarehouseAssessment = async (filters = {}, actor) => {
     orderBy: [{ gudang_id: "asc" }, { kode_zona: "asc" }],
   });
 
-  return zonas.map((z) => ({
-    zonaId: String(z.zona_id),
-    gudangId: String(z.gudang_id),
-    gudangNama: z.gudang?.nama_gudang || "-",
-    gudangTipe: z.gudang?.tipe || "-",
-    projectNama: z.gudang?.project?.nama_project || "-",
-    area: z.gudang?.project?.area || "-",
-    kodeZona: z.kode_zona,
-    namaZona: z.nama_zona || z.kode_zona,
-    statusKecukupan: z.status_kecukupan || "CUKUP",
-    dinilaiOleh: z.dinilai_oleh_user?.nama || z.dinilai_oleh_user?.email || null,
-    dinilaiPada: z.dinilai_pada || null,
-  }));
+  // Untuk setiap zona: hitung SUM(qty) di zona tersebut (on-the-fly).
+  // Jika ada zona, batch aggregate via groupBy untuk performa.
+  const zonaIds = zonas.map((z) => z.zona_id);
+  let qtyByZona = new Map();
+  if (zonaIds.length > 0) {
+    const grouped = await prisma.stok_gudang.groupBy({
+      by: ["zona_id"],
+      where: { zona_id: { in: zonaIds } },
+      _sum: { qty: true },
+    });
+    for (const g of grouped) {
+      qtyByZona.set(Number(g.zona_id), Number(g._sum.qty || 0));
+    }
+  }
+
+  return zonas.map((z) => {
+    const kapasitas = z.kapasitas_maksimum;
+    const qty = qtyByZona.get(Number(z.zona_id)) || 0;
+    const sisa = kapasitas != null ? kapasitas - qty : null;
+    return {
+      zonaId: String(z.zona_id),
+      gudangId: String(z.gudang_id),
+      gudangNama: z.gudang?.nama_gudang || "-",
+      gudangTipe: z.gudang?.tipe || "-",
+      gudangKapasitasMaksimum: z.gudang?.kapasitas_maksimum ?? null,
+      projectNama: z.gudang?.project?.nama_project || "-",
+      area: z.gudang?.project?.area || "-",
+      kodeZona: z.kode_zona,
+      namaZona: z.nama_zona || z.kode_zona,
+      kapasitasMaksimum: kapasitas,
+      totalQty: qty,
+      sisa, // null = kapasitas belum diatur
+      statusKecukupan: z.status_kecukupan || "CUKUP",
+      statusKecukupanSource: z.status_kecukupan_source || "AUTO",
+      kapasitasBelumDiatur: kapasitas == null,
+      dinilaiOleh: z.dinilai_oleh_user?.nama || z.dinilai_oleh_user?.email || null,
+      dinilaiPada: z.dinilai_pada || null,
+    };
+  });
 };
 
+// @deprecated since 2026-09-05 (Gelombang 3 task) — bulk override gudang ini
+// akan dihapus setelah Gelombang 4 frontend selesai migrasi ke per-zona PATCH.
+// Pengganti: zone.service.updateUtilizationStatus() dipanggil via
+// PATCH /api/zones/:zona_id/utilization-status (lebih presisi, sesuai dengan
+// satu zona yang sedang dinilai supervisor — bukan memaksakan status yang
+// sama ke seluruh zona di gudang).
 const updateWarehouseAssessment = async (gudangId, body, actor) => {
   const { status_kecukupan, catatan } = body;
 

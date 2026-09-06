@@ -65,15 +65,19 @@ const restore = async (req, res, next) => {
 
 const updateUtilizationStatus = async (req, res, next) => {
   try {
-    const { status_kecukupan } = req.body;
+    const { status_kecukupan, kapasitas_maksimum } = req.body;
     const userId = req.user.id;
     const zonaId = req.params.zona_id;
 
-    if (!status_kecukupan) {
-      return response.error(res, "status_kecukupan wajib diisi.", 400);
+    if (status_kecukupan === undefined && kapasitas_maksimum === undefined) {
+      return response.error(res, "Minimal satu field harus diisi.", 400);
     }
 
-    const result = await zoneService.updateUtilizationStatus(zonaId, status_kecukupan, userId);
+    const result = await zoneService.updateUtilizationStatus(zonaId, {
+      status_kecukupan,
+      kapasitas_maksimum,
+    }, userId);
+
     return response.success(res, "Status utilisasi zona berhasil diperbarui.", result);
   } catch (err) {
     next(err);
