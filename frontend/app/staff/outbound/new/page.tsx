@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardList, ChevronDown, Loader2, AlertCircle, Truck, User, MapPin, X } from "lucide-react";
+import { ClipboardList, ChevronDown, Loader2, AlertCircle, Truck, User, MapPin, X, Upload, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -84,18 +84,20 @@ function ConfirmModal({
   picPemohon,
   selectedVehicle,
   selectedPersonil,
+  fotoUrlsByItem,
 }: {
   open: boolean;
   onClose: () => void;
   onConfirm: () => void;
   submitting: boolean;
-  selectedItems: { nama_barang?: string; qty: number; unit?: string; kode_perangkat?: string }[];
+  selectedItems: { nama_barang?: string; qty: number; unit?: string; kode_perangkat?: string; barang_id?: string; id?: string }[];
   selectedGudangAsal: Warehouse | null;
   selectedGudangTujuan: Warehouse | null;
   selectedProject: Project | null;
   picPemohon: string;
   selectedVehicle: Vehicle | null;
   selectedPersonil: Personil | null;
+  fotoUrlsByItem: Record<string, string>;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -143,26 +145,33 @@ function ConfirmModal({
                 Daftar Barang
               </p>
               <div className="space-y-2">
-                {selectedItems.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-medium text-slate-800">
-                        {item.nama_barang || item.kode_perangkat || "-"}
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        {item.kode_perangkat || "-"}
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-medium text-slate-700">
-                        {item.qty} {item.unit || "unit"}
+                {selectedItems.map((item, idx) => {
+                  const key = String(item.barang_id || item.id || "");
+                  const fotoUrl = fotoUrlsByItem[key];
+                  return (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-medium text-slate-800">
+                          {item.nama_barang || item.kode_perangkat || "-"}
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          {item.kode_perangkat || "-"}
+                        </span>
+                        {fotoUrl && (
+                          <img src={fotoUrl} alt="Foto barang" className="mt-1 h-10 w-10 rounded-md border border-gray-200 object-cover" />
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="font-medium text-slate-700">
+                          {item.qty} {item.unit || "unit"}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -276,8 +285,13 @@ export default function AjukanSuratJalanPage() {
   const [boqItemsLoading, setBoqItemsLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [fotoUrlsByItem, setFotoUrlsByItem] = useState<Record<string, string>>({});
+  const [uploadingFotoByItem, setUploadingFotoByItem] = useState<Record<string, boolean>>({});
+  const [fotoErrorsByItem, setFotoErrorsByItem] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
     return () => {
@@ -397,12 +411,57 @@ export default function AjukanSuratJalanPage() {
   );
 
   const totalQty = selectedItems.reduce((sum, i) => sum + i.qty, 0);
-  const canSubmit = !!selectedProject && selectedItems.length > 0 && !!selectedGudangAsalId && !!selectedGudangTujuanId && !!selectedPersonil;
+  const canSubmit = !!selectedProject && selectedItems.length > 0 && !!selectedGudangAsalId && !!selectedGudangTujuanId && !!selectedPersonil && Object.keys(fotoUrlsByItem).length > 0;
 
   async function handleSubmit() {
     if (!canSubmit || !selectedProject || !selectedPersonil) return;
     if (formError) return;
     setShowConfirmModal(true);
+  }
+
+  async function handleFotoUpload(itemKey: string, file: File) {
+    setFotoErrorsByItem((prev) => ({ ...prev, [itemKey]: null }));
+    setUploadingFotoByItem((prev) => ({ ...prev, [itemKey]: true }));
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const uploadRes = await post(`${baseUrl}/api/upload`, formData);
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => null);
+        throw new Error(err?.message || "Gagal upload foto.");
+      }
+
+      const uploadData = await uploadRes.json();
+      const fotoUrl = uploadData?.data?.url;
+      if (!fotoUrl) {
+        throw new Error("URL foto tidak ditemukan dari respons upload.");
+      }
+
+      setFotoUrlsByItem((prev) => ({ ...prev, [itemKey]: fotoUrl }));
+    } catch (err) {
+      setFotoErrorsByItem((prev) => ({
+        ...prev,
+        [itemKey]: err instanceof Error ? err.message : "Gagal upload foto.",
+      }));
+    } finally {
+      setUploadingFotoByItem((prev) => ({ ...prev, [itemKey]: false }));
+    }
+  }
+
+  function handleFotoRemove(itemKey: string) {
+    setFotoUrlsByItem((prev) => {
+      const next = { ...prev };
+      delete next[itemKey];
+      return next;
+    });
+    setFotoErrorsByItem((prev) => {
+      const next = { ...prev };
+      delete next[itemKey];
+      return next;
+    });
   }
 
   function showToast(message: string, type: "success" | "error") {
@@ -429,14 +488,18 @@ export default function AjukanSuratJalanPage() {
         project_id: selectedProjectId,
         kategori_approval: "manual_override",
         pic_pemohon_nama: picPemohon || null,
-        items: selectedItems.map((i) => ({
-          barang_id: String(i.barang_id || i.id),
-          qty: i.qty,
-          satuan_id: String(i.satuan_default_id || i.unit || 1),
-          kondisi: "baik",
-          is_kelebihan: false,
-          catatan: null,
-        })),
+        items: selectedItems.map((i) => {
+          const key = String(i.barang_id || i.id);
+          return {
+            barang_id: String(i.barang_id || i.id),
+            qty: i.qty,
+            satuan_id: String(i.satuan_default_id || i.unit || 1),
+            kondisi: "baik",
+            is_kelebihan: false,
+            catatan: null,
+            foto_url: fotoUrlsByItem[key] || null,
+          };
+        }),
       };
 
       const response = await post(`${baseUrl}/api/surat-jalan`, payload);
@@ -453,16 +516,17 @@ export default function AjukanSuratJalanPage() {
         throw new Error("Respons API tidak mengembalikan ID Surat Jalan.");
       }
 
-      showToast(`Surat Jalan Outbound berhasil diajukan — ${result?.data?.nomor_surat_jalan || suratJalanId}`, "success");
-
-      setTimeout(() => {
-        router.push(`/staff/outbound/${suratJalanId}`);
-      }, 1500);
+      setShowSuccessModal(true);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Terjadi kesalahan saat membuat Surat Jalan.", "error");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleSuccessModalClose() {
+    setShowSuccessModal(false);
+    router.push("/staff/outbound");
   }
 
   if (loading) {
@@ -589,6 +653,7 @@ export default function AjukanSuratJalanPage() {
                         <th className="pb-3 font-semibold">Nama Barang</th>
                         <th className="pb-3 font-semibold text-right">BOQ Plan</th>
                         <th className="pb-3 font-semibold text-right">Qty</th>
+                      <th className="pb-3 font-semibold">Foto Barang</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -620,18 +685,60 @@ export default function AjukanSuratJalanPage() {
                                 </button>
                               </div>
                             </td>
+                            <td className="py-3">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  id={`foto-${key}`}
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) handleFotoUpload(key, file);
+                                  }}
+                                />
+                                {fotoUrlsByItem[key] ? (
+                                  <div className="relative">
+                                    <img src={fotoUrlsByItem[key]} alt="Preview" className="h-10 w-10 rounded-md border border-gray-200 object-cover" />
+                                    <button
+                                      type="button"
+                                      onClick={() => handleFotoRemove(key)}
+                                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-white hover:bg-rose-600"
+                                    >
+                                      <X size={10} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <label
+                                    htmlFor={`foto-${key}`}
+                                    className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-dashed border-gray-300 text-gray-400 hover:border-[#E8632C] hover:text-[#E8632C] ${uploadingFotoByItem[key] ? "opacity-50" : ""}`}
+                                  >
+                                    {uploadingFotoByItem[key] ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                                  </label>
+                                )}
+                              </div>
+                              {fotoErrorsByItem[key] && (
+                                <p className="mt-1 text-[10px] text-rose-600">{fotoErrorsByItem[key]}</p>
+                              )}
+                            </td>
                           </tr>
                         );
                       })}
-                      {boqItems.length === 0 && (
-                        <tr>
-                          <td colSpan={4} className="py-8 text-center text-gray-400">
-                            Project ini belum memiliki BOQ Plan atau belum ada item di BOQ Plan.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                  {boqItems.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-gray-400">
+                        Project ini belum memiliki BOQ Plan atau belum ada item di BOQ Plan.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+
+              {Object.keys(fotoUrlsByItem).length === 0 && selectedProject && (
+                <p className="mt-3 text-xs text-gray-400">
+                  Upload minimal 1 foto barang sebelum dapat mengajukan Surat Jalan.
+                </p>
+              )}
 
                   {formError && (
                     <div className="mt-3 flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">
@@ -719,8 +826,9 @@ export default function AjukanSuratJalanPage() {
           <Button disabled={!canSubmit || submitting} onClick={handleSubmit} className="h-auto rounded-xl bg-[#E8632C] py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40">
             {submitting ? "Memproses..." : "Ajukan Surat Jalan"}
           </Button>
+        </div>
 
-          <ConfirmModal
+        <ConfirmModal
             open={showConfirmModal}
             onClose={() => setShowConfirmModal(false)}
             onConfirm={confirmSubmit}
@@ -732,50 +840,82 @@ export default function AjukanSuratJalanPage() {
             picPemohon={picPemohon}
             selectedVehicle={selectedVehicle}
             selectedPersonil={selectedPersonil}
+            fotoUrlsByItem={fotoUrlsByItem}
           />
 
-          {toast && (
-            <div
-              className={[
-                "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
-                toast.type === "success"
-                  ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
-                  : "border-rose-200/80 bg-rose-50/95 text-rose-800",
-              ].join(" ")}
-            >
-              <div
-                className={[
-                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                  toast.type === "success" ? "bg-emerald-100" : "bg-rose-100",
-                ].join(" ")}
-              >
-                {toast.type === "success" ? (
-                  <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                )}
+      </div>
+
+      {toast && (
+        <div
+          className={[
+            "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
+            toast.type === "success"
+              ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
+              : "border-rose-200/80 bg-rose-50/95 text-rose-800",
+          ].join(" ")}
+        >
+          <div
+            className={[
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+              toast.type === "success" ? "bg-emerald-100" : "bg-rose-100",
+            ].join(" ")}
+          >
+            {toast.type === "success" ? (
+              <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+          </div>
+          <p className="flex-1 leading-snug">{toast.message}</p>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className={[
+              "ml-2 shrink-0 rounded-full p-1 transition-colors",
+              toast.type === "success"
+                ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
+                : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
+            ].join(" ")}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {showSuccessModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+          onClick={handleSuccessModalClose}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center px-6 py-8 text-center">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
               </div>
-              <p className="flex-1 leading-snug">{toast.message}</p>
+              <h3 className="text-lg font-bold text-gray-900">Surat Jalan Berhasil Diajukan</h3>
+              <p className="mt-2 text-sm text-gray-500">
+                Menunggu konfirmasi persetujuan dari supervisor.
+              </p>
               <button
                 type="button"
-                onClick={() => setToast(null)}
-                className={[
-                  "ml-2 shrink-0 rounded-full p-1 transition-colors",
-                  toast.type === "success"
-                    ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
-                    : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
-                ].join(" ")}
+                onClick={handleSuccessModalClose}
+                className="mt-6 w-full rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F]"
               >
-                <X size={14} />
+                OK
               </button>
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

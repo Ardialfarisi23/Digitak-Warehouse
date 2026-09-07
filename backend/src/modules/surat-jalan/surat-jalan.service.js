@@ -56,6 +56,16 @@ const create = async (data, actorId) => {
         return created;
       });
 
+      if (data.tipe === "outbound") {
+        await notificationService.create({
+          role: "supervisor",
+          type: "approval",
+          title: "Outbound Menunggu Approval",
+          message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
+          link: "/dashboard/supervisor/approval/outbound",
+        });
+      }
+
       return suratJalan;
     } catch (err) {
       if (err instanceof PrismaClientKnownRequestError && err.code === "P2002" && attempt < MAX_ATTEMPTS) {
@@ -320,6 +330,16 @@ const approveOutbound = async (id, actorId) => {
           data_sebelum: { status: shipment.status },
           data_sesudah: { status: "disetujui", surat_jalan_id: id },
         },
+      });
+    }
+
+    if (shipment.created_by) {
+      await notificationService.create({
+        userId: shipment.created_by,
+        type: "approval",
+        title: "Surat Jalan Disetujui",
+        message: `Surat Jalan ${shipment.nomor_surat_jalan} telah disetujui dan siap diproses.`,
+        link: `/staff/outbound/${shipment.surat_jalan_id}`,
       });
     }
   });
