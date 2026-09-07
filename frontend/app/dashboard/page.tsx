@@ -4,10 +4,10 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
+import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity, getStatusSourceLabel } from "@/lib/capacity";
 
 import {
   Boxes,
@@ -19,9 +19,11 @@ import {
   AlertTriangle,
   Clock,
   PackageCheck,
+  Package,
+  PackageMinus,
+  ClipboardCheck,
+  Wallet,
   FileCheck2,
-  Database,
-  UserCog,
 } from "lucide-react";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -31,7 +33,7 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 
 // ---------------------------------------------------------------------------
 // DATA DUMMY — sesuai istilah & metrik pada PRD (BOQ, Surat Jalan, Kecukupan
-// Area, Rekonsiliasi Hardware, Approval Outbound)
+// Area, Rekonsiliasi Hardware)
 // ---------------------------------------------------------------------------
 
 const formatNumber = (value: number) =>
@@ -55,46 +57,35 @@ const defaultDashboardStats: DashboardStats = {
   warehouses: 0,
 };
 
-const warehouseCapacity = [
-  {
-    name: "Gudang Pusat Cimahi",
-    percent: 92,
-    status: "Tidak Cukup",
-    tone: "rose",
-  },
-  {
-    name: "Gudang 2",
-    percent: 71,
-    status: "Mendekati Penuh",
-    tone: "amber",
-  },
-  {
-    name: "Gudang Transit (3 lokasi aktif)",
-    percent: 38,
-    status: "Cukup",
-    tone: "emerald",
-  },
-];
-
-const toneMap: Record<
-  string,
-  { badge: string; bar: string; track: string }
+const STATUS_META: Record<
+  ProjectSummaryRow["status"],
+  { label: string; badge: string; icon: typeof CheckCircle2 }
 > = {
-  rose: {
-    badge: "text-rose-600 bg-rose-50",
-    bar: "bg-rose-500",
-    track: "bg-rose-100",
+  sesuai: {
+    label: "Sesuai",
+    badge: "bg-emerald-50 text-emerald-600",
+    icon: CheckCircle2,
   },
-  amber: {
-    badge: "text-amber-600 bg-amber-50",
-    bar: "bg-amber-500",
-    track: "bg-amber-100",
+  perhatian: {
+    label: "Perhatian",
+    badge: "bg-amber-50 text-amber-600",
+    icon: AlertTriangle,
   },
-  emerald: {
-    badge: "text-emerald-600 bg-emerald-50",
-    bar: "bg-emerald-400",
-    track: "bg-emerald-100",
+  berjalan: {
+    label: "Berjalan",
+    badge: "bg-blue-50 text-blue-600",
+    icon: Package,
   },
+};
+
+const METRIC_TONE: Record<
+  "slate" | "emerald" | "orange" | "rose",
+  { box: string; label: string }
+> = {
+  slate: { box: "bg-slate-50 text-slate-700", label: "text-slate-400" },
+  emerald: { box: "bg-emerald-50 text-emerald-800", label: "text-emerald-600" },
+  orange: { box: "bg-orange-50 text-orange-800", label: "text-orange-600" },
+  rose: { box: "bg-rose-50 text-rose-600 border border-rose-200", label: "text-rose-600" },
 };
 
 type ProjectSummaryRow = {
@@ -105,87 +96,18 @@ type ProjectSummaryRow = {
   area: string;
   statusBoq: string;
   hardwareOnSite: number;
+  mos_sistem: number;
+  boq: number;
+  additional: number;
   used: number;
   remains: number;
+  status: "sesuai" | "perhatian" | "berjalan";
   progress: number;
 };
-
-const reconciliationBreakdown = [
-  { label: "BOQ (Rencana)", value: 620, tone: "bg-slate-300" },
-  { label: "Additional", value: 84, tone: "bg-blue-400" },
-  { label: "Hardware on Site", value: 560, tone: "bg-emerald-400" },
-  { label: "Used (Terpasang)", value: 410, tone: "bg-orange-400" },
-  { label: "Remains", value: 150, tone: "bg-slate-400" },
-];
-const reconciliationMax = Math.max(
-  ...reconciliationBreakdown.map((r) => r.value)
-);
-
-const activityFeed = [
-  {
-    id: "act-1",
-    icon: FileCheck2,
-    iconColor: "text-emerald-600 bg-emerald-50",
-    text: "BOQ Proyek SI Data Center BUMN Rw 04 diaktifkan",
-    time: "12 menit lalu",
-  },
-  {
-    id: "act-2",
-    icon: AlertTriangle,
-    iconColor: "text-rose-500 bg-rose-50",
-    text: "Surat Jalan #SJ-0231 belum dikonfirmasi diterima sejak 2 hari",
-    time: "2 hari lalu",
-  },
-  {
-    id: "act-3",
-    icon: PackageCheck,
-    iconColor: "text-blue-500 bg-blue-50",
-    text: "Kelebihan barang tercatat pada inbound Surat Jalan #SJ-0225 (Switch Managed 24-port)",
-    time: "5 jam lalu",
-  },
-  {
-    id: "act-4",
-    icon: ShieldCheck,
-    iconColor: "text-orange-500 bg-orange-50",
-    text: "Permintaan BOQ tambahan dari Supervisor Gudang 2 menunggu tinjauan",
-    time: "1 hari lalu",
-  },
-];
 
 // ---------------------------------------------------------------------------
 // HELPER COMPONENTS
 // ---------------------------------------------------------------------------
-
-function GaugeRing({ score, size = 140 }: { score: number; size?: number }) {
-  const stroke = 12;
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (score / 100) * circumference;
-
-  return (
-    <svg width={size} height={size} className="-rotate-90">
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        stroke="#FFF7ED"
-        strokeWidth={stroke}
-        fill="none"
-      />
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        stroke="#F97316"
-        strokeWidth={stroke}
-        strokeLinecap="round"
-        fill="none"
-        strokeDasharray={circumference}
-        strokeDashoffset={offset}
-      />
-    </svg>
-  );
-}
 
 function KpiCard({
   label,
@@ -237,31 +159,111 @@ function KpiCard({
   return content;
 }
 
+function MetricBox({
+  label,
+  value,
+  tone,
+  highlight,
+}: {
+  label: string;
+  value: number;
+  tone: keyof typeof METRIC_TONE;
+  highlight?: boolean;
+}) {
+  const t = METRIC_TONE[tone];
+  return (
+    <div className={`rounded-lg px-1 py-2 ${t.box}`}>
+      <span className={`block text-[10px] font-medium ${t.label}`}>{label}</span>
+      <span className={`block text-xs font-bold ${highlight ? "font-extrabold" : ""}`}>
+        {formatNumber(value)}
+      </span>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // MAIN DASHBOARD CONTENT
 // ---------------------------------------------------------------------------
 
 function DashboardPageContent() {
-  const { user } = useAuth();
   const { get } = useApi();
   const [projectFilter, setProjectFilter] = useState("");
   const [projectSummary, setProjectSummary] = useState<ProjectSummaryRow[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats>(defaultDashboardStats);
+  const [reconciliationRows, setReconciliationRows] = useState<
+    Array<{
+      project_id: string;
+      project_nama?: string;
+      boq: number;
+      additional: number;
+      mos_sistem: number;
+      used: number;
+      remains: number;
+      status?: string;
+    }>
+  >([]);
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const [isLoadingReconciliation, setIsLoadingReconciliation] = useState(true);
+  const [recentBoqs, setRecentBoqs] = useState<
+    Array<{
+      boq_id: number | string;
+      boq_number?: string | null;
+      status?: string;
+      tanggal_aktivasi?: string | null;
+      updated_at?: string | null;
+      created_at?: string | null;
+      tiket?: { project?: { nama_project?: string } } | null;
+    }>
+  >([]);
+  const [outboundQueue, setOutboundQueue] = useState<
+    Array<{
+      surat_jalan_id: number | string;
+      nomor_surat_jalan?: string;
+      status?: string;
+      updated_at?: string | null;
+      created_at?: string | null;
+    }>
+  >([]);
+  const [inboundList, setInboundList] = useState<
+    Array<{
+      surat_jalan_id: number | string;
+      nomor_surat_jalan?: string;
+      status?: string;
+      updated_at?: string | null;
+      created_at?: string | null;
+    }>
+  >([]);
+  const [isLoadingActivity, setIsLoadingActivity] = useState(true);
+  const [kapasitasPerGudang, setKapasitasPerGudang] = useState<
+    Array<{
+      gudang_id: string;
+      nama_gudang: string;
+      tipe: string;
+      kapasitas_maksimum: number | null;
+      total_qty_di_zona: number;
+      total_qty_generic: number;
+      sisa: number | null;
+      status: string;
+      total_zona: number;
+      total_zona_dengan_kapasitas: number;
+    }>
+  >([]);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
         const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
-        const [statsResponse, projectSummaryResponse] = await Promise.all([
+        const [statsResponse, projectSummaryResponse, reconciliationResponse] = await Promise.all([
           get(`${apiBase}/api/dashboard`),
           get(`${apiBase}/api/dashboard/project-summary`),
+          get(`${apiBase}/api/reconciliation/inventory`),
         ]);
 
         const statsJson = await statsResponse.json();
         const projectSummaryJson = await projectSummaryResponse.json();
+        const reconciliationJson = await reconciliationResponse.json();
 
         if (!statsResponse.ok) {
           throw new Error(statsJson?.message || "Gagal mengambil statistik dashboard.");
@@ -283,18 +285,124 @@ function DashboardPageContent() {
           warehouses: Number(statsData.warehouses ?? 0),
         });
 
+        setKapasitasPerGudang(Array.isArray(statsData.kapasitas_per_gudang) ? statsData.kapasitas_per_gudang : []);
+
         setProjectSummary(Array.isArray(projectSummaryJson?.data) ? projectSummaryJson.data : []);
+
+        const reconPayload = reconciliationJson?.data;
+        const reconList: Array<Record<string, unknown>> = Array.isArray(reconPayload)
+          ? reconPayload
+          : Array.isArray(reconPayload?.data)
+            ? reconPayload.data
+            : [];
+        const mappedReconRows = reconList.map((row) => {
+          const proj = row?.project as { nama_project?: string } | undefined;
+          return {
+            project_id: String(row?.project_id ?? ""),
+            project_nama: (row?.project_nama ?? proj?.nama_project ?? undefined) as string | undefined,
+            boq: Number(row?.boq ?? 0) || 0,
+            additional: Number(row?.additional ?? 0) || 0,
+            mos_sistem: Number(row?.mos_sistem ?? 0) || 0,
+            used: Number(row?.used ?? 0) || 0,
+            remains: Number(row?.remains ?? 0) || 0,
+            status: row?.status ? String(row.status) : undefined,
+          };
+        });
+        const seenRecon = new Set<string>();
+        const dedupedReconRows = mappedReconRows.filter((r) => {
+          if (!r.project_id) return true;
+          if (seenRecon.has(r.project_id)) return false;
+          seenRecon.add(r.project_id);
+          return true;
+        });
+        setReconciliationRows(dedupedReconRows);
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
         setDashboardStats(defaultDashboardStats);
         setProjectSummary([]);
+        setReconciliationRows([]);
+        setKapasitasPerGudang([]);
       } finally {
         setIsLoadingProjects(false);
         setIsLoadingStats(false);
+        setIsLoadingReconciliation(false);
       }
     };
 
     fetchDashboardData();
+  }, [get]);
+
+  useEffect(() => {
+    const fetchActivity = async () => {
+      setIsLoadingActivity(true);
+      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
+      const safeJson = async (res: Response) => {
+        try {
+          return await res.json();
+        } catch {
+          return null;
+        }
+      };
+
+      const [boqRes, outboundRes, inboundRes] = await Promise.allSettled([
+        get(`${apiBase}/api/boqs?page=1&limit=5&sortBy=updated_at&sortOrder=desc`),
+        get(`${apiBase}/api/surat-jalan/outbound/queue`),
+        get(`${apiBase}/api/surat-jalan/inbound`),
+      ]);
+
+      if (boqRes.status === "fulfilled") {
+        const res = boqRes.value;
+        const json = await safeJson(res);
+        if (res.ok) {
+          const list = json?.data?.data ?? json?.data ?? [];
+          setRecentBoqs(Array.isArray(list) ? list : []);
+        } else {
+          setRecentBoqs([]);
+        }
+      } else {
+        setRecentBoqs([]);
+      }
+
+      if (outboundRes.status === "fulfilled") {
+        const res = outboundRes.value;
+        const json = await safeJson(res);
+        if (res.ok) {
+          const list = json?.data ?? [];
+          const arr = Array.isArray(list)
+            ? list
+            : Array.isArray(list?.data)
+              ? list.data
+              : [];
+          setOutboundQueue(arr.slice(0, 5));
+        } else {
+          setOutboundQueue([]);
+        }
+      } else {
+        setOutboundQueue([]);
+      }
+
+      if (inboundRes.status === "fulfilled") {
+        const res = inboundRes.value;
+        const json = await safeJson(res);
+        if (res.ok) {
+          const list = json?.data ?? [];
+          const arr = Array.isArray(list)
+            ? list
+            : Array.isArray(list?.data)
+              ? list.data
+              : [];
+          setInboundList(arr.slice(0, 5));
+        } else {
+          setInboundList([]);
+        }
+      } else {
+        setInboundList([]);
+      }
+
+      setIsLoadingActivity(false);
+    };
+
+    fetchActivity();
   }, [get]);
 
   const greeting = `Selamat Pagi, Selamat Beraktivitas! `;
@@ -332,6 +440,7 @@ function DashboardPageContent() {
       iconColor: "text-orange-500 bg-orange-50",
       note: "Menunggu konfirmasi Diterima/Didistribusikan",
       noteColor: "text-orange-500",
+      href: "/dashboard/delivery",
     },
     {
       label: "Approval Menunggu",
@@ -340,14 +449,235 @@ function DashboardPageContent() {
       iconColor: "text-rose-500 bg-rose-50",
       note: "Informasi — disetujui oleh Supervisor",
       noteColor: "text-slate-400",
+      href: "/dashboard/delivery",
     },
   ];
 
-  const filteredProjects = projectSummary.filter((p) =>
+  const reconciliationTotals = reconciliationRows.reduce(
+    (acc, row) => {
+      acc.boq += row.boq;
+      acc.additional += row.additional;
+      acc.mos_sistem += row.mos_sistem;
+      acc.used += row.used;
+      acc.remains += row.remains;
+      return acc;
+    },
+    { boq: 0, additional: 0, mos_sistem: 0, used: 0, remains: 0 }
+  );
+
+  const projectRows = projectSummary.map((p) => {
+    const hardwareOnSite = p.hardwareOnSite;
+    const used = p.used;
+    const remains = p.remains;
+    const progress =
+      hardwareOnSite > 0
+        ? Math.min(Math.round((used / hardwareOnSite) * 100), 100)
+        : 0;
+    return { ...p, hardwareOnSite, used, remains, progress };
+  });
+  const activeProjectRows = projectRows.filter((p) => p.statusBoq === "Aktif");
+
+  const filteredProjects = activeProjectRows.filter((p) =>
     `${p.projectName} ${p.area} ${p.clusterLabel}`
       .toLowerCase()
       .includes(projectFilter.toLowerCase())
   );
+
+  const reconciliationBreakdown = [
+    { label: "BOQ (Rencana)", value: reconciliationTotals.boq, tone: "bg-slate-300" },
+    { label: "Additional", value: reconciliationTotals.additional, tone: "bg-blue-400" },
+    { label: "MOS (Sistem)", value: reconciliationTotals.mos_sistem, tone: "bg-emerald-400" },
+    { label: "Used (Terpasang)", value: reconciliationTotals.used, tone: "bg-orange-400" },
+    { label: "Remains", value: reconciliationTotals.remains, tone: "bg-slate-400" },
+  ];
+  const reconciliationMax = Math.max(
+    1,
+    ...reconciliationBreakdown.map((r) => r.value)
+  );
+  const reconciliationValues = isLoadingReconciliation
+    ? reconciliationBreakdown.map((r) => ({ ...r, value: 0 }))
+    : reconciliationBreakdown;
+
+  const timeAgo = (iso: string | null | undefined): string | null => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    const diffMs = Date.now() - d.getTime();
+    const sec = Math.floor(diffMs / 1000);
+    if (sec < 0) return null;
+    if (sec < 60) return "Baru saja";
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min} menit lalu`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr} jam lalu`;
+    const day = Math.floor(hr / 24);
+    if (day < 7) return `${day} hari lalu`;
+    const wk = Math.floor(day / 7);
+    if (wk < 5) return `${wk} minggu lalu`;
+    const mo = Math.floor(day / 30);
+    return `${mo} bulan lalu`;
+  };
+
+  type ActivityItem = {
+    id: string;
+    type: "boq" | "surat-jalan" | "reconciliation";
+    title: string;
+    timestamp: string | null;
+    actionRequired: boolean;
+    actionUrl?: string;
+    iconKey: "file" | "truck" | "alert" | "package" | "shield";
+    iconTone: string;
+  };
+
+  const buildActivityItems = (): ActivityItem[] => {
+    const items: ActivityItem[] = [];
+
+    for (const sj of outboundQueue) {
+      if (!sj) continue;
+      const id = `sj-out-${sj.surat_jalan_id}`;
+      const status = String(sj.status ?? "").toLowerCase();
+      const actionRequired = status === "draft_diajukan";
+      const ts = sj.updated_at ?? sj.created_at ?? null;
+      const nomor = sj.nomor_surat_jalan ?? `#${sj.surat_jalan_id}`;
+      const verb = actionRequired
+        ? "menunggu approval"
+        : status === "disetujui"
+          ? "telah disetujui"
+          : status === "digenerate"
+            ? "siap dikirim"
+            : `status: ${sj.status ?? "-"}`;
+      items.push({
+        id,
+        type: "surat-jalan",
+        title: `Surat Jalan ${nomor} (Outbound) ${verb}`,
+        timestamp: ts,
+        actionRequired,
+        actionUrl: "/dashboard/delivery",
+        iconKey: actionRequired ? "shield" : "truck",
+        iconTone: actionRequired
+          ? "text-orange-500 bg-orange-50"
+          : "text-blue-500 bg-blue-50",
+      });
+    }
+
+    for (const sj of inboundList) {
+      if (!sj) continue;
+      const id = `sj-in-${sj.surat_jalan_id}`;
+      const status = String(sj.status ?? "").toLowerCase();
+      const actionRequired = status === "draft_diajukan" || status === "menunggu_verifikasi";
+      const ts = sj.updated_at ?? sj.created_at ?? null;
+      const nomor = sj.nomor_surat_jalan ?? `#${sj.surat_jalan_id}`;
+      const verb = actionRequired
+        ? "menunggu verifikasi"
+        : status === "disetujui" || status === "digenerate"
+          ? "telah disetujui"
+          : status === "diterima_didistribusikan"
+            ? "telah diterima"
+            : `status: ${sj.status ?? "-"}`;
+      items.push({
+        id,
+        type: "surat-jalan",
+        title: `Surat Jalan ${nomor} (Inbound) ${verb}`,
+        timestamp: ts,
+        actionRequired,
+        actionUrl: "/dashboard/delivery",
+        iconKey: actionRequired ? "alert" : "package",
+        iconTone: actionRequired
+          ? "text-rose-500 bg-rose-50"
+          : "text-emerald-600 bg-emerald-50",
+      });
+    }
+
+    for (const row of reconciliationRows) {
+      if (!row || String(row.status ?? "").toLowerCase() !== "perhatian") continue;
+      const id = `recon-${row.project_id}`;
+      const projectName = (row as { project_nama?: string }).project_nama ?? `Project ${row.project_id}`;
+      items.push({
+        id,
+        type: "reconciliation",
+        title: `Rekonsiliasi ${projectName} memerlukan perhatian`,
+        timestamp: null,
+        actionRequired: true,
+        actionUrl: "/dashboard/reconciliation",
+        iconKey: "alert",
+        iconTone: "text-rose-500 bg-rose-50",
+      });
+    }
+
+    for (const boq of recentBoqs) {
+      if (!boq) continue;
+      const id = `boq-${boq.boq_id}`;
+      const status = String(boq.status ?? "").toLowerCase();
+      const ts =
+        status === "aktif"
+          ? boq.tanggal_aktivasi ?? boq.updated_at ?? boq.created_at ?? null
+          : boq.updated_at ?? boq.created_at ?? null;
+      const projectName =
+        boq.tiket?.project?.nama_project ?? `BOQ ${boq.boq_number ?? boq.boq_id}`;
+      const actionRequired = status === "draft";
+      const verb = actionRequired
+        ? "menunggu verifikasi"
+        : status === "aktif"
+          ? "telah diaktifkan"
+          : status === "selesai"
+            ? "telah selesai"
+            : `status: ${boq.status ?? "-"}`;
+      items.push({
+        id,
+        type: "boq",
+        title: `BOQ ${projectName} ${verb}`,
+        timestamp: ts,
+        actionRequired,
+        actionUrl: "/dashboard/boq",
+        iconKey: actionRequired ? "alert" : "file",
+        iconTone: actionRequired
+          ? "text-amber-600 bg-amber-50"
+          : "text-emerald-600 bg-emerald-50",
+      });
+    }
+
+    const withTs = items.filter((i) => i.timestamp);
+    const withoutTs = items.filter((i) => !i.timestamp);
+    withTs.sort((a, b) => {
+      const at = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const bt = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return bt - at;
+    });
+    const priorityScore = (i: ActivityItem) => (i.actionRequired ? 0 : 1);
+    const ordered = [...withTs, ...withoutTs].sort((a, b) => {
+      const pa = priorityScore(a);
+      const pb = priorityScore(b);
+      if (pa !== pb) return pa - pb;
+      const at = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const bt = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return bt - at;
+    });
+    const seenIds = new Set<string>();
+    const dedupedOrdered = ordered.filter((i) => {
+      if (seenIds.has(i.id)) return false;
+      seenIds.add(i.id);
+      return true;
+    });
+    return dedupedOrdered.slice(0, 5);
+  };
+
+  const activityItems = buildActivityItems();
+
+  const iconForKey = (k: ActivityItem["iconKey"]) => {
+    switch (k) {
+      case "truck":
+        return Truck;
+      case "alert":
+        return AlertTriangle;
+      case "package":
+        return PackageCheck;
+      case "shield":
+        return ShieldCheck;
+      case "file":
+      default:
+        return FileCheck2;
+    }
+  };
 
   return (
     <div className={`flex gap-6 text-slate-800 ${plusJakartaSans.className}`}>
@@ -375,40 +705,74 @@ function DashboardPageContent() {
               Kecukupan Area
             </h2>
             <p className="text-xs text-slate-400">
-              Kapasitas rak/area gudang dibanding volume perangkat saat ini.
+              Status kecukupan gudang berdasarkan penilaian manual Supervisor.
             </p>
           </div>
 
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            {warehouseCapacity.map((w) => {
-              const tone = toneMap[w.tone];
-              return (
-                <div
-                  key={w.name}
-                  className="rounded-2xl border border-slate-100 px-4 py-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-500">
-                      {w.name}
-                    </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${tone.badge}`}
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {isLoadingStats ? (
+              <div className="py-6 text-center text-sm text-slate-400 md:col-span-3">
+                Memuat data kapasitas...
+              </div>
+            ) : kapasitasPerGudang.length === 0 ? (
+              <div className="py-6 text-center text-sm text-slate-400 md:col-span-3">
+                Belum ada data kapasitas gudang.
+              </div>
+            ) : (
+              [...kapasitasPerGudang]
+                .sort((a, b) => {
+                  const order: Record<string, number> = {
+                    "TIDAK_CUKUP": 0,
+                    "MENDEKATI_PENUH": 1,
+                    "CUKUP": 2,
+                  };
+                  return (order[a.status] ?? 99) - (order[b.status] ?? 99);
+                })
+                .map((w) => {
+                  const statusBadgeClass = getStatusBadgeClass(w.status);
+                  const statusLabel = getStatusLabel(w.status);
+                  const sisaText = formatSisaCapacity(w.sisa, w.kapasitas_maksimum);
+                  const sourceLabel = getStatusSourceLabel({
+                    status_kecukupan_source: "AUTO",
+                    dinilai_oleh: null,
+                    dinilai_pada: null,
+                  });
+
+                  return (
+                    <Link
+                      href={`/dashboard/warehouse`}
+                      key={w.gudang_id}
+                      className="rounded-2xl border border-slate-100 bg-white p-4 shadow-xs transition hover:shadow-sm block"
                     >
-                      {w.status}
-                    </span>
-                  </div>
-                  <div className={`mt-3 h-1.5 w-full overflow-hidden rounded-full ${tone.track}`}>
-                    <div
-                      className={`h-full rounded-full ${tone.bar}`}
-                      style={{ width: `${w.percent}%` }}
-                    />
-                  </div>
-                  <div className="mt-1 text-[11px] text-slate-400">
-                    {w.percent}% terpakai
-                  </div>
-                </div>
-              );
-            })}
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-600">
+                          <Boxes size={20} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold text-slate-900 leading-snug">
+                            {w.nama_gudang}
+                          </div>
+                          <div className="mt-1.5">
+                            <span
+                              className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusBadgeClass}`}
+                            >
+                              {statusLabel}
+                            </span>
+                          </div>
+                          {sisaText && (
+                            <p className="mt-1 text-[10px] font-semibold text-slate-600">
+                              Sisa: {sisaText}
+                            </p>
+                          )}
+                          <p className="mt-1 text-[10px] text-slate-400">
+                            {sourceLabel}
+                          </p>
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })
+            )}
           </div>
         </section>
 
@@ -436,119 +800,102 @@ function DashboardPageContent() {
             </div>
           </div>
 
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="text-[11px] uppercase tracking-wide text-slate-400">
-                  <th className="pb-2 font-medium">Project/Cluster</th>
-                  <th className="pb-2 font-medium">Area</th>
-                  <th className="pb-2 font-medium">Status BOQ</th>
-                  <th className="pb-2 font-medium">Hardware on Site</th>
-                  <th className="pb-2 font-medium">Used</th>
-                  <th className="pb-2 font-medium">Remains</th>
-                  <th className="pb-2 font-medium">Progres</th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoadingProjects ? (
-                  <tr>
-                    <td colSpan={7} className="py-6 text-center text-sm text-slate-400">
-                      Memuat data project...
-                    </td>
-                  </tr>
-                ) : filteredProjects.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-6 text-center text-sm text-slate-400">
-                      Tidak ada data project/cluster yang sesuai pencarian.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredProjects.map((p) => (
-                    <tr
-                      key={p.projectId}
-                      className="border-t border-slate-50 hover:bg-slate-50/60"
-                    >
-                      <td className="py-2.5 font-medium text-slate-900">
-                        {p.projectName}
-                        {p.clusterId ? (
-                          <div className="text-[10px] uppercase tracking-wide text-slate-400">
-                            {p.clusterLabel}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="py-2.5 text-slate-500">{p.area}</td>
-                      <td className="py-2.5">
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                            p.statusBoq === "Aktif"
-                              ? "text-emerald-600 bg-emerald-50"
-                              : p.statusBoq === "Draft"
-                                ? "text-amber-600 bg-amber-50"
-                                : "text-slate-500 bg-slate-100"
-                          }`}
-                        >
-                          {p.statusBoq}
-                        </span>
-                      </td>
-                      <td className="py-2.5 text-slate-700">{p.hardwareOnSite}</td>
-                      <td className="py-2.5 text-slate-700">{p.used}</td>
-                      <td className="py-2.5 text-slate-700">{p.remains}</td>
-                      <td className="py-2.5">
-                        <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className="h-full rounded-full bg-orange-500"
-                              style={{ width: `${p.progress}%` }}
-                            />
-                          </div>
-                          <span className="text-[11px] text-slate-400">
-                            {p.progress}%
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            {isLoadingProjects ? (
+              <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">
+                Memuat data project...
+              </div>
+            ) : activeProjectRows.length === 0 ? (
+              <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">
+                Belum ada project dengan status BOQ aktif.
+              </div>
+            ) : filteredProjects.length === 0 ? (
+              <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">
+                Tidak ada data project/cluster yang sesuai pencarian.
+              </div>
+            ) : (
+              filteredProjects.map((p) => {
+                const statusMeta = STATUS_META[p.status];
+                const StatusIcon = statusMeta.icon;
+                const maxVal = Math.max(1, p.boq + p.additional);
+                const remWidth = Math.max(0, p.remains);
+                return (
+                  <div
+                    key={p.projectId}
+                    className="rounded-2xl border border-slate-100 bg-white p-3 transition-colors hover:border-slate-200"
+                  >
+                    {/* Header baris */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-xs font-bold leading-snug text-slate-900">
+                            {p.projectName}
+                          </span>
+                          <span
+                            className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusMeta.badge}`}
+                          >
+                            <StatusIcon size={11} strokeWidth={2.5} />
+                            {statusMeta.label}
                           </span>
                         </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                        <div className="mt-0.5 text-[11px] text-slate-400">
+                          {p.area}
+                          {p.clusterId ? ` • ${p.clusterLabel}` : ""}
+                          {p.statusBoq ? ` • BOQ ${p.statusBoq}` : ""}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-[10px] uppercase tracking-wide text-slate-400">
+                          Total Unit
+                        </div>
+                        <div className="text-sm font-bold text-slate-900">
+                          {formatNumber(p.hardwareOnSite)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Stacked progress bar */}
+                    <div className="mt-2 flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        style={{ width: `${(p.hardwareOnSite / maxVal) * 100}%` }}
+                        className="bg-emerald-500"
+                        title={`MOS: ${p.hardwareOnSite}`}
+                      />
+                      <div
+                        style={{ width: `${(p.used / maxVal) * 100}%` }}
+                        className="bg-orange-500"
+                        title={`Used: ${p.used}`}
+                      />
+                      <div
+                        style={{ width: `${(remWidth / maxVal) * 100}%` }}
+                        className={p.remains < 0 ? "bg-rose-400" : "bg-slate-300"}
+                        title={`Remains: ${p.remains}`}
+                      />
+                    </div>
+
+                    {/* Grid 5 metric */}
+                    <div className="mt-2 grid grid-cols-5 gap-1.5 text-center">
+                      <MetricBox label="BOQ Plan" value={p.boq} tone="slate" />
+                      <MetricBox label="Additional" value={p.additional} tone="slate" />
+                      <MetricBox label="MOS" value={p.hardwareOnSite} tone="emerald" />
+                      <MetricBox label="Used" value={p.used} tone="orange" />
+                      <MetricBox
+                        label="Remains"
+                        value={p.remains}
+                        tone={p.remains < 0 ? "rose" : "slate"}
+                        highlight={p.remains < 0}
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </section>
       </div>
 
       {/* KOLOM KANAN */}
       <aside className="w-80 space-y-4">
-        {/* 4a. APPROVAL OUTBOUND TEPAT WAKTU */}
-        <section className="rounded-3xl border border-slate-100 bg-white p-6 shadow-xs">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
-            Approval Outbound Tepat Waktu
-          </h2>
-
-          <div className="mt-4 flex justify-center">
-            <div className="relative flex items-center justify-center">
-              <GaugeRing score={100} />
-              <div className="absolute flex flex-col items-center">
-                <span className="text-3xl font-bold text-slate-900">
-                  100<span className="text-base text-slate-300">%</span>
-                </span>
-                <span className="mt-0.5 text-[10px] font-semibold tracking-wide text-orange-500">
-                  KATEGORI KRITIS
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 space-y-2">
-            <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm">
-              <span className="text-slate-500">Rata-rata delay konfirmasi</span>
-              <span className="font-semibold text-slate-900">4.5 jam</span>
-            </div>
-            <div className="flex items-center justify-between rounded-xl bg-rose-50 px-3 py-2 text-sm">
-              <span className="text-slate-500">Surat Jalan &gt; 24 jam</span>
-              <span className="font-semibold text-rose-500">2 dokumen</span>
-            </div>
-          </div>
-        </section>
-
         {/* 4b. REKONSILIASI HARDWARE RINGKAS */}
         <section className="rounded-3xl border border-slate-100 bg-white p-6 shadow-xs">
           <h2 className="text-sm font-bold text-slate-900">
@@ -557,7 +904,7 @@ function DashboardPageContent() {
           <p className="text-xs text-slate-400">Agregat seluruh proyek aktif</p>
 
           <div className="mt-4 space-y-3">
-            {reconciliationBreakdown.map((r) => (
+            {reconciliationValues.map((r) => (
               <div key={r.label}>
                 <div className="mb-1 flex items-center justify-between text-xs">
                   <span className="text-slate-500">{r.label}</span>
@@ -580,41 +927,54 @@ function DashboardPageContent() {
             <h2 className="text-sm font-bold text-slate-900">
               Aktivitas & Tindak Lanjut Terbaru
             </h2>
-            <button
-              type="button"
-              className="text-[11px] font-semibold text-orange-500 hover:text-orange-600 cursor-pointer"
-            >
-              LIHAT SEMUA
-            </button>
           </div>
 
           <ul className="mt-4 space-y-4">
-            {activityFeed.map((a) => (
-              <li key={a.id} className="flex items-start gap-3">
-                <span
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${a.iconColor}`}
-                >
-                  <a.icon size={13} strokeWidth={2.5} />
-                </span>
-                <div>
-                  <div className="text-xs font-medium leading-snug text-slate-700">
-                    {a.text}
-                  </div>
-                  <div className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400">
-                    <Clock size={10} />
-                    {a.time}
-                  </div>
-                </div>
+            {isLoadingActivity ? (
+              <li className="text-[11px] text-slate-400">Memuat aktivitas terbaru...</li>
+            ) : activityItems.length === 0 ? (
+              <li className="text-[11px] text-slate-400">
+                Tidak ada aktivitas terbaru
               </li>
-            ))}
+            ) : (
+              activityItems.map((a, idx) => {
+                const Icon = iconForKey(a.iconKey);
+                const ts = timeAgo(a.timestamp);
+                const inner = (
+                  <>
+                    <span
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${a.iconTone}`}
+                    >
+                      <Icon size={13} strokeWidth={2.5} />
+                    </span>
+                    <div>
+                      <div className="text-xs font-medium leading-snug text-slate-700">
+                        {a.title}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400">
+                        <Clock size={10} />
+                        {ts ?? "Waktu tidak tersedia"}
+                      </div>
+                    </div>
+                  </>
+                );
+                return (
+                  <li key={`${a.type}-${a.id}-${idx}`}>
+                    {a.actionUrl ? (
+                      <Link
+                        href={a.actionUrl}
+                        className="flex items-start gap-3 hover:opacity-90"
+                      >
+                        {inner}
+                      </Link>
+                    ) : (
+                      <div className="flex items-start gap-3">{inner}</div>
+                    )}
+                  </li>
+                );
+              })
+            )}
           </ul>
-
-          <Button
-            variant="outline"
-            className="mt-5 w-full rounded-xl border-slate-200 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
-          >
-            LIHAT SEMUA AKTIVITAS
-          </Button>
         </section>
       </aside>
     </div>

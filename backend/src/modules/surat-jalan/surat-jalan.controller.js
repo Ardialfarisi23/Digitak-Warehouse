@@ -30,7 +30,7 @@ const receiveInbound = async (req, res, next) => {
 
 const findOutboundQueue = async (req, res, next) => {
   try {
-    const result = await suratJalanService.findOutboundQueue();
+    const result = await suratJalanService.findOutboundQueue(req.query);
     return response.success(res, "Daftar pengajuan outbound berhasil diambil.", result);
   } catch (err) {
     next(err);
@@ -39,7 +39,7 @@ const findOutboundQueue = async (req, res, next) => {
 
 const findInboundList = async (req, res, next) => {
   try {
-    const result = await suratJalanService.findInboundList();
+    const result = await suratJalanService.findInboundList(req.query);
     return response.success(res, "Daftar inbound yang menunggu approval berhasil diambil.", result);
   } catch (err) {
     next(err);
@@ -68,6 +68,24 @@ const findOutboundForDelivery = async (req, res, next) => {
   try {
     const result = await suratJalanService.findOutboundForDelivery(req.query);
     return response.success(res, "Daftar outbound untuk delivery tracking (Approved / Dalam Pengiriman / Selesai) berhasil diambil.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const findStaffHistory = async (req, res, next) => {
+  try {
+    const result = await suratJalanService.findStaffHistory(req.user.id, req.query);
+    return response.success(res, "Riwayat aktivitas staf berhasil diambil.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const findRejectedList = async (req, res, next) => {
+  try {
+    const result = await suratJalanService.findRejectedList(req.query);
+    return response.success(res, "Daftar surat jalan yang ditolak berhasil diambil.", result);
   } catch (err) {
     next(err);
   }
@@ -135,18 +153,10 @@ const putaway = async (req, res, next) => {
       return response.success(res, "Pengecekan fisik berhasil divalidasi. Lanjutkan ke pemilihan zona.", { items });
     }
 
-    // FIX: sebelumnya baris ini nimpa zona_id LANGSUNG ke bin_lokasi_id
-    // (bin_lokasi_id: item.bin_lokasi_id || item.zona_id) — padahal itu 2
-    // tabel/entitas yang beda total (zona_gudang vs bin_lokasi), jadi ID-nya
-    // nunjuk ke row yang salah sama sekali begitu sampai di database.
-    // Sekarang zona_id dan bin_lokasi_id dikirim apa adanya, dua-duanya
-    // sebagai field terpisah — service.putaway() yang nentuin mana yang
-    // dipakai berdasarkan mana yang keisi.
-    const normalizedItems = items.map((item) => ({
+    const normalizedItems = items.map(item => ({
       ...item,
-      zona_id: item.zona_id ?? null,
-      bin_lokasi_id: item.bin_lokasi_id ?? null,
-      qty: item.qty ?? item.qty_ditempatkan,
+      zona_id: item.zona_id,
+      qty_ditempatkan: item.qty_ditempatkan || item.qty,
     }));
 
     const result = await suratJalanService.putaway(req.params.id, normalizedItems, req.user.id);
@@ -160,6 +170,33 @@ const retrieve = async (req, res, next) => {
   try {
     const result = await suratJalanService.retrieve(req.params.id, req.body.items, req.user.id);
     return response.success(res, "Retrieval berhasil diproses.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const updateDeliveryStatus = async (req, res, next) => {
+  try {
+    const result = await suratJalanService.updateDeliveryStatus(req.params.id, req.body, req.user.id);
+    return response.success(res, "Status distribusi berhasil diperbarui.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const addItemFoto = async (req, res, next) => {
+  try {
+    const result = await suratJalanService.addItemFoto(req.params.id, req.params.itemId, req.body, req.user.id);
+    return response.success(res, "Foto berhasil diunggah.", result, 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const deleteItemFoto = async (req, res, next) => {
+  try {
+    const result = await suratJalanService.deleteItemFoto(req.params.id, req.params.itemId, req.params.fotoId, req.user.id);
+    return response.success(res, "Foto berhasil dihapus.", result);
   } catch (err) {
     next(err);
   }
@@ -182,4 +219,9 @@ module.exports = {
   rejectOutbound,
   putaway,
   retrieve,
+  updateDeliveryStatus,
+  addItemFoto,
+  deleteItemFoto,
+  findStaffHistory,
+  findRejectedList,
 };

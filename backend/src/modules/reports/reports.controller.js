@@ -5,6 +5,7 @@ const path = require("path");
 const fs = require("fs");
 const XLSX = require("xlsx");
 const prisma = require("../../config/prisma");
+const reportsRepository = require("./reports.repository");
 
 const getStockHistory = async (req, res, next) => {
   try {
@@ -19,15 +20,6 @@ const getAuditLogs = async (req, res, next) => {
   try {
     const result = await reportsService.getAuditLogs(req.query);
     return response.success(res, "Log audit berhasil diambil.", result);
-  } catch (err) {
-    next(err);
-  }
-};
-
-const getRackUtilization = async (req, res, next) => {
-  try {
-    const result = await reportsService.getRackUtilization();
-    return response.success(res, "Utilisasi rak berhasil diambil.", result);
   } catch (err) {
     next(err);
   }
@@ -230,7 +222,21 @@ const confirmReconciliationUpload = async (req, res, next) => {
       return response.error(res, "Pengguna tidak ditemukan.", 404);
     }
 
+    const uploadLog = await prisma.reconciliation_upload_log.create({
+      data: {
+        filename,
+        file_url: `/uploads/reconciliation/${filename}`,
+        uploaded_by: BigInt(actorId),
+        total_rows: preview.length,
+        success_rows: 0,
+        failed_rows: 0,
+      },
+    });
+
+    let successCount = 0;
+    let failedCount = 0;
     const updatedTikets = [];
+
     for (const item of preview) {
       const tiket = await prisma.tiket_material.findUnique({
         where: { tiket_id: BigInt(item.tiket_id) },
@@ -239,20 +245,65 @@ const confirmReconciliationUpload = async (req, res, next) => {
         },
       });
 
-      if (!tiket) continue;
+      if (!tiket) {
+        await prisma.reconciliation_upload_detail.create({
+          data: {
+            upload_id: uploadLog.upload_id,
+            kode_tiket: item.kode_tiket || "-",
+            mos: Number(item.mos || 0),
+            used: Number(item.used || 0),
+            status: "gagal",
+            reason: "Tiket tidak terdaftar",
+          },
+        });
+        failedCount++;
+        continue;
+      }
 
       const dataSebelum = {
         mos: tiket.mos ? Number(tiket.mos) : null,
         used: tiket.used ? Number(tiket.used) : null,
       };
 
-      await prisma.tiket_material.update({
-        where: { tiket_id: BigInt(item.tiket_id) },
-        data: {
+      try {
+        await prisma.tiket_material.update({
+          where: { tiket_id: BigInt(item.tiket_id) },
+          data: {
+            mos: item.mos,
+            used: item.used,
+          },
+        });
+
+        await prisma.reconciliation_upload_detail.create({
+          data: {
+            upload_id: uploadLog.upload_id,
+            kode_tiket: tiket.kode_tiket,
+            mos: Number(item.mos || 0),
+            used: Number(item.used || 0),
+            status: "berhasil",
+            reason: null,
+          },
+        });
+        successCount++;
+        updatedTikets.push({
+          tiket_id: item.tiket_id,
+          kode_tiket: tiket.kode_tiket,
           mos: item.mos,
           used: item.used,
-        },
-      });
+        });
+      } catch (updateErr) {
+        await prisma.reconciliation_upload_detail.create({
+          data: {
+            upload_id: uploadLog.upload_id,
+            kode_tiket: tiket.kode_tiket,
+            mos: Number(item.mos || 0),
+            used: Number(item.used || 0),
+            status: "gagal",
+            reason: updateErr.message || "Gagal memperbarui tiket",
+          },
+        });
+        failedCount++;
+      }
 
       await prisma.audit_log.create({
         data: {
@@ -268,14 +319,15 @@ const confirmReconciliationUpload = async (req, res, next) => {
           },
         },
       });
-
-      updatedTikets.push({
-        tiket_id: item.tiket_id,
-        kode_tiket: item.kode_tiket,
-        mos: item.mos,
-        used: item.used,
-      });
     }
+
+    await prisma.reconciliation_upload_log.update({
+      where: { upload_id: uploadLog.upload_id },
+      data: {
+        success_rows: successCount,
+        failed_rows: failedCount,
+      },
+    });
 
     return response.success(res, "Rekonsiliasi berhasil disimpan.", {
       updatedCount: updatedTikets.length,
@@ -288,10 +340,27 @@ const confirmReconciliationUpload = async (req, res, next) => {
   }
 };
 
+const getReconciliationUploadLogs = async (req, res, next) => {
+  try {
+    const filters = {
+      search: req.query.search || "",
+      actorId: req.query.actorId || "all",
+      startDate: req.query.startDate || "",
+      endDate: req.query.endDate || "",
+      page: req.query.page || 1,
+      limit: req.query.limit || 20,
+    };
+
+    const result = await reportsRepository.getReconciliationUploadLogs(filters);
+    return response.success(res, "Data riwayat upload berhasil diambil.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getStockHistory,
   getAuditLogs,
-  getRackUtilization,
   getHardwareReconciliation,
   getHardwareReconciliationPerTiket,
   getHardwareReconciliationDetailed,
@@ -300,4 +369,5 @@ module.exports = {
   backfillReconciliation,
   uploadReconciliationFile,
   confirmReconciliationUpload,
+  getReconciliationUploadLogs,
 };

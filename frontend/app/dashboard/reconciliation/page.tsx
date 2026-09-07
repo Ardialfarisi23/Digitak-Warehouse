@@ -18,6 +18,10 @@ import {
   FileText,
   Plus,
   Trash2,
+  Wallet,
+  Eye,
+  FileClock,
+  Download,
 } from "lucide-react";
 
 import { useApi } from "@/lib/api";
@@ -101,6 +105,19 @@ export default function ReconciliationInventoryPage() {
   const [mitraConfirming, setMitraConfirming] = useState(false);
   const [manualRows, setManualRows] = useState<any[]>([]);
   const [manualForm, setManualForm] = useState({ kode_tiket: "", project_nama: "", mos: "", used: "" });
+  const [exporting, setExporting] = useState(false);
+
+  const [reconcTab, setReconcTab] = useState<"inventory" | "history">("inventory");
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyDetail, setHistoryDetail] = useState<any>(null);
+  const [historyActor, setHistoryActor] = useState("");
+  const [historyStartDate, setHistoryStartDate] = useState("");
+  const [historyEndDate, setHistoryEndDate] = useState("");
 
   useEffect(() => {
     if (!user) return;
@@ -135,7 +152,7 @@ export default function ReconciliationInventoryPage() {
         const mosMitra = Number(item.mos_mitra ?? 0);
         const used = Number(item.used ?? item.qty_used ?? 0);
         const remains = mosSistem - (boq + additional);
-        const selisih = mosMitra - mosSistem;
+        const selisih = mosSistem - mosMitra;
 
         let recStatus: ReconciliationRecord["status"] = "berjalan";
         if (remains < 0) {
@@ -174,6 +191,34 @@ export default function ReconciliationInventoryPage() {
       setError(caughtError instanceof Error ? caughtError.message : "Terjadi kesalahan saat mengambil data rekonsiliasi.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchHistory = async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const params = new URLSearchParams();
+      params.set("page", String(historyPage));
+      params.set("limit", "20");
+      if (historyActor) params.set("actorId", historyActor);
+      if (historyStartDate) params.set("startDate", historyStartDate);
+      if (historyEndDate) params.set("endDate", historyEndDate);
+
+      const response = await get(`${API_BASE}/api/reports/reconciliation-upload-logs?${params.toString()}`);
+      const json = await response.json();
+      if (!response.ok) {
+        throw new Error(json?.message || "Gagal mengambil riwayat upload.");
+      }
+
+      const rows = Array.isArray(json?.data?.data) ? json.data.data : [];
+      setHistoryData(rows);
+      setHistoryTotal(json?.data?.meta?.total || 0);
+      setHistoryTotalPages(json?.data?.meta?.totalPages || 1);
+    } catch (caughtError) {
+      setHistoryError(caughtError instanceof Error ? caughtError.message : "Terjadi kesalahan saat mengambil riwayat upload.");
+    } finally {
+      setHistoryLoading(false);
     }
   };
 
@@ -286,6 +331,12 @@ export default function ReconciliationInventoryPage() {
   }, [user]);
 
   useEffect(() => {
+    if (reconcTab === "history") {
+      fetchHistory();
+    }
+  }, [reconcTab, historyPage, historyActor, historyStartDate, historyEndDate]);
+
+  useEffect(() => {
     const timer = setTimeout(() => {
       setSearch(searchInput.trim());
     }, 400);
@@ -337,6 +388,68 @@ export default function ReconciliationInventoryPage() {
     });
   }, [records, search, projectFilter, warehouseFilter, statusFilter]);
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const headers = [
+        "Project",
+        "Kode Tiket",
+        "Barang",
+        "Kode Perangkat",
+        "Gudang",
+        "Satuan",
+        "BOQ",
+        "Additional",
+        "MOS Sistem",
+        "MOS Mitra",
+        "Selisih",
+        "Used",
+        "Remains",
+        "Status",
+      ];
+
+      const escapeCsv = (value: string | number) => {
+        const str = String(value ?? "");
+        if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      };
+
+      const rows = filteredRecords.map((r) => [
+        escapeCsv(r.project_nama),
+        escapeCsv(r.kode_tiket),
+        escapeCsv(r.nama_barang),
+        escapeCsv(r.kode_perangkat),
+        escapeCsv(r.gudang_nama),
+        escapeCsv(r.satuan),
+        escapeCsv(r.boq),
+        escapeCsv(r.additional),
+        escapeCsv(r.mos_sistem),
+        escapeCsv(r.mos_mitra),
+        escapeCsv(r.selisih),
+        escapeCsv(r.used),
+        escapeCsv(r.remains),
+        escapeCsv(r.status),
+      ]);
+
+      const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `rekoncilasi-inventory-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Gagal mengekspor rekonsiliasi:", err);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const summary = useMemo(() => {
     return filteredRecords.reduce(
       (total, item) => {
@@ -372,7 +485,7 @@ export default function ReconciliationInventoryPage() {
         </header>
 
         {/* KPI Cards */}
-        <div className="mb-6 grid grid-cols-2 lg:grid-cols-6 gap-4">
+        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-7">
           <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
           <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
           <KpiCard title="MOS Sistem" value={formatNumber(summary.mos_sistem)} description="Material on Site (Sistem)" icon={PackageCheck} tone="slate" />
@@ -380,14 +493,41 @@ export default function ReconciliationInventoryPage() {
           <KpiCard
             title="Selisih"
             value={formatNumber(summary.selisih)}
-            description="MOS Mitra - MOS Sistem"
+             description="MOS Sistem - MOS Mitra"
             icon={AlertTriangle}
             tone={summary.selisih !== 0 ? "rose" : "slate"}
           />
           <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan" icon={PackageMinus} tone="slate" />
+          <KpiCard title="Remains" value={formatNumber(summary.remains)} description="Sisa setelah used" icon={Wallet} tone="slate" />
         </div>
 
-        {/* Filters */}
+        {/* Tabs */}
+        <div className="mb-6 flex items-center gap-2 border-b border-slate-100">
+          <button
+            type="button"
+            onClick={() => setReconcTab("inventory")}
+            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+              reconcTab === "inventory" ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <ClipboardCheck size={16} />
+            Rekonsiliasi
+          </button>
+          <button
+            type="button"
+            onClick={() => { setReconcTab("history"); setHistoryPage(1); }}
+            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+              reconcTab === "history" ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <FileClock size={16} />
+            Riwayat Input Laporan Mitra
+          </button>
+        </div>
+
+        {reconcTab === "inventory" && (
+          <>
+            {/* Filters */}
         <div className="mb-6 flex flex-wrap items-center gap-2">
           <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
             <Search size={16} className="shrink-0 text-slate-400" />
@@ -459,11 +599,12 @@ export default function ReconciliationInventoryPage() {
               )}
               <button
                 type="button"
-                onClick={fetchReconciliation}
-                className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                onClick={handleExport}
+                disabled={exporting}
+                className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"
               >
-                <Upload size={16} />
-                Refresh
+                {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                {exporting ? "Mengekspor..." : "Ekspor"}
               </button>
               <button
                 type="button"
@@ -598,7 +739,7 @@ export default function ReconciliationInventoryPage() {
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Catatan & Rumus Kalkulasi</p>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-              <p className="text-xs font-semibold text-amber-800">Selisih = MOS Mitra - MOS Sistem</p>
+              <p className="text-xs font-semibold text-amber-800">Selisih = MOS Sistem - MOS Mitra</p>
               <p className="mt-1 text-[11px] leading-relaxed text-amber-700">
                 Menampilkan perbedaan jumlah material yang tercatat mitra dibanding sistem. Jika <span className="font-semibold">Selisih ≠ 0</span>, baris akan diberi highlight kuning sebagai tanda ketidaksesuaian data.
               </p>
@@ -611,7 +752,8 @@ export default function ReconciliationInventoryPage() {
             </div>
           </div>
         </div>
-      </div>
+      </>
+      )}
 
       {/* Detail Modal */}
       {selectedRecord && (
@@ -688,7 +830,7 @@ export default function ReconciliationInventoryPage() {
                   <div>
                     <p className="text-sm font-semibold text-rose-800">Remains tidak valid</p>
                     <p className="mt-1 text-xs leading-relaxed text-rose-600">
-                      Qty Used melebihi Hardware on Site. Kondisi ini perlu diperiksa sebelum transaksi outbound berikutnya diproses.
+                      Qty Used melebihi MOS (Sistem). Kondisi ini perlu diperiksa sebelum transaksi outbound berikutnya diproses.
                     </p>
                   </div>
                 </div>
@@ -981,34 +1123,250 @@ export default function ReconciliationInventoryPage() {
           </div>
         </div>
       )}
-    </div>
-  );
+
+      {reconcTab === "history" && (
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="mb-4 rounded-xl border border-orange-100 bg-orange-50 px-4 py-2 text-xs text-orange-700">
+            Tabel ini menampilkan histori upload laporan mitra. Setiap baris merepresentasikan 1 sesi upload file Excel.
+          </div>
+
+          <div className="mb-6 flex flex-wrap items-center gap-2 px-6">
+            <div className="relative">
+              <input
+                type="date"
+                value={historyStartDate}
+                onChange={(e) => { setHistoryStartDate(e.target.value); setHistoryPage(1); }}
+                className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+              />
+            </div>
+            <div className="relative">
+              <input
+                type="date"
+                value={historyEndDate}
+                onChange={(e) => { setHistoryEndDate(e.target.value); setHistoryPage(1); }}
+                className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+              />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50">
+                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Waktu Upload</th>
+                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama File</th>
+                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diunggah Oleh</th>
+                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Total</th>
+                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Berhasil</th>
+                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gagal</th>
+                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+                  <th className="px-6 py-4 w-10"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {historyLoading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i}>
+                      <td className="px-6 py-4" colSpan={8}>
+                        <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
+                      </td>
+                    </tr>
+                  ))
+                ) : historyError ? (
+                  <tr>
+                    <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={8}>{historyError}</td>
+                  </tr>
+                ) : historyData.length === 0 ? (
+                  <tr>
+                    <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={8}>
+                      Belum ada riwayat upload laporan mitra.
+                    </td>
+                  </tr>
+                ) : (
+                  historyData.map((r) => {
+                    const allSuccess = r.failed_rows === 0 && r.success_rows > 0;
+                    const hasFailed = r.failed_rows > 0;
+                    const overallStatus = allSuccess ? "berhasil" : hasFailed ? "sebagian_gagal" : "draft";
+                    return (
+                      <tr
+                        key={r.upload_id}
+                        className="group cursor-pointer transition-colors hover:bg-slate-50"
+                        onClick={() => setHistoryDetail(r)}
+                      >
+                        <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400">
+                          {new Date(r.uploaded_at).toLocaleString("id-ID")}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="font-semibold text-slate-900">{r.filename}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="font-semibold text-slate-900">{r.uploaded_by_nama}</div>
+                          <div className="text-xs text-slate-500">{r.uploaded_by_role}</div>
+                        </td>
+                        <td className="px-6 py-4 text-center font-mono text-xs text-slate-600">{r.total_rows}</td>
+                        <td className="px-6 py-4 text-center font-mono text-xs text-emerald-600">{r.success_rows}</td>
+                        <td className="px-6 py-4 text-center font-mono text-xs text-rose-600">{r.failed_rows}</td>
+                        <td className="px-6 py-4">
+                          {overallStatus === "berhasil" && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">Berhasil</span>}
+                          {overallStatus === "sebagian_gagal" && <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-700">Sebagian Gagal</span>}
+                          {overallStatus === "draft" && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">Draft</span>}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            type="button"
+                            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            onClick={(e) => { e.stopPropagation(); setHistoryDetail(r); }}
+                          >
+                            <Eye size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {historyTotalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between px-6 pb-4 text-xs text-slate-500">
+              <span>
+                Menampilkan {((historyPage - 1) * 20) + 1}–{Math.min(historyPage * 20, historyTotal)} dari {historyTotal} entri
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                  disabled={historyPage === 1 || historyLoading}
+                  className="rounded-full border border-slate-200 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-50"
+                >
+                  Sebelumnya
+                </button>
+                <span className="font-mono">
+                  {historyPage} / {historyTotalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}
+                  disabled={historyPage === historyTotalPages || historyLoading}
+                  className="rounded-full border border-slate-200 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-50"
+                >
+                  Selanjutnya
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {historyDetail && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+          onClick={() => setHistoryDetail(null)}
+        >
+          <div
+            className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Detail Upload Laporan Mitra</h2>
+                <p className="text-xs text-slate-500">Rincian sesi upload dan status per baris.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHistoryDetail(null)}
+                className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Nama File</p>
+                  <p className="text-sm font-semibold text-slate-800">{historyDetail.filename}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Waktu Upload</p>
+                  <p className="text-sm font-semibold text-slate-800">{new Date(historyDetail.uploaded_at).toLocaleString("id-ID")}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Diunggah Oleh</p>
+                  <p className="text-sm font-semibold text-slate-800">{historyDetail.uploaded_by_nama}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Total / Berhasil / Gagal</p>
+                  <p className="text-sm font-semibold text-slate-800">
+                    {historyDetail.total_rows} / {historyDetail.success_rows} / {historyDetail.failed_rows}
+                  </p>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 pt-4">
+                <p className="text-xs font-medium text-slate-400 mb-3">Detail Baris</p>
+                {historyDetail.details && historyDetail.details.length > 0 ? (
+                  <div className="overflow-x-auto rounded-lg border border-slate-100">
+                    <table className="min-w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-100 bg-slate-50">
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">MOS</th>
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">Used</th>
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Alasan Gagal</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {historyDetail.details.map((d: any) => (
+                          <tr key={d.detail_id} className="hover:bg-slate-50">
+                            <td className="px-3 py-2 font-mono font-semibold text-slate-700">{d.kode_tiket}</td>
+                            <td className="px-3 py-2 text-right font-mono text-slate-600">{d.mos}</td>
+                            <td className="px-3 py-2 text-right font-mono text-slate-600">{d.used}</td>
+                            <td className="px-3 py-2">
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${d.status === "berhasil" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+                                {d.status === "berhasil" ? "Berhasil" : "Gagal"}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-slate-500">{d.reason || "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">Tidak ada detail baris untuk upload ini.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end border-t border-slate-100 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setHistoryDetail(null)}
+                className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              >
+                 Tutup
+               </button>
+             </div>
+           </div>
+         </div>
+       )}
+     </div>
+   </div>
+   );
 }
 
-function KpiCard({
-  title,
-  value,
-  description,
-  icon: Icon,
-  tone = "slate",
-}: {
-  title: string;
-  value: string;
-  description: string;
-  icon: React.ElementType;
-  tone?: "slate" | "rose";
-}) {
-  const isRose = tone === "rose";
+function KpiCard({ title, value, description, icon: Icon, tone = "slate" }: { title: string; value: string; description: string; icon: any; tone?: "slate" | "rose" }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className={`rounded-2xl border p-4 shadow-sm ${tone === "rose" ? "border-rose-200 bg-rose-50/50" : "border-slate-200 bg-white"}`}>
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-medium tracking-wide text-slate-400">{title.toUpperCase()}</span>
-        <span className={`flex h-6 w-6 items-center justify-center rounded-md ${isRose ? "text-rose-500 bg-rose-50" : "text-slate-500 bg-slate-100"}`}>
-          <Icon size={13} strokeWidth={2.5} />
-        </span>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{title}</p>
+        <Icon size={18} className={tone === "rose" ? "text-rose-500" : "text-slate-400"} />
       </div>
-      <div className={`mt-2 text-2xl font-bold ${isRose ? "text-rose-600" : "text-slate-900"}`}>{value}</div>
-      <div className={`mt-1 text-xs font-medium ${isRose ? "text-rose-500" : "text-slate-400"}`}>{description}</div>
+      <p className={`mt-2 text-xl font-bold ${tone === "rose" ? "text-rose-700" : "text-slate-900"}`}>{value}</p>
+      <p className="mt-1 text-[11px] text-slate-400">{description}</p>
     </div>
   );
 }

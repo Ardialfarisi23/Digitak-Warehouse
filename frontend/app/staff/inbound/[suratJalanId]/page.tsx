@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { PackagePlus, AlertTriangle, ArrowLeft, FileDown, Loader2, AlertCircle } from "lucide-react";
+import { PackagePlus, AlertTriangle, ArrowLeft, FileDown, Loader2, AlertCircle, ExternalLink, Upload, X, Image as ImageIcon } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { downloadInboundPdf } from "@/lib/staff/inbound-pdf";
-import type { InboundSuratJalan as InboundPdfShape } from "@/lib/staff/inbound-store";
+import type { InboundSuratJalan as InboundPdfShape } from "@/lib/staff/inbound-pdf";
 
 // ---------------------------------------------------------------------------
 // Struktur respons API GET /api/surat-jalan/:id, sesuai `baseInclude` di
@@ -23,12 +24,20 @@ type ApiBarang = {
 type ApiSuratJalanItem = {
   item_id: number;
   barang_id: number;
-  qty: number; // PENTING: field ini akan DITIMPA jadi qty aktual pas submit.
+  qty: number;
   kondisi?: string | null;
   serial_number?: string | null;
   catatan?: string | null;
   is_kelebihan?: boolean;
   barang?: ApiBarang;
+  fotos?: Array<{
+    foto_id: number;
+    url: string;
+    filename?: string;
+    mimetype?: string;
+    ukuran_bytes?: number;
+    created_at?: string;
+  }>;
 };
 
 type ApiSuratJalan = {
@@ -44,6 +53,11 @@ type ApiSuratJalan = {
   personil_pengantar?: { nama: string } | null;
   project?: { nama_project: string } | null;
   creator?: { nama?: string; name?: string } | null;
+  boq?: {
+    boq_id: number;
+    boq_number?: string;
+    tiket?: { kode_tiket: string };
+  } | null;
 };
 
 // Baris yang staf edit di layar — qtyRencana disnapshot SEKALI pas fetch,
@@ -59,6 +73,11 @@ type EditableItem = {
   serialNumber: string;
   isKelebihan: boolean;
   catatanKelebihan: string;
+  fotos: Array<{
+    foto_id: number;
+    url: string;
+    filename?: string;
+  }>;
 };
 
 // ASUMSI: value kondisi dikirim sebagai string bebas (schema backend nggak
@@ -84,7 +103,7 @@ const KONDISI_TONE: Record<string, string> = {
 export default function InboundDetailPage() {
   const params = useParams<{ suratJalanId: string }>();
   const router = useRouter();
-  const { get, post } = useApi();
+  const { get, post, del } = useApi();
   const { user } = useAuth();
 
   const [data, setData] = useState<ApiSuratJalan | null | undefined>(undefined);
@@ -92,6 +111,8 @@ export default function InboundDetailPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [uploadingFoto, setUploadingFoto] = useState<Record<number, boolean>>({});
+  const [fotoErrors, setFotoErrors] = useState<Record<number, string | null>>({});
 
   const [showExcessModal, setShowExcessModal] = useState(false);
   const [excessNotesDraft, setExcessNotesDraft] = useState<Record<number, string>>({});
@@ -130,6 +151,11 @@ export default function InboundDetailPage() {
             serialNumber: it.serial_number || "",
             isKelebihan: false,
             catatanKelebihan: it.catatan || "",
+            fotos: (it.fotos || []).map((f) => ({
+              foto_id: f.foto_id,
+              url: f.url,
+              filename: f.filename,
+            })),
           })),
         );
       } catch (err) {
@@ -186,6 +212,86 @@ export default function InboundDetailPage() {
       updateItem(index, { qtyDiterima: qty, isKelebihan: false, catatanKelebihan: "" });
     } else {
       updateItem(index, { qtyDiterima: qty });
+    }
+  }
+
+  async function handleFotoUpload(index: number, file: File) {
+    setFotoErrors((prev) => ({ ...prev, [index]: null }));
+    setUploadingFoto((prev) => ({ ...prev, [index]: true }));
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const uploadRes = await post(`${baseUrl}/api/upload`, formData);
+
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => null);
+        throw new Error(err?.message || "Gagal upload foto.");
+      }
+
+      const uploadData = await uploadRes.json();
+      const fotoUrl = uploadData?.data?.url;
+
+      if (!fotoUrl) {
+        throw new Error("URL foto tidak ditemukan.");
+      }
+
+      const saveRes = await post(
+        `${baseUrl}/api/surat-jalan/${params.suratJalanId}/items/${items[index].itemId}/fotos`,
+        {
+          url: fotoUrl,
+          filename: file.name,
+          mimetype: file.type,
+          ukuran_bytes: file.size,
+        }
+      );
+
+      if (!saveRes.ok) {
+        const err = await saveRes.json().catch(() => null);
+        throw new Error(err?.message || "Gagal menyimpan foto.");
+      }
+
+      const saveData = await saveRes.json();
+      const newFoto = saveData?.data;
+
+      if (newFoto) {
+        updateItem(index, {
+          fotos: [...(items[index].fotos || []), newFoto],
+        });
+      }
+    } catch (err) {
+      setFotoErrors((prev) => ({
+        ...prev,
+        [index]: err instanceof Error ? err.message : "Gagal upload foto.",
+      }));
+    } finally {
+      setUploadingFoto((prev) => ({ ...prev, [index]: false }));
+    }
+  }
+
+  async function handleFotoDelete(index: number, fotoId: number) {
+    setFotoErrors((prev) => ({ ...prev, [index]: null }));
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const res = await del(`${baseUrl}/api/surat-jalan/${params.suratJalanId}/items/${items[index].itemId}/fotos/${fotoId}`);
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.message || "Gagal menghapus foto.");
+      }
+
+      updateItem(index, {
+        fotos: items[index].fotos?.filter((f) => f.foto_id !== fotoId) || [],
+      });
+    } catch (err) {
+      setFotoErrors((prev) => ({
+        ...prev,
+        [index]: err instanceof Error ? err.message : "Gagal menghapus foto.",
+      }));
     }
   }
 
@@ -339,6 +445,27 @@ export default function InboundDetailPage() {
         </div>
       </div>
 
+      {/* BOQ / Tiket info */}
+      <div className="mb-6 rounded-2xl border border-[#F3D9C7] bg-white p-4">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">BOQ / Tiket</p>
+        {data.boq_id ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <Link
+              href="/dashboard/boq"
+              className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
+            >
+              <ExternalLink size={12} />
+              {data.boq?.boq_number || `BOQ #${data.boq_id}`}
+            </Link>
+            <span className="text-xs text-slate-500">
+              Tiket: {data.boq?.tiket?.kode_tiket || "-"}
+            </span>
+          </div>
+        ) : (
+          <span className="text-xs text-slate-400">Tidak terhubung ke BOQ/Tiket</span>
+        )}
+      </div>
+
       {/* Tabel pencocokan barang */}
       <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
         <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Cocokkan Barang & Catat Kondisi</p>
@@ -351,6 +478,7 @@ export default function InboundDetailPage() {
               <th className="pb-3 pr-6 font-semibold text-right">Qty Diterima</th>
               <th className="pb-3 pr-4 font-semibold">Kondisi</th>
               <th className="pb-3 font-semibold">Serial Number</th>
+              <th className="pb-3 font-semibold">Foto</th>
             </tr>
           </thead>
           <tbody>
@@ -411,6 +539,47 @@ export default function InboundDetailPage() {
                         className="w-44 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
                       />
                     )}
+                  </td>
+                  <td className="py-3">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-wrap gap-1.5">
+                        {item.fotos?.map((foto) => (
+                          <div key={foto.foto_id} className="relative h-14 w-14 overflow-hidden rounded-lg border border-gray-200">
+                            <img src={foto.url} alt={foto.filename || "Foto barang"} className="h-full w-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => handleFotoDelete(index, foto.foto_id)}
+                              className="absolute right-0.5 top-0.5 rounded-full bg-white/90 p-0.5 text-gray-500 shadow-sm hover:text-rose-600"
+                              title="Hapus foto"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div>
+                        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:border-[#E8632C] hover:text-[#E8632C]">
+                          <Upload size={12} />
+                          {uploadingFoto[index] ? "Uploading..." : "Upload Foto"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={uploadingFoto[index]}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                handleFotoUpload(index, file);
+                              }
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
+                      {fotoErrors[index] && (
+                        <p className="text-[11px] text-rose-600">{fotoErrors[index]}</p>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );

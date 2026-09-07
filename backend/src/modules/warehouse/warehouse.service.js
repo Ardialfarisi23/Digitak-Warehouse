@@ -85,9 +85,11 @@ const getLayout = async (gudang_id) => {
   const zonas = await prisma.zona_gudang.findMany({
     where: { gudang_id: warehouse.gudang_id },
     include: {
-      raks: {
-        include: {
-          bins: true,
+      dinilai_oleh_user: {
+        select: {
+          nama: true,
+          email: true,
+          role: true,
         },
       },
     },
@@ -95,22 +97,13 @@ const getLayout = async (gudang_id) => {
   });
 
   const stockAgg = await prisma.stok_gudang.groupBy({
-    by: ["bin_lokasi_id"],
+    by: ["zona_id"],
     where: {
       gudang_id: warehouse.gudang_id,
-      bin_lokasi_id: { not: null },
+      zona_id: { not: null },
     },
     _sum: { qty: true },
     _count: { barang_id: true },
-  });
-
-  const binToZone = {};
-  zonas.forEach((z) => {
-    z.raks.forEach((r) => {
-      r.bins.forEach((b) => {
-        binToZone[b.bin_id] = z.zona_id;
-      });
-    });
   });
 
   const zoneStats = {};
@@ -119,24 +112,35 @@ const getLayout = async (gudang_id) => {
   });
 
   stockAgg.forEach((s) => {
-    const zonaId = binToZone[s.bin_lokasi_id];
-    if (zonaId !== undefined && zoneStats[zonaId]) {
-      zoneStats[zonaId].total_qty += Number(s._sum.qty || 0);
-      zoneStats[zonaId].total_item += s._count.barang_id;
+    if (zoneStats[s.zona_id]) {
+      zoneStats[s.zona_id].total_qty += Number(s._sum.qty || 0);
+      zoneStats[s.zona_id].total_item += s._count.barang_id;
     }
   });
 
+  const gudangKapasitasMaksimum = warehouse.kapasitas_maksimum != null ? Number(warehouse.kapasitas_maksimum) : null;
+
   return {
     ...warehouse,
-    zonas: zonas.map((z) => ({
-      ...z,
-      total_qty: zoneStats[z.zona_id]?.total_qty || 0,
-      total_item: zoneStats[z.zona_id]?.total_item || 0,
-      raks: z.raks.map((r) => ({
-        ...r,
-        bins: r.bins.sort((a, b) => a.kode_bin.localeCompare(b.kode_bin)),
-      })),
-    })),
+    kapasitas_maksimum: gudangKapasitasMaksimum,
+    zonas: zonas.map((z) => {
+      const kapasitasMaksimum = z.kapasitas_maksimum != null ? Number(z.kapasitas_maksimum) : null;
+      const totalQty = zoneStats[z.zona_id]?.total_qty || 0;
+      const sisa = kapasitasMaksimum != null ? kapasitasMaksimum - totalQty : null;
+
+      return {
+        ...z,
+        kapasitas_maksimum: kapasitasMaksimum,
+        gudang_kapasitas_maksimum: gudangKapasitasMaksimum,
+        total_qty: totalQty,
+        total_item: zoneStats[z.zona_id]?.total_item || 0,
+        sisa,
+        status_kecukupan_source: z.status_kecukupan_source || "AUTO",
+        kapasitas_belum_diatur: kapasitasMaksimum == null,
+        dinilai_oleh: z.dinilai_oleh_user?.nama || null,
+        dinilai_pada: z.dinilai_pada ? z.dinilai_pada.toISOString() : null,
+      };
+    }),
   };
 };
 
@@ -154,11 +158,7 @@ const getZoneStockSnapshot = async (gudang_id, zona_id, query = {}) => {
 
   const baseWhere = {
     gudang_id: Number(gudang_id),
-    bin_lokasi: {
-      rak: {
-        zona_id: Number(zona_id),
-      },
-    },
+    zona_id: Number(zona_id),
   };
 
   let barangIdFilter = undefined;
@@ -218,19 +218,11 @@ const getZoneStockSnapshot = async (gudang_id, zona_id, query = {}) => {
             },
           },
         },
-        bin_lokasi: {
-          include: {
-            rak: {
-              include: {
-                zona: {
-                  select: {
-                    zona_id: true,
-                    kode_zona: true,
-                    nama_zona: true,
-                  },
-                },
-              },
-            },
+        zona: {
+          select: {
+            zona_id: true,
+            kode_zona: true,
+            nama_zona: true,
           },
         },
       },
@@ -247,12 +239,9 @@ const getZoneStockSnapshot = async (gudang_id, zona_id, query = {}) => {
     satuan: item.barang?.satuan_default?.kode_satuan || "-",
     kondisi: item.kondisi,
     qty: Number(item.qty),
-    bin_lokasi_id: item.bin_lokasi_id || null,
-    kode_bin: item.bin_lokasi?.kode_bin || "-",
-    kode_rak: item.bin_lokasi?.rak?.kode_rak || "-",
-    zona_id: item.bin_lokasi?.rak?.zona?.zona_id || null,
-    kode_zona: item.bin_lokasi?.rak?.zona?.kode_zona || "-",
-    nama_zona: item.bin_lokasi?.rak?.zona?.nama_zona || "-",
+    zona_id: item.zona_id || null,
+    kode_zona: item.zona?.kode_zona || "-",
+    nama_zona: item.zona?.nama_zona || "-",
   }));
 
   return {

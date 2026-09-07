@@ -17,6 +17,9 @@ const create = async (data) => {
       ...data,
       jenis: data.jenis ?? "admin_gudang",
     },
+    include: {
+      gudang: true,
+    },
   });
 };
 
@@ -24,6 +27,7 @@ const findByPersonilId = async (personil_id, options = {}) => {
   if (options.includeInactive) {
     return await prisma.personil.findUnique({
       where: { personil_id: Number(personil_id) },
+      include: { gudang: true },
     });
   }
 
@@ -31,6 +35,7 @@ const findByPersonilId = async (personil_id, options = {}) => {
     where: {
       personil_id: Number(personil_id),
     },
+    include: { gudang: true },
   });
 };
 
@@ -38,6 +43,7 @@ const findById = async (id, options = {}) => {
   if (options.includeInactive) {
     return await prisma.personil.findUnique({
       where: { personil_id: Number(id) },
+      include: { gudang: true },
     });
   }
 
@@ -45,6 +51,7 @@ const findById = async (id, options = {}) => {
     where: {
       personil_id: Number(id),
     },
+    include: { gudang: true },
   });
 };
 
@@ -52,11 +59,13 @@ const findByEmail = async (email, options = {}) => {
   if (options.includeInactive) {
     return await prisma.personil.findFirst({
       where: { email },
+      include: { gudang: true },
     });
   }
 
   return await prisma.personil.findFirst({
     where: { email },
+    include: { gudang: true },
   });
 };
 
@@ -64,6 +73,7 @@ const findByNik = async (nik) => {
   if (!nik) return null;
   return await prisma.personil.findFirst({
     where: { nik },
+    include: { gudang: true },
   });
 };
 
@@ -142,6 +152,9 @@ const findAll = async ({
     },
     skip: (sanitizedPage - 1) * sanitizedLimit,
     take: sanitizedLimit,
+    include: {
+      gudang: true,
+    },
   });
 
   return {

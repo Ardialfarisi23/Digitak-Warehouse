@@ -8,7 +8,7 @@ const authorize = require("../../middlewares/role.middleware");
 
 router.get("/stock-history", authenticate, authorize("ADMIN"), reportsController.getStockHistory);
 router.get("/audit-log", authenticate, authorize("ADMIN"), reportsController.getAuditLogs);
-router.get("/rack-utilization", authenticate, authorize("ADMIN"), reportsController.getRackUtilization);
+router.get("/reconciliation-upload-logs", authenticate, authorize("ADMIN"), reportsController.getReconciliationUploadLogs);
 router.get("/hardware-reconciliation", authenticate, authorize("ADMIN"), reportsController.getHardwareReconciliation);
 router.get("/hardware-reconciliation/per-tiket", authenticate, authorize("ADMIN"), reportsController.getHardwareReconciliationPerTiket);
 router.get("/hardware-reconciliation/detailed", authenticate, authorize("ADMIN"), reportsController.getHardwareReconciliationDetailed);

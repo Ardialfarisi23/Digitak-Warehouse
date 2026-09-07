@@ -1,7 +1,38 @@
 "use client";
 
 import { Document, Page, View, Text, Image, StyleSheet } from "@react-pdf/renderer";
-import type { InboundSuratJalan } from "./inbound-store";
+
+export type KondisiPerangkat = "Baik" | "Rusak Ringan" | "Rusak Berat" | "Tidak Sesuai Spek" | "DOA";
+
+export type InboundItem = {
+  kodeBarang: string;
+  namaBarang: string;
+  qtyDiminta: number;
+  qtyDiterima: number;
+  kondisi: KondisiPerangkat | "";
+  serialNumbers: string[];
+  kelebihan?: {
+    qty: number;
+    catatan: string;
+  };
+};
+
+export type InboundStatus = "BELUM_DIPROSES" | "MENUNGGU_VERIFIKASI" | "TERVERIFIKASI";
+
+export type InboundSuratJalan = {
+  id: string;
+  nomor: string;
+  namaProject: string;
+  asalGudang: string;
+  tujuanGudang: string;
+  kendaraan: string;
+  noPolisi: string;
+  namaDriver: string;
+  namaPicPemohon: string;
+  tanggal: string;
+  items: InboundItem[];
+  status: InboundStatus;
+};
 
 const styles = StyleSheet.create({
   page: { padding: 40, fontSize: 10, fontFamily: "Helvetica" },

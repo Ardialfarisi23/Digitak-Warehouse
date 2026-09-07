@@ -1,6 +1,61 @@
 const usersService = require("./users.service");
 const response = require("../../shared/response");
 
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+
+const avatarsDir = path.join(__dirname, "../../../uploads/avatars");
+
+if (!fs.existsSync(avatarsDir)) {
+  fs.mkdirSync(avatarsDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, avatarsDir),
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `${req.user.id}-${uniqueSuffix}${ext}`);
+  },
+});
+
+const avatarFilter = (req, file, cb) => {
+  const allowedTypes = /jpeg|jpg|png|webp/;
+  const ext = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+  const mime = allowedTypes.test(file.mimetype);
+
+  if (ext && mime) {
+    cb(null, true);
+  } else {
+    cb(new Error("Only image files are allowed (jpg, jpeg, png, webp)."), false);
+  }
+};
+
+const avatarUpload = multer({
+  storage,
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: avatarFilter,
+}).single("avatar");
+
+const updateAvatar = async (req, res, next) => {
+  try {
+    const result = await usersService.updateAvatar(req.user.id, req.file);
+    return response.success(res, "Foto profil berhasil diperbarui.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const deleteAvatar = async (req, res, next) => {
+  try {
+    const result = await usersService.deleteAvatar(req.user.id);
+    return response.success(res, "Foto profil berhasil dihapus.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 const create = async (req, res, next) => {
   try {
     const result = await usersService.create(req.body);
@@ -42,4 +97,7 @@ module.exports = {
   findAll,
   findById,
   update,
+  updateAvatar,
+  deleteAvatar,
+  avatarUpload,
 };

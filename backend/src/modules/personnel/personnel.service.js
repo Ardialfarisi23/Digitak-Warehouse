@@ -17,8 +17,18 @@ const create = async (data, userId) => {
     }
   }
 
+  const parsedGudangId =
+    data.gudang_id !== undefined && data.gudang_id !== null && data.gudang_id !== ""
+      ? Number(data.gudang_id)
+      : null;
+  const finalGudangId =
+    parsedGudangId !== null && Number.isFinite(parsedGudangId) && parsedGudangId > 0
+      ? parsedGudangId
+      : null;
+
   const createData = {
     ...data,
+    gudang_id: finalGudangId,
     created_by: Number(userId),
     updated_by: Number(userId),
   };

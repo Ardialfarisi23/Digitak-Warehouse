@@ -7,13 +7,11 @@ const path = require("path");
 const authRoutes = require("./modules/auth/auth.routes");
 const warehouseRoutes = require("./modules/warehouse/warehouse.routes");
 const aisleRoutes = require("./modules/aisle/aisle.routes");
-const binRoutes = require("./modules/bin/bin.routes");
 const categoryRoutes = require("./modules/category/category.routes");
 const customerRoutes = require("./modules/customer/customer.routes");
 const itemRoutes = require("./modules/item/item.routes");
 const personnelRoutes = require("./modules/personnel/personnel.routes");
 const projectRoutes = require("./modules/projects/project.routes");
-const rackRoutes = require("./modules/rack/rack.routes");
 const supplierRoutes = require("./modules/supplier/supplier.routes");
 const unitRoutes = require("./modules/unit/unit.routes");
 const vehicleRoutes = require("./modules/vehicle/vehicle.routes");
@@ -27,6 +25,7 @@ const boqRoutes = require("./modules/boq/boq.routes");
 const permintaanBoqRoutes = require("./modules/permintaan-boq/permintaan-boq.routes");
 const reportsRoutes = require("./modules/reports/reports.routes");
 const reconciliationRoutes = require("./modules/reconciliation/reconciliation.routes");
+const notificationRoutes = require("./modules/notifications/notifications.routes");
 const errorMiddleware = require("./middlewares/error.middleware");
 
 const app = express();
@@ -72,14 +71,12 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/warehouses", warehouseRoutes);
 app.use("/api/aisles", aisleRoutes);
-app.use("/api/bins", binRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/items", itemRoutes);
 app.use("/api/personnels", personnelRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/projects", projectRoutes);
-app.use("/api/racks", rackRoutes);
 app.use("/api/suppliers", supplierRoutes);
 app.use("/api/units", unitRoutes);
 app.use("/api/vehicles", vehicleRoutes);
@@ -91,6 +88,7 @@ app.use("/api/upload", uploadRoutes);
 app.use("/api/boqs", boqRoutes);
 app.use("/api/permintaan-boqs", permintaanBoqRoutes);
 app.use("/api/reports", reportsRoutes);
+app.use("/api/notifications", notificationRoutes);
 app.use("/api/reconciliation", reconciliationRoutes);
 
 // Error Handler (HARUS PALING BAWAH)

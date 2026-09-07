@@ -7,6 +7,7 @@ const normalizeStatus = (status) => {
   const map = {
     DRAFT: "draft",
     AKTIF: "aktif",
+    SELESAI: "selesai",
     DITOLAK: "ditolak",
   };
   return map[status.toUpperCase()] || status.toLowerCase();
@@ -128,7 +129,12 @@ const create = async (data, userId) => {
     });
 
     if (unresolvedItems.length > 0) {
-      throw new AppError(`Barang tidak ditemukan untuk: ${unresolvedItems.map((i) => i.itemCode).join(", ")}`, 400);
+      const kodes = unresolvedItems.map((i) => i.itemCode).join(", ");
+      throw new AppError(
+        `Item dengan kode "${kodes}" belum terdaftar di master barang. ` +
+        `Hubungi Admin untuk menambahkan item terlebih dahulu, atau pilih kode barang yang sudah ada.`,
+        400
+      );
     }
 
     boqDataWithMeta.items = {
@@ -188,8 +194,8 @@ const update = async (id, data, userId) => {
     throw new AppError("BOQ tidak ditemukan.", 404);
   }
 
-  if (boq.status === "aktif") {
-    throw new AppError("BOQ yang sudah aktif tidak dapat diubah.", 400);
+  if (boq.status === "aktif" || boq.status === "selesai") {
+    throw new AppError("BOQ yang sudah aktif atau selesai tidak dapat diubah.", 400);
   }
 
   const { items, projectId, area, ticketNumber, notes, referenceFile, ...boqData } = data;
@@ -265,7 +271,12 @@ const update = async (id, data, userId) => {
     });
 
     if (unresolvedItems.length > 0) {
-      throw new AppError(`Barang tidak ditemukan untuk: ${unresolvedItems.map((i) => i.itemCode).join(", ")}`, 400);
+      const kodes = unresolvedItems.map((i) => i.itemCode).join(", ");
+      throw new AppError(
+        `Item dengan kode "${kodes}" belum terdaftar di master barang. ` +
+        `Hubungi Admin untuk menambahkan item terlebih dahulu, atau pilih kode barang yang sudah ada.`,
+        400
+      );
     }
 
     updateData.items = {
@@ -332,8 +343,8 @@ const updateStatus = async (id, status, userId) => {
 
   const normalizedStatus = normalizeStatus(status);
 
-  if (boq.status === "aktif" && normalizedStatus === "aktif") {
-    throw new AppError("BOQ sudah aktif.", 400);
+  if (boq.status === normalizedStatus) {
+    throw new AppError(`BOQ sudah berstatus ${boq.status}.`, 400);
   }
 
   const result = await boqRepository.updateStatus(id, normalizedStatus, userId);
@@ -363,8 +374,8 @@ const softDelete = async (id) => {
     throw new AppError("BOQ tidak ditemukan.", 404);
   }
 
-  if (boq.status === "aktif") {
-    throw new AppError("BOQ yang sudah aktif tidak dapat dihapus.", 400);
+  if (boq.status === "aktif" || boq.status === "selesai") {
+    throw new AppError("BOQ yang sudah aktif atau selesai tidak dapat dihapus.", 400);
   }
 
   return await boqRepository.softDelete(id);
@@ -390,6 +401,10 @@ const getAreas = async () => {
   return await boqRepository.getAreas();
 };
 
+const getExportMatrixData = async () => {
+  return await boqRepository.getExportMatrixData();
+};
+
 const getItems = async (projectId) => {
   return await boqRepository.findItemsByProject(projectId);
 };
@@ -407,4 +422,5 @@ module.exports = {
   getStats,
   getAreas,
   getItems,
+  getExportMatrixData,
 };

@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import { Search, Eye, X, ArrowUpRight, ArrowDownLeft, CheckCircle2, Clock, FileText, Loader2, AlertCircle, PackageCheck } from "lucide-react";
+import { Search, Eye, X, ArrowUpRight, ArrowDownLeft, CheckCircle2, Clock, FileText, Loader2, AlertCircle, PackageCheck, Truck, ChevronDown } from "lucide-react";
 
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
+import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -62,24 +63,15 @@ interface SuratJalanRecord {
 
 const STATUS_META: Record<string, { label: string; bg: string; text: string }> = {
   draft_diajukan: { label: "Draft Diajukan", bg: "bg-slate-100", text: "text-slate-700" },
+  menunggu_verifikasi: { label: "Menunggu Verifikasi", bg: "bg-amber-50", text: "text-amber-700" },
   disetujui: { label: "Disetujui", bg: "bg-emerald-50", text: "text-emerald-700" },
-  ready_putaway: { label: "Siap Putaway", bg: "bg-blue-50", text: "text-blue-700" },
   digenerate: { label: "Digenerate", bg: "bg-blue-50", text: "text-blue-700" },
   diterima_didistribusikan: { label: "Diterima / Didistribusikan", bg: "bg-emerald-50", text: "text-emerald-700" },
-  dikembalikan: { label: "Dikembalikan", bg: "bg-rose-50", text: "text-rose-700" },
+  sedang_dikirim: { label: "Sedang Dikirim", bg: "bg-amber-50", text: "text-amber-700" },
+  ditolak: { label: "Ditolak", bg: "bg-rose-50", text: "text-rose-700" },
 };
 
 type TabType = "SEMUA" | "INBOUND" | "OUTBOUND";
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid grid-cols-[130px_10px_1fr] items-start leading-snug">
-      <span className="text-gray-500">{label}</span>
-      <span className="text-gray-500">:</span>
-      <span className="font-semibold text-gray-900">{value}</span>
-    </div>
-  );
-}
 
 export default function AdminDeliveryPage() {
   const { user } = useAuth();
@@ -91,6 +83,12 @@ export default function AdminDeliveryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<SuratJalanRecord | null>(null);
+  const [selectedItem, setSelectedItem] = useState<any | null>(null);
+  const [gudangFilter, setGudangFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [warehouses, setWarehouses] = useState<{ gudang_id: number; nama_gudang: string }[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -100,14 +98,34 @@ export default function AdminDeliveryPage() {
     }
   }, [user]);
 
+  useEffect(() => {
+    get(`${API_BASE}/api/warehouses?limit=100`).then((r) => r.json()).then((json) => {
+      setWarehouses(Array.isArray(json?.data) ? json.data : []);
+    }).catch(() => {
+      setWarehouses([]);
+    });
+  }, [get]);
+
+  const buildQueryParams = () => {
+    const params = new URLSearchParams();
+    if (gudangFilter && gudangFilter !== "all") params.set("gudangTujuanId", gudangFilter);
+    if (statusFilter && statusFilter !== "all") params.set("status", statusFilter);
+    if (startDate) params.set("startDate", startDate);
+    if (endDate) params.set("endDate", endDate);
+    if (searchQuery.trim()) params.set("search", searchQuery.trim());
+    const qs = params.toString();
+    return qs ? `?${qs}` : "";
+  };
+
   const fetchData = async () => {
     setIsLoading(true);
     setError(null);
 
     try {
+      const qs = buildQueryParams();
       const endpoints = [
-        `${API_BASE}/api/surat-jalan/outbound/queue`,
-        `${API_BASE}/api/surat-jalan/inbound`,
+        `${API_BASE}/api/surat-jalan/outbound/queue${qs}`,
+        `${API_BASE}/api/surat-jalan/inbound${qs}`,
       ];
       const responses = await Promise.all(endpoints.map((url) => get(url)));
       const jsonResults = await Promise.all(responses.map((r) => r.json()));
@@ -140,6 +158,11 @@ export default function AdminDeliveryPage() {
     }, 400);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  useEffect(() => {
+    if (!user) return;
+    fetchData();
+  }, [user, gudangFilter, statusFilter, startDate, endDate]);
 
   const filteredRecords = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -235,6 +258,69 @@ export default function AdminDeliveryPage() {
           </div>
         </div>
 
+        {/* Filters */}
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <select
+              value={gudangFilter}
+              onChange={(e) => setGudangFilter(e.target.value)}
+              className="appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2 pr-9 text-sm font-medium text-slate-700 outline-none focus:border-orange-400"
+            >
+              <option value="all">Semua Gudang</option>
+              {warehouses.map((w) => (
+                <option key={w.gudang_id} value={String(w.gudang_id)}>
+                  {w.nama_gudang}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+
+          <div className="relative">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2 pr-9 text-sm font-medium text-slate-700 outline-none focus:border-orange-400"
+            >
+              <option value="all">Semua Status</option>
+              {Object.entries(STATUS_META).map(([key, meta]) => (
+                <option key={key} value={key}>
+                  {meta.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 outline-none focus:border-orange-400"
+              />
+            </div>
+            <span className="text-slate-400 text-sm">sampai</span>
+            <div className="relative">
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 outline-none focus:border-orange-400"
+              />
+            </div>
+            {(startDate || endDate) && (
+              <button
+                onClick={() => { setStartDate(""); setEndDate(""); }}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Table */}
         <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
@@ -243,7 +329,7 @@ export default function AdminDeliveryPage() {
                 <tr className="border-b border-slate-100 bg-slate-50">
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tipe</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">No. Surat Jalan</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project / Lokasi</th>
+                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tanggal</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
                   <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
@@ -298,7 +384,7 @@ export default function AdminDeliveryPage() {
                         <td className="px-6 py-4">
                           <p className="font-medium text-slate-800">{record.project?.nama_project || "-"}</p>
                           <p className="text-xs text-slate-400">
-                            {totalQty} item • {record.personil_pengantar?.nama || "-"}
+                            {[record.project?.area, record.gudang_asal?.nama_gudang || record.gudang_tujuan?.nama_gudang].filter(Boolean).join(" • ") || "-"}
                           </p>
                         </td>
 
@@ -307,11 +393,12 @@ export default function AdminDeliveryPage() {
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusMeta.bg} ${statusMeta.text}`}>
                             {record.status === "draft_diajukan" && <Clock size={14} />}
+                            {record.status === "menunggu_verifikasi" && <Clock size={14} />}
                             {record.status === "disetujui" && <CheckCircle2 size={14} />}
-                            {record.status === "ready_putaway" && <PackageCheck size={14} />}
                             {record.status === "digenerate" && <Loader2 size={14} />}
                             {record.status === "diterima_didistribusikan" && <CheckCircle2 size={14} />}
-                            {record.status === "dikembalikan" && <AlertCircle size={14} />}
+                            {record.status === "sedang_dikirim" && <Truck size={14} />}
+                            {record.status === "ditolak" && <AlertCircle size={14} />}
                             {statusMeta.label}
                           </span>
                         </td>
@@ -349,93 +436,20 @@ export default function AdminDeliveryPage() {
 
               {/* Dokumen Surat Jalan — ini yang ke-print */}
               <div className="p-6">
-                <div id="surat-jalan-document" className="mx-auto max-w-3xl rounded-2xl border border-[#F3D9C7] bg-white p-10 print:rounded-none print:border-0 print:p-0">
-                  {/* Kop surat dengan logo */}
-                  <div className="mb-8 flex items-start justify-between border-b-2 border-[#E8632C] pb-6">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src="/logo digitak grdasi.png" alt="Digitak Studio — PT Metanouva Informatika" className="h-16 w-auto object-contain" />
-                    <div className="flex flex-col items-end">
-                      <h1 className="text-3xl font-bold tracking-wide text-gray-900">SURAT JALAN</h1>
-                      <p className="mt-1 text-xs text-gray-500">Surat Jalan Internal — Digitak Studio</p>
-                      <div className="mt-2 text-right">
-                        <p className="text-xs font-bold text-[#E8632C]">PT Metanouva Informatika</p>
-                        <p className="text-[10px] text-gray-400">Digitak Studio</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Info grid — 2 kolom */}
-                  <div className="mb-8 grid grid-cols-2 gap-x-12 gap-y-3 text-sm">
-                    <div className="space-y-3">
-                      <InfoRow label="No Surat Jalan" value={selectedRecord.nomor_surat_jalan} />
-                      <InfoRow label="Tipe" value={selectedRecord.tipe === "OUTBOUND" ? "Outbound" : "Inbound"} />
-                      <InfoRow label="Project" value={selectedRecord.project?.nama_project || "-"} />
-                      <InfoRow label="Gudang Asal" value={selectedRecord.gudang_asal?.nama_gudang || "-"} />
-                    </div>
-                    <div className="space-y-3">
-                      <InfoRow label="Tanggal" value={selectedRecord.tanggal ? new Date(selectedRecord.tanggal).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "-"} />
-                      <InfoRow label="Gudang Tujuan" value={selectedRecord.gudang_tujuan?.nama_gudang || "-"} />
-                      <InfoRow label="Kendaraan" value={selectedRecord.kendaraan?.jenis_kendaraan || "-"} />
-                      <InfoRow label="No Polisi" value={selectedRecord.kendaraan?.no_polisi || "-"} />
-                      <InfoRow label="Driver" value={selectedRecord.personil_pengantar?.nama || "-"} />
-                    </div>
-                  </div>
-
-                  {/* Tabel item */}
-                  <table className="mb-10 w-full border-collapse text-sm">
-                    <thead>
-                      <tr className="bg-[#FFF7ED]">
-                        <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">No</th>
-                        <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Kode Barang</th>
-                        <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Nama Barang</th>
-                        <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">QTY</th>
-                        <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">UOM</th>
-                        <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Keterangan</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedRecord.items.map((item, i) => (
-                        <tr key={item.item_id} className="even:bg-gray-50">
-                          <td className="border border-gray-200 px-3 py-2.5">{i + 1}</td>
-                          <td className="border border-gray-200 px-3 py-2.5 font-medium">{item.barang.kode_perangkat}</td>
-                          <td className="border border-gray-200 px-3 py-2.5">{item.barang.nama_barang}</td>
-                          <td className="border border-gray-200 px-3 py-2.5 text-center font-semibold">{Number(item.qty || 0)}</td>
-                          <td className="border border-gray-200 px-3 py-2.5 text-center">{item.satuan?.kode_satuan || item.barang?.satuan_default?.kode_satuan || "-"}</td>
-                          <td className="border border-gray-200 px-3 py-2.5 text-gray-500">{item.kondisi || "-"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  {/* Tanda tangan */}
-                  <div className="mb-8 grid grid-cols-3 gap-6 text-center text-sm">
-                    <div>
-                      <p className="mb-16 font-medium text-gray-700">Material Handler</p>
-                      <div className="border-t border-gray-400 pt-1">
-                        <p className="font-semibold text-gray-900">{selectedRecord.creator?.nama || "-"}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="mb-16 font-medium text-gray-700">Driver</p>
-                      <div className="border-t border-gray-400 pt-1">
-                        <p className="font-semibold text-gray-900">{selectedRecord.personil_pengantar?.nama || "-"}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="mb-16 font-medium text-gray-700">PIC Pemohon (Penerima)</p>
-                      <div className="border-t border-gray-400 pt-1">
-                        <p className="font-semibold text-gray-900">-</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Footer dokumen */}
-                  <div className="border-t border-gray-200 pt-3 flex items-center justify-between text-[10px] text-gray-400">
-                    <span>
-                      {selectedRecord.nomor_surat_jalan} | {selectedRecord.tanggal ? new Date(selectedRecord.tanggal).toLocaleDateString("id-ID") : "-"}
-                    </span>
-                  </div>
-                </div>
+                <DetailSuratJalanDocument
+                  data={selectedRecord}
+                  variant="full"
+                  renderItemAction={(item) => (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedItem(item)}
+                      title="Lihat dokumentasi barang"
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    >
+                      <Eye size={15} />
+                    </button>
+                  )}
+                />
               </div>
 
               {/* Actions */}
@@ -460,6 +474,64 @@ export default function AdminDeliveryPage() {
           </div>
         )}
       </div>
+
+      {/* Item Detail Modal */}
+      {selectedItem && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setSelectedItem(null)}>
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Dokumentasi Barang</h3>
+                <p className="text-xs text-slate-500">{selectedItem.barang?.kode_perangkat} — {selectedItem.barang?.nama_barang}</p>
+              </div>
+              <button type="button" onClick={() => setSelectedItem(null)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Kondisi</p>
+                  <p className="text-sm font-medium text-slate-900">{selectedItem.kondisi || "-"}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Qty</p>
+                  <p className="text-sm font-medium text-slate-900">{Number(selectedItem.qty || 0)}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Diperiksa Oleh</p>
+                  <p className="text-sm font-medium text-slate-900">{selectedItem.diperiksa_oleh_user?.nama || "-"}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Waktu Verifikasi</p>
+                  <p className="text-sm font-medium text-slate-900">{selectedItem.diperiksa_pada ? new Date(selectedItem.diperiksa_pada).toLocaleString("id-ID") : "-"}</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">Foto Dokumentasi</p>
+                {selectedItem.fotos && selectedItem.fotos.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {selectedItem.fotos.map((foto: any) => (
+                      <div key={foto.foto_id} className="overflow-hidden rounded-xl border border-slate-100">
+                        <img src={foto.url} alt={foto.filename || "Foto barang"} className="h-32 w-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400">Belum ada foto dokumentasi untuk item ini.</p>
+                )}
+              </div>
+
+              <div className="flex justify-end">
+                <button type="button" onClick={() => setSelectedItem(null)} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
+                  Kembali ke Detail
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style jsx global>{`
         @media print {

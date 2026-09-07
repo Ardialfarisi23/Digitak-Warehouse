@@ -3,7 +3,7 @@ const express = require("express");
 const router = express.Router();
 
 const suratJalanController = require("./surat-jalan.controller");
-const { createSuratJalanSchema, receiveInboundSchema, approveInboundSchema, rejectInboundSchema, rejectOutboundSchema, putawaySchema, retrieveSchema } = require("./surat-jalan.validation");
+const { createSuratJalanSchema, receiveInboundSchema, approveInboundSchema, rejectInboundSchema, rejectOutboundSchema, putawaySchema, retrieveSchema, deliveryStatusSchema, itemFotoSchema } = require("./surat-jalan.validation");
 const validate = require("../../middlewares/validation.middleware");
 const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
@@ -26,6 +26,8 @@ router.get("/outbound/approval", authenticate, suratJalanController.findOutbound
 router.get("/outbound/delivery", authenticate, suratJalanController.findOutboundForDelivery);
 router.get("/inbound", authenticate, suratJalanController.findInboundList);
 router.get("/verification/queue", authenticate, suratJalanController.findVerificationQueue);
+router.get("/staff/history", authenticate, suratJalanController.findStaffHistory);
+router.get("/rejected", authenticate, authorize("SUPERVISOR"), suratJalanController.findRejectedList);
 router.get("/:id", authenticate, suratJalanController.findById);
 
 router.put(
@@ -59,6 +61,14 @@ router.put(
 );
 
 router.put(
+  "/:id/delivery-status",
+  authenticate,
+  authorize("SUPERVISOR"),
+  validate(deliveryStatusSchema),
+  suratJalanController.updateDeliveryStatus
+);
+
+router.put(
   "/:id/reject-inbound",
   authenticate,
   authorize("SUPERVISOR"),
@@ -88,6 +98,21 @@ router.post(
   authorize("STAFF", "SUPERVISOR"),
   validate(retrieveSchema),
   suratJalanController.retrieve
+);
+
+router.post(
+  "/:id/items/:itemId/fotos",
+  authenticate,
+  authorize("STAFF", "SUPERVISOR"),
+  validate(itemFotoSchema),
+  suratJalanController.addItemFoto
+);
+
+router.delete(
+  "/:id/items/:itemId/fotos/:fotoId",
+  authenticate,
+  authorize("STAFF", "SUPERVISOR"),
+  suratJalanController.deleteItemFoto
 );
 
 module.exports = router;
