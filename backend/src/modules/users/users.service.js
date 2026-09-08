@@ -1,9 +1,9 @@
 const usersRepository = require("./users.repository");
 const AppError = require("../../shared/errors");
 const passwordHelper = require("../../shared/password");
+const prisma = require("../../config/prisma");
 const path = require("path");
 const fs = require("fs");
-const prisma = require("../../config/prisma");
 
 const create = async (data) => {
   const existing = await usersRepository.findByEmail(data.email, { includeInactive: true });
@@ -17,7 +17,32 @@ const create = async (data) => {
     delete data.password;
   }
 
-  return await usersRepository.create(data);
+  const result = await usersRepository.create(data);
+
+  try {
+    const admins = await prisma.user_account.findMany({
+      where: { role: "admin_general", is_aktif: true },
+      select: { user_id: true },
+    });
+
+    const adminIds = admins
+      .filter((admin) => admin.user_id !== result.user_id)
+      .map((admin) => admin.user_id);
+
+    if (adminIds.length > 0) {
+      await require("../../modules/notifications/notifications.service").create({
+        role: "admin_general",
+        type: "info",
+        title: "Pengguna Baru Ditambahkan",
+        message: `Akun ${result.nama} (${result.email}) telah dibuat dengan role ${result.role}.`,
+        link: "/dashboard/users",
+      });
+    }
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi create user:", notifErr);
+  }
+
+  return result;
 };
 
 const findAll = async (query) => {
@@ -34,16 +59,26 @@ const findById = async (user_id) => {
   return user;
 };
 
-const update = async (user_id, data) => {
-  const user = await usersRepository.findById(user_id, { includeInactive: true });
+const findByEmail = async (email) => {
+  const user = await usersRepository.findByEmail(email, { includeInactive: true });
 
   if (!user) {
     throw new AppError("Akun tidak ditemukan.", 404);
   }
 
-  if (data.email && data.email !== user.email) {
-    const existing = await usersRepository.findByEmail(data.email, { includeInactive: true });
-    if (existing) {
+  return user;
+};
+
+const update = async (user_id, data) => {
+  const existingUser = await usersRepository.findById(user_id, { includeInactive: true });
+
+  if (!existingUser) {
+    throw new AppError("Akun tidak ditemukan.", 404);
+  }
+
+  if (data.email && data.email !== existingUser.email) {
+    const emailExists = await usersRepository.findByEmail(data.email, { includeInactive: true });
+    if (emailExists) {
       throw new AppError("Email sudah digunakan.", 400);
     }
   }
@@ -53,17 +88,42 @@ const update = async (user_id, data) => {
     delete data.password;
   }
 
-  const finalRole = data.role ?? user.role;
+  const finalRole = data.role ?? existingUser.role;
 
   if (finalRole === "supervisor" || finalRole === "staf_gudang") {
-    const gudangId = data.gudang_id ?? user.gudang_id;
+    const gudangId = data.gudang_id ?? existingUser.gudang_id;
 
     if (gudangId === undefined || gudangId === null || gudangId === "") {
       throw new AppError("Gudang yang ditugaskan wajib diisi untuk role Supervisor atau Staf Gudang.", 400);
     }
   }
 
-  return await usersRepository.update(user_id, data);
+  const result = await usersRepository.update(user_id, data);
+
+  try {
+    const admins = await prisma.user_account.findMany({
+      where: { role: "admin_general", is_aktif: true },
+      select: { user_id: true },
+    });
+
+    const adminIds = admins
+      .filter((admin) => admin.user_id !== user_id)
+      .map((admin) => admin.user_id);
+
+    if (adminIds.length > 0) {
+      await require("../../modules/notifications/notifications.service").create({
+        role: "admin_general",
+        type: "info",
+        title: "Pengguna Diperbarui",
+        message: `Akun ${result.nama} (${result.email}) telah diperbarui.`,
+        link: "/dashboard/users",
+      });
+    }
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi update user:", notifErr);
+  }
+
+  return result;
 };
 
 const updateAvatar = async (userId, file) => {
@@ -130,6 +190,7 @@ module.exports = {
   create,
   findAll,
   findById,
+  findByEmail,
   update,
   updateAvatar,
   deleteAvatar,

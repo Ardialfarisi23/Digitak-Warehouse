@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface UserAvatarProps {
   src?: string | null;
@@ -14,6 +14,10 @@ export function UserAvatar({ src, name = "User", className = "", size = 36 }: Us
   const avatarUrl = getAvatarUrl(src);
   const [imgError, setImgError] = useState(false);
 
+  useEffect(() => {
+    setImgError(false);
+  }, [src]);
+
   function getInitials(name: string): string {
     const parts = name.trim().split(" ");
     if (parts.length >= 2) {
@@ -24,7 +28,7 @@ export function UserAvatar({ src, name = "User", className = "", size = 36 }: Us
 
   function getAvatarUrl(foto: string | null | undefined): string | null {
     if (!foto) return null;
-    if (foto.startsWith("http://") || foto.startsWith("https://") || foto.startsWith("data:image/")) {
+    if (foto.startsWith("http://") || foto.startsWith("https://") || foto.startsWith("data:image/") || foto.startsWith("blob:")) {
       return foto;
     }
     const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";

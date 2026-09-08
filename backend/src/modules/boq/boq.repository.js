@@ -19,7 +19,11 @@ const create = async (data) => {
   return await prisma.boq.create({
     data,
     include: {
-      tiket: true,
+      tiket: {
+        include: {
+          project: true,
+        },
+      },
       items: {
         include: {
           barang: true,

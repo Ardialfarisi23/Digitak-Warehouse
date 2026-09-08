@@ -1,5 +1,6 @@
 const itemRepository = require("./item.repository");
 const AppError = require("../../shared/errors");
+const notificationService = require("../../modules/notifications/notifications.service");
 
 const create = async (data, userId) => {
   const existing = await itemRepository.findByKode(data.kode_perangkat, { includeInactive: true });
@@ -14,7 +15,28 @@ const create = async (data, userId) => {
     updated_by: Number(userId),
   };
 
-  return await itemRepository.create(createData);
+  const result = await itemRepository.create(createData);
+
+  try {
+    await notificationService.create({
+      role: "admin_general",
+      type: "info",
+      title: "Item Baru Ditambahkan",
+      message: `Item ${result.kode_perangkat} - ${result.nama_barang || ""} telah ditambahkan oleh staf.`,
+      link: "/dashboard/master-data",
+    });
+    await notificationService.create({
+      role: "supervisor",
+      type: "info",
+      title: "Item Baru Ditambahkan",
+      message: `Item ${result.kode_perangkat} - ${result.nama_barang || ""} telah ditambahkan oleh staf.`,
+      link: "/dashboard/master-data",
+    });
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi item baru:", notifErr);
+  }
+
+  return result;
 };
 
 const findAll = async (query) => {
@@ -50,7 +72,28 @@ const update = async (kode_perangkat, data, userId) => {
     updated_by: Number(userId),
   };
 
-  return await itemRepository.update(record.barang_id, updateData);
+  const result = await itemRepository.update(record.barang_id, updateData);
+
+  try {
+    await notificationService.create({
+      role: "admin_general",
+      type: "info",
+      title: "Item Diperbarui",
+      message: `Item ${result.kode_perangkat} - ${result.nama_barang || ""} telah diperbarui.`,
+      link: "/dashboard/master-data",
+    });
+    await notificationService.create({
+      role: "supervisor",
+      type: "info",
+      title: "Item Diperbarui",
+      message: `Item ${result.kode_perangkat} - ${result.nama_barang || ""} telah diperbarui.`,
+      link: "/dashboard/master-data",
+    });
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi item update:", notifErr);
+  }
+
+  return result;
 };
 
 module.exports = {

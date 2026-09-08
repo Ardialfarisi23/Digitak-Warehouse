@@ -1,6 +1,7 @@
 const boqRepository = require("./boq.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
+const notificationService = require("../../modules/notifications/notifications.service");
 
 const normalizeStatus = (status) => {
   if (!status) return status;
@@ -47,6 +48,10 @@ const generateBoqNumber = async () => {
   });
   return `BOQ-${year}-${String(count + 1).padStart(4, "0")}`;
 };
+
+const getBoqIdentifier = (boq) => boq.boq_number || `BOQ-${boq.boq_id}`;
+
+const getBoqProjectName = (boq) => boq?.tiket?.project?.nama_project || null;
 
 const create = async (data, userId) => {
   const { items, projectId, area, ticketNumber, notes, referenceFile, ...boqData } = data;
@@ -153,6 +158,23 @@ const create = async (data, userId) => {
   }
 
   const result = await boqRepository.create(boqDataWithMeta);
+
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(userId) },
+    select: { nama: true, email: true },
+  });
+
+  try {
+    await notificationService.create({
+      role: "supervisor",
+      type: "info",
+      title: "BOQ Baru Dibuat",
+      message: `${getBoqIdentifier(result)}${getBoqProjectName(result) ? ` untuk project ${getBoqProjectName(result)}` : ""} telah dibuat oleh ${actor?.nama || "Staff"}.`,
+      link: `/dashboard/boq?id=${result.boq_id}`,
+    });
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi create BOQ:", notifErr);
+  }
 
   await prisma.audit_log.create({
     data: {
@@ -315,6 +337,30 @@ const update = async (id, data, userId) => {
     },
   });
 
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(userId) },
+    select: { nama: true, email: true },
+  });
+
+  try {
+    await notificationService.create({
+      userId: boq.created_by,
+      type: "info",
+      title: "BOQ Diperbarui",
+      message: `${getBoqIdentifier(boq)}${getBoqProjectName(boq) ? ` untuk project ${getBoqProjectName(boq)}` : ""} telah diperbarui oleh ${actor?.nama || "Admin/Supervisor"}.`,
+      link: `/dashboard/boq?id=${boq.boq_id}`,
+    });
+    await notificationService.create({
+      role: "supervisor",
+      type: "info",
+      title: "BOQ Diperbarui",
+      message: `${getBoqIdentifier(boq)}${getBoqProjectName(boq) ? ` untuk project ${getBoqProjectName(boq)}` : ""} telah diperbarui oleh ${actor?.nama || "Admin/Supervisor"}.`,
+      link: `/dashboard/boq?id=${boq.boq_id}`,
+    });
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi update BOQ:", notifErr);
+  }
+
   await prisma.audit_log.create({
     data: {
       entity_type: "boq",
@@ -349,6 +395,37 @@ const updateStatus = async (id, status, userId) => {
 
   const result = await boqRepository.updateStatus(id, normalizedStatus, userId);
 
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(userId) },
+    select: { nama: true, email: true },
+  });
+
+  const statusLabel =
+    normalizedStatus === "aktif"
+      ? "disetujui"
+      : normalizedStatus === "ditolak"
+        ? "ditolak"
+        : `diubah menjadi ${normalizedStatus}`;
+
+  try {
+    await notificationService.create({
+      userId: boq.created_by,
+      type: normalizedStatus === "ditolak" ? "warning" : "success",
+      title: `BOQ ${statusLabel}`,
+      message: `${getBoqIdentifier(boq)}${getBoqProjectName(boq) ? ` untuk project ${getBoqProjectName(boq)}` : ""} telah ${statusLabel} oleh ${actor?.nama || "Admin/Supervisor"}.`,
+      link: `/dashboard/boq?id=${boq.boq_id}`,
+    });
+    await notificationService.create({
+      role: "supervisor",
+      type: normalizedStatus === "ditolak" ? "warning" : "success",
+      title: `BOQ ${statusLabel}`,
+      message: `${getBoqIdentifier(boq)}${getBoqProjectName(boq) ? ` untuk project ${getBoqProjectName(boq)}` : ""} telah ${statusLabel} oleh ${actor?.nama || "Admin/Supervisor"}.`,
+      link: `/dashboard/boq?id=${boq.boq_id}`,
+    });
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi update status BOQ:", notifErr);
+  }
+
   try {
     await prisma.audit_log.create({
       data: {
@@ -378,11 +455,59 @@ const softDelete = async (id) => {
     throw new AppError("BOQ yang sudah aktif atau selesai tidak dapat dihapus.", 400);
   }
 
-  return await boqRepository.softDelete(id);
+  const result = await boqRepository.softDelete(id);
+
+  try {
+    await notificationService.create({
+      userId: boq.created_by,
+      type: "warning",
+      title: "BOQ Diarsipkan",
+      message: `${getBoqIdentifier(boq)}${getBoqProjectName(boq) ? ` untuk project ${getBoqProjectName(boq)}` : ""} telah diarsipkan oleh Admin/Supervisor.`,
+      link: `/dashboard/boq?id=${boq.boq_id}`,
+    });
+    await notificationService.create({
+      role: "supervisor",
+      type: "warning",
+      title: "BOQ Diarsipkan",
+      message: `${getBoqIdentifier(boq)}${getBoqProjectName(boq) ? ` untuk project ${getBoqProjectName(boq)}` : ""} telah diarsipkan oleh Admin/Supervisor.`,
+      link: `/dashboard/boq?id=${boq.boq_id}`,
+    });
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi soft delete BOQ:", notifErr);
+  }
+
+  return result;
 };
 
 const restore = async (id) => {
-  return await boqRepository.restore(id);
+  const boq = await boqRepository.findById(id);
+
+  if (!boq) {
+    throw new AppError("BOQ tidak ditemukan.", 404);
+  }
+
+  const result = await boqRepository.restore(id);
+
+  try {
+    await notificationService.create({
+      userId: boq.created_by,
+      type: "success",
+      title: "BOQ Dipulihkan",
+      message: `${getBoqIdentifier(boq)}${getBoqProjectName(boq) ? ` untuk project ${getBoqProjectName(boq)}` : ""} telah dipulihkan oleh Admin/Supervisor.`,
+      link: `/dashboard/boq?id=${boq.boq_id}`,
+    });
+    await notificationService.create({
+      role: "supervisor",
+      type: "success",
+      title: "BOQ Dipulihkan",
+      message: `${getBoqIdentifier(boq)}${getBoqProjectName(boq) ? ` untuk project ${getBoqProjectName(boq)}` : ""} telah dipulihkan oleh Admin/Supervisor.`,
+      link: `/dashboard/boq?id=${boq.boq_id}`,
+    });
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi restore BOQ:", notifErr);
+  }
+
+  return result;
 };
 
 const getSummary = async (id) => {
