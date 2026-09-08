@@ -6,6 +6,7 @@ const path = require("path");
 
 const authRoutes = require("./modules/auth/auth.routes");
 const warehouseRoutes = require("./modules/warehouse/warehouse.routes");
+const titikLapanganRoutes = require("./modules/titik-lapangan/titik-lapangan.routes");
 const aisleRoutes = require("./modules/aisle/aisle.routes");
 const categoryRoutes = require("./modules/category/category.routes");
 const customerRoutes = require("./modules/customer/customer.routes");
@@ -70,6 +71,7 @@ app.get("/", (req, res) => {
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/warehouses", warehouseRoutes);
+app.use("/api/titik-lapangan", titikLapanganRoutes);
 app.use("/api/aisles", aisleRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/customers", customerRoutes);

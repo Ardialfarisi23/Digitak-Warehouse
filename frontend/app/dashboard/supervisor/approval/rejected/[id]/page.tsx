@@ -112,6 +112,34 @@ export default function SupervisorRejectedDetailPage() {
 
   const items: any[] = Array.isArray(detail.items) ? detail.items : [];
 
+  const tujuanLabel =
+    detail?.tujuan_tipe === "lapangan"
+      ? detail?.titik_lapangan?.nama_lokasi || "-"
+      : detail?.tujuan_tipe === "gudang"
+        ? detail?.gudang_tujuan?.nama_gudang || "-"
+        : detail?.gudang_tujuan?.nama_gudang || "-";
+
+  const tujuanBadge =
+    detail?.tujuan_tipe === "lapangan" ? (
+      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Lapangan</span>
+    ) : detail?.tujuan_tipe === "gudang" ? (
+      <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Gudang</span>
+    ) : null;
+
+  const pengirimLabel =
+    detail?.tipe_pengirim === "internal"
+      ? detail?.gudang_asal?.nama_gudang || "-"
+      : detail?.tipe_pengirim === "external"
+        ? detail?.pengirim_eksternal_nama || "-"
+        : detail?.gudang_asal?.nama_gudang || "-";
+
+  const pengirimBadge =
+    detail?.tipe_pengirim === "internal" ? (
+      <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">Internal</span>
+    ) : detail?.tipe_pengirim === "external" ? (
+      <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">External</span>
+    ) : null;
+
   return (
     <div className="p-8 max-w-5xl mx-auto space-y-6 bg-[#FAFAFA] min-h-screen text-slate-800">
       <div className="flex items-center gap-4">
@@ -199,11 +227,21 @@ export default function SupervisorRejectedDetailPage() {
           />
           <Field
             label="Gudang Asal"
-            value={detail.gudang_asal?.nama_gudang ?? <span className="italic text-slate-400">-</span>}
+            value={
+              <span>
+                {pengirimLabel}
+                {pengirimBadge}
+              </span>
+            }
           />
           <Field
             label="Gudang Tujuan"
-            value={detail.gudang_tujuan?.nama_gudang ?? <span className="italic text-slate-400">-</span>}
+            value={
+              <span>
+                {tujuanLabel}
+                {tujuanBadge}
+              </span>
+            }
           />
           <Field
             label="PIC Pemohon"

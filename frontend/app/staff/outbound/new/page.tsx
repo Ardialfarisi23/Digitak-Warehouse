@@ -48,6 +48,7 @@ type Warehouse = {
   nama_gudang: string;
   tipe?: string;
   alamat?: string;
+  is_internal?: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -85,6 +86,11 @@ function ConfirmModal({
   selectedVehicle,
   selectedPersonil,
   fotoUrlsByItem,
+  selectedTujuanKategori,
+  selectedTitikLapanganId,
+  titikLapangans,
+  selectedPengirimKategori,
+  pengirimEksternalNama,
 }: {
   open: boolean;
   onClose: () => void;
@@ -98,6 +104,11 @@ function ConfirmModal({
   selectedVehicle: Vehicle | null;
   selectedPersonil: Personil | null;
   fotoUrlsByItem: Record<string, string>;
+  selectedTujuanKategori: string;
+  selectedTitikLapanganId: string;
+  titikLapangans: { titik_lapangan_id: string | number; nama_lokasi: string }[];
+  selectedPengirimKategori: string;
+  pengirimEksternalNama: string;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -181,15 +192,19 @@ function ConfirmModal({
               </p>
               <div className="space-y-1 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Gudang Asal</span>
+                  <span className="text-slate-500">Pengirim</span>
                   <span className="font-medium text-slate-700">
-                    {selectedGudangAsal?.nama_gudang || "-"}
+                    {selectedPengirimKategori === "external"
+                      ? `External: ${pengirimEksternalNama || "-"}`
+                      : selectedGudangAsal?.nama_gudang || "-"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Gudang Tujuan</span>
+                  <span className="text-slate-500">Tujuan</span>
                   <span className="font-medium text-slate-700">
-                    {selectedGudangTujuan?.nama_gudang || "-"}
+                    {selectedTujuanKategori === "lapangan"
+                      ? titikLapangans.find((tl) => String(tl.titik_lapangan_id) === selectedTitikLapanganId)?.nama_lokasi || "-"
+                      : selectedGudangTujuan?.nama_gudang || "-"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -280,6 +295,11 @@ export default function AjukanSuratJalanPage() {
   const [selectedPersonilId, setSelectedPersonilId] = useState<string>("");
   const [selectedGudangAsalId, setSelectedGudangAsalId] = useState<string>("");
   const [selectedGudangTujuanId, setSelectedGudangTujuanId] = useState<string>("");
+  const [selectedTujuanKategori, setSelectedTujuanKategori] = useState<string>("");
+  const [selectedPengirimKategori, setSelectedPengirimKategori] = useState<string>("");
+  const [selectedTitikLapanganId, setSelectedTitikLapanganId] = useState<string>("");
+  const [pengirimEksternalNama, setPengirimEksternalNama] = useState<string>("");
+  const [titikLapangans, setTitikLapangans] = useState<{ titik_lapangan_id: string | number; nama_lokasi: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [boqItems, setBoqItems] = useState<ItemBarang[]>([]);
   const [boqItemsLoading, setBoqItemsLoading] = useState(false);
@@ -359,16 +379,25 @@ export default function AjukanSuratJalanPage() {
     setSelectedProjectId(id);
     setQtyByItem({});
     setBoqItems([]);
+    setSelectedTujuanKategori("");
+    setSelectedPengirimKategori("");
+    setSelectedTitikLapanganId("");
+    setPengirimEksternalNama("");
+    setTitikLapangans([]);
 
     if (!id) return;
 
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
     setBoqItemsLoading(true);
     try {
-      const res = await get(`${baseUrl}/api/boqs/items?projectId=${id}`);
-      if (!res.ok) throw new Error("Gagal mengambil daftar item BOQ Plan.");
-      const json = await res.json();
-      const rawList = Array.isArray(json?.data) ? json.data : [];
+      const [itemsRes, titikLapanganRes] = await Promise.all([
+        get(`${baseUrl}/api/boqs/items?projectId=${id}`),
+        get(`${baseUrl}/api/titik-lapangan?project_id=${id}`),
+      ]);
+
+      if (!itemsRes.ok) throw new Error("Gagal mengambil daftar item BOQ Plan.");
+      const itemsJson = await itemsRes.json();
+      const rawList = Array.isArray(itemsJson?.data) ? itemsJson.data : [];
       const mapped: ItemBarang[] = rawList.map((it: any) => ({
         id: String(it.barang_id || it.id || ""),
         barang_id: String(it.barang_id || it.id || ""),
@@ -379,9 +408,27 @@ export default function AjukanSuratJalanPage() {
         qty_rencana: Number(it.qty_rencana || 0),
       }));
       setBoqItems(mapped);
+
+      if (titikLapanganRes.ok) {
+        const tlJson = await titikLapanganRes.json();
+        const rawTitikLapangan = Array.isArray(tlJson?.data?.data)
+          ? tlJson.data.data
+          : Array.isArray(tlJson?.data)
+            ? tlJson.data
+            : [];
+        setTitikLapangans(
+          rawTitikLapangan.map((tl: any) => ({
+            titik_lapangan_id: String(tl.titik_lapangan_id || tl.id || ""),
+            nama_lokasi: tl.nama_lokasi || "",
+          }))
+        );
+      } else {
+        setTitikLapangans([]);
+      }
     } catch (err) {
       console.error(err);
       setBoqItems([]);
+      setTitikLapangans([]);
     } finally {
       setBoqItemsLoading(false);
     }
@@ -411,7 +458,23 @@ export default function AjukanSuratJalanPage() {
   );
 
   const totalQty = selectedItems.reduce((sum, i) => sum + i.qty, 0);
-  const canSubmit = !!selectedProject && selectedItems.length > 0 && !!selectedGudangAsalId && !!selectedGudangTujuanId && !!selectedPersonil && Object.keys(fotoUrlsByItem).length > 0;
+  const tujuanValid = !selectedTujuanKategori
+    ? false
+    : selectedTujuanKategori === "lapangan"
+      ? !!selectedTitikLapanganId
+      : !!selectedGudangTujuanId;
+  const pengirimValid = !selectedPengirimKategori
+    ? false
+    : selectedPengirimKategori === "internal"
+      ? !!selectedGudangAsalId
+      : !!pengirimEksternalNama.trim();
+  const canSubmit =
+    !!selectedProject &&
+    selectedItems.length > 0 &&
+    !!selectedPersonil &&
+    Object.keys(fotoUrlsByItem).length > 0 &&
+    tujuanValid &&
+    pengirimValid;
 
   async function handleSubmit() {
     if (!canSubmit || !selectedProject || !selectedPersonil) return;
@@ -471,7 +534,32 @@ export default function AjukanSuratJalanPage() {
   }
 
   async function confirmSubmit() {
-    if (!canSubmit || !selectedProject || !selectedPersonil) return;
+    if (!selectedProject || !selectedPersonil) return;
+
+    if (!selectedTujuanKategori) {
+      showToast("Pilih kategori tujuan terlebih dahulu.", "error");
+      return;
+    }
+    if (selectedTujuanKategori === "lapangan" && !selectedTitikLapanganId) {
+      showToast("Pilih titik lapangan terlebih dahulu.", "error");
+      return;
+    }
+    if (selectedTujuanKategori === "gudang" && !selectedGudangTujuanId) {
+      showToast("Pilih gudang tujuan terlebih dahulu.", "error");
+      return;
+    }
+    if (!selectedPengirimKategori) {
+      showToast("Pilih kategori pengirim terlebih dahulu.", "error");
+      return;
+    }
+    if (selectedPengirimKategori === "internal" && !selectedGudangAsalId) {
+      showToast("Pilih gudang asal terlebih dahulu.", "error");
+      return;
+    }
+    if (selectedPengirimKategori === "external" && !pengirimEksternalNama.trim()) {
+      showToast("Isi nama distributor/kolaborator terlebih dahulu.", "error");
+      return;
+    }
 
     setSubmitting(true);
     setShowConfirmModal(false);
@@ -481,11 +569,15 @@ export default function AjukanSuratJalanPage() {
       const payload = {
         tipe: "outbound",
         nomor_surat_jalan: generateNomorSuratJalanOutbound(),
-        gudang_asal_id: selectedGudangAsalId,
-        gudang_tujuan_id: selectedGudangTujuanId,
+        gudang_asal_id: selectedPengirimKategori === "internal" ? selectedGudangAsalId : null,
+        gudang_tujuan_id: selectedTujuanKategori === "gudang" ? selectedGudangTujuanId : null,
         kendaraan_id: selectedVehicleId || null,
         personil_pengantar_id: selectedPersonilId,
         project_id: selectedProjectId,
+        tujuan_tipe: selectedTujuanKategori || null,
+        titik_lapangan_id: selectedTujuanKategori === "lapangan" ? selectedTitikLapanganId : null,
+        tipe_pengirim: selectedPengirimKategori || null,
+        pengirim_eksternal_nama: selectedPengirimKategori === "external" ? pengirimEksternalNama.trim() : null,
         kategori_approval: "manual_override",
         pic_pemohon_nama: picPemohon || null,
         items: selectedItems.map((i) => {
@@ -583,55 +675,152 @@ export default function AjukanSuratJalanPage() {
             {projects.length === 0 && <p className="mt-3 text-xs text-gray-400">Belum ada data Project di master data.</p>}
           </div>
 
-          {/* Gudang Asal & Tujuan */}
+          {/* Gudang Pengirim & Tujuan */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Gudang Pengirim */}
             <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
               <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
                 <MapPin size={16} />
-                Gudang Asal
+                Gudang Pengirim
               </p>
-              <div className="relative">
+
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">Kategori Pengirim</label>
+              <div className="relative mb-3">
                 <select
-                  value={selectedGudangAsalId}
-                  onChange={(e) => setSelectedGudangAsalId(e.target.value)}
+                  value={selectedPengirimKategori}
+                  onChange={(e) => {
+                    setSelectedPengirimKategori(e.target.value);
+                    setSelectedGudangAsalId("");
+                    setPengirimEksternalNama("");
+                  }}
                   className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
                 >
-                  <option value="" disabled>
-                    Pilih Gudang Asal...
-                  </option>
-                  {warehouses.map((w) => (
-                    <option key={w.gudang_id} value={String(w.gudang_id)}>
-                      {w.nama_gudang} {w.tipe ? `(${w.tipe})` : ""}
-                    </option>
-                  ))}
+                  <option value="">Pilih Kategori...</option>
+                  <option value="internal">Internal</option>
+                  <option value="external">External</option>
                 </select>
                 <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
               </div>
-              {warehouses.length === 0 && <p className="mt-2 text-xs text-gray-400">Belum ada data Gudang di master data.</p>}
+
+              {selectedPengirimKategori === "internal" && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Gudang Asal <span className="text-rose-500">*</span></label>
+                  <div className="relative">
+                    <select
+                      value={selectedGudangAsalId}
+                      onChange={(e) => setSelectedGudangAsalId(e.target.value)}
+                      className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+                    >
+                      <option value="">Pilih Gudang Asal...</option>
+                      {warehouses.filter((w) => w.is_internal === true).map((w) => (
+                        <option key={w.gudang_id} value={String(w.gudang_id)}>
+                          {w.nama_gudang} {w.tipe ? `(${w.tipe})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  </div>
+                  {warehouses.filter((w) => w.is_internal === true).length === 0 && (
+                    <p className="mt-2 text-xs text-gray-400">Belum ada data Gudang Internal di master data.</p>
+                  )}
+                </div>
+              )}
+
+              {selectedPengirimKategori === "external" && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Nama Distributor/Kolaborator <span className="text-rose-500">*</span></label>
+                  <input
+                    type="text"
+                    value={pengirimEksternalNama}
+                    onChange={(e) => setPengirimEksternalNama(e.target.value)}
+                    placeholder="Sesuai data di surat jalan yang diterima"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-[#E8632C] focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {!selectedPengirimKategori && (
+                <p className="mt-2 text-xs text-gray-400">Pilih kategori pengirim terlebih dahulu.</p>
+              )}
             </div>
 
+            {/* Gudang Tujuan */}
             <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
               <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
                 <MapPin size={16} />
                 Gudang Tujuan
               </p>
-              <div className="relative">
+
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">Kategori Tujuan</label>
+              <div className="relative mb-3">
                 <select
-                  value={selectedGudangTujuanId}
-                  onChange={(e) => setSelectedGudangTujuanId(e.target.value)}
+                  value={selectedTujuanKategori}
+                  onChange={(e) => {
+                    setSelectedTujuanKategori(e.target.value);
+                    setSelectedGudangTujuanId("");
+                    setSelectedTitikLapanganId("");
+                  }}
                   className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
                 >
-                  <option value="" disabled>
-                    Pilih Gudang Tujuan...
-                  </option>
-                  {warehouses.map((w) => (
-                    <option key={w.gudang_id} value={String(w.gudang_id)}>
-                      {w.nama_gudang} {w.tipe ? `(${w.tipe})` : ""}
-                    </option>
-                  ))}
+                  <option value="">Pilih Kategori...</option>
+                  <option value="gudang">Gudang</option>
+                  <option value="lapangan">Lapangan</option>
                 </select>
                 <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
               </div>
+
+              {selectedTujuanKategori === "gudang" && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Gudang Tujuan <span className="text-rose-500">*</span></label>
+                  <div className="relative">
+                    <select
+                      value={selectedGudangTujuanId}
+                      onChange={(e) => setSelectedGudangTujuanId(e.target.value)}
+                      className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+                    >
+                      <option value="">Pilih Gudang Tujuan...</option>
+                      {warehouses.map((w) => (
+                        <option key={w.gudang_id} value={String(w.gudang_id)}>
+                          {w.nama_gudang} {w.tipe ? `(${w.tipe})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  </div>
+                  {warehouses.length === 0 && <p className="mt-2 text-xs text-gray-400">Belum ada data Gudang di master data.</p>}
+                </div>
+              )}
+
+              {selectedTujuanKategori === "lapangan" && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Titik Lapangan <span className="text-rose-500">*</span></label>
+                  <div className="relative">
+                    <select
+                      value={selectedTitikLapanganId}
+                      onChange={(e) => setSelectedTitikLapanganId(e.target.value)}
+                      className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+                    >
+                      <option value="">Pilih Titik Lapangan...</option>
+                      {titikLapangans.map((tl) => (
+                        <option key={String(tl.titik_lapangan_id)} value={String(tl.titik_lapangan_id)}>
+                          {tl.nama_lokasi}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  </div>
+                  {titikLapangans.length === 0 && selectedProjectId && (
+                    <p className="mt-2 text-xs text-gray-400">Project ini belum memiliki titik lapangan.</p>
+                  )}
+                  {!selectedProjectId && (
+                    <p className="mt-2 text-xs text-amber-600">Pilih project terlebih dahulu.</p>
+                  )}
+                </div>
+              )}
+
+              {!selectedTujuanKategori && (
+                <p className="mt-2 text-xs text-gray-400">Pilih kategori tujuan terlebih dahulu.</p>
+              )}
             </div>
           </div>
 
@@ -727,7 +916,7 @@ export default function AjukanSuratJalanPage() {
                   {boqItems.length === 0 && (
                     <tr>
                       <td colSpan={5} className="py-8 text-center text-gray-400">
-                        Project ini belum memiliki BOQ Plan atau belum ada item di BOQ Plan.
+                        Project ini belum memiliki BOQ aktif atau belum ada item di BOQ Plan.
                       </td>
                     </tr>
                   )}
@@ -841,6 +1030,11 @@ export default function AjukanSuratJalanPage() {
             selectedVehicle={selectedVehicle}
             selectedPersonil={selectedPersonil}
             fotoUrlsByItem={fotoUrlsByItem}
+            selectedTujuanKategori={selectedTujuanKategori}
+            selectedTitikLapanganId={selectedTitikLapanganId}
+            titikLapangans={titikLapangans}
+            selectedPengirimKategori={selectedPengirimKategori}
+            pengirimEksternalNama={pengirimEksternalNama}
           />
 
       </div>

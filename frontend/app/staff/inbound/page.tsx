@@ -31,6 +31,7 @@ interface InboundItem {
 interface ProjectOption {
   project_id: string | number;
   nama_project: string;
+  has_active_boq?: boolean;
 }
 
 interface VehicleOption {
@@ -361,6 +362,11 @@ export default function InboundListPage() {
   );
 
   const handleSubmitInbound = async () => {
+    if (!selectedGudangTujuanId) {
+      setFormError("Pilih gudang tujuan terlebih dahulu.");
+      return;
+    }
+
     if (!canSubmitModal) return;
     setFormError(null);
     setSubmitting(true);
@@ -372,6 +378,7 @@ export default function InboundListPage() {
         gudang_tujuan_id: selectedGudangTujuanId,
         tanggal: tanggalMasuk,
         project_id: selectedProjectId || null,
+        tujuan_tipe: "gudang",
         pengirim_or_vendor: asalPengiriman.trim() || null,
         kendaraan_id: selectedKendaraanId || null,
         personil_pengantar_id: selectedDriverId || null,
@@ -555,9 +562,7 @@ export default function InboundListPage() {
                 onChange={(e) => setSelectedGudangTujuanId(e.target.value)}
                 className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
               >
-                <option value="" disabled>
-                  Pilih Gudang Tujuan...
-                </option>
+                <option value="" disabled>Pilih Gudang Tujuan...</option>
                 {warehouseOptions.map((w) => (
                   <option key={w.gudang_id} value={String(w.gudang_id)}>
                     {w.nama_gudang} {w.tipe ? `(${w.tipe})` : ""}
@@ -588,12 +593,18 @@ export default function InboundListPage() {
                 <option value="" disabled>Pilih Project...</option>
                 {projectOptions.map((p) => (
                   <option key={p.project_id} value={String(p.project_id)}>
-                    {p.nama_project}
+                    {p.nama_project} {p.has_active_boq === false ? "(BOQ belum aktif)" : ""}
                   </option>
                 ))}
               </select>
               <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
             </div>
+            {selectedProjectId && (() => {
+              const selectedProject = projectOptions.find((p) => String(p.project_id) === selectedProjectId);
+              return selectedProject && selectedProject.has_active_boq === false ? (
+                <p className="mt-1.5 text-xs text-amber-600">Perhatian: BOQ/Project ini belum diaktifkan oleh Admin. Transaksi surat jalan tidak dapat diproses.</p>
+              ) : null;
+            })()}
           </div>
 
           <div>

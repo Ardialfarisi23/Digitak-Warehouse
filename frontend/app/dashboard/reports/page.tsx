@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import {
   Search,
   ChevronDown,
@@ -21,11 +20,6 @@ import {
   Upload,
 } from "lucide-react";
 import { useApi } from "@/lib/api";
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -1408,8 +1402,8 @@ export default function LaporanAuditPage() {
   ];
 
   return (
-    <div className={`${plusJakartaSans.className} flex flex-1 flex-col p-6`}>
-      <div className="mx-auto w-full max-w-6xl">
+    <div className="flex flex-1 flex-col">
+      <div className="w-full">
         <div className="mb-6">
           <div className="text-xs font-semibold uppercase tracking-wide text-orange-500">Admin General</div>
           <h1 className="mt-1 text-2xl font-bold text-slate-900">Laporan &amp; Audit Menyeluruh</h1>

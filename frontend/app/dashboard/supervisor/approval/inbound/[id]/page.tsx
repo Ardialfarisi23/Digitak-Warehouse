@@ -23,6 +23,20 @@ export default function SupervisorApprovalInboundDetailPage() {
 
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
+  const tujuanLabel =
+    detail?.tujuan_tipe === "lapangan"
+      ? detail?.titik_lapangan?.nama_lokasi || "-"
+      : detail?.tujuan_tipe === "gudang"
+        ? detail?.gudang_tujuan?.nama_gudang || "-"
+        : detail?.gudang_tujuan?.nama_gudang || "-";
+
+  const tujuanBadge =
+    detail?.tujuan_tipe === "lapangan" ? (
+      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Lapangan</span>
+    ) : detail?.tujuan_tipe === "gudang" ? (
+      <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Gudang</span>
+    ) : null;
+
   useEffect(() => {
     let mounted = true;
 
@@ -187,6 +201,15 @@ export default function SupervisorApprovalInboundDetailPage() {
         <p className="mb-4 text-xs text-slate-500">
           Tinjau dan setujui surat jalan inbound di bawah ini. Stok akan otomatis ditambahkan setelah persetujuan.
         </p>
+
+        <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Informasi Tujuan</p>
+          <div className="mt-2 flex items-center gap-2 text-sm">
+            <span className="font-medium text-slate-600">Tujuan:</span>
+            <span className="font-semibold text-slate-900">{tujuanLabel}</span>
+            {tujuanBadge}
+          </div>
+        </div>
 
         <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-600">
           Catatan Supervisor

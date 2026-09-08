@@ -327,6 +327,7 @@ const getAreas = async () => {
 const findItemsByProject = async (projectId) => {
   const boqs = await prisma.boq.findMany({
     where: {
+      status: "aktif",
       tiket: {
         project_id: Number(projectId),
       },

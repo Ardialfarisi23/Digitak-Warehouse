@@ -20,6 +20,16 @@ const create = async (data, actorId) => {
     }
   }
 
+  if (data.boq_id) {
+    const boq = await prisma.boq.findUnique({
+      where: { boq_id: Number(data.boq_id) },
+      select: { boq_id: true, status: true, boq_number: true },
+    });
+    if (!boq || boq.status !== "aktif") {
+      throw new AppError("Tidak dapat membuat surat jalan — BOQ/Project terkait belum diaktifkan oleh Admin.", 400);
+    }
+  }
+
   const MAX_ATTEMPTS = 5;
   let attempt = 0;
 
@@ -238,6 +248,10 @@ const approveInbound = async (id, itemAdjustments = [], actorId) => {
     return shipment;
   }
 
+  if (shipment.boq_id && shipment.boq?.status !== "aktif") {
+    throw new AppError("Tidak dapat menyetujui inbound — BOQ/Project terkait belum diaktifkan oleh Admin.", 400);
+  }
+
   if (Array.isArray(itemAdjustments) && itemAdjustments.length > 0) {
     await suratJalanRepository.updateInboundItems(itemAdjustments);
   }
@@ -322,6 +336,10 @@ const approveOutbound = async (id, actorId) => {
 
   if (shipment.status === "disetujui" || shipment.status === "diterima_didistribusikan") {
     return shipment;
+  }
+
+  if (shipment.boq_id && shipment.boq?.status !== "aktif") {
+    throw new AppError("Tidak dapat menyetujui outbound — BOQ/Project terkait belum diaktifkan oleh Admin.", 400);
   }
 
   await prisma.$transaction(async (tx) => {

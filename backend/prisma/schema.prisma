@@ -32,6 +32,8 @@ model user_account {
   personils                       personil?
   created_projects                project[]                   @relation("project_created_by")
   updated_projects                project[]                   @relation("project_updated_by")
+  created_titik_lapangans         titik_lapangan[]            @relation("titik_lapangan_created_by")
+  updated_titik_lapangans         titik_lapangan[]            @relation("titik_lapangan_updated_by")
   created_surat_jalans            surat_jalan[]               @relation("surat_jalan_created_by")
   updated_surat_jalans            surat_jalan[]               @relation("surat_jalan_updated_by")
   created_tiket_materials         tiket_material[]            @relation("tiket_material_created_by")
@@ -118,8 +120,30 @@ model project {
   stok_gudangs    stok_gudang[]
   surat_jalans    surat_jalan[]
   tiket_materials tiket_material[]
+  titik_lapangans titik_lapangan[]
 
   @@index([area])
+}
+
+model titik_lapangan {
+  titik_lapangan_id BigInt   @id @default(autoincrement())
+  project_id        BigInt
+  nama_lokasi       String
+  latitude          String?
+  longitude         String?
+  alamat            String?
+  is_aktif          Boolean  @default(true)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+  created_by        BigInt
+  updated_by        BigInt
+
+  project           project  @relation(fields: [project_id], references: [project_id])
+  creator           user_account @relation("titik_lapangan_created_by", fields: [created_by], references: [user_id])
+  updater           user_account @relation("titik_lapangan_updated_by", fields: [updated_by], references: [user_id])
+  surat_jalans      surat_jalan[]
+
+  @@index([project_id])
 }
 
 model gudang {
@@ -134,6 +158,7 @@ model gudang {
   kapasitas_maksimum      Int?
   status_kecukupan_gudang status_kecukupan_zona?
   is_aktif                Boolean                @default(true)
+  is_internal             Boolean                @default(true)
   created_at              DateTime               @default(now())
   updated_at              DateTime               @default(now())
   created_by              BigInt
@@ -336,6 +361,10 @@ model surat_jalan {
   surat_jalan_url       String?
   catatan               String?
   project_id            BigInt?
+  titik_lapangan_id     BigInt?
+  tujuan_tipe           tujuan_tipe_enum?
+  tipe_pengirim         tipe_pengirim_enum?
+  pengirim_eksternal_nama String?
   created_at            DateTime           @default(now())
   updated_at            DateTime           @default(now())
   created_by            BigInt
@@ -347,6 +376,7 @@ model surat_jalan {
   kendaraan             kendaraan?         @relation(fields: [kendaraan_id], references: [kendaraan_id])
   personil_pengantar    personil?          @relation(fields: [personil_pengantar_id], references: [personil_id])
   project               project?           @relation(fields: [project_id], references: [project_id])
+  titik_lapangan        titik_lapangan?    @relation(fields: [titik_lapangan_id], references: [titik_lapangan_id])
   updater               user_account       @relation("surat_jalan_updated_by", fields: [updated_by], references: [user_id])
   items                 surat_jalan_item[]
 
@@ -506,6 +536,16 @@ enum personil_jenis {
 enum gudang_tipe {
   tetap
   dadakan
+}
+
+enum tujuan_tipe_enum {
+  lapangan
+  gudang
+}
+
+enum tipe_pengirim_enum {
+  internal
+  external
 }
 
 enum boq_status {

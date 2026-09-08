@@ -8,11 +8,16 @@ const createSuratJalanSchema = z.object({
   kendaraan_id: z.string().optional().nullable(),
   personil_pengantar_id: z.string().optional().nullable(),
   project_id: z.string().optional().nullable(),
+  boq_id: z.string().optional().nullable(),
   kategori_approval: z.string().optional().nullable(),
   pic_pemohon_nama: z.string().optional().nullable(),
   nomor_tiket: z.string().optional().nullable(),
   tanggal: z.string().optional().nullable(),
   surat_jalan_url: z.string().url("URL surat jalan tidak valid.").optional().nullable(),
+  tujuan_tipe: z.enum(["lapangan", "gudang"]).optional().nullable(),
+  titik_lapangan_id: z.string().optional().nullable(),
+  tipe_pengirim: z.enum(["internal", "external"]).optional().nullable(),
+  pengirim_eksternal_nama: z.string().optional().nullable(),
   items: z
     .array(
       z.object({
@@ -28,6 +33,48 @@ const createSuratJalanSchema = z.object({
       }),
     )
     .min(1, "Minimal satu item harus diisi."),
+}).superRefine((data, ctx) => {
+  if (data.tujuan_tipe === "lapangan") {
+    if (!data.titik_lapangan_id || data.titik_lapangan_id === "" || data.titik_lapangan_id === "0") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "titik_lapangan_id wajib diisi jika tujuan_tipe adalah lapangan.",
+        path: ["titik_lapangan_id"],
+      });
+    }
+  }
+
+  if (data.tujuan_tipe === "gudang") {
+    if (!data.gudang_tujuan_id || data.gudang_tujuan_id === "" || data.gudang_tujuan_id === "0") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "gudang_tujuan_id wajib diisi jika tujuan_tipe adalah gudang.",
+        path: ["gudang_tujuan_id"],
+      });
+    }
+  }
+
+  if (data.tipe === "outbound") {
+    if (data.tipe_pengirim === "external") {
+      if (!data.pengirim_eksternal_nama || data.pengirim_eksternal_nama.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "pengirim_eksternal_nama wajib diisi jika tipe_pengirim adalah external.",
+          path: ["pengirim_eksternal_nama"],
+        });
+      }
+    }
+
+    if (data.tipe_pengirim === "internal") {
+      if (!data.gudang_asal_id || data.gudang_asal_id === "" || data.gudang_asal_id === "0") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "gudang_asal_id wajib diisi jika tipe_pengirim adalah internal.",
+          path: ["gudang_asal_id"],
+        });
+      }
+    }
+  }
 });
 
 const receiveInboundSchema = z.object({
