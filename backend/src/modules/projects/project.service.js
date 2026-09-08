@@ -1,5 +1,6 @@
 const projectRepository = require("./project.repository");
 const AppError = require("../../shared/errors");
+const prisma = require("../../config/prisma");
 
 const create = async (data, userId) => {
   if (data.project_id) {
@@ -19,7 +20,35 @@ const create = async (data, userId) => {
 };
 
 const findAll = async (query = {}) => {
-  return await projectRepository.findAll(query);
+  const result = await projectRepository.findAll(query);
+
+  if (result && Array.isArray(result.data)) {
+    const projectIds = result.data.map((p) => Number(p.project_id)).filter(Boolean);
+
+    if (projectIds.length > 0) {
+      const activeBoqs = await prisma.boq.findMany({
+        where: { status: "aktif" },
+        include: {
+          tiket: {
+            select: { project_id: true },
+          },
+        },
+      });
+
+      const activeProjectIds = new Set(
+        activeBoqs
+          .filter((b) => b.tiket?.project_id)
+          .map((b) => Number(b.tiket.project_id))
+      );
+
+      result.data = result.data.map((p) => ({
+        ...p,
+        has_active_boq: activeProjectIds.has(Number(p.project_id)),
+      }));
+    }
+  }
+
+  return result;
 };
 
 const findByProjectId = async (project_id) => {

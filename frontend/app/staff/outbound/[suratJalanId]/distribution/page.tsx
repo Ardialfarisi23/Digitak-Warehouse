@@ -25,6 +25,8 @@ type ApiSuratJalan = {
   estimasi_tiba?: string | null;
   catatan_distribusi?: string | null;
   items: ApiSuratJalanItem[];
+  tujuan_tipe?: string | null;
+  titik_lapangan?: { nama_lokasi?: string } | null;
 };
 
 export default function DistributionDetailPage() {
@@ -132,6 +134,20 @@ export default function DistributionDetailPage() {
   const canStart = isDisetujui;
   const canConfirm = isSedangDikirim;
 
+  const tujuanLabel =
+    data.tujuan_tipe === "lapangan"
+      ? data.titik_lapangan?.nama_lokasi || "-"
+      : data.tujuan_tipe === "gudang"
+        ? data.gudang_tujuan?.nama_gudang || "-"
+        : data.gudang_tujuan?.nama_gudang || "-";
+
+  const tujuanBadge =
+    data.tujuan_tipe === "lapangan" ? (
+      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Lapangan</span>
+    ) : data.tujuan_tipe === "gudang" ? (
+      <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Gudang</span>
+    ) : null;
+
   async function handleStartDelivery() {
     if (!data) return;
     setSubmitting(true);
@@ -209,7 +225,11 @@ export default function DistributionDetailPage() {
         <h1 className="text-3xl font-bold text-gray-900">{data.nomor_surat_jalan}</h1>
         <p className="mt-1 flex items-center gap-1.5 text-sm text-gray-500">
           <MapPin size={14} />
-          Tujuan: {data.gudang_tujuan?.nama_gudang || data.project?.nama_project || "-"}
+          Tujuan:{" "}
+          <span>
+            {tujuanLabel}
+            {tujuanBadge}
+          </span>
         </p>
       </div>
 
