@@ -47,6 +47,8 @@ function ProfilePageContent() {
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewUrlRef = useRef<string | null>(null);
+  const cropImageSrcRef = useRef<string | null>(null);
   const userRole = mapRole(user?.role);
   const displayName = user?.name || user?.email || "User";
 
@@ -79,6 +81,35 @@ function ProfilePageContent() {
     loadProfile();
   }, [get, updateUser]);
 
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current && previewUrlRef.current.startsWith("blob:")) {
+        URL.revokeObjectURL(previewUrlRef.current);
+      }
+      if (cropImageSrcRef.current && cropImageSrcRef.current.startsWith("blob:")) {
+        URL.revokeObjectURL(cropImageSrcRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (previewUrl && previewUrl.startsWith("blob:")) {
+      if (previewUrlRef.current && previewUrlRef.current !== previewUrl && previewUrlRef.current.startsWith("blob:")) {
+        URL.revokeObjectURL(previewUrlRef.current);
+      }
+      previewUrlRef.current = previewUrl;
+    }
+  }, [previewUrl]);
+
+  useEffect(() => {
+    if (cropImageSrc && cropImageSrc.startsWith("blob:")) {
+      if (cropImageSrcRef.current && cropImageSrcRef.current !== cropImageSrc && cropImageSrcRef.current.startsWith("blob:")) {
+        URL.revokeObjectURL(cropImageSrcRef.current);
+      }
+      cropImageSrcRef.current = cropImageSrc;
+    }
+  }, [cropImageSrc]);
+
   const showToast = (message: string, type: "success" | "error") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
@@ -108,6 +139,9 @@ function ProfilePageContent() {
   };
 
   const handleCropConfirm = async (blob: Blob) => {
+    if (previewUrl && previewUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(previewUrl);
+    }
     const file = new File([blob], "cropped-avatar.jpg", { type: "image/jpeg" });
     setSelectedFile(file);
     setPreviewUrl(URL.createObjectURL(blob));
@@ -116,6 +150,9 @@ function ProfilePageContent() {
   };
 
   const handleCropCancel = () => {
+    if (cropImageSrc && cropImageSrc.startsWith("blob:")) {
+      URL.revokeObjectURL(cropImageSrc);
+    }
     setCropModalOpen(false);
     setCropImageSrc(null);
     if (fileInputRef.current) {
@@ -145,6 +182,10 @@ function ProfilePageContent() {
 
       const newAvatarUrl = json?.data?.foto || null;
       updateUser({ avatar_url: newAvatarUrl });
+      
+      if (previewUrl && previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(previewUrl);
+      }
       setPreviewUrl(null);
       setSelectedFile(null);
 
@@ -163,6 +204,12 @@ function ProfilePageContent() {
   };
 
   const handleCancel = () => {
+    if (previewUrl && previewUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    if (cropImageSrc && cropImageSrc.startsWith("blob:")) {
+      URL.revokeObjectURL(cropImageSrc);
+    }
     setPreviewUrl(null);
     setSelectedFile(null);
     setError(null);

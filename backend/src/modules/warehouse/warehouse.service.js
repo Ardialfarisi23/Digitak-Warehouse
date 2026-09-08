@@ -1,6 +1,7 @@
 const warehouseRepository = require("./warehouse.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
+const notificationService = require("../../modules/notifications/notifications.service");
 
 const create = async (data, userId) => {
   const existingWarehouse = await warehouseRepository.findByNama(data.nama_gudang, {
@@ -64,7 +65,38 @@ const update = async (gudang_id, data, userId) => {
     updated_by: Number(userId),
   };
 
-  return await warehouseRepository.update(warehouse.gudang_id, updateData);
+  const result = await warehouseRepository.update(warehouse.gudang_id, updateData);
+
+  try {
+    const personnel = await prisma.personil.findMany({
+      where: {
+        gudang_id: warehouse.gudang_id,
+        user: {
+          role: { in: ["supervisor", "staf_gudang"] },
+          is_aktif: true,
+        },
+      },
+      select: { user_id: true },
+    });
+
+    const userIds = personnel
+      .map((p) => p.user_id)
+      .filter((id) => id != null);
+
+    for (const uid of userIds) {
+      await notificationService.create({
+        userId: uid,
+        type: "info",
+        title: "Gudang Diperbarui",
+        message: `Gudang ${warehouse.nama_gudang} telah diperbarui.`,
+        link: "/dashboard/master-data",
+      });
+    }
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi update warehouse:", notifErr);
+  }
+
+  return result;
 };
 
 const softDelete = async (gudang_id) => {

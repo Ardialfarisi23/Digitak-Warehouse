@@ -270,7 +270,33 @@ const approveInbound = async (id, itemAdjustments = [], actorId) => {
     }
   });
 
-  return await suratJalanRepository.findById(id);
+  const updatedShipment = await suratJalanRepository.findById(id);
+
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(actorId) },
+    select: { nama: true },
+  });
+
+  try {
+    await notificationService.create({
+      userId: updatedShipment.created_by,
+      type: "success",
+      title: "Inbound Disetujui",
+      message: `Pengajuan inbound ${updatedShipment.nomor_surat_jalan} telah disetujui oleh ${actor?.nama || "Supervisor"}.`,
+      link: `/staff/inbound/${updatedShipment.surat_jalan_id}`,
+    });
+    await notificationService.create({
+      role: "supervisor",
+      type: "success",
+      title: "Inbound Disetujui",
+      message: `Pengajuan inbound ${updatedShipment.nomor_surat_jalan} telah disetujui oleh ${actor?.nama || "Supervisor"}.`,
+      link: `/dashboard/supervisor/approval/inbound`,
+    });
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi approve inbound:", notifErr);
+  }
+
+  return updatedShipment;
 };
 
 const approveOutbound = async (id, actorId) => {
@@ -398,7 +424,33 @@ const rejectInbound = async (id, catatan = null, actorId) => {
       }
     });
 
-    return await suratJalanRepository.findById(id);
+    const updatedShipment = await suratJalanRepository.findById(id);
+
+    const actor = await prisma.user_account.findUnique({
+      where: { user_id: BigInt(actorId) },
+      select: { nama: true },
+    });
+
+    try {
+      await notificationService.create({
+        userId: updatedShipment.created_by,
+        type: "warning",
+        title: "Inbound Ditolak",
+        message: `Pengajuan inbound ${updatedShipment.nomor_surat_jalan} telah ditolak oleh ${actor?.nama || "Supervisor"}.${catatan ? ` Catatan: ${catatan}` : ""}`,
+        link: `/staff/inbound/${updatedShipment.surat_jalan_id}`,
+      });
+      await notificationService.create({
+        role: "supervisor",
+        type: "warning",
+        title: "Inbound Ditolak",
+        message: `Pengajuan inbound ${updatedShipment.nomor_surat_jalan} telah ditolak oleh ${actor?.nama || "Supervisor"}.${catatan ? ` Catatan: ${catatan}` : ""}`,
+        link: `/dashboard/supervisor/approval/inbound`,
+      });
+    } catch (notifErr) {
+      console.error("Gagal membuat notifikasi reject inbound:", notifErr);
+    }
+
+    return updatedShipment;
   };
 
   const rejectOutbound = async (id, catatan = null, actorId) => {
