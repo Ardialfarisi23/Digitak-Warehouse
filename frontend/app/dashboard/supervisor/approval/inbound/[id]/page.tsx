@@ -343,7 +343,7 @@ export default function SupervisorApprovalInboundDetailPage() {
             </div>
 
             <div className="space-y-1">
-              <h3 className="text-xl font-bold text-slate-900">Approval Berhasil!</h3>
+              <h3 className="text-xl font-bold text-slate-900">Persetujuan Berhasil!</h3>
               <p className="text-xs text-slate-500 leading-relaxed">
                 Surat Jalan inbound berhasil disetujui dan stok barang telah ditambahkan.
               </p>
