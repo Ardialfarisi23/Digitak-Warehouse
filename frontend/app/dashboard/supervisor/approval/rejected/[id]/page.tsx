@@ -194,7 +194,7 @@ export default function SupervisorRejectedDetailPage() {
           <Field label="Tipe" value={tipeLabel(detail.tipe)} />
           <Field label="Project" value={detail.project?.nama_project ?? detail.project_id ?? "-"} />
           <Field
-            label="Kategori Approval"
+            label="Kategori Persetujuan"
             value={detail.kategori_approval ?? <span className="italic text-slate-400">-</span>}
           />
           <Field
@@ -264,7 +264,7 @@ export default function SupervisorRejectedDetailPage() {
         <XCircle className="w-4 h-4 text-rose-500 mt-0.5 shrink-0" />
         <p>
           Halaman ini bersifat <strong>read-only</strong>. Untuk tindak lanjut (mis. staf gudang
-          mengajukan ulang), gunakan halaman Approval Inbound atau Approval Outbound.
+          mengajukan ulang), gunakan halaman Form Persetujuan Inbound atau Form Persetujuan Outbound.
         </p>
       </div>
     </div>

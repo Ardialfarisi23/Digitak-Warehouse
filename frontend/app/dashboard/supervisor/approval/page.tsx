@@ -8,8 +8,8 @@ export default function SupervisorApprovalIndexPage() {
     <div className="min-h-screen px-8 py-6">
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-orange-500">Approval Supervisor</p>
-          <h1 className="mt-3 text-3xl font-bold text-slate-900">Pilih Alur Approval</h1>
+          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-orange-500">Persetujuan Supervisor</p>
+          <h1 className="mt-3 text-3xl font-bold text-slate-900">Pilih Alur Persetujuan</h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-500">
             Kelola antrian penerimaan inbound dan permintaan outbound dari satu halaman.
           </p>
@@ -26,7 +26,7 @@ export default function SupervisorApprovalIndexPage() {
               <ArrowDownLeft size={20} />
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-700">Approval Inbound</p>
+              <p className="text-sm font-semibold text-slate-700">Form Persetujuan Inbound</p>
               <p className="mt-2 text-sm text-slate-500">Review barang masuk, cek serial, kondisi, dan catat kelebihan jika ada.</p>
             </div>
           </div>
@@ -53,7 +53,7 @@ export default function SupervisorApprovalIndexPage() {
               <ArrowUpRight size={20} />
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-700">Approval Outbound</p>
+              <p className="text-sm font-semibold text-slate-700">Form Persetujuan Outbound</p>
               <p className="mt-2 text-sm text-slate-500">Setujui permintaan keluar untuk reservasi stok dan lanjutkan distribusi.</p>
             </div>
           </div>

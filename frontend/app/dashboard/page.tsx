@@ -443,7 +443,7 @@ function DashboardPageContent() {
       href: "/dashboard/delivery",
     },
     {
-      label: "Approval Menunggu",
+      label: "Persetujuan Menunggu",
       value: formatNumber(dashboardStats.pendingApprovals),
       icon: ShieldCheck,
       iconColor: "text-rose-500 bg-rose-50",
@@ -540,7 +540,7 @@ function DashboardPageContent() {
       const ts = sj.updated_at ?? sj.created_at ?? null;
       const nomor = sj.nomor_surat_jalan ?? `#${sj.surat_jalan_id}`;
       const verb = actionRequired
-        ? "menunggu approval"
+        ? "menunggu persetujuan"
         : status === "disetujui"
           ? "telah disetujui"
           : status === "digenerate"
@@ -686,7 +686,7 @@ function DashboardPageContent() {
         <header>
           <h1 className="text-2xl font-bold text-slate-900">{greeting}</h1>
           <p className="mt-1 text-sm text-slate-400">
-            Pantau kondisi gudang, status BOQ, dan approval outbound dalam satu
+            Pantau kondisi gudang, status BOQ, dan persetujuan outbound dalam satu
             tampilan.
           </p>
         </header>

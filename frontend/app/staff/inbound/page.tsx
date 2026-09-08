@@ -12,7 +12,7 @@ import { useApi } from "@/lib/api";
 type InboundStatus = "draft_diajukan" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "ditolak" | "menunggu_verifikasi" | "ready_putaway" | "sedang_dikirim";
 
 const STATUS_META: Record<InboundStatus, { label: string; tone: string }> = {
-  draft_diajukan: { label: "Menunggu Approval", tone: "bg-amber-50 text-amber-600" },
+  draft_diajukan: { label: "Menunggu Persetujuan", tone: "bg-amber-50 text-amber-600" },
   menunggu_verifikasi: { label: "Menunggu Verifikasi", tone: "bg-amber-50 text-amber-600" },
   ready_putaway: { label: "Siap Putaway", tone: "bg-blue-50 text-blue-600" },
   disetujui: { label: "Disetujui", tone: "bg-emerald-50 text-emerald-600" },

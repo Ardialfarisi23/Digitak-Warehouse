@@ -118,7 +118,7 @@ export function SupervisorDashboard() {
               <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
                 {[
                   {
-                    title: "Barang Masuk Menunggu Approval",
+                    title: "Barang Masuk Menunggu Persetujuan",
                     value: queue.inboundPending,
                     badge: `Tertua: ${queue.inboundOldestLabel}`,
                     badgeTone: "bg-slate-100 text-slate-600",
@@ -126,7 +126,7 @@ export function SupervisorDashboard() {
                     icon: ArrowDownLeft,
                   },
                   {
-                    title: "Barang Keluar Approval",
+                    title: "Barang Keluar Menunggu Persetujuan",
                     value: queue.outboundPending,
                     badge: queue.outboundCritical && queue.outboundCritical > 0 ? `Kritis! ${queue.outboundCritical}` : "Aman",
                     badgeTone:
@@ -282,14 +282,14 @@ export function SupervisorDashboard() {
               <div className="rounded-2xl bg-white p-6 shadow-sm border border-stone-100 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-bold text-slate-900">Verifikasi Approval</h3>
+                    <h3 className="text-lg font-bold text-slate-900">Verifikasi Persetujuan</h3>
                     <button className="text-xs font-bold text-orange-500 hover:underline">Lihat Semua</button>
                   </div>
 
                   <div className="space-y-3">
                     {approvalList.length === 0 ? (
                       <div className="rounded-xl bg-[#FAF8F3] p-4 border border-stone-100 text-center text-xs font-semibold text-slate-400">
-                        Tidak ada antrean approval saat ini.
+                        Tidak ada antrean persetujuan saat ini.
                       </div>
                     ) : (
                       approvalList.map((item) => (

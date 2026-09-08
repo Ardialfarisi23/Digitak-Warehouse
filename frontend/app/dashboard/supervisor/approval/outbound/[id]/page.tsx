@@ -142,7 +142,7 @@ export default function SupervisorApprovalOutboundDetailPage() {
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.24em] text-orange-500">
-            Detail Approval Outbound
+            Detail Form Persetujuan Outbound
           </p>
           <h1 className="mt-3 text-3xl font-bold text-slate-900">{request.nomor_surat_jalan}</h1>
           <p className="mt-2 text-sm text-slate-500">
