@@ -425,6 +425,7 @@ const getExportMatrixData = async () => {
           tipe: true,
           project_id: true,
           boq_id: true,
+          tujuan_tipe: true,
         },
       },
     },
@@ -454,7 +455,7 @@ const getExportMatrixData = async () => {
       }
     }
 
-    if (item.surat_jalan?.tipe === "outbound") {
+    if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
       outboundByProjectBarang.set(
         key,
         (outboundByProjectBarang.get(key) || 0) + qty

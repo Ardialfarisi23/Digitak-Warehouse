@@ -347,7 +347,7 @@ const approveOutbound = async (id, actorId) => {
     await suratJalanRepository.reduceBoqAllocation(shipment, tx);
     await suratJalanRepository.updateStatus(id, "disetujui", tx);
 
-    if (shipment.boq_id && shipment.boq?.tiket_id) {
+    if (shipment.boq_id && shipment.boq?.tiket_id && shipment.tujuan_tipe !== "gudang") {
       const totalQty = shipment.items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
       if (totalQty > 0) {
         const tiket = await tx.tiket_material.findUnique({
