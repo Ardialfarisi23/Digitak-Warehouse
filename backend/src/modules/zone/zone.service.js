@@ -2,6 +2,7 @@ const zoneRepository = require("./zone.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
 const capacityService = require("../capacity/capacity.service");
+const notificationService = require("../../modules/notifications/notifications.service");
 
 const create = async (data) => {
   const kodeZona = data.kode_zona || data.code;
@@ -57,7 +58,45 @@ const update = async (kode_zona, data) => {
   delete payload.code;
   delete payload.name;
 
-  return await zoneRepository.update(record.zona_id, payload);
+  const result = await zoneRepository.update(record.zona_id, payload);
+
+  try {
+    const warehouse = result.gudang || await prisma.gudang.findUnique({
+      where: { gudang_id: record.gudang_id },
+      select: { gudang_id: true, nama_gudang: true, pic_id: true },
+    });
+
+    if (warehouse) {
+      const personnel = await prisma.personil.findMany({
+        where: {
+          gudang_id: warehouse.gudang_id,
+          user: {
+            role: { in: ["supervisor", "staf_gudang"] },
+            is_aktif: true,
+          },
+        },
+        select: { user_id: true },
+      });
+
+      const userIds = personnel
+        .map((p) => p.user_id)
+        .filter((id) => id != null);
+
+      for (const uid of userIds) {
+        await notificationService.create({
+          userId: uid,
+          type: "info",
+          title: "Zona Diperbarui",
+          message: `Zona ${record.kode_zona} di gudang ${warehouse.nama_gudang || warehouse.gudang_id} telah diperbarui.`,
+          link: "/dashboard/master-data",
+        });
+      }
+    }
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi update zone:", notifErr);
+  }
+
+  return result;
 };
 
 const updateUtilizationStatus = async (zona_id, body, userId) => {

@@ -186,7 +186,7 @@ export default function SupervisorApprovalPage() {
             <span className="text-slate-300">•</span>
             <span className="text-slate-400 font-normal capitalize">Validasi Penerimaan</span>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Approval Penerimaan Barang (Inbound)</h1>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Form Persetujuan Penerimaan Barang (Inbound)</h1>
         </div>
       </div>
 

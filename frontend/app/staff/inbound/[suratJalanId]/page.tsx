@@ -58,7 +58,9 @@ type ApiSuratJalan = {
     boq_number?: string;
     tiket?: { kode_tiket: string };
   } | null;
-};
+  tujuan_tipe?: string | null;
+  titik_lapangan?: { nama_lokasi?: string } | null;
+}
 
 // Baris yang staf edit di layar — qtyRencana disnapshot SEKALI pas fetch,
 // sebelum staf mulai ubah qty (backend nggak nyimpen qty rencana terpisah,
@@ -303,6 +305,20 @@ export default function InboundDetailPage() {
   const hasUnresolvedExcess = unresolvedExcessIndexes.length > 0;
   const canSubmit = allKondisiFilled && items.some((i) => i.qtyDiterima > 0);
 
+  const tujuanLabel =
+    data?.tujuan_tipe === "lapangan"
+      ? data?.titik_lapangan?.nama_lokasi || "-"
+      : data?.tujuan_tipe === "gudang"
+        ? data?.gudang_tujuan?.nama_gudang || "-"
+        : data?.gudang_tujuan?.nama_gudang || "-";
+
+  const tujuanBadge =
+    data?.tujuan_tipe === "lapangan" ? (
+      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Lapangan</span>
+    ) : data?.tujuan_tipe === "gudang" ? (
+      <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Gudang</span>
+    ) : null;
+
   function handleSubmitClick() {
     if (!canSubmit) return;
 
@@ -433,7 +449,12 @@ export default function InboundDetailPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">{data.nomor_surat_jalan}</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Dari {data.gudang_asal?.nama_gudang || "-"} • Tujuan: {data.gudang_tujuan?.nama_gudang || "-"} •{" "}
+            Dari {data.gudang_asal?.nama_gudang || "-"} • Tujuan:{" "}
+            <span>
+              {tujuanLabel}
+              {tujuanBadge}
+            </span>{" "}
+            •{" "}
             {data.tanggal
               ? new Date(data.tanggal).toLocaleDateString("id-ID", {
                   day: "2-digit",

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import {
   Search,
   ChevronDown,
@@ -21,11 +20,6 @@ import {
   Upload,
 } from "lucide-react";
 import { useApi } from "@/lib/api";
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -72,8 +66,8 @@ const aksiMap: Record<string, { label: string; icon: React.ComponentType<{ size?
   delete: { label: "Dihapus", icon: Trash2, variant: "red" },
   approve: { label: "Disetujui", icon: CheckCircle, variant: "green" },
   receive_inbound: { label: "Terima Inbound", icon: ArrowDownToLine, variant: "purple" },
-  approve_inbound: { label: "Approve Inbound", icon: CheckCircle, variant: "green" },
-  approve_outbound: { label: "Approve Outbound", icon: CheckCircle, variant: "green" },
+  approve_inbound: { label: "Setujui Inbound", icon: CheckCircle, variant: "green" },
+  approve_outbound: { label: "Setujui Outbound", icon: CheckCircle, variant: "green" },
   confirm_distributed: { label: "Dikonfirmasi", icon: PackageCheck, variant: "purple" },
   reject_inbound: { label: "Tolak Inbound", icon: XCircle, variant: "red" },
   reject_outbound: { label: "Tolak Outbound", icon: XCircle, variant: "red" },
@@ -1408,8 +1402,8 @@ export default function LaporanAuditPage() {
   ];
 
   return (
-    <div className={`${plusJakartaSans.className} flex flex-1 flex-col p-6`}>
-      <div className="mx-auto w-full max-w-6xl">
+    <div className="flex flex-1 flex-col">
+      <div className="w-full">
         <div className="mb-6">
           <div className="text-xs font-semibold uppercase tracking-wide text-orange-500">Admin General</div>
           <h1 className="mt-1 text-2xl font-bold text-slate-900">Laporan &amp; Audit Menyeluruh</h1>

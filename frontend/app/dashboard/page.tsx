@@ -440,14 +440,16 @@ function DashboardPageContent() {
       iconColor: "text-orange-500 bg-orange-50",
       note: "Menunggu konfirmasi Diterima/Didistribusikan",
       noteColor: "text-orange-500",
+      href: "/dashboard/delivery",
     },
     {
-      label: "Approval Menunggu",
+      label: "Persetujuan Menunggu",
       value: formatNumber(dashboardStats.pendingApprovals),
       icon: ShieldCheck,
       iconColor: "text-rose-500 bg-rose-50",
       note: "Informasi — disetujui oleh Supervisor",
       noteColor: "text-slate-400",
+      href: "/dashboard/delivery",
     },
   ];
 
@@ -473,7 +475,9 @@ function DashboardPageContent() {
         : 0;
     return { ...p, hardwareOnSite, used, remains, progress };
   });
-  const filteredProjects = projectRows.filter((p) =>
+  const activeProjectRows = projectRows.filter((p) => p.statusBoq === "Aktif");
+
+  const filteredProjects = activeProjectRows.filter((p) =>
     `${p.projectName} ${p.area} ${p.clusterLabel}`
       .toLowerCase()
       .includes(projectFilter.toLowerCase())
@@ -536,7 +540,7 @@ function DashboardPageContent() {
       const ts = sj.updated_at ?? sj.created_at ?? null;
       const nomor = sj.nomor_surat_jalan ?? `#${sj.surat_jalan_id}`;
       const verb = actionRequired
-        ? "menunggu approval"
+        ? "menunggu persetujuan"
         : status === "disetujui"
           ? "telah disetujui"
           : status === "digenerate"
@@ -682,7 +686,7 @@ function DashboardPageContent() {
         <header>
           <h1 className="text-2xl font-bold text-slate-900">{greeting}</h1>
           <p className="mt-1 text-sm text-slate-400">
-            Pantau kondisi gudang, status BOQ, dan approval outbound dalam satu
+            Pantau kondisi gudang, status BOQ, dan persetujuan outbound dalam satu
             tampilan.
           </p>
         </header>
@@ -800,6 +804,10 @@ function DashboardPageContent() {
             {isLoadingProjects ? (
               <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">
                 Memuat data project...
+              </div>
+            ) : activeProjectRows.length === 0 ? (
+              <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">
+                Belum ada project dengan status BOQ aktif.
               </div>
             ) : filteredProjects.length === 0 ? (
               <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">

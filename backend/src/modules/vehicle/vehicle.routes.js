@@ -26,7 +26,7 @@ router.get("/:no_polisi", authenticate, vehicleController.findByNoPolisi);
 router.put(
   "/:no_polisi",
   authenticate,
-  authorize("ADMIN"),
+  authorize("ADMIN", "SUPERVISOR"),
   validate(updateVehicleSchema),
   vehicleController.update
 );

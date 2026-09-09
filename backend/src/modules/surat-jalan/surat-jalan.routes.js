@@ -8,7 +8,7 @@ const validate = require("../../middlewares/validation.middleware");
 const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
 
-router.post("/", authenticate, validate(createSuratJalanSchema), suratJalanController.create);
+router.post("/", authenticate, authorize("ADMIN", "STAFF"), validate(createSuratJalanSchema), suratJalanController.create);
 router.post(
   "/inbound/staff",
   authenticate,

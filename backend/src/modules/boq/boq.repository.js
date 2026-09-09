@@ -19,7 +19,11 @@ const create = async (data) => {
   return await prisma.boq.create({
     data,
     include: {
-      tiket: true,
+      tiket: {
+        include: {
+          project: true,
+        },
+      },
       items: {
         include: {
           barang: true,
@@ -323,6 +327,7 @@ const getAreas = async () => {
 const findItemsByProject = async (projectId) => {
   const boqs = await prisma.boq.findMany({
     where: {
+      status: "aktif",
       tiket: {
         project_id: Number(projectId),
       },
@@ -420,6 +425,7 @@ const getExportMatrixData = async () => {
           tipe: true,
           project_id: true,
           boq_id: true,
+          tujuan_tipe: true,
         },
       },
     },
@@ -449,7 +455,7 @@ const getExportMatrixData = async () => {
       }
     }
 
-    if (item.surat_jalan?.tipe === "outbound") {
+    if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
       outboundByProjectBarang.set(
         key,
         (outboundByProjectBarang.get(key) || 0) + qty

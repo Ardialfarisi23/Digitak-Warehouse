@@ -168,7 +168,7 @@ export default function SupervisorRejectedListPage() {
         <button
           onClick={() => router.push("/dashboard/supervisor/approval")}
           className="p-2.5 bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-colors shadow-sm text-slate-600"
-          title="Kembali ke halaman approval"
+          title="Kembali ke halaman persetujuan"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>

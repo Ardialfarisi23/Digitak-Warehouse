@@ -137,12 +137,40 @@ export default function SupervisorApprovalOutboundDetailPage() {
 
   const statusMeta = STATUS_META[request.status] ?? { label: request.status || "-", tone: "bg-slate-100 text-slate-700" };
 
+  const tujuanLabel =
+    request.tujuan_tipe === "lapangan"
+      ? request.titik_lapangan?.nama_lokasi || "-"
+      : request.tujuan_tipe === "gudang"
+        ? request.gudang_tujuan?.nama_gudang || "-"
+        : request.gudang_tujuan?.nama_gudang || "-";
+
+  const tujuanBadge =
+    request.tujuan_tipe === "lapangan" ? (
+      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Lapangan</span>
+    ) : request.tujuan_tipe === "gudang" ? (
+      <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Gudang</span>
+    ) : null;
+
+  const pengirimLabel =
+    request.tipe_pengirim === "internal"
+      ? request.gudang_asal?.nama_gudang || "-"
+      : request.tipe_pengirim === "external"
+        ? request.pengirim_eksternal_nama || "-"
+        : request.gudang_asal?.nama_gudang || "-";
+
+  const pengirimBadge =
+    request.tipe_pengirim === "internal" ? (
+      <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">Internal</span>
+    ) : request.tipe_pengirim === "external" ? (
+      <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">External</span>
+    ) : null;
+
   return (
     <div className="min-h-screen px-8 py-6">
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.24em] text-orange-500">
-            Detail Approval Outbound
+            Detail Form Persetujuan Outbound
           </p>
           <h1 className="mt-3 text-3xl font-bold text-slate-900">{request.nomor_surat_jalan}</h1>
           <p className="mt-2 text-sm text-slate-500">
@@ -178,9 +206,17 @@ export default function SupervisorApprovalOutboundDetailPage() {
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="grid gap-4 md:grid-cols-2">
             <div>
+              <p className="text-sm text-slate-500">Pengirim</p>
+              <p className="mt-1 text-base font-semibold text-slate-900">
+                {pengirimLabel}
+                {pengirimBadge}
+              </p>
+            </div>
+            <div>
               <p className="text-sm text-slate-500">Tujuan</p>
               <p className="mt-1 text-base font-semibold text-slate-900">
-                {request.project?.nama_project || request.gudang_tujuan?.nama_gudang || "-"}
+                {tujuanLabel}
+                {tujuanBadge}
               </p>
             </div>
             <div>

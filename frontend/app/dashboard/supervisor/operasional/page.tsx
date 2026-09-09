@@ -234,21 +234,28 @@ export default function SupervisorOperasionalPage() {
         } catch {
           result = null;
         }
+
+        const resultObj = result && typeof result === "object" ? result : null;
+        const message =
+          resultObj && "message" in resultObj
+            ? String((resultObj as { message?: unknown }).message)
+            : `Gagal mengubah status personil.`;
+
         console.error("[toggle personil status] backend error:", {
           status: response.status,
-          body: result,
+          body: resultObj,
         });
-        const message =
-          result && typeof result === "object" && "message" in result
-            ? String((result as { message?: unknown }).message)
-            : `Gagal mengubah status personil.`;
-        throw new Error(message || `Gagal mengubah status personil.`);
+
+        showToast(message || `Gagal mengubah status personil.`, "error");
+        return;
       }
 
       await fetchData();
+      showToast(`Status personil berhasil diperbarui.`, "success");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
-      console.error("[toggle personil status] failed:", err, msg);
+      console.error("[toggle personil status] network/client error:", err);
+      showToast(msg, "error");
     } finally {
       setPersonilStatusLoading(null);
     }

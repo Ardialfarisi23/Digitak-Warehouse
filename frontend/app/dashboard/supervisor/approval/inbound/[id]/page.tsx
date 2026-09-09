@@ -8,10 +8,7 @@ import { CheckCircle2, ArrowLeft, Printer, Eye, X } from "lucide-react";
 import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
 import { Document, Page, pdfjs } from "react-pdf";
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url
-).toString();
+pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
 export default function SupervisorApprovalInboundDetailPage() {
   const params = useParams<{ id: string }>();
@@ -164,7 +161,7 @@ export default function SupervisorApprovalInboundDetailPage() {
     return (
       <div className="px-8 py-6">
         <p className="text-slate-500">Detail inbound tidak ditemukan.</p>
-        <Button onClick={() => router.push('/dashboard/supervisor/approval/inbound')} className="mt-4 rounded-xl bg-[#E8632C] px-4 py-2 text-sm text-white">
+        <Button onClick={() => router.push("/dashboard/supervisor/approval/inbound")} className="mt-4 rounded-xl bg-[#E8632C] px-4 py-2 text-sm text-white">
           Kembali
         </Button>
       </div>
@@ -175,19 +172,12 @@ export default function SupervisorApprovalInboundDetailPage() {
     <div className="min-h-screen px-8 py-6">
       {/* Toolbar — hilang saat print */}
       <div className="mb-6 flex items-center justify-between print:hidden">
-        <button
-          onClick={() => router.push("/dashboard/supervisor/approval/inbound")}
-          className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-700"
-        >
+        <button onClick={() => router.push("/dashboard/supervisor/approval/inbound")} className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-700">
           <ArrowLeft size={16} />
           Kembali
         </button>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={handlePrint}
-            className="flex items-center gap-2 rounded-xl border-[#E8632C] px-4 py-2 text-sm font-semibold text-[#E8632C] hover:bg-[#E8632C] hover:text-white"
-          >
+          <Button variant="outline" onClick={handlePrint} className="flex items-center gap-2 rounded-xl border-[#E8632C] px-4 py-2 text-sm font-semibold text-[#E8632C] hover:bg-[#E8632C] hover:text-white">
             <Printer size={16} />
             Cetak / PDF
           </Button>
@@ -199,9 +189,7 @@ export default function SupervisorApprovalInboundDetailPage() {
         {/* Kolom Kiri: Preview PDF Surat Jalan dari Staf */}
         <div className="print:hidden">
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm h-[850px] flex flex-col overflow-hidden">
-            <h3 className="text-sm font-semibold text-slate-700 mb-4">
-              Dokumen Lampiran Staf (PDF)
-            </h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-4">Dokumen Lampiran Staf (PDF)</h3>
             {detail?.surat_jalan_url ? (
               <div className="flex-1 w-full h-full bg-white rounded-xl overflow-hidden border border-slate-100 flex justify-center items-start">
                 <Document
@@ -213,14 +201,7 @@ export default function SupervisorApprovalInboundDetailPage() {
                   className="flex justify-center w-full"
                 >
                   {Array.from(new Array(numPages), (_el, index) => (
-                    <Page
-                      key={`page_${index + 1}`}
-                      pageNumber={index + 1}
-                      width={680}
-                      renderAnnotationLayer={false}
-                      renderTextLayer={false}
-                      className="mb-4 bg-white max-w-full"
-                    />
+                    <Page key={`page_${index + 1}`} pageNumber={index + 1} width={680} renderAnnotationLayer={false} renderTextLayer={false} className="mb-4 bg-white max-w-full" />
                   ))}
                 </Document>
               </div>
@@ -235,97 +216,72 @@ export default function SupervisorApprovalInboundDetailPage() {
           </div>
         </div>
 
-         {/* Kolom Kanan: Surat Jalan System Generated */}
-         <div className="flex flex-col gap-6">
-           {/* Dokumen Surat Jalan — ini yang ke-print */}
-           <DetailSuratJalanDocument
-             data={detail}
-             variant="full"
-             renderItemAction={(item) => (
-               <button
-                 type="button"
-                 onClick={() => openDocModal(item)}
-                 className="p-1 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer flex items-center justify-center"
-                 title="Dokumentasi Barang"
-               >
-                 <Eye size={16} />
-               </button>
-             )}
-           />
-         </div>
-       </div>
+        {/* Kolom Kanan: Surat Jalan System Generated */}
+        <div className="flex flex-col gap-6">
+          {/* Dokumen Surat Jalan — ini yang ke-print */}
+          <DetailSuratJalanDocument
+            data={detail}
+            variant="full"
+            renderItemAction={(item) => (
+              <button type="button" onClick={() => openDocModal(item)} className="p-1 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer flex items-center justify-center" title="Dokumentasi Barang">
+                <Eye size={16} />
+              </button>
+            )}
+          />
+        </div>
+      </div>
 
-       {/* 2. SECTION AKSI SUPERVISOR (RATA TENGAH DIBAWAH KEDUA SURAT) */}
-       <div className="w-full max-w-2xl mx-auto mt-8">
-         <div className="bg-slate-50/80 p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
-           <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full mb-2">
-             AKSI SUPERVISOR
-           </span>
+      {/* 2. SECTION AKSI SUPERVISOR (RATA TENGAH DIBAWAH KEDUA SURAT) */}
+      <div className="w-full max-w-2xl mx-auto mt-8">
+        <div className="bg-slate-50/80 p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
+          <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full mb-2">AKSI SUPERVISOR</span>
 
-           <p className="text-xs text-slate-500 max-w-lg mb-4">
-             Tinjau dan setujui surat jalan inbound di atas. Stok akan otomatis ditambahkan setelah persetujuan.
-           </p>
+          <p className="text-xs text-slate-500 max-w-lg mb-4">Tinjau dan setujui surat jalan inbound di atas. Stok akan otomatis ditambahkan setelah persetujuan.</p>
 
-           <div className="w-full text-left mb-4">
-             <label className="block text-xs font-bold text-slate-600 mb-1">
-               CATATAN SUPERVISOR
-             </label>
-             <textarea
-               rows={3}
-               value={notes}
-               onChange={(e) => setNotes(e.target.value)}
-               placeholder="Tuliskan catatan selisih/kondisi di sini..."
-               className="w-full p-3 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
-             />
-           </div>
+          <div className="w-full text-left mb-4">
+            <label className="block text-xs font-bold text-slate-600 mb-1">CATATAN SUPERVISOR</label>
+            <textarea
+              rows={3}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Tuliskan catatan selisih/kondisi di sini..."
+              className="w-full p-3 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+            />
+          </div>
 
-           <p className="text-xs font-medium text-slate-500 mb-3">
-             Pilih aksi persetujuan untuk dokumen surat jalan inbound ini:
-           </p>
+          <p className="text-xs font-medium text-slate-500 mb-3">Pilih aksi persetujuan untuk dokumen surat jalan inbound ini:</p>
 
-           <div className="flex items-center justify-center gap-3 w-full max-w-md">
-             <Button
-               onClick={openRejectConfirm}
-               disabled={actionLoading}
-               variant="outline"
-               className="flex-1 rounded-xl border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60 flex items-center justify-center gap-2"
-             >
-               Tolak / Revisi
-             </Button>
-             <Button
-               onClick={openApproveConfirm}
-               disabled={actionLoading}
-               className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 flex items-center justify-center gap-2"
-             >
-               {actionLoading ? "Memproses..." : "Setujui Inbound"}
-             </Button>
-           </div>
-         </div>
-       </div>
+          <div className="flex items-center justify-center gap-3 w-full max-w-md">
+            <Button
+              onClick={openRejectConfirm}
+              disabled={actionLoading}
+              variant="outline"
+              className="flex-1 rounded-xl border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              Tolak / Revisi
+            </Button>
+            <Button
+              onClick={openApproveConfirm}
+              disabled={actionLoading}
+              className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {actionLoading ? "Memproses..." : "Setujui Inbound"}
+            </Button>
+          </div>
+        </div>
+      </div>
 
       {/* Modal Konfirmasi Persetujuan — samakan pola dengan list page */}
       {showConfirm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
             <h3 className="text-base font-semibold text-slate-900">Setujui Inbound?</h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Apakah Anda yakin ingin menyetujui inbound ini? Aksi ini akan mengubah status surat jalan dan menambahkan stok barang ke gudang.
-            </p>
+            <p className="mt-1 text-sm text-slate-500">Apakah Anda yakin ingin menyetujui inbound ini? Aksi ini akan mengubah status surat jalan dan menambahkan stok barang ke gudang.</p>
             <div className="mt-6 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={cancelApproveConfirm}
-                disabled={actionLoading}
-                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
-              >
+              <button type="button" onClick={cancelApproveConfirm} disabled={actionLoading} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60">
                 Batal
               </button>
-              <button
-                type="button"
-                onClick={executeApprove}
-                disabled={actionLoading}
-                className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-emerald-600 disabled:opacity-60"
-              >
+              <button type="button" onClick={executeApprove} disabled={actionLoading} className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-emerald-600 disabled:opacity-60">
                 {actionLoading ? "Memproses..." : "Ya, Setujui"}
               </button>
             </div>
@@ -338,13 +294,9 @@ export default function SupervisorApprovalInboundDetailPage() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
             <h3 className="text-base font-semibold text-slate-900">Tolak Inbound?</h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Surat Jalan akan berstatus &quot;ditolak&quot; dan stok tidak akan ditambahkan. Staf Gudang perlu membuat pengajuan inbound baru untuk transaksi ini.
-            </p>
+            <p className="mt-1 text-sm text-slate-500">Surat Jalan akan berstatus &quot;ditolak&quot; dan stok tidak akan ditambahkan. Staf Gudang perlu membuat pengajuan inbound baru untuk transaksi ini.</p>
             <div className="mt-4">
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">
-                Alasan Penolakan
-              </label>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">Alasan Penolakan</label>
               <textarea
                 rows={3}
                 value={rejectReason}
@@ -354,20 +306,10 @@ export default function SupervisorApprovalInboundDetailPage() {
               />
             </div>
             <div className="mt-6 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={cancelRejectConfirm}
-                disabled={actionLoading}
-                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
-              >
+              <button type="button" onClick={cancelRejectConfirm} disabled={actionLoading} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60">
                 Batal
               </button>
-              <button
-                type="button"
-                onClick={executeReject}
-                disabled={actionLoading}
-                className="rounded-full bg-rose-600 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-rose-700 disabled:opacity-60"
-              >
+              <button type="button" onClick={executeReject} disabled={actionLoading} className="rounded-full bg-rose-600 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-rose-700 disabled:opacity-60">
                 {actionLoading ? "Memproses..." : "Ya, Tolak"}
               </button>
             </div>
@@ -380,17 +322,10 @@ export default function SupervisorApprovalInboundDetailPage() {
         <div
           className={[
             "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
-            toast.type === "success"
-              ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
-              : "border-rose-200/80 bg-rose-50/95 text-rose-800",
+            toast.type === "success" ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800" : "border-rose-200/80 bg-rose-50/95 text-rose-800",
           ].join(" ")}
         >
-          <div
-            className={[
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-              toast.type === "success" ? "bg-emerald-100" : "bg-rose-100",
-            ].join(" ")}
-          >
+          <div className={["flex h-8 w-8 shrink-0 items-center justify-center rounded-full", toast.type === "success" ? "bg-emerald-100" : "bg-rose-100"].join(" ")}>
             {toast.type === "success" ? (
               <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -405,12 +340,7 @@ export default function SupervisorApprovalInboundDetailPage() {
           <button
             type="button"
             onClick={() => setToast(null)}
-            className={[
-              "ml-2 shrink-0 rounded-full p-1 transition-colors",
-              toast.type === "success"
-                ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
-                : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
-            ].join(" ")}
+            className={["ml-2 shrink-0 rounded-full p-1 transition-colors", toast.type === "success" ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600" : "text-rose-400 hover:bg-rose-100 hover:text-rose-600"].join(" ")}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -428,16 +358,11 @@ export default function SupervisorApprovalInboundDetailPage() {
             </div>
 
             <div className="space-y-1">
-              <h3 className="text-xl font-bold text-slate-900">Approval Berhasil!</h3>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Surat Jalan inbound berhasil disetujui dan stok barang telah ditambahkan.
-              </p>
+              <h3 className="text-xl font-bold text-slate-900">Persetujuan Berhasil!</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">Surat Jalan inbound berhasil disetujui dan stok barang telah ditambahkan.</p>
             </div>
 
-            <Button
-              onClick={handleBack}
-              className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white hover:bg-emerald-700 shadow-sm shadow-emerald-600/20"
-            >
+            <Button onClick={handleBack} className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white hover:bg-emerald-700 shadow-sm shadow-emerald-600/20">
               Kembali ke Daftar Antrean
             </Button>
           </div>
@@ -450,15 +375,9 @@ export default function SupervisorApprovalInboundDetailPage() {
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Dokumentasi Barang</h3>
-                <p className="text-xs text-slate-500">
-                  {selectedDocItem?.barang?.nama_barang || selectedDocItem?.barang?.kode_perangkat || "Item"}
-                </p>
+                <p className="text-xs text-slate-500">{selectedDocItem?.barang?.nama_barang || selectedDocItem?.barang?.kode_perangkat || "Item"}</p>
               </div>
-              <button
-                type="button"
-                onClick={closeDocModal}
-                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              >
+              <button type="button" onClick={closeDocModal} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
                 <X size={18} />
               </button>
             </div>
@@ -478,9 +397,7 @@ export default function SupervisorApprovalInboundDetailPage() {
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Waktu Verifikasi</p>
-                  <p className="font-medium text-slate-900">
-                    {(selectedDocItem as any)?.diperiksa_pada ? new Date((selectedDocItem as any).diperiksa_pada).toLocaleString("id-ID") : "-"}
-                  </p>
+                  <p className="font-medium text-slate-900">{(selectedDocItem as any)?.diperiksa_pada ? new Date((selectedDocItem as any).diperiksa_pada).toLocaleString("id-ID") : "-"}</p>
                 </div>
               </div>
               <div>
@@ -488,12 +405,7 @@ export default function SupervisorApprovalInboundDetailPage() {
                 {(selectedDocItem as any)?.fotos && (selectedDocItem as any).fotos.length > 0 ? (
                   <div className="grid grid-cols-3 gap-2">
                     {(selectedDocItem as any).fotos.map((foto: any, idx: number) => (
-                      <img
-                        key={idx}
-                        src={foto.url}
-                        alt={foto.filename || `Foto ${idx + 1}`}
-                        className="h-24 w-full rounded-lg border border-slate-100 object-cover"
-                      />
+                      <img key={idx} src={foto.url} alt={foto.filename || `Foto ${idx + 1}`} className="h-24 w-full rounded-lg border border-slate-100 object-cover" />
                     ))}
                   </div>
                 ) : (
@@ -502,11 +414,7 @@ export default function SupervisorApprovalInboundDetailPage() {
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4">
-              <button
-                type="button"
-                onClick={closeDocModal}
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-              >
+              <button type="button" onClick={closeDocModal} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
                 Kembali ke Detail
               </button>
             </div>

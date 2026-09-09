@@ -36,6 +36,10 @@ export interface DetailSuratJalanData {
   };
   pic_pemohon_nama?: string;
   items?: DetailSuratJalanItem[];
+  tujuan_tipe?: string | null;
+  titik_lapangan?: { nama_lokasi?: string } | null;
+  tipe_pengirim?: string | null;
+  pengirim_eksternal_nama?: string | null;
   [key: string]: unknown;
 }
 
@@ -126,6 +130,32 @@ export function DetailSuratJalanDocument({
   const namaDriver = tampilkan(data.personil_pengantar?.nama);
   const namaMaterialHandler = tampilkan(data.creator?.nama);
 
+  const tujuanLabel =
+    data.tujuan_tipe === "lapangan"
+      ? data.titik_lapangan?.nama_lokasi || namaGudangTujuan
+      : namaGudangTujuan;
+
+  const tujuanBadge =
+    data.tujuan_tipe === "lapangan" ? (
+      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Lapangan</span>
+    ) : data.tujuan_tipe === "gudang" ? (
+      <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Gudang</span>
+    ) : null;
+
+  const pengirimLabel =
+    data.tipe_pengirim === "internal"
+      ? namaGudangAsal
+      : data.tipe_pengirim === "external"
+        ? tampilkan(data.pengirim_eksternal_nama)
+        : namaGudangAsal;
+
+  const pengirimBadge =
+    data.tipe_pengirim === "internal" ? (
+      <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">Internal</span>
+    ) : data.tipe_pengirim === "external" ? (
+      <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">External</span>
+    ) : null;
+
   const hasBoq = data.boq_id !== null && data.boq_id !== undefined && data.boq_id !== "";
   const boqValue = hasBoq ? (
     <span className="inline-flex items-center gap-2">
@@ -177,11 +207,27 @@ export function DetailSuratJalanDocument({
           <InfoRow label="No Surat Jalan" value={tampilkan(data.nomor_surat_jalan)} />
           <InfoRow label="Tipe" value={tipeLabel} />
           <InfoRow label="Project" value={namaProject} />
-          <InfoRow label="Gudang Asal" value={namaGudangAsal} />
+          <InfoRow
+            label="Gudang Asal"
+            value={
+              <span>
+                {pengirimLabel}
+                {pengirimBadge}
+              </span>
+            }
+          />
         </div>
         <div className="space-y-3">
           <InfoRow label="Tanggal" value={tanggalLabel} />
-          <InfoRow label="Gudang Tujuan" value={namaGudangTujuan} />
+          <InfoRow
+            label="Gudang Tujuan"
+            value={
+              <span>
+                {tujuanLabel}
+                {tujuanBadge}
+              </span>
+            }
+          />
           <InfoRow label="Kendaraan" value={jenisKendaraan} />
           <InfoRow label="No Polisi" value={noPolisi} />
           <InfoRow label="Driver" value={namaDriver} />
