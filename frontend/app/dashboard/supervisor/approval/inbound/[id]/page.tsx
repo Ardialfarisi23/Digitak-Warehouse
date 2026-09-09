@@ -4,8 +4,14 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
-import { CheckCircle2, ArrowLeft, Printer, FileText, Eye, X } from "lucide-react";
+import { CheckCircle2, ArrowLeft, Printer, Eye, X } from "lucide-react";
 import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
+import { Document, Page, pdfjs } from "react-pdf";
+
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url
+).toString();
 
 export default function SupervisorApprovalInboundDetailPage() {
   const params = useParams<{ id: string }>();
@@ -23,6 +29,9 @@ export default function SupervisorApprovalInboundDetailPage() {
 
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
   const [selectedDocItem, setSelectedDocItem] = useState<any>(null);
+
+  const [numPages, setNumPages] = useState<number>(0);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   const openDocModal = (item: any) => {
     setSelectedDocItem(item);
@@ -143,15 +152,6 @@ export default function SupervisorApprovalInboundDetailPage() {
     window.print();
   };
 
-  const handleViewPdf = () => {
-    const url = detail?.surat_jalan_url;
-    if (url && String(url).trim()) {
-      window.open(String(url).trim(), "_blank");
-    } else {
-      setToast({ message: "File PDF Surat Jalan tidak ditemukan.", type: "error" });
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center px-8 py-6">
@@ -183,16 +183,6 @@ export default function SupervisorApprovalInboundDetailPage() {
           Kembali
         </button>
         <div className="flex items-center gap-2">
-          {detail?.surat_jalan_url && (
-            <Button
-              variant="outline"
-              onClick={handleViewPdf}
-              className="flex items-center gap-2 rounded-xl border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50"
-            >
-              <FileText size={16} />
-              Lihat Surat Jalan (PDF)
-            </Button>
-          )}
           <Button
             variant="outline"
             onClick={handlePrint}
@@ -204,64 +194,114 @@ export default function SupervisorApprovalInboundDetailPage() {
         </div>
       </div>
 
-      {/* Dokumen Surat Jalan — ini yang ke-print */}
-      <DetailSuratJalanDocument
-        data={detail}
-        variant="full"
-        renderItemAction={(item) => (
-          <button
-            type="button"
-            onClick={() => openDocModal(item)}
-            className="p-1 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer flex items-center justify-center"
-            title="Dokumentasi Barang"
-          >
-            <Eye size={16} />
-          </button>
-        )}
-      />
-
-      {/* Area Aksi Supervisor — section TERPISAH dari dokumen (Langkah D).
-          Taruh di bawah dokumen dengan card/border berbeda supaya jelas
-          ini "area aksi Supervisor" bukan bagian dari dokumen resmi. */}
-      <div className="mx-auto mt-6 max-w-3xl rounded-2xl border-2 border-slate-200 bg-slate-50 p-5 print:hidden">
-        <div className="mb-1 flex items-center gap-2">
-          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-            Aksi Supervisor
-          </span>
+      {/* Split View: 2 columns */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
+        {/* Kolom Kiri: Preview PDF Surat Jalan dari Staf */}
+        <div className="print:hidden">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm h-[850px] flex flex-col overflow-hidden">
+            <h3 className="text-sm font-semibold text-slate-700 mb-4">
+              Dokumen Lampiran Staf (PDF)
+            </h3>
+            {detail?.surat_jalan_url ? (
+              <div className="flex-1 w-full h-full bg-white rounded-xl overflow-hidden border border-slate-100 flex justify-center items-start">
+                <Document
+                  file={detail.surat_jalan_url}
+                  onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+                  onLoadError={(err) => setPdfError(err.message)}
+                  loading={<div className="p-4 text-xs text-slate-500">Memuat PDF...</div>}
+                  error={<div className="p-4 text-xs text-red-500">Gagal memuat PDF.</div>}
+                  className="flex justify-center w-full"
+                >
+                  {Array.from(new Array(numPages), (_el, index) => (
+                    <Page
+                      key={`page_${index + 1}`}
+                      pageNumber={index + 1}
+                      width={680}
+                      renderAnnotationLayer={false}
+                      renderTextLayer={false}
+                      className="mb-4 bg-white max-w-full"
+                    />
+                  ))}
+                </Document>
+              </div>
+            ) : (
+              <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50">
+                <div className="text-center">
+                  <FileText size={32} className="mx-auto text-slate-300" />
+                  <p className="mt-2 text-xs text-slate-400">Staf tidak mengunggah dokumen lampiran PDF.</p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-        <p className="mb-4 text-xs text-slate-500">
-          Tinjau dan setujui surat jalan inbound di bawah ini. Stok akan otomatis ditambahkan setelah persetujuan.
-        </p>
 
-        <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-600">
-          Catatan Supervisor
-        </label>
-        <textarea
-          rows={3}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Tuliskan catatan selisih/kondisi di sini..."
-          className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none"
-        />
+         {/* Kolom Kanan: Surat Jalan System Generated */}
+         <div className="flex flex-col gap-6">
+           {/* Dokumen Surat Jalan — ini yang ke-print */}
+           <DetailSuratJalanDocument
+             data={detail}
+             variant="full"
+             renderItemAction={(item) => (
+               <button
+                 type="button"
+                 onClick={() => openDocModal(item)}
+                 className="p-1 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer flex items-center justify-center"
+                 title="Dokumentasi Barang"
+               >
+                 <Eye size={16} />
+               </button>
+             )}
+           />
+         </div>
+       </div>
 
-        <div className="mt-4 flex flex-col gap-3">
-          <Button
-            onClick={openApproveConfirm}
-            disabled={actionLoading}
-            className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-          >
-            {actionLoading ? "Memproses..." : "Setujui Inbound"}
-          </Button>
-          <Button
-            onClick={openRejectConfirm}
-            disabled={actionLoading}
-            variant="outline"
-            className="w-full rounded-xl border-rose-200 px-4 py-3 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-          >
-            Tolak Inbound
-          </Button>
-        </div>
-      </div>
+       {/* 2. SECTION AKSI SUPERVISOR (RATA TENGAH DIBAWAH KEDUA SURAT) */}
+       <div className="w-full max-w-2xl mx-auto mt-8">
+         <div className="bg-slate-50/80 p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
+           <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full mb-2">
+             AKSI SUPERVISOR
+           </span>
+
+           <p className="text-xs text-slate-500 max-w-lg mb-4">
+             Tinjau dan setujui surat jalan inbound di atas. Stok akan otomatis ditambahkan setelah persetujuan.
+           </p>
+
+           <div className="w-full text-left mb-4">
+             <label className="block text-xs font-bold text-slate-600 mb-1">
+               CATATAN SUPERVISOR
+             </label>
+             <textarea
+               rows={3}
+               value={notes}
+               onChange={(e) => setNotes(e.target.value)}
+               placeholder="Tuliskan catatan selisih/kondisi di sini..."
+               className="w-full p-3 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+             />
+           </div>
+
+           <p className="text-xs font-medium text-slate-500 mb-3">
+             Pilih aksi persetujuan untuk dokumen surat jalan inbound ini:
+           </p>
+
+           <div className="flex items-center justify-center gap-3 w-full max-w-md">
+             <Button
+               onClick={openRejectConfirm}
+               disabled={actionLoading}
+               variant="outline"
+               className="flex-1 rounded-xl border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60 flex items-center justify-center gap-2"
+             >
+               Tolak / Revisi
+             </Button>
+             <Button
+               onClick={openApproveConfirm}
+               disabled={actionLoading}
+               className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 flex items-center justify-center gap-2"
+             >
+               {actionLoading ? "Memproses..." : "Setujui Inbound"}
+             </Button>
+           </div>
+         </div>
+       </div>
 
       {/* Modal Konfirmasi Persetujuan — samakan pola dengan list page */}
       {showConfirm && (

@@ -264,22 +264,34 @@ export function DetailSuratJalanDocument({
 
           {/* Tanda tangan */}
           <div className="mb-8 grid grid-cols-3 gap-6 text-center text-sm">
-            <div>
-              <p className="mb-16 font-medium text-gray-700">Material Handler</p>
-              <div className="border-t border-gray-400 pt-1">
-                <p className="font-semibold text-gray-900">{namaMaterialHandler}</p>
+            <div className="flex flex-col justify-between h-32">
+              <span className="font-medium text-gray-700 min-h-[32px] flex items-center justify-center">
+                Material Handler
+              </span>
+              <div>
+                <div className="border-t border-gray-400 pt-1">
+                  <p className="font-semibold text-gray-900">{namaMaterialHandler}</p>
+                </div>
               </div>
             </div>
-            <div>
-              <p className="mb-16 font-medium text-gray-700">Driver</p>
-              <div className="border-t border-gray-400 pt-1">
-                <p className="font-semibold text-gray-900">{namaDriver}</p>
+            <div className="flex flex-col justify-between h-32">
+              <span className="font-medium text-gray-700 min-h-[32px] flex items-center justify-center">
+                Driver
+              </span>
+              <div>
+                <div className="border-t border-gray-400 pt-1">
+                  <p className="font-semibold text-gray-900">{namaDriver}</p>
+                </div>
               </div>
             </div>
-            <div>
-              <p className="mb-16 font-medium text-gray-700">PIC Pemohon (Penerima)</p>
-              <div className="border-t border-gray-400 pt-1">
-                <p className="font-semibold text-gray-900">{tampilkan(data.pic_pemohon_nama)}</p>
+            <div className="flex flex-col justify-between h-32">
+              <span className="font-medium text-gray-700 min-h-[32px] flex items-center justify-center">
+                PIC Pemohon (Penerima)
+              </span>
+              <div>
+                <div className="border-t border-gray-400 pt-1">
+                  <p className="font-semibold text-gray-900">{tampilkan(data.pic_pemohon_nama)}</p>
+                </div>
               </div>
             </div>
           </div>
