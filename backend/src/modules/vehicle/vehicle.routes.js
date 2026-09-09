@@ -31,4 +31,11 @@ router.put(
   vehicleController.update
 );
 
+router.delete(
+  "/:kendaraan_id",
+  authenticate,
+  authorize("ADMIN", "SUPERVISOR"),
+  vehicleController.remove
+);
+
 module.exports = router;

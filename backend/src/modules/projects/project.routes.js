@@ -31,4 +31,11 @@ router.put(
   projectController.update
 );
 
+router.delete(
+  "/:project_id",
+  authenticate,
+  authorize("ADMIN", "SUPERVISOR"),
+  projectController.remove
+);
+
 module.exports = router;

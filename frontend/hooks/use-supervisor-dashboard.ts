@@ -111,6 +111,7 @@ export type SupervisorDashboardReturn = {
   kapasitasPerGudang: WarehouseCapacityRow[];
   currentTimeLabel: string;
   boqStats: { draft: number | null; active: number | null; total: number | null };
+  activeBoqTickets: Set<string>;
   stagingSites: Warehouse[];
   approvingId: string | null;
   approveError: string | null;
@@ -237,6 +238,7 @@ export function useSupervisorDashboard() {
     active: 28,
     total: 43,
   });
+  const [activeBoqTickets, setActiveBoqTickets] = useState<Set<string>>(new Set());
   const [stagingSites, setStagingSites] = useState<Warehouse[]>([]);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [approveError, setApproveError] = useState<string | null>(null);
@@ -589,7 +591,7 @@ export function useSupervisorDashboard() {
         const ct = boqRes.headers.get("content-type");
         if (ct && ct.includes("application/json")) {
           const json = await boqRes.json();
-          const list: Array<{ status?: string }> = Array.isArray(json?.data)
+          const list: Array<{ status?: string; ticketNumber?: string; ticket?: { kode_tiket?: string }; project?: { nama_project?: string } }> = Array.isArray(json?.data)
             ? json.data
             : Array.isArray(json)
               ? json
@@ -599,6 +601,13 @@ export function useSupervisorDashboard() {
             const active = list.filter((b) => (b.status || "").toLowerCase() === "aktif").length;
             const total = typeof json?.total === "number" ? json.total : list.length;
             setBoqStats({ draft, active, total });
+            const activeTickets = new Set(
+              list
+                .filter((b) => (b.status || "").toLowerCase() === "aktif")
+                .map((b) => b.ticketNumber || b.ticket?.kode_tiket || "")
+                .filter((ticket) => Boolean(ticket))
+            );
+            setActiveBoqTickets(activeTickets);
           }
         }
       }
@@ -728,6 +737,7 @@ export function useSupervisorDashboard() {
     kapasitasPerGudang,
     currentTimeLabel,
     boqStats,
+    activeBoqTickets,
     stagingSites,
     approvingId,
     approveError,

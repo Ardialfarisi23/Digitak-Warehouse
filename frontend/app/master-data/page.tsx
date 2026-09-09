@@ -70,6 +70,8 @@ interface MasterDataTab {
   singularLabel: string;
   endpoint: string;
   icon: React.ElementType;
+  idField: string;
+  idFields?: string[];
 }
 
 interface PaginationMeta {
@@ -133,6 +135,8 @@ const MASTER_DATA_TABS: MasterDataTab[] = [
     singularLabel: "Barang",
     endpoint: "/api/items",
     icon: Package,
+    idField: "id",
+    idFields: ["id", "barang_id"],
   },
   {
     key: "projects",
@@ -140,6 +144,8 @@ const MASTER_DATA_TABS: MasterDataTab[] = [
     singularLabel: "Project",
     endpoint: "/api/projects",
     icon: FolderKanban,
+    idField: "project_id",
+    idFields: ["project_id", "id"],
   },
   {
     key: "personnel",
@@ -147,6 +153,8 @@ const MASTER_DATA_TABS: MasterDataTab[] = [
     singularLabel: "Personil",
     endpoint: "/api/personnels",
     icon: Users,
+    idField: "personil_id",
+    idFields: ["personil_id", "id"],
   },
   {
     key: "vehicles",
@@ -154,6 +162,8 @@ const MASTER_DATA_TABS: MasterDataTab[] = [
     singularLabel: "Kendaraan",
     endpoint: "/api/vehicles",
     icon: Truck,
+    idField: "kendaraan_id",
+    idFields: ["kendaraan_id", "id"],
   },
   {
     key: "warehouses",
@@ -161,6 +171,8 @@ const MASTER_DATA_TABS: MasterDataTab[] = [
     singularLabel: "Gudang",
     endpoint: "/api/warehouses",
     icon: WarehouseIcon,
+    idField: "gudang_id",
+    idFields: ["gudang_id", "id"],
   },
 ];
 
@@ -191,7 +203,7 @@ const TAB_PERMISSIONS: Record<
   projects: {
     create: [ROLE.ADMIN, ROLE.SUPERVISOR],
     edit: [ROLE.ADMIN, ROLE.SUPERVISOR],
-    delete: [ROLE.ADMIN],
+    delete: [ROLE.ADMIN, ROLE.SUPERVISOR],
   },
   personnel: {
     create: PERSONNEL_PERMISSIONS.create,
@@ -201,7 +213,7 @@ const TAB_PERMISSIONS: Record<
   vehicles: {
     create: [ROLE.ADMIN, ROLE.SUPERVISOR],
     edit: [ROLE.ADMIN, ROLE.SUPERVISOR],
-    delete: [ROLE.ADMIN],
+    delete: [ROLE.ADMIN, ROLE.SUPERVISOR],
   },
 };
 
@@ -1053,6 +1065,8 @@ function DeleteConfirmModal({
   tabLabel,
   endpoint,
   record,
+  idField,
+  idFields,
   onSuccess,
   onShowToast,
 }: {
@@ -1061,6 +1075,8 @@ function DeleteConfirmModal({
   tabLabel: string;
   endpoint: string;
   record: GenericRecord | null;
+  idField?: string;
+  idFields?: string[];
   onSuccess: () => void;
   onShowToast: (message: string, type: "success" | "error") => void;
 }) {
@@ -1068,8 +1084,16 @@ function DeleteConfirmModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isPersonnel = tabLabel.toLowerCase() === "personil";
+  const isActivePersonnel = isPersonnel && Boolean((record as any)?.is_aktif ?? (record as any)?.status_aktif ?? true);
+
   async function handleDelete() {
     if (!record) return;
+
+    if (isActivePersonnel) {
+      onShowToast("Gagal menghapus! Personil harus dinonaktifkan terlebih dahulu di Halaman Operasional.", "error");
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -1078,7 +1102,17 @@ function DeleteConfirmModal({
       const baseUrl =
         process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-      const url = new URL(`${endpoint}/${record.id}`, baseUrl).toString();
+      const candidates = idFields && idFields.length > 0 ? idFields : [idField || "id"];
+      const rawId = candidates.map((field) => record?.[field]).find((value) => value !== undefined && value !== null && value !== "");
+      const validId = rawId !== undefined && rawId !== null && rawId !== "" ? String(rawId) : null;
+
+      console.log(`[DeleteConfirmModal] tab=${tabLabel} endpoint=${endpoint} record keys=${Object.keys(record || {})} candidates=${candidates.join(",")} rawId=${rawId} validId=${validId}`);
+
+      if (!validId) {
+        throw new Error(`ID tidak valid untuk ${tabLabel.toLowerCase()}.`);
+      }
+
+      const url = new URL(`${endpoint}/${encodeURIComponent(validId)}`, baseUrl).toString();
 
       const response = await del(url);
 
@@ -1103,13 +1137,15 @@ function DeleteConfirmModal({
 
   return (
     <Modal open={open} onClose={onClose} title={`Hapus ${tabLabel}`} widthClass="max-w-sm">
-      <p className="text-sm text-slate-600">
-        Yakin ingin menghapus{" "}
-        <span className="font-semibold text-slate-800">
-          {record ? getRecordTitle("items", record) : ""}
-        </span>
-        ? Tindakan ini tidak dapat dibatalkan.
-      </p>
+      {isActivePersonnel ? (
+        <div className="rounded-xl bg-amber-50 px-3 py-2.5 text-xs text-amber-700">
+          Personil masih aktif! Harap nonaktifkan terlebih dahulu di Halaman Operasional sebelum menghapus.
+        </div>
+      ) : (
+        <p className="text-sm text-slate-600">
+          Yakin ingin menghapus ? Tindakan ini tidak dapat dibatalkan.
+        </p>
+      )}
 
       {error && (
         <div className="mt-3 flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-600">
@@ -1128,11 +1164,195 @@ function DeleteConfirmModal({
 
         <button
           onClick={handleDelete}
-          disabled={submitting}
+          disabled={submitting || isActivePersonnel}
           className="flex items-center gap-2 rounded-full bg-rose-600 px-5 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
         >
           {submitting && <Loader2 size={14} className="animate-spin" />}
           Hapus
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Nonaktif Confirm Modal
+// ---------------------------------------------------------------------------
+
+function NonaktifConfirmModal({
+  open,
+  onClose,
+  record,
+  onSuccess,
+  onShowToast,
+}: {
+  open: boolean;
+  onClose: () => void;
+  record: GenericRecord | null;
+  onSuccess: () => void;
+  onShowToast: (message: string, type: "success" | "error") => void;
+}) {
+  const { put } = useApi();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleConfirm() {
+    if (!record) return;
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const baseUrl =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const personilId = record.personil_id ?? record.id;
+      const url = new URL(`/api/personnels/${personilId}`, baseUrl).toString();
+
+      const response = await put(url, { is_aktif: false });
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(
+          result?.message || "Gagal menonaktifkan personil."
+        );
+      }
+
+      onSuccess();
+      onShowToast("Personil berhasil dinonaktifkan.", "success");
+      onClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
+      setError(msg);
+      onShowToast(msg, "error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Nonaktifkan Personil" widthClass="max-w-sm">
+      <p className="text-sm text-slate-600">
+        Nonaktifkan personil{" "}
+        <span className="font-semibold text-slate-800">
+          {record ? String(record.nama || record.id) : ""}
+        </span>
+        ?
+      </p>
+
+      {error && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-600">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      <div className="mt-5 flex justify-end gap-2">
+        <button
+          onClick={onClose}
+          className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+        >
+          Batal
+        </button>
+
+        <button
+          onClick={handleConfirm}
+          disabled={submitting}
+          className="flex items-center gap-2 rounded-full bg-amber-600 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+        >
+          {submitting && <Loader2 size={14} className="animate-spin" />}
+          Nonaktifkan
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Aktif Confirm Modal
+// ---------------------------------------------------------------------------
+
+function AktifConfirmModal({
+  open,
+  onClose,
+  record,
+  onSuccess,
+  onShowToast,
+}: {
+  open: boolean;
+  onClose: () => void;
+  record: GenericRecord | null;
+  onSuccess: () => void;
+  onShowToast: (message: string, type: "success" | "error") => void;
+}) {
+  const { put } = useApi();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleConfirm() {
+    if (!record) return;
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const baseUrl =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const personilId = record.personil_id ?? record.id;
+      const url = new URL(`/api/personnels/${personilId}`, baseUrl).toString();
+
+      const response = await put(url, { is_aktif: true });
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(
+          result?.message || "Gagal mengaktifkan kembali personil."
+        );
+      }
+
+      onSuccess();
+      onShowToast("Personil berhasil diaktifkan kembali.", "success");
+      onClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
+      setError(msg);
+      onShowToast(msg, "error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Aktifkan Kembali Personil" widthClass="max-w-sm">
+      <p className="text-sm text-slate-600">
+        Aktifkan kembali personil{" "}
+        <span className="font-semibold text-slate-800">
+          {record ? String(record.nama || record.id) : ""}
+        </span>
+        ?
+      </p>
+
+      {error && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-600">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      <div className="mt-5 flex justify-end gap-2">
+        <button
+          onClick={onClose}
+          className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+        >
+          Batal
+        </button>
+
+        <button
+          onClick={handleConfirm}
+          disabled={submitting}
+          className="flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+        >
+          {submitting && <Loader2 size={14} className="animate-spin" />}
+          Aktifkan
         </button>
       </div>
     </Modal>
@@ -1177,6 +1397,8 @@ function MasterDataPageContent() {
   } | null>(null);
   const [detailRecord, setDetailRecord] = useState<GenericRecord | null>(null);
   const [deleteRecord, setDeleteRecord] = useState<GenericRecord | null>(null);
+  const [nonaktifRecord, setNonaktifRecord] = useState<GenericRecord | null>(null);
+  const [aktifRecord, setAktifRecord] = useState<GenericRecord | null>(null);
 
   // -------------------------------------------------------------------------
   // Toast state
@@ -1209,7 +1431,7 @@ function MasterDataPageContent() {
       case "projects":
         return ["project_id", "title", "nama_project", "kecamatan", "desa_kelurahan", "status_aktif"];
       case "personnel":
-        return ["personil_id", "nama", "email", "nik", "posisi", "no_hp", "bisa_menyetir", "foto"];
+        return ["personil_id", "nama", "email", "nik", "posisi", "no_hp", "bisa_menyetir", "is_aktif", "foto"];
       case "vehicles":
         return ["kendaraan_id", "jenis_kendaraan", "merk", "no_polisi", "foto"];
       case "warehouses":
@@ -1453,7 +1675,7 @@ function MasterDataPageContent() {
             <p className="mt-0.5 text-xs text-slate-400">{meta.total} data</p>
           </div>
 
-          {canCreate && (
+          {canCreate && activeTab !== "personnel" && activeTab !== "vehicles" && (
             <button
               type="button"
               onClick={() => setFormModal({ mode: "create", record: null })}
@@ -1469,19 +1691,19 @@ function MasterDataPageContent() {
 
         <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
+            <table className="w-full text-left border-collapse table-auto text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
                   {columns.map((column) => (
                     <th
                       key={column}
-                      className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+                      className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400"
                     >
                       {getColumnLabel(column)}
                     </th>
                   ))}
 
-                  <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="px-2 py-2 whitespace-nowrap text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                     Aksi
                   </th>
                 </tr>
@@ -1492,7 +1714,7 @@ function MasterDataPageContent() {
                   Array.from({ length: 7 }).map((_, rowIndex) => (
                     <tr key={rowIndex}>
                       {Array.from({ length: columns.length + 1 }).map((_, colIndex) => (
-                        <td key={colIndex} className="px-6 py-4">
+                        <td key={colIndex} className="px-3 py-3">
                           <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                         </td>
                       ))}
@@ -1500,13 +1722,13 @@ function MasterDataPageContent() {
                   ))
                 ) : error ? (
                   <tr>
-                    <td colSpan={columns.length + 1} className="px-6 py-16 text-center text-sm text-rose-500">
+                    <td colSpan={columns.length + 1} className="px-3 py-16 text-center text-sm text-rose-500">
                       {error}
                     </td>
                   </tr>
                 ) : data.length === 0 ? (
                   <tr>
-                    <td colSpan={columns.length + 1} className="px-6 py-16 text-center text-sm text-slate-400">
+                    <td colSpan={columns.length + 1} className="px-3 py-16 text-center text-sm text-slate-400">
                       Tidak ada data {activeConfig?.label.toLowerCase()}.
                     </td>
                   </tr>
@@ -1540,7 +1762,7 @@ function MasterDataPageContent() {
                             const active = Boolean(value);
 
                             return (
-                              <td key={column} className="px-6 py-4">
+                              <td key={column} className="px-3 py-3">
                                 <span
                                   className={[
                                     "inline-flex rounded-full px-3 py-1 text-xs font-semibold",
@@ -1559,7 +1781,7 @@ function MasterDataPageContent() {
                             const photoUrl = String(value || "");
 
                             return (
-                              <td key={column} className="px-6 py-4">
+                              <td key={column} className="px-3 py-3">
                                 {photoUrl ? (
                                   <div className="relative h-10 w-10 overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
                                     <img
@@ -1580,13 +1802,13 @@ function MasterDataPageContent() {
                                     <ImageOff size={16} />
                                   </div>
                                  )}
-                               </td>
+                                </td>
                               );
                             }
 
                             if (column === "bisa_menyetir") {
                               return (
-                                <td key={column} className="px-6 py-4 text-sm text-slate-600">
+                                <td key={column} className="px-3 py-3 text-sm text-slate-600">
                                   {value === true ? "Bisa" : "Tidak"}
                                 </td>
                               );
@@ -1598,7 +1820,7 @@ function MasterDataPageContent() {
                                : item.satuan_default?.kode_satuan;
 
                              return (
-                               <td key={column} className="px-6 py-4 text-sm text-slate-600">
+                               <td key={column} className="px-3 py-3 text-sm text-slate-600">
                                  {label || "-"}
                                </td>
                              );
@@ -1608,12 +1830,15 @@ function MasterDataPageContent() {
                             <td
                               key={column}
                               className={[
-                                "px-6 py-4",
+                                "px-3 py-3",
                                 column === "kode_perangkat" || column === "project_id" || column === "personil_id" || column === "kendaraan_id"
                                   ? "font-semibold text-orange-500"
                                   : "text-slate-500",
                                 column === "nama_barang" || column === "nama_project" || column === "nama" || column === "jenis_kendaraan" || column === "nama_gudang"
                                   ? "font-medium text-slate-800"
+                                  : "",
+                                column === "email" || column === "nik"
+                                  ? "truncate max-w-[150px]"
                                   : "",
                               ].join(" ")}
                             >
@@ -1623,7 +1848,7 @@ function MasterDataPageContent() {
                         })}
 
                         {/* Aksi */}
-                        <td className="px-4 py-4">
+                        <td className="px-2 py-2 whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1">
                             <button
                               type="button"
@@ -1651,7 +1876,41 @@ function MasterDataPageContent() {
                               </button>
                             )}
 
-                            {canDelete && (
+                              {activeTab === "personnel" &&
+                                (() => {
+                                  const rawStatus = (record as any).status || "";
+                                  const isActive =
+                                    (record as any).is_active === true ||
+                                    (record as any).is_aktif === true ||
+                                    rawStatus.toLowerCase() === "aktif";
+
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (!isActive) {
+                                          setDeleteRecord(record);
+                                        }
+                                      }}
+                                      title={
+                                        isActive
+                                          ? "Nonaktifkan personil di Halaman Operasional sebelum menghapus"
+                                          : "Hapus permanen"
+                                      }
+                                      disabled={isActive}
+                                      className={`rounded-lg p-1.5 transition-colors ${
+                                        isActive
+                                          ? "text-slate-300 opacity-30 cursor-not-allowed"
+                                          : "text-red-500 cursor-pointer hover:bg-rose-50 hover:text-red-700"
+                                      }`}
+                                    >
+                                      <Trash2 size={15} />
+                                    </button>
+                                  );
+                                })()}
+
+                            {activeTab !== "personnel" && canDelete && (
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -1731,6 +1990,24 @@ function MasterDataPageContent() {
             tabLabel={activeConfig.singularLabel}
             endpoint={activeConfig.endpoint}
             record={deleteRecord}
+            idField={activeConfig.idField}
+            idFields={activeConfig.idFields}
+            onSuccess={fetchMasterData}
+            onShowToast={showToast}
+          />
+
+          <NonaktifConfirmModal
+            open={!!nonaktifRecord}
+            onClose={() => setNonaktifRecord(null)}
+            record={nonaktifRecord}
+            onSuccess={fetchMasterData}
+            onShowToast={showToast}
+          />
+
+          <AktifConfirmModal
+            open={!!aktifRecord}
+            onClose={() => setAktifRecord(null)}
+            record={aktifRecord}
             onSuccess={fetchMasterData}
             onShowToast={showToast}
           />

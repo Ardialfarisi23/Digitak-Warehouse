@@ -7,6 +7,10 @@ const createVehicleSchema = z.object({
   kapasitas_angkut: z.string().optional(),
   keterangan: z.string().optional(),
   foto: z.string().url("Format URL foto tidak valid.").optional().nullable(),
+  gudang_id: z.coerce.number().int().positive("Gudang tidak valid.").optional().nullable(),
+  gudangId: z.coerce.number().int().positive("Gudang tidak valid.").optional().nullable(),
+  warehouseId: z.coerce.number().int().positive("Gudang tidak valid.").optional().nullable(),
+  gudangName: z.string().optional().nullable(),
 });
 
 const updateVehicleSchema = createVehicleSchema.partial().refine(

@@ -8,8 +8,11 @@ const create = async (data, userId) => {
     throw new AppError("Kode vehicle sudah digunakan.", 400);
   }
 
+  const selectedGudangId = data.gudang_id || data.gudangId || data.warehouseId || null;
+
   const createData = {
     ...data,
+    gudang_id: selectedGudangId,
     created_by: Number(userId),
     updated_by: Number(userId),
   };
@@ -45,12 +48,33 @@ const update = async (no_polisi, data, userId) => {
     }
   }
 
+  const selectedGudangId = data.gudang_id || data.gudangId || data.warehouseId || null;
+
   const updateData = {
     ...data,
+    gudang_id: selectedGudangId,
     updated_by: Number(userId),
   };
 
   return await vehicleRepository.update(record.kendaraan_id, updateData);
+};
+
+const remove = async (kendaraan_id, userId) => {
+  const record = await vehicleRepository.findByKendaraanId(kendaraan_id, { includeInactive: true });
+
+  if (!record) {
+    throw new AppError("Vehicle tidak ditemukan.", 404);
+  }
+
+  try {
+    return await vehicleRepository.remove(kendaraan_id);
+  } catch (err) {
+    if (err && err.code === "P2003") {
+      throw new AppError("Vehicle masih terikat dengan data lain dan tidak dapat dihapus permanen.", 400);
+    }
+
+    throw err;
+  }
 };
 
 module.exports = {
@@ -58,4 +82,5 @@ module.exports = {
   findAll,
   findByNoPolisi,
   update,
+  remove,
 };

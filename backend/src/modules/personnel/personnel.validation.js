@@ -58,6 +58,10 @@ const createPersonnelSchema = z.object({
       return Number.isFinite(num) && num > 0 ? num : null;
     }),
 
+  is_aktif: z
+    .boolean()
+    .optional()
+    .nullable(),
 });
 
 const updatePersonnelSchema =

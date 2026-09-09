@@ -58,6 +58,7 @@ model personil {
   user_id                 BigInt?          @unique
   gudang_id               BigInt?
   is_dummy                Boolean          @default(false)
+  is_aktif                Boolean          @default(true)
   created_at              DateTime         @default(now())
   updated_at              DateTime         @default(now())
   created_by              BigInt
@@ -88,11 +89,14 @@ model kendaraan {
   updated_at       DateTime      @default(now())
   created_by       BigInt
   updated_by       BigInt
+  gudang_id        BigInt?
+  gudang           gudang?       @relation("kendaraan_gudang", fields: [gudang_id], references: [gudang_id])
   creator          user_account  @relation("kendaraan_created_by", fields: [created_by], references: [user_id])
   updater          user_account  @relation("kendaraan_updated_by", fields: [updated_by], references: [user_id])
   surat_jalans     surat_jalan[]
 
   @@index([no_polisi])
+  @@index([gudang_id])
 }
 
 model project {
@@ -145,6 +149,7 @@ model gudang {
   project                 project?               @relation(fields: [project_id], references: [project_id])
   updater                 user_account           @relation("gudang_updated_by", fields: [updated_by], references: [user_id])
   personil_gudang         personil[]             @relation("personil_gudang")
+  kendaraans              kendaraan[]            @relation("kendaraan_gudang")
   stok_gudangs            stok_gudang[]
   surat_jalan_asal        surat_jalan[]          @relation("surat_jalan_asal")
   surat_jalan_tujuan      surat_jalan[]          @relation("surat_jalan_tujuan")
