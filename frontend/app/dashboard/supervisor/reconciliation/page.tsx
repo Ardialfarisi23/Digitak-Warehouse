@@ -558,23 +558,35 @@ export default function SupervisorReconciliationPage() {
             {/* Section Catatan & Rumus Kalkulasi */}
             <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">CATATAN & RUMUS KALKULASI</h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Box Selisih */}
-                <div className="rounded-xl border border-amber-200/80 bg-amber-50/50 p-4">
-                  <p className="text-xs font-bold text-amber-900">Selisih = MOS Sistem - MOS Mitra</p>
-                  <p className="mt-2 text-xs leading-relaxed text-amber-800/90">
-                    Menampilkan perbedaan jumlah material yang tercatat mitra dibanding sistem. Jika <span className="font-semibold text-amber-900">Selisih &ne; 0</span>, baris akan diberi highlight kuning sebagai tanda ketidaksesuaian
-                    data.
-                  </p>
+              <p className="text-xs text-slate-500 mb-4">Penjelasan cara menghitung setiap kolom pada tabel rekonsiliasi.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
+                  <p className="text-xs font-bold text-slate-900">BOQ Plan</p>
+                  <p className="mt-2 text-xs leading-relaxed text-slate-800/90">Jumlah material yang direncanakan sejak awal untuk project ini.</p>
                 </div>
-
-                {/* Box Remains */}
+                <div className="rounded-xl border border-indigo-200/80 bg-indigo-50/50 p-4">
+                  <p className="text-xs font-bold text-indigo-900">Additional</p>
+                  <p className="mt-2 text-xs leading-relaxed text-indigo-800/90">Tambahan material di luar rencana BOQ awal (misal kelebihan kiriman atau kebutuhan tambahan).</p>
+                </div>
+                <div className="rounded-xl border border-blue-200/80 bg-blue-50/50 p-4">
+                  <p className="text-xs font-bold text-blue-900">MOS Sistem</p>
+                  <p className="mt-2 text-xs leading-relaxed text-blue-800/90">Jumlah material yang tercatat masuk ke project menurut sistem (otomatis dari surat jalan inbound).</p>
+                </div>
+                <div className="rounded-xl border border-orange-200/80 bg-orange-50/50 p-4">
+                  <p className="text-xs font-bold text-orange-900">MOS Mitra</p>
+                  <p className="mt-2 text-xs leading-relaxed text-orange-800/90">Jumlah material yang dikonfirmasi diterima oleh mitra di lapangan, diinput manual oleh Admin dari laporan mitra.</p>
+                </div>
+                <div className="rounded-xl border border-amber-200/80 bg-amber-50/50 p-4">
+                  <p className="text-xs font-bold text-amber-900">Selisih</p>
+                  <p className="mt-2 text-xs leading-relaxed text-amber-800/90">Perbedaan antara catatan sistem dan laporan mitra (MOS Sistem − MOS Mitra). Jika ≠ 0, berarti ada ketidakcocokan yang perlu dicek ulang.</p>
+                </div>
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
+                  <p className="text-xs font-bold text-slate-900">Used</p>
+                  <p className="mt-2 text-xs leading-relaxed text-slate-800/90">Jumlah material yang sudah dikirim ke lapangan untuk dipasang (otomatis dari surat jalan outbound yang disetujui).</p>
+                </div>
                 <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-4">
-                  <p className="text-xs font-bold text-emerald-900">Remains = MOS - (BOQ Plan + Additional)</p>
-                  <p className="mt-2 text-xs leading-relaxed text-emerald-800/90">
-                    Sisa material yang masih tersedia setelah memenuhi rencana BOQ dan tambahan. Jika <span className="font-semibold text-emerald-900">Remains &lt; 0</span>, berarti material yang digunakan melebihi yang tersedia.
-                  </p>
+                  <p className="text-xs font-bold text-emerald-900">Remains</p>
+                  <p className="mt-2 text-xs leading-relaxed text-emerald-800/90">Sisa material yang masih tersedia setelah dikurangi rencana. Rumus: MOS − (BOQ Plan + Additional). Jika minus, berarti pemakaian sudah melebihi rencana.</p>
                 </div>
               </div>
             </div>
@@ -710,15 +722,16 @@ export default function SupervisorReconciliationPage() {
 
               <div>
                 <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Rekonsiliasi</p>
-                <div className="space-y-2">
-                  <DetailRow label="BOQ" value={selectedRecord.boq} />
-                  <DetailRow label="Additional" value={selectedRecord.additional} />
-                  <DetailRow label="MOS Sistem" value={selectedRecord.mos_sistem} />
-                  <DetailRow label="Used" value={selectedRecord.used} />
-                  <div className="border-t border-slate-100 pt-2">
-                    <DetailRow label="Remains" value={selectedRecord.remains} highlight />
+                  <div className="space-y-2">
+                    <DetailRow label="BOQ" value={selectedRecord.boq} />
+                    <DetailRow label="Additional" value={selectedRecord.additional} />
+                    <DetailRow label="MOS Sistem" value={selectedRecord.mos_sistem} />
+                    <DetailRow label="MOS Mitra" value={selectedRecord.mos_mitra} />
+                    <DetailRow label="Used" value={selectedRecord.used} />
+                    <div className="border-t border-slate-100 pt-2">
+                      <DetailRow label="Remains" value={selectedRecord.remains} highlight />
+                    </div>
                   </div>
-                </div>
               </div>
 
               <div>

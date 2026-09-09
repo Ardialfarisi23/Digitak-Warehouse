@@ -76,6 +76,7 @@ const getInventory = async (filters = {}, actor = null) => {
           tipe: true,
           project_id: true,
           boq_id: true,
+          tujuan_tipe: true,
         },
       },
     },
@@ -99,16 +100,18 @@ const getInventory = async (filters = {}, actor = null) => {
       }
     }
 
-    if (item.surat_jalan?.tipe === "outbound") {
+    if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
       outboundByProjectBarang.set(key, (outboundByProjectBarang.get(key) || 0) + qty);
     }
   }
 
   const tiketMosMap = new Map();
+  const tiketUsedTerpasangMap = new Map();
   for (const item of boqItems) {
     const kodeTiket = item.boq?.tiket?.kode_tiket;
     if (kodeTiket && !tiketMosMap.has(kodeTiket)) {
       tiketMosMap.set(kodeTiket, Number(item.boq?.tiket?.mos || 0));
+      tiketUsedTerpasangMap.set(kodeTiket, Number(item.boq?.tiket?.used_terpasang || 0));
     }
   }
 
@@ -160,6 +163,9 @@ const getInventory = async (filters = {}, actor = null) => {
     const mosMitra = uniqueTiketsForMos.reduce((sum, kodeTiket) => {
       return sum + (tiketMosMap.get(kodeTiket) || 0);
     }, 0);
+    const usedTerpasang = uniqueTiketsForMos.reduce((sum, kodeTiket) => {
+      return sum + (tiketUsedTerpasangMap.get(kodeTiket) || 0);
+    }, 0);
     const used = Number(outboundByProjectBarang.get(key) || 0);
     const remains = mosSistem - (agg.boq + additional);
     const selisih = mosSistem - mosMitra;
@@ -195,6 +201,7 @@ const getInventory = async (filters = {}, actor = null) => {
       additional,
       mos_sistem: mosSistem,
       mos_mitra: mosMitra,
+      used_terpasang: usedTerpasang,
       selisih,
       used,
       remains,

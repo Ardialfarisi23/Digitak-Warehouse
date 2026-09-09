@@ -440,6 +440,7 @@ const getHardwareReconciliation = async (filters = {}) => {
     select: {
       tipe: true,
       project_id: true,
+      tujuan_tipe: true,
       items: {
         select: {
           qty: true,
@@ -504,7 +505,7 @@ const getHardwareReconciliation = async (filters = {}) => {
       );
     }
 
-    if (shipment.tipe === "outbound") {
+    if (shipment.tipe === "outbound" && shipment.tujuan_tipe !== "gudang") {
       usedByProject.set(
         projectIdNum,
         (usedByProject.get(projectIdNum) || 0) + totalQty
@@ -614,7 +615,7 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
           inboundByProject.set(pid, (inboundByProject.get(pid) || 0) + qty);
         }
       }
-      if (sj.tipe === "outbound") {
+      if (sj.tipe === "outbound" && sj.tujuan_tipe !== "gudang") {
         outboundByProject.set(pid, (outboundByProject.get(pid) || 0) + qty);
       }
     }
@@ -723,6 +724,7 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
         select: {
           tipe: true,
           project_id: true,
+          tujuan_tipe: true,
         },
       },
     },
@@ -751,7 +753,7 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
       }
     }
 
-    if (item.surat_jalan?.tipe === "outbound") {
+    if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
       outboundByBarang.set(
         `${projectIdNum}-${barangId}`,
         (outboundByBarang.get(`${projectIdNum}-${barangId}`) || 0) + qty
@@ -986,7 +988,7 @@ const backfillReconciliation = async () => {
           inboundByProject.set(pid, (inboundByProject.get(pid) || 0) + qty);
         }
       }
-      if (sj.tipe === "outbound") {
+      if (sj.tipe === "outbound" && sj.tujuan_tipe !== "gudang") {
         outboundByProject.set(pid, (outboundByProject.get(pid) || 0) + qty);
       }
     }

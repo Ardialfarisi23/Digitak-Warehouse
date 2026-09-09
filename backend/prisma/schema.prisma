@@ -265,6 +265,7 @@ model tiket_material {
   area            String?          @db.Text
   mos             Decimal?         @db.Decimal(14, 2)
   used            Decimal?         @db.Decimal(14, 2)
+  used_terpasang  Decimal?         @db.Decimal(14, 2)
   created_at      DateTime         @default(now())
   created_by      BigInt
   boq             boq?
