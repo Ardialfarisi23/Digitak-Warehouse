@@ -103,7 +103,7 @@ const updateStatus = async (req, res, next) => {
 
 const softDelete = async (req, res, next) => {
   try {
-    await boqService.softDelete(req.params.id);
+    await boqService.softDelete(req.params.id, req.user.id);
     return response.success(res, "BOQ berhasil dinonaktifkan.");
   } catch (err) {
     next(err);
@@ -112,7 +112,7 @@ const softDelete = async (req, res, next) => {
 
 const restore = async (req, res, next) => {
   try {
-    const result = await boqService.restore(req.params.id);
+    const result = await boqService.restore(req.params.id, req.user.id);
     const transformed = transformBoq(result);
     return response.success(res, "BOQ berhasil dipulihkan.", transformed);
   } catch (err) {

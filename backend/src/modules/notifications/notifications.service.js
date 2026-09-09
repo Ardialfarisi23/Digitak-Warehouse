@@ -95,16 +95,25 @@ const markAllRead = async (user, isRead = true) => {
 };
 
 const create = async ({ userId, role, type, title, message, link }) => {
-  return prisma.notification.create({
-    data: {
-      user_id: userId !== undefined && userId !== null ? BigInt(userId) : null,
-      role: role || null,
-      type: type || "info",
-      title,
-      message,
-      link: link || null,
-    },
-  });
+  const createOne = async (targetUserId, targetRole) => {
+    return prisma.notification.create({
+      data: {
+        user_id: targetUserId !== undefined && targetUserId !== null ? BigInt(targetUserId) : null,
+        role: targetRole || null,
+        type: type || "info",
+        title,
+        message,
+        link: link || null,
+      },
+    });
+  };
+
+  if (Array.isArray(userId)) {
+    if (userId.length === 0) return [];
+    return Promise.all(userId.map((id) => createOne(id, role)));
+  }
+
+  return createOne(userId, role);
 };
 
 module.exports = {
