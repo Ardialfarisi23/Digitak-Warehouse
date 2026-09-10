@@ -31,7 +31,7 @@ const create = async (data) => {
 
     if (adminIds.length > 0) {
       await require("../../modules/notifications/notifications.service").create({
-        role: "admin_general",
+        userId: adminIds,
         type: "info",
         title: "Pengguna Baru Ditambahkan",
         message: `Akun ${result.nama} (${result.email}) telah dibuat dengan role ${result.role}.`,
@@ -112,7 +112,7 @@ const update = async (user_id, data) => {
 
     if (adminIds.length > 0) {
       await require("../../modules/notifications/notifications.service").create({
-        role: "admin_general",
+        userId: adminIds,
         type: "info",
         title: "Pengguna Diperbarui",
         message: `Akun ${result.nama} (${result.email}) telah diperbarui.`,

@@ -93,7 +93,7 @@ const findRejectedList = async (req, res, next) => {
 
 const findById = async (req, res, next) => {
   try {
-    const result = await suratJalanService.findById(req.params.id);
+    const result = await suratJalanService.findById(req.params.id, req.user);
     return response.success(res, "Detail Surat Jalan berhasil diambil.", result);
   } catch (err) {
     next(err);

@@ -1526,30 +1526,16 @@ export default function BoqPage() {
                             className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
                           />
                         </div>
-                        <div className="col-span-2">
-                          <input
-                            type="text"
-                            value={item.unit}
-                            onChange={(e) => updateItem(index, "unit", e.target.value)}
-                            placeholder="Satuan"
-                            className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
-                          />
-                        </div>
-                         <div className="col-span-2">
-                           <select
-                            value={item.destinationWarehouseId}
-                            onChange={(e) => updateItem(index, "destinationWarehouseId", e.target.value)}
-                            className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
-                          >
-                            <option value="">Gudang</option>
-                            {warehouses.map((wh) => (
-                              <option key={wh.id} value={wh.id}>
-                                {wh.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="col-span-1 flex items-center justify-end">
+                         <div className="col-span-3">
+                           <input
+                             type="text"
+                             value={item.unit}
+                             onChange={(e) => updateItem(index, "unit", e.target.value)}
+                             placeholder="Satuan"
+                             className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
+                           />
+                         </div>
+                         <div className="col-span-1 flex items-center justify-end">
                           <button
                             type="button"
                             onClick={() => removeItem(index)}

@@ -22,7 +22,7 @@ router.post(
   suratJalanController.receiveInbound
 );
 router.get("/outbound/queue", authenticate, suratJalanController.findOutboundQueue);
-router.get("/outbound/approval", authenticate, suratJalanController.findOutboundForApproval);
+router.get("/outbound/approval", authenticate, authorize("SUPERVISOR"), suratJalanController.findOutboundForApproval);
 router.get("/outbound/delivery", authenticate, suratJalanController.findOutboundForDelivery);
 router.get("/inbound", authenticate, suratJalanController.findInboundList);
 router.get("/verification/queue", authenticate, suratJalanController.findVerificationQueue);

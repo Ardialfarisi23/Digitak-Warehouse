@@ -68,20 +68,27 @@ const update = async (gudang_id, data, userId) => {
   const result = await warehouseRepository.update(warehouse.gudang_id, updateData);
 
   try {
-    const personnel = await prisma.personil.findMany({
-      where: {
-        gudang_id: warehouse.gudang_id,
-        user: {
-          role: { in: ["supervisor", "staf_gudang"] },
-          is_aktif: true,
+    const [supervisors, staff] = await Promise.all([
+      prisma.user_account.findMany({
+        where: { role: "supervisor", is_aktif: true },
+        select: { user_id: true },
+      }),
+      prisma.personil.findMany({
+        where: {
+          gudang_id: warehouse.gudang_id,
+          user: {
+            role: { in: ["staf_gudang"] },
+            is_aktif: true,
+          },
         },
-      },
-      select: { user_id: true },
-    });
+        select: { user_id: true },
+      }),
+    ]);
 
-    const userIds = personnel
-      .map((p) => p.user_id)
-      .filter((id) => id != null);
+    const userIds = [
+      ...supervisors.map((s) => s.user_id).filter((id) => id != null),
+      ...staff.map((p) => p.user_id).filter((id) => id != null),
+    ];
 
     for (const uid of userIds) {
       await notificationService.create({
