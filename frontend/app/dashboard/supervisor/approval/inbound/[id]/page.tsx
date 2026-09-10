@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
-import { CheckCircle2, ArrowLeft, Printer, Eye, X } from "lucide-react";
+import { CheckCircle2, ArrowLeft, Printer, Eye, X, FileText } from "lucide-react";
 import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
 import { Document, Page, pdfjs } from "react-pdf";
 

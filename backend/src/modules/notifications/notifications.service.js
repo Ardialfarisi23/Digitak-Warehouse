@@ -2,14 +2,10 @@ const prisma = require("../../config/prisma");
 const AppError = require("../../shared/errors");
 
 const buildUserScope = (user) => {
-  const or = [];
   if (user?.id !== undefined && user.id !== null) {
-    or.push({ user_id: BigInt(user.id) });
+    return { user_id: BigInt(user.id) };
   }
-  if (user?.role) {
-    or.push({ role: user.role });
-  }
-  return or.length > 0 ? { OR: or } : {};
+  return {};
 };
 
 const list = async (user, query = {}) => {
