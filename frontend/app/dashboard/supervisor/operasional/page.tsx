@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useApi } from "@/lib/api";
-import { X, Plus, Loader2, User, Truck, Package, MapPin, Warehouse as WarehouseIcon } from "lucide-react";
+import { X, Plus, Loader2, User, Truck, Package, MapPin, Warehouse as WarehouseIcon, Eye, Pencil, UserX, UserCheck } from "lucide-react";
 
 const TABS = ["Personil", "Kendaraan", "Inventori Perangkat"] as const;
 
@@ -18,6 +18,7 @@ type Personnel = {
   role?: string;
   gudang_id?: number | string | null;
   gudang?: { gudang_id?: number | string; nama_gudang?: string } | null;
+  is_aktif?: boolean;
 };
 
 type Vehicle = {
@@ -67,7 +68,7 @@ function EmptyState({ title, description, icon: Icon }: { title: string; descrip
 }
 
 export default function SupervisorOperasionalPage() {
-  const { get, post } = useApi();
+  const { get, post, put } = useApi();
   const [activeTab, setActiveTab] = useState<TabKey>("Personil");
   const [personnels, setPersonnels] = useState<Personnel[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -81,6 +82,16 @@ export default function SupervisorOperasionalPage() {
   const [kendaraanModalOpen, setKendaraanModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const [selectedPersonil, setSelectedPersonil] = useState<Personnel | null>(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const showToast = (message: string, type: "success" | "error") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const [personilForm, setPersonilForm] = useState({
     nama: "",
@@ -190,6 +201,137 @@ export default function SupervisorOperasionalPage() {
     };
   }, [fetchData]);
 
+  const [personilStatusLoading, setPersonilStatusLoading] = useState<string | null>(null);
+  const [personilToToggle, setPersonilToToggle] = useState<Personnel | null>(null);
+  const [isToggleModalOpen, setIsToggleModalOpen] = useState(false);
+
+  const openToggleModal = (personil: Personnel) => {
+    setPersonilToToggle(personil);
+    setIsToggleModalOpen(true);
+  };
+
+  const closeToggleModal = () => {
+    setIsToggleModalOpen(false);
+    setPersonilToToggle(null);
+  };
+
+  const handleTogglePersonilStatus = async (personil: Personnel) => {
+    const currentStatus = Boolean(personil.is_aktif ?? true);
+    const newStatus = !currentStatus;
+
+    setPersonilStatusLoading(String(personil.personil_id));
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const url = new URL(`/api/personnels/${personil.personil_id}`, baseUrl).toString();
+
+      const response = await put(url, { is_aktif: newStatus });
+
+      if (!response.ok) {
+        let result: unknown = null;
+        try {
+          result = await response.json();
+        } catch {
+          result = null;
+        }
+
+        const resultObj = result && typeof result === "object" ? result : null;
+        const message =
+          resultObj && "message" in resultObj
+            ? String((resultObj as { message?: unknown }).message)
+            : `Gagal mengubah status personil.`;
+
+        console.error("[toggle personil status] backend error:", {
+          status: response.status,
+          body: resultObj,
+        });
+
+        showToast(message || `Gagal mengubah status personil.`, "error");
+        return;
+      }
+
+      await fetchData();
+      showToast(`Status personil berhasil diperbarui.`, "success");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
+      console.error("[toggle personil status] network/client error:", err);
+      showToast(msg, "error");
+    } finally {
+      setPersonilStatusLoading(null);
+    }
+  };
+
+  const handleViewPersonil = (personil: Personnel) => {
+    setSelectedPersonil(personil);
+    setIsViewModalOpen(true);
+  };
+
+  const handleEditPersonil = (personil: Personnel) => {
+    setSelectedPersonil(personil);
+    setPersonilForm({
+      nama: personil.nama || "",
+      posisi: personil.posisi || "",
+      no_hp: personil.no_hp || "",
+      email: personil.email || "",
+      nik: personil.nik || "",
+      role: personil.role || "",
+      bisa_menyetir: Boolean(personil.bisa_menyetir),
+      is_material_handler: Boolean(personil.is_material_handler),
+      gudang_id: personil.gudang_id ? String(personil.gudang_id) : "",
+    });
+    setFormError(null);
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdatePersonil = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPersonil) return;
+
+    setSubmitting(true);
+    setFormError(null);
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const url = new URL(`/api/personnels/${selectedPersonil.personil_id}`, baseUrl).toString();
+
+      const payload: Record<string, unknown> = {
+        nama: personilForm.nama || null,
+        posisi: personilForm.posisi || null,
+        no_hp: personilForm.no_hp || null,
+        email: personilForm.email || null,
+        nik: personilForm.nik || null,
+        role: personilForm.role || null,
+        bisa_menyetir: Boolean(personilForm.bisa_menyetir),
+        is_material_handler: Boolean(personilForm.is_material_handler),
+      };
+
+      const gudangRaw = personilForm.gudang_id || warehouseFilter;
+      const gudangIdNum = Number(gudangRaw);
+      if (gudangRaw && Number.isFinite(gudangIdNum) && gudangIdNum > 0) {
+        payload.gudang_id = gudangIdNum;
+      }
+
+      const response = await put(url, payload);
+      const json = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = json?.message || json?.error || "Gagal memperbarui data personil.";
+        const validationDetails = json?.errors || json?.details || null;
+        throw new Error(validationDetails ? `${message} ${JSON.stringify(validationDetails)}` : message);
+      }
+
+      setIsEditModalOpen(false);
+      setSelectedPersonil(null);
+      resetPersonilForm();
+      await fetchData();
+      showToast("Data personil berhasil diperbarui.", "success");
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
+      setFormError(errorMessage);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const getItemGudangId = (rec: { gudang_id?: number | string | null; gudang?: { gudang_id?: number | string } | null }) => {
     const fromObj = rec.gudang?.gudang_id;
     if (fromObj !== undefined && fromObj !== null && fromObj !== "") return fromObj;
@@ -201,8 +343,14 @@ export default function SupervisorOperasionalPage() {
     return rec.gudang?.nama_gudang || null;
   };
 
-  const resolveGudangName = (rec: { gudang_id?: number | string | null; gudang?: { gudang_id?: number | string; nama_gudang?: string } | null }): string | null => {
-    const fromRelation = getItemGudangName(rec);
+  const resolveGudangName = (rec: { gudang_id?: number | string | null; gudang?: { gudang_id?: number | string; nama_gudang?: string; name?: string } | null; warehouse?: { nama_gudang?: string; name?: string } | null; gudangName?: string; gudang?: string | number | null; [key: string]: any }): string | null => {
+    const fromRelation =
+      rec.gudang?.nama_gudang ||
+      rec.gudang?.name ||
+      rec.warehouse?.nama_gudang ||
+      rec.warehouse?.name ||
+      rec.gudangName ||
+      (typeof rec.gudang === "string" ? rec.gudang : null);
     if (fromRelation) return fromRelation;
     const gid = getItemGudangId(rec);
     if (gid === null) return null;
@@ -304,26 +452,46 @@ export default function SupervisorOperasionalPage() {
     setSubmitting(true);
     setFormError(null);
     try {
+      const noPolisiValue = (kendaraanForm.no_polisi || "").trim().toUpperCase();
+      const selectedGudangId = kendaraanForm.gudang_id ? Number(kendaraanForm.gudang_id) : null;
+      const selectedGudangName = warehouses.find((w) => String(w.gudang_id) === String(kendaraanForm.gudang_id))?.nama_gudang || "";
+
       const payload: Record<string, unknown> = {
-        jenis_kendaraan: kendaraanForm.jenis_kendaraan || null,
-        merk: kendaraanForm.merk || null,
-        no_polisi: kendaraanForm.no_polisi || null,
-        kapasitas_angkut: parseDecimalInput(kendaraanForm.kapasitas_angkut) || null,
-        keterangan: kendaraanForm.keterangan || null,
+        jenis_kendaraan: kendaraanForm.jenis_kendaraan || "",
+        merk: kendaraanForm.merk || "",
+        no_polisi: noPolisiValue || "",
+        kapasitas_angkut: String(kendaraanForm.kapasitas_angkut || ""),
+        keterangan: kendaraanForm.keterangan || "",
+        gudang_id: selectedGudangId,
+        gudangId: selectedGudangId,
+        warehouseId: selectedGudangId,
+        gudangName: selectedGudangName,
       };
-      const gudangRaw = kendaraanForm.gudang_id || warehouseFilter;
-      const gudangIdNum = Number(gudangRaw);
-      if (gudangRaw && Number.isFinite(gudangIdNum) && gudangIdNum > 0) {
-        payload.gudang_id = gudangIdNum;
-      }
       const res = await post(`${apiBase}/api/vehicles`, payload);
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.message || "Gagal menambah kendaraan.");
+      if (!res.ok) {
+        const message = json?.message || "Gagal menambah kendaraan.";
+        const validationDetails = json?.errors || json?.details || null;
+
+        if (validationDetails && typeof validationDetails === "object") {
+          const fieldErrors = Object.entries(validationDetails)
+            .filter(([, messages]) => Array.isArray(messages) && messages.length > 0)
+            .map(([field, messages]) => `${field}: ${messages.join(", ")}`)
+            .join("; ");
+
+          if (fieldErrors) {
+            throw new Error(`${message} ${fieldErrors}`);
+          }
+        }
+
+        throw new Error(message);
+      }
       setKendaraanModalOpen(false);
       resetKendaraanForm();
       await fetchData();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.");
+      const errorMessage = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
+      setFormError(errorMessage);
     } finally {
       setSubmitting(false);
     }
@@ -484,96 +652,149 @@ export default function SupervisorOperasionalPage() {
 
         {/* Tab 1: Personil */}
         {!loading && activeTab === "Personil" && (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm text-slate-700">
-              <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
-                <tr>
-                  <th className="px-4 py-3">Nama</th>
-                  <th className="px-4 py-3">Posisi</th>
-                  <th className="px-4 py-3">No. HP</th>
-                  <th className="px-4 py-3">Email</th>
-                  <th className="px-4 py-3">NIK</th>
-                  <th className="px-4 py-3">Gudang</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredPersonnels.map((person, index) => {
-                  const gname = resolveGudangName(person);
-                  return (
-                  <tr key={person.personil_id || index} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    <td className="px-4 py-4 font-medium text-slate-900">{person.nama || "-"}</td>
-                    <td className="px-4 py-4">
-                      {person.posisi ? (
-                        <span className={badgeClass(positionVariant(person.posisi))}>{person.posisi}</span>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                    <td className="px-4 py-4">{person.no_hp || "-"}</td>
-                    <td className="px-4 py-4">{person.email || "-"}</td>
-                    <td className="px-4 py-4">{person.nik || "-"}</td>
-                    <td className="px-4 py-4">
-                      {gname ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
-                          <WarehouseIcon size={11} />
-                          {gname}
+          <div className="w-full">
+             <table className="w-full text-left border-collapse table-auto text-sm text-slate-700">
+                <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
+                   <tr>
+                     <th className="px-3 py-3">Nama</th>
+                     <th className="px-3 py-3">Posisi</th>
+                     <th className="px-3 py-3">No. HP</th>
+                     <th className="px-3 py-3">Email</th>
+                     <th className="px-3 py-3">NIK</th>
+                     <th className="px-3 py-3">Gudang</th>
+                     <th className="px-3 py-3">Status</th>
+                     <th className="px-3 py-3 text-right">Aksi</th>
+                   </tr>
+                 </thead>
+                <tbody>
+                  {filteredPersonnels.map((person, index) => {
+                    const gname = resolveGudangName(person);
+                    const isActive = Boolean(person.is_aktif ?? true);
+                    return (
+                    <tr key={person.personil_id || index} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                      <td className="px-3 py-3 font-medium text-slate-900">{person.nama || "-"}</td>
+                      <td className="px-3 py-3">
+                        {person.posisi ? (
+                          <span className={badgeClass(positionVariant(person.posisi))}>{person.posisi}</span>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td className="px-3 py-3">{person.no_hp || "-"}</td>
+                      <td className="px-3 py-3 truncate max-w-[180px]">{person.email || "-"}</td>
+                      <td className="px-3 py-3 truncate max-w-[150px]">{person.nik || "-"}</td>
+                      <td className="px-3 py-3">
+                        {gname ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                            <WarehouseIcon size={11} />
+                            {gname}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400">Belum terikat</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+                          {isActive ? "Aktif" : "Nonaktif"}
                         </span>
-                      ) : (
-                        <span className="text-xs text-slate-400">Belum terikat</span>
-                      )}
-                    </td>
-                  </tr>
-                  );
-                })}
-                {filteredPersonnels.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-8">
-                      <EmptyState
-                        title="Belum ada data personil"
-                        description={warehouseFilter ? "Coba ubah filter gudang untuk melihat data lainnya." : "Belum ada personil yang terdaftar di sistem."}
-                        icon={User}
-                      />
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
+                      </td>
+                       <td className="px-2 py-2.5 whitespace-nowrap">
+                         <div className="flex items-center justify-end gap-1">
+                           <button
+                             type="button"
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               handleViewPersonil(person);
+                             }}
+                             title="Detail"
+                             className="p-2.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-100 transition-colors cursor-pointer flex items-center justify-center"
+                           >
+                             <Eye size={16} className="text-slate-600" />
+                           </button>
+                           <button
+                             type="button"
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               handleEditPersonil(person);
+                             }}
+                             title="Edit"
+                             className="p-2.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-100 transition-colors cursor-pointer flex items-center justify-center"
+                           >
+                             <Pencil size={16} className="text-slate-600" />
+                           </button>
+                           <button
+                             type="button"
+                             onClick={() => openToggleModal(person)}
+                             disabled={personilStatusLoading === String(person.personil_id)}
+                             title={isActive ? "Nonaktifkan Personil" : "Aktifkan Personil"}
+                             className={`p-2.5 rounded-2xl border transition-colors cursor-pointer flex items-center justify-center ${
+                               isActive
+                                 ? "bg-rose-50 hover:bg-rose-100 border-rose-100 text-rose-500"
+                                 : "bg-emerald-50 hover:bg-emerald-100 border-emerald-100 text-emerald-500"
+                             }`}
+                           >
+                             {personilStatusLoading === String(person.personil_id) ? (
+                               <Loader2 size={16} className="animate-spin" />
+                             ) : isActive ? (
+                               <UserX size={16} />
+                             ) : (
+                               <UserCheck size={16} />
+                             )}
+                           </button>
+                         </div>
+                       </td>
+                    </tr>
+                    );
+                  })}
+                  {filteredPersonnels.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-8">
+                        <EmptyState
+                          title="Belum ada data personil"
+                          description={warehouseFilter ? "Coba ubah filter gudang untuk melihat data lainnya." : "Belum ada personil yang terdaftar di sistem."}
+                          icon={User}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+             </table>
+           </div>
+         )}
 
         {/* Tab 2: Kendaraan */}
         {!loading && activeTab === "Kendaraan" && (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm text-slate-700">
-              <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
-                <tr>
-                  <th className="px-4 py-3">No. Polisi</th>
-                  <th className="px-4 py-3">Jenis</th>
-                  <th className="px-4 py-3">Merk</th>
-                  <th className="px-4 py-3">Kapasitas Angkut</th>
-                  <th className="px-4 py-3">Keterangan</th>
-                  <th className="px-4 py-3">Gudang</th>
-                </tr>
-              </thead>
+          <div className="w-full">
+             <table className="w-full text-left border-collapse table-auto text-sm text-slate-700">
+               <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
+                 <tr>
+                   <th className="px-3 py-3">No. Polisi</th>
+                   <th className="px-3 py-3">Jenis</th>
+                   <th className="px-3 py-3">Merk</th>
+                   <th className="px-3 py-3">Kapasitas Angkut</th>
+                   <th className="px-3 py-3">Keterangan</th>
+                   <th className="px-3 py-3">Gudang</th>
+                 </tr>
+               </thead>
               <tbody>
                 {filteredVehicles.map((vehicle, index) => {
                   const gname = resolveGudangName(vehicle);
                   return (
                   <tr key={vehicle.kendaraan_id || index} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    <td className="px-4 py-4 font-medium text-slate-900">{vehicle.no_polisi || "-"}</td>
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-3 font-medium text-slate-900">{vehicle.no_polisi || "-"}</td>
+                    <td className="px-3 py-3">
                       {vehicle.jenis_kendaraan ? (
                         <span className={badgeClass(vehicleVariant(vehicle.jenis_kendaraan))}>{vehicle.jenis_kendaraan}</span>
                       ) : (
                         "-"
                       )}
                     </td>
-                    <td className="px-4 py-4">{vehicle.merk || "-"}</td>
-                    <td className="px-4 py-4">{vehicle.kapasitas_angkut || "-"}</td>
-                    <td className="px-4 py-4">{vehicle.keterangan || "-"}</td>
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-3">{vehicle.merk || "-"}</td>
+                    <td className="px-3 py-3">{vehicle.kapasitas_angkut || "-"}</td>
+                    <td className="px-3 py-3 truncate max-w-[180px]">{vehicle.keterangan || "-"}</td>
+                    <td className="px-3 py-3">
                       {gname ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
                           <WarehouseIcon size={11} />
                           {gname}
                         </span>
@@ -602,21 +823,21 @@ export default function SupervisorOperasionalPage() {
 
         {/* Tab 3: Inventori Perangkat */}
         {!loading && activeTab === "Inventori Perangkat" && (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm text-slate-700">
-              <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
-                <tr>
-                  <th className="px-4 py-3">Kode Perangkat</th>
-                  <th className="px-4 py-3">Nama Barang</th>
-                  <th className="px-4 py-3">Satuan</th>
-                </tr>
-              </thead>
+          <div className="w-full">
+             <table className="w-full text-left border-collapse table-auto text-sm text-slate-700">
+               <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
+                 <tr>
+                   <th className="px-3 py-3">Kode Perangkat</th>
+                   <th className="px-3 py-3">Nama Barang</th>
+                   <th className="px-3 py-3">Satuan</th>
+                 </tr>
+               </thead>
               <tbody>
                 {filteredItems.map((item, index) => (
                   <tr key={item.barang_id || index} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    <td className="px-4 py-4 font-medium text-slate-900">{item.kode_perangkat || "-"}</td>
-                    <td className="px-4 py-4">{item.nama_barang || "-"}</td>
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-3 font-medium text-slate-900">{item.kode_perangkat || "-"}</td>
+                    <td className="px-3 py-3">{item.nama_barang || "-"}</td>
+                    <td className="px-3 py-3">
                       {item.satuan_default?.kode_satuan ? (
                         <span className={badgeClass("info")}>{item.satuan_default.kode_satuan}</span>
                       ) : (
@@ -732,6 +953,147 @@ export default function SupervisorOperasionalPage() {
         </div>
       )}
 
+      {/* Modal Detail Personil */}
+      {isViewModalOpen && selectedPersonil && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setIsViewModalOpen(false)}>
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-900">Detail Personil</h3>
+              <button type="button" onClick={() => setIsViewModalOpen(false)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="space-y-3 text-sm text-slate-700">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-slate-500">Nama</p>
+                  <p className="font-medium text-slate-900">{selectedPersonil.nama || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Posisi</p>
+                  <p className="font-medium text-slate-900">{selectedPersonil.posisi || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">No. HP</p>
+                  <p className="font-medium text-slate-900">{selectedPersonil.no_hp || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Email</p>
+                  <p className="font-medium text-slate-900">{selectedPersonil.email || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">NIK</p>
+                  <p className="font-medium text-slate-900">{selectedPersonil.nik || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Gudang</p>
+                  <p className="font-medium text-slate-900">{resolveGudangName(selectedPersonil) || "Belum terikat"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Status</p>
+                  <p className="font-medium text-slate-900">{Boolean(selectedPersonil.is_aktif ?? true) ? "Aktif" : "Nonaktif"}</p>
+                </div>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button type="button" onClick={() => setIsViewModalOpen(false)} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Edit Personil */}
+      {isEditModalOpen && selectedPersonil && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => { setIsEditModalOpen(false); resetPersonilForm(); }}>
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Edit Personil</h3>
+                <p className="text-xs text-slate-500">Perbarui data personil operasional.</p>
+              </div>
+              <button type="button" onClick={() => { setIsEditModalOpen(false); resetPersonilForm(); }} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleUpdatePersonil} className="p-6 space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="mb-1.5 block text-xs font-medium text-slate-500">Nama <span className="text-rose-500">*</span></label>
+                  <input type="text" value={personilForm.nama} onChange={(e) => setPersonilForm((p) => ({ ...p, nama: e.target.value }))} placeholder="Nama lengkap" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-500">Posisi</label>
+                  <select value={personilForm.posisi} onChange={(e) => setPersonilForm((p) => ({ ...p, posisi: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400">
+                    <option value="">Pilih posisi</option>
+                    <option value="Supervisor">Supervisor</option>
+                    <option value="Staf Gudang">Staf Gudang</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-500">No. HP</label>
+                  <input type="text" value={personilForm.no_hp} onChange={(e) => setPersonilForm((p) => ({ ...p, no_hp: e.target.value }))} placeholder="Nomor telepon" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-500">Email</label>
+                  <input type="email" value={personilForm.email} onChange={(e) => setPersonilForm((p) => ({ ...p, email: e.target.value }))} placeholder="Alamat email" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-500">NIK</label>
+                  <input type="text" value={personilForm.nik} onChange={(e) => setPersonilForm((p) => ({ ...p, nik: e.target.value }))} placeholder="Nomor Induk Karyawan" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="mb-1.5 block text-xs font-medium text-slate-500">Role</label>
+                  <input type="text" value={personilForm.role} onChange={(e) => setPersonilForm((p) => ({ ...p, role: e.target.value }))} placeholder="Contoh: Admin, Operator" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
+                </div>
+                <div className="sm:col-span-2 flex items-center gap-6">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input type="checkbox" checked={personilForm.bisa_menyetir} onChange={(e) => setPersonilForm((p) => ({ ...p, bisa_menyetir: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#E8632C] focus:ring-[#E8632C]" />
+                    Bisa Menyetir
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input type="checkbox" checked={personilForm.is_material_handler} onChange={(e) => setPersonilForm((p) => ({ ...p, is_material_handler: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#E8632C] focus:ring-[#E8632C]" />
+                    Material Handler
+                  </label>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="mb-1.5 block text-xs font-medium text-slate-500">Gudang</label>
+                  <select
+                    value={personilForm.gudang_id}
+                    onChange={(e) => setPersonilForm((p) => ({ ...p, gudang_id: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                  >
+                    <option value="">Pilih gudang (opsional)</option>
+                    {warehouses.map((wh) => (
+                      <option key={wh.gudang_id} value={String(wh.gudang_id)}>
+                        {wh.nama_gudang}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {formError && (
+                <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  <span>{formError}</span>
+                </div>
+              )}
+
+              <div className="mt-6 flex items-center justify-end gap-2">
+                <button type="button" onClick={() => { setIsEditModalOpen(false); resetPersonilForm(); }} disabled={submitting} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60">
+                  Batal
+                </button>
+                <button type="submit" disabled={submitting} className="flex items-center gap-2 rounded-full bg-[#E8632C] px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#D9591F] disabled:opacity-60">
+                  {submitting && <Loader2 size={14} className="animate-spin" />}
+                  Simpan Perubahan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal Tambah Kendaraan */}
       {kendaraanModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => { setKendaraanModalOpen(false); resetKendaraanForm(); }}>
@@ -757,7 +1119,7 @@ export default function SupervisorOperasionalPage() {
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">No. Polisi <span className="text-rose-500">*</span></label>
-                  <input type="text" value={kendaraanForm.no_polisi} onChange={(e) => setKendaraanForm((p) => ({ ...p, no_polisi: e.target.value }))} placeholder="Nomor polisi" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
+                  <input type="text" value={kendaraanForm.no_polisi} onChange={(e) => setKendaraanForm((p) => ({ ...p, no_polisi: e.target.value.trim().toUpperCase() }))} placeholder="Nomor polisi" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">Kapasitas Angkut</label>
@@ -801,6 +1163,109 @@ export default function SupervisorOperasionalPage() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Ubah Status Personil */}
+      {isToggleModalOpen && personilToToggle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={closeToggleModal}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-900">
+                {(() => {
+                  const currentStatus = Boolean(personilToToggle.is_aktif ?? true);
+                  return currentStatus ? "Konfirmasi Nonaktifkan Personil" : "Konfirmasi Aktifkan Personil";
+                })()}
+              </h3>
+              <button type="button" onClick={closeToggleModal} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-600">
+              {(() => {
+                const currentStatus = Boolean(personilToToggle.is_aktif ?? true);
+                if (currentStatus) {
+                  return (
+                    <span>
+                      Apakah Anda yakin ingin menonaktifkan{" "}
+                      <span className="font-semibold text-slate-800">{personilToToggle.nama}</span>? Personil yang nonaktif dapat dihapus dari Master Data.
+                    </span>
+                  );
+                }
+                return (
+                  <span>
+                    Apakah Anda yakin ingin mengaktifkan kembali{" "}
+                    <span className="font-semibold text-slate-800">{personilToToggle.nama}</span>?
+                  </span>
+                );
+              })()}
+            </p>
+
+            <div className="mt-6 flex items-center justify-end gap-2">
+              <button type="button" onClick={closeToggleModal} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  closeToggleModal();
+                  if (personilToToggle) {
+                    await handleTogglePersonilStatus(personilToToggle);
+                  }
+                }}
+                disabled={personilStatusLoading === String(personilToToggle.personil_id)}
+                className="flex items-center gap-2 rounded-full bg-[#E8632C] px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#D9591F] disabled:opacity-60"
+              >
+                {personilStatusLoading === String(personilToToggle.personil_id) && <Loader2 size={14} className="animate-spin" />}
+                Ya, Lanjutkan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div
+          className={[
+            "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
+            toast.type === "success"
+              ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
+              : "border-rose-200/80 bg-rose-50/95 text-rose-800",
+          ].join(" ")}
+        >
+          <div
+            className={[
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+              toast.type === "success" ? "bg-emerald-100" : "bg-rose-100",
+            ].join(" ")}
+          >
+            {toast.type === "success" ? (
+              <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+          </div>
+          <p className="flex-1 leading-snug">{toast.message}</p>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className={[
+              "ml-2 shrink-0 rounded-full p-1 transition-colors",
+              toast.type === "success"
+                ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
+                : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
+            ].join(" ")}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       )}
     </div>

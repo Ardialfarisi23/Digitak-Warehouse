@@ -41,4 +41,11 @@ router.put(
   personnelController.update
 );
 
+router.delete(
+  "/:personil_id",
+  authenticate,
+  authorize("ADMIN", "SUPERVISOR"),
+  personnelController.remove
+);
+
 module.exports = router;
