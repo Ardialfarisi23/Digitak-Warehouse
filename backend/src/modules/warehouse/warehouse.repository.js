@@ -142,6 +142,38 @@ const restore = async (gudang_id) => {
   });
 };
 
+const getStockAvailability = async (gudang_id, items = [], projectId = null) => {
+  const results = [];
+
+  for (const item of items) {
+    const barangId = Number(item.barang_id);
+    const kondisi = item.kondisi || "baik";
+    const zonaId = item.zona_id ? Number(item.zona_id) : null;
+
+    const where = {
+      gudang_id: Number(gudang_id),
+      barang_id: barangId,
+      kondisi,
+      ...(projectId ? { project_id: Number(projectId) } : {}),
+      ...(zonaId !== null ? { zona_id: zonaId } : {}),
+    };
+
+    const agg = await prisma.stok_gudang.aggregate({
+      where,
+      _sum: { qty: true },
+    });
+
+    results.push({
+      barang_id: barangId,
+      zona_id: zonaId,
+      kondisi,
+      available_qty: Number(agg._sum.qty || 0),
+    });
+  }
+
+  return results;
+};
+
 module.exports = {
   create,
   findById,
@@ -150,4 +182,5 @@ module.exports = {
   update,
   softDelete,
   restore,
+  getStockAvailability,
 };
