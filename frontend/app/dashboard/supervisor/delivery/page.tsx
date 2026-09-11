@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Search, ChevronDown, Filter, X, Eye, CheckSquare, AlertTriangle, Clock, PackageCheck, Truck } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Search, ChevronDown, Filter, X, Eye, CheckSquare, AlertTriangle, Clock, PackageCheck, Truck, XCircle } from "lucide-react";
 import { useApi } from "@/lib/api";
 import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
 
@@ -48,6 +49,7 @@ interface OutboundRow {
 }
 
 export default function SupervisorApprovalOutboundPage() {
+  const router = useRouter();
   const { get, put } = useApi();
   const [requests, setRequests] = useState<OutboundRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -58,15 +60,20 @@ export default function SupervisorApprovalOutboundPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
-  const [selectedItem, setSelectedItem] = useState<OutboundRow | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmTargetId, setConfirmTargetId] = useState<number | null>(null);
 
+  const [showRejectDialog, setShowRejectDialog] = useState(false);
+  const [rejectTargetId, setRejectTargetId] = useState<number | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
   const [selectedDocItem, setSelectedDocItem] = useState<any>(null);
+
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const openDocModal = (item: any) => {
     setSelectedDocItem(item);
@@ -77,6 +84,9 @@ export default function SupervisorApprovalOutboundPage() {
     setIsDocModalOpen(false);
     setSelectedDocItem(null);
   };
+
+  const openPreview = (url: string) => setPreviewImage(url);
+  const closePreview = () => setPreviewImage(null);
 
   const fetchApprovalQueue = useCallback(async () => {
     setIsLoading(true);
@@ -159,7 +169,6 @@ export default function SupervisorApprovalOutboundPage() {
         throw new Error(err?.message || "Gagal menyetujui outbound.");
       }
       setToast({ message: "Surat Jalan berhasil diverifikasi dan disetujui.", type: "success" });
-      setSelectedItem(null);
       fetchApprovalQueue();
     } catch (err) {
       setToast({ message: err instanceof Error ? err.message : "Gagal menyetujui outbound.", type: "error" });
@@ -169,12 +178,43 @@ export default function SupervisorApprovalOutboundPage() {
     }
   };
 
-  const openDetail = (row: OutboundRow) => {
-    setSelectedItem(row);
+  const openRejectDialog = (id: number) => {
+    setRejectTargetId(id);
+    setRejectReason("");
+    setShowRejectDialog(true);
   };
 
-  const closeDetail = () => {
-    setSelectedItem(null);
+  const closeRejectDialog = () => {
+    setShowRejectDialog(false);
+    setRejectTargetId(null);
+    setRejectReason("");
+  };
+
+  const executeReject = async () => {
+    if (!rejectTargetId) return;
+    const id = rejectTargetId;
+    const alasan = rejectReason.trim();
+    if (alasan.length < 5) {
+      setToast({ message: "Alasan penolakan minimal 5 karakter.", type: "error" });
+      return;
+    }
+    setActionLoading(String(id));
+    closeRejectDialog();
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const response = await put(`${baseUrl}/api/surat-jalan/${id}/reject-outbound`, { catatan: alasan });
+      if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        throw new Error(err?.message || "Gagal menolak outbound.");
+      }
+      setToast({ message: "Permintaan outbound berhasil ditolak.", type: "success" });
+      fetchApprovalQueue();
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Gagal menolak outbound.", type: "error" });
+    } finally {
+      setActionLoading(null);
+      setTimeout(() => setToast(null), 4000);
+    }
   };
 
   return (
@@ -280,7 +320,7 @@ export default function SupervisorApprovalOutboundPage() {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider text-xs border-b border-slate-200">
               <tr>
-                <th className="px-4 py-3">No. Surat Jalan</th>
+                <th className="px-4 py-3 break-all">No. Surat Jalan</th>
                 <th className="px-4 py-3">Tanggal</th>
                 <th className="px-4 py-3">Project</th>
                 <th className="px-4 py-3">Gudang</th>
@@ -311,7 +351,7 @@ export default function SupervisorApprovalOutboundPage() {
 
                   return (
                     <tr key={r.surat_jalan_id} className="hover:bg-slate-50/50 transition">
-                      <td className="px-4 py-3 font-mono font-bold text-slate-900">
+                      <td className="px-4 py-3 font-mono font-bold text-slate-900 break-all">
                         {r.nomor_surat_jalan}
                       </td>
                       <td className="px-4 py-3 text-slate-700">
@@ -332,7 +372,7 @@ export default function SupervisorApprovalOutboundPage() {
                         <div className="flex items-center justify-center gap-2">
                           <button
                             type="button"
-                            onClick={() => openDetail(r)}
+                            onClick={() => router.push(`/dashboard/supervisor/approval/outbound/${r.surat_jalan_id}`)}
                             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
                             title="Detail"
                           >
@@ -348,6 +388,16 @@ export default function SupervisorApprovalOutboundPage() {
                           >
                             <CheckSquare size={14} />
                             <span className="hidden sm:inline">Setujui</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openRejectDialog(r.surat_jalan_id)}
+                            disabled={actionLoading === String(r.surat_jalan_id)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-100 disabled:opacity-50"
+                            title="Tolak"
+                          >
+                            <XCircle size={14} />
+                            <span className="hidden sm:inline">Tolak</span>
                           </button>
                         </div>
                       </td>
@@ -379,68 +429,6 @@ export default function SupervisorApprovalOutboundPage() {
           >
             Selanjutnya
           </button>
-        </div>
-      )}
-
-      {selectedItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="relative w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-3xl bg-white shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 print:hidden">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">
-                  Detail Surat Jalan
-                </h3>
-                <p className="text-xs text-slate-500">
-                  {selectedItem.nomor_surat_jalan}
-                </p>
-              </div>
-              <button
-                onClick={closeDetail}
-                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="overflow-y-auto p-6">
-              <DetailSuratJalanDocument
-                data={{ ...selectedItem, tanggal: selectedItem.tanggal ?? selectedItem.created_at }}
-                variant="full"
-                renderItemAction={(item) => (
-                  <button
-                    type="button"
-                    onClick={() => openDocModal(item)}
-                    className="p-1 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
-                    title="Dokumentasi Barang"
-                  >
-                    <Eye size={16} />
-                  </button>
-                )}
-              />
-            </div>
-
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2 print:hidden">
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="inline-flex items-center gap-2 rounded-lg border border-[#E8632C] bg-white px-4 py-2 text-xs font-semibold text-[#E8632C] shadow-sm transition hover:bg-[#E8632C] hover:text-white"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="6 9 6 2 18 2 18 9" />
-                  <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-                  <rect x="6" y="14" width="12" height="8" />
-                </svg>
-                Cetak / PDF
-              </button>
-              <button
-                type="button"
-                onClick={closeDetail}
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
@@ -483,23 +471,53 @@ export default function SupervisorApprovalOutboundPage() {
                   </p>
                 </div>
               </div>
-              <div>
-                <p className="mb-2 text-xs text-slate-500">Foto Dokumentasi</p>
-                {(selectedDocItem as any)?.fotos && (selectedDocItem as any).fotos.length > 0 ? (
-                  <div className="grid grid-cols-3 gap-2">
-                    {(selectedDocItem as any).fotos.map((foto: any, idx: number) => (
+               <div>
+                  <p className="mb-2 text-xs text-slate-500">Foto Dokumentasi</p>
+                  {(() => {
+                    const item = selectedDocItem as any;
+                    const fotoUrl =
+                      item?.foto_dokumentasi ||
+                      item?.foto_barang ||
+                      item?.foto ||
+                      item?.foto_url ||
+                      item?.documentation_photo ||
+                      (Array.isArray(item?.photos) && item.photos.length > 0 ? item.photos[0] : null) ||
+                      (Array.isArray(item?.foto) && item.foto.length > 0 ? item.foto[0] : null);
+
+                    if (!fotoUrl) {
+                      return <p className="text-xs text-slate-400">Belum ada foto dokumentasi untuk item ini.</p>;
+                    }
+
+                    if (Array.isArray(fotoUrl)) {
+                      return (
+                        <div className="grid grid-cols-3 gap-2">
+                          {fotoUrl.map((foto: any, idx: number) => {
+                            const src = typeof foto === "string" ? foto : foto?.url;
+                            if (!src) return null;
+                            return (
+                              <img
+                                key={idx}
+                                src={src}
+                                alt={typeof foto === "string" ? `Foto ${idx + 1}` : foto?.filename || `Foto ${idx + 1}`}
+                                className="h-24 w-full rounded-lg border border-slate-100 object-cover cursor-pointer"
+                                onClick={() => openPreview(src)}
+                              />
+                            );
+                          })}
+                        </div>
+                      );
+                    }
+
+                    return (
                       <img
-                        key={idx}
-                        src={foto.url}
-                        alt={foto.filename || `Foto ${idx + 1}`}
-                        className="h-24 w-full rounded-lg border border-slate-100 object-cover"
+                        src={fotoUrl}
+                        alt="Foto Dokumentasi"
+                        className="h-24 w-24 rounded-lg border border-slate-100 object-cover cursor-pointer"
+                        onClick={() => openPreview(fotoUrl)}
                       />
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-400">Belum ada foto dokumentasi untuk item ini.</p>
-                )}
-              </div>
+                    );
+                  })()}
+                </div>
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4">
               <button
@@ -552,6 +570,51 @@ export default function SupervisorApprovalOutboundPage() {
         </div>
       )}
 
+      {showRejectDialog && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
+                <AlertTriangle size={24} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-slate-900">
+                  Tolak Permintaan Outbound
+                </h3>
+                <p className="mt-2 text-sm text-slate-600">
+                  Berikan alasan penolakan untuk permintaan ini. Minimal 5 karakter.
+                </p>
+                <textarea
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="Contoh: Stok barang tidak mencukupi untuk memenuhi permintaan ini."
+                  rows={4}
+                  className="mt-3 w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-800 focus:border-red-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeRejectDialog}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={executeReject}
+                disabled={actionLoading !== null || rejectReason.trim().length < 5}
+                className="rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-50"
+              >
+                {actionLoading !== null ? "Memproses..." : "Ya, Tolak"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div
           className={[
@@ -573,7 +636,7 @@ export default function SupervisorApprovalOutboundPage() {
               </svg>
             ) : (
               <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6h12" />
               </svg>
             )}
           </div>
@@ -589,9 +652,20 @@ export default function SupervisorApprovalOutboundPage() {
             ].join(" ")}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6h12" />
             </svg>
           </button>
+        </div>
+      )}
+
+      {previewImage && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm" onClick={closePreview}>
+          <div className="relative max-w-4xl max-h-[90vh] w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <img src={previewImage} alt="Preview Dokumentasi" className="max-w-full max-h-[85vh] rounded-2xl border border-slate-200 shadow-2xl object-contain" />
+            <button type="button" onClick={closePreview} className="absolute -top-3 -right-3 rounded-full bg-white p-2 text-slate-500 shadow hover:text-slate-800">
+              <X size={18} />
+            </button>
+          </div>
         </div>
       )}
 

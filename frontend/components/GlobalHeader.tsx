@@ -74,12 +74,25 @@ export function GlobalHeader() {
     return date.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
   }
 
-  async function handleNotificationClick(notif: { id: number; link: string | null }) {
+  async function handleNotificationClick(notif: { id: number; link: string | null; type?: string | null; title?: string | null; message?: string | null }) {
     await markAsRead(notif.id);
     setNotifOpen(false);
-    if (notif.link) {
-      router.push(notif.link);
+
+    if (!notif.link) {
+      return;
     }
+
+    const link = notif.link;
+
+    if (notif.type === "approval" || /outbound/i.test(notif.title || "") || /outbound/i.test(notif.message || "")) {
+      const match = link.match(/\/staff\/outbound\/(\d+)/);
+      if (match && match[1]) {
+        router.push(`/dashboard/supervisor/approval/outbound/${match[1]}`);
+        return;
+      }
+    }
+
+    router.push(link);
   }
 
   if (!user) return null;
