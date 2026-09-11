@@ -23,7 +23,7 @@ const getRelatedUserIdsByGudang = async (gudangIds, roles) => {
     select: { user_id: true },
   });
 
-  return personnel.map((p) => p.user_id).filter((id) => id != null);
+  return personnel.map((p) => Number(p.user_id)).filter((id) => !Number.isNaN(id) && id > 0);
 };
 
 const getRelatedSupervisorIds = async (excludeUserId = null) => {
@@ -33,7 +33,8 @@ const getRelatedSupervisorIds = async (excludeUserId = null) => {
   });
   let ids = supervisors.map((s) => s.user_id).filter((id) => id != null);
   if (excludeUserId != null) {
-    ids = ids.filter((id) => id !== excludeUserId);
+    const numericExclude = Number(excludeUserId);
+    return ids.filter((id) => id !== numericExclude);
   }
   return ids;
 };
@@ -47,9 +48,10 @@ const getAllAdminIds = async (excludeUserId = null) => {
     where: { role: "admin_general", is_aktif: true },
     select: { user_id: true },
   });
-  let ids = admins.map((a) => a.user_id).filter((id) => id != null);
+  let ids = admins.map((a) => Number(a.user_id)).filter((id) => !Number.isNaN(id) && id > 0);
   if (excludeUserId != null) {
-    ids = ids.filter((id) => id !== excludeUserId);
+    const numericExclude = Number(excludeUserId);
+    ids = ids.filter((id) => id !== numericExclude);
   }
   return ids;
 };
@@ -137,16 +139,7 @@ const create = async (data, actorId) => {
               userId: supervisorIds,
               type: "approval",
               title: "Outbound Menunggu Approval",
-              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} memerlukan verifikasi Anda.`,
-              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
-            });
-          } else {
-            await notificationService.create({
-              userId: null,
-              role: "supervisor",
-              type: "approval",
-              title: "Outbound Menunggu Approval",
-              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} memerlukan verifikasi Anda.`,
+              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
               link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
             });
           }
@@ -169,7 +162,7 @@ const create = async (data, actorId) => {
               type: "approval",
               title: "Outbound Menunggu Approval",
               message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
-              link: "/dashboard",
+              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
             });
           }
           if (supervisorIds.length > 0) {
@@ -177,16 +170,7 @@ const create = async (data, actorId) => {
               userId: supervisorIds,
               type: "approval",
               title: "Outbound Menunggu Approval",
-              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} memerlukan verifikasi Anda.`,
-              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
-            });
-          } else {
-            await notificationService.create({
-              userId: null,
-              role: "supervisor",
-              type: "approval",
-              title: "Outbound Menunggu Approval",
-              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} memerlukan verifikasi Anda.`,
+              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
               link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
             });
           }
@@ -508,15 +492,8 @@ const approveInbound = async (id, itemAdjustments = [], actorId) => {
     }
   };
 
-  if (updatedShipment.created_by && updatedShipment.created_by !== Number(actorId)) {
-    const createdByRole = updatedShipment.creator?.role;
-    const createdByLink =
-      createdByRole === "supervisor"
-        ? `/dashboard/supervisor/approval/inbound/${updatedShipment.surat_jalan_id}`
-        : createdByRole === "admin_general"
-          ? `/dashboard`
-          : `/staff/inbound/${updatedShipment.surat_jalan_id}`;
-    await sendNotification([updatedShipment.created_by], createdByLink);
+  if (updatedShipment.created_by && Number(updatedShipment.created_by) !== Number(actorId)) {
+    targets.add(Number(updatedShipment.created_by));
   }
 
   if (actor?.role === "supervisor") {
@@ -608,15 +585,8 @@ const approveOutbound = async (id, actorId) => {
       }
     };
 
-    if (shipment.created_by && shipment.created_by !== Number(actorId)) {
-      const createdByRole = shipment.creator?.role;
-      const createdByLink =
-        createdByRole === "supervisor"
-          ? `/dashboard/supervisor/approval/outbound/${shipment.surat_jalan_id}`
-          : createdByRole === "admin_general"
-            ? `/dashboard`
-            : `/staff/outbound/${shipment.surat_jalan_id}`;
-      await sendNotification([shipment.created_by], createdByLink);
+    if (shipment.created_by && Number(shipment.created_by) !== Number(actorId)) {
+      targets.add(Number(shipment.created_by));
     }
 
     if (actor?.role === "supervisor") {
@@ -696,15 +666,8 @@ const confirmDistributed = async (id, actorId) => {
     }
   };
 
-  if (updatedShipment.created_by && updatedShipment.created_by !== Number(actorId)) {
-    const createdByRole = updatedShipment.creator?.role;
-    const createdByLink =
-      createdByRole === "supervisor"
-        ? `/dashboard/supervisor/approval/outbound/${updatedShipment.surat_jalan_id}`
-        : createdByRole === "admin_general"
-          ? `/dashboard`
-          : `/staff/outbound/${updatedShipment.surat_jalan_id}`;
-    await sendNotification([updatedShipment.created_by], createdByLink);
+  if (updatedShipment.created_by && Number(updatedShipment.created_by) !== Number(actorId)) {
+    targets.add(Number(updatedShipment.created_by));
   }
 
   if (actor?.role === "supervisor") {
@@ -773,15 +736,8 @@ const rejectInbound = async (id, catatan = null, actorId) => {
       }
     };
 
-    if (updatedShipment.created_by && updatedShipment.created_by !== Number(actorId)) {
-      const createdByRole = updatedShipment.creator?.role;
-      const createdByLink =
-        createdByRole === "supervisor"
-          ? `/dashboard/supervisor/approval/inbound/${updatedShipment.surat_jalan_id}`
-          : createdByRole === "admin_general"
-            ? `/dashboard`
-            : `/staff/inbound/${updatedShipment.surat_jalan_id}`;
-      await sendNotification([updatedShipment.created_by], createdByLink);
+    if (updatedShipment.created_by && Number(updatedShipment.created_by) !== Number(actorId)) {
+      targets.add(Number(updatedShipment.created_by));
     }
 
     if (actor?.role === "supervisor") {
@@ -850,15 +806,8 @@ const rejectInbound = async (id, catatan = null, actorId) => {
       }
     };
 
-    if (updatedShipment.created_by && updatedShipment.created_by !== Number(actorId)) {
-      const createdByRole = updatedShipment.creator?.role;
-      const createdByLink =
-        createdByRole === "supervisor"
-          ? `/dashboard/supervisor/approval/outbound/${updatedShipment.surat_jalan_id}`
-          : createdByRole === "admin_general"
-            ? `/dashboard`
-            : `/staff/outbound/${updatedShipment.surat_jalan_id}`;
-      await sendNotification([updatedShipment.created_by], createdByLink);
+    if (updatedShipment.created_by && Number(updatedShipment.created_by) !== Number(actorId)) {
+      targets.add(Number(updatedShipment.created_by));
     }
 
     if (actor?.role === "supervisor") {

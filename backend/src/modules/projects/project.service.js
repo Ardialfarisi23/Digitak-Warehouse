@@ -1,6 +1,7 @@
 const projectRepository = require("./project.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
+const notificationService = require("../../modules/notifications/notifications.service");
 
 const create = async (data, userId) => {
   if (data.project_id) {
@@ -16,7 +17,55 @@ const create = async (data, userId) => {
     updated_by: Number(userId),
   };
 
-  return await projectRepository.create(createData);
+  const result = await projectRepository.create(createData);
+
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(userId) },
+    select: { nama: true, role: true },
+  });
+
+  try {
+    if (actor?.role === "admin_general") {
+      const admins = await prisma.user_account.findMany({
+        where: { role: "admin_general", is_aktif: true },
+        select: { user_id: true },
+      });
+
+      const adminIds = admins
+        .filter((admin) => Number(admin.user_id) !== Number(userId))
+        .map((admin) => Number(admin.user_id));
+
+      if (adminIds.length > 0) {
+        await notificationService.create({
+          userId: adminIds,
+          type: "info",
+          title: "Project Baru Ditambahkan",
+          message: `Project baru: ${result.nama_project} telah ditambahkan oleh ${actor?.nama || "Admin"}.`,
+          link: "/master-data",
+        });
+      }
+    }
+
+    await notificationService.create({
+      role: "supervisor",
+      type: "info",
+      title: "Project Baru Ditambahkan",
+      message: `Project baru: ${result.nama_project} telah ditambahkan.`,
+      link: "/master-data",
+    });
+
+    await notificationService.create({
+      role: "staf_gudang",
+      type: "info",
+      title: "Project Baru Ditambahkan",
+      message: `Project baru: ${result.nama_project} telah ditambahkan.`,
+      link: "/master-data",
+    });
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi create project:", notifErr);
+  }
+
+  return result;
 };
 
 const findAll = async (query = {}) => {
