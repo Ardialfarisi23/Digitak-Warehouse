@@ -731,12 +731,7 @@ function FormModal({
             submitData[field.key] = numericValue;
           }
         } else if (field.key === "kapasitas_angkut" && submitData[field.key] !== undefined && submitData[field.key] !== "") {
-          const numVal = Number(submitData[field.key]);
-          if (!Number.isNaN(numVal)) {
-            submitData[field.key] = numVal;
-          } else {
-            delete submitData[field.key];
-          }
+          submitData[field.key] = String(submitData[field.key]).trim();
         } else if (field.key === "gudang_id" && submitData[field.key] !== undefined && submitData[field.key] !== "") {
           const numVal = Number(submitData[field.key]);
           if (!Number.isNaN(numVal) && numVal > 0) {

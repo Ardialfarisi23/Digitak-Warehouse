@@ -137,8 +137,17 @@ const create = async (data, actorId) => {
               userId: supervisorIds,
               type: "approval",
               title: "Outbound Menunggu Approval",
-              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
-              link: "/dashboard/supervisor/approval/outbound",
+              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} memerlukan verifikasi Anda.`,
+              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
+            });
+          } else {
+            await notificationService.create({
+              userId: null,
+              role: "supervisor",
+              type: "approval",
+              title: "Outbound Menunggu Approval",
+              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} memerlukan verifikasi Anda.`,
+              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
             });
           }
           if (staffIds.length > 0) {
@@ -147,7 +156,7 @@ const create = async (data, actorId) => {
               type: "approval",
               title: "Outbound Menunggu Approval",
               message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
-              link: "/dashboard/supervisor/approval/outbound",
+              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
             });
           }
         } else if (actor?.role === "staf_gudang") {
@@ -168,8 +177,17 @@ const create = async (data, actorId) => {
               userId: supervisorIds,
               type: "approval",
               title: "Outbound Menunggu Approval",
-              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
-              link: "/dashboard/supervisor/approval/outbound",
+              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} memerlukan verifikasi Anda.`,
+              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
+            });
+          } else {
+            await notificationService.create({
+              userId: null,
+              role: "supervisor",
+              type: "approval",
+              title: "Outbound Menunggu Approval",
+              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} memerlukan verifikasi Anda.`,
+              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
             });
           }
         }

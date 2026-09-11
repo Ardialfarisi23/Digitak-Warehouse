@@ -222,6 +222,7 @@ export default function SupervisorApprovalInboundDetailPage() {
           <DetailSuratJalanDocument
             data={detail}
             variant="full"
+            hideTujuanBadge
             renderItemAction={(item) => (
               <button type="button" onClick={() => openDocModal(item)} className="p-1 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer flex items-center justify-center" title="Dokumentasi Barang">
                 <Eye size={16} />
