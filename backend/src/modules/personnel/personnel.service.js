@@ -101,9 +101,35 @@ const update = async (personil_id, data, userId) => {
   );
 };
 
+const remove = async (personil_id, userId) => {
+  const record = await personnelRepository.findByPersonilId(
+    personil_id,
+    {
+      includeInactive: true,
+    }
+  );
+
+  if (!record) {
+    throw new AppError(
+      "Personnel tidak ditemukan.",
+      404
+    );
+  }
+
+  if (record.is_aktif) {
+    throw new AppError(
+      "Gagal menghapus! Personil harus dinonaktifkan terlebih dahulu di Halaman Operasional.",
+      400
+    );
+  }
+
+  return await personnelRepository.remove(personil_id);
+};
+
 module.exports = {
   create,
   findAll,
   findByPersonilId,
   update,
+  remove,
 };

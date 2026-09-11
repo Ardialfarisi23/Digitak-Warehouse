@@ -11,15 +11,21 @@ const create = async (data) => {
 };
 
 const findByProjectId = async (projectId, options = {}) => {
+  if (!projectId || Number.isNaN(Number(projectId))) {
+    throw new Error("ID Project tidak valid atau tidak ditemukan");
+  }
+
+  const id = BigInt(projectId);
+
   if (options.includeInactive) {
     return await prisma.project.findUnique({
-      where: { project_id: Number(projectId) },
+      where: { project_id: id },
     });
   }
 
   return await prisma.project.findFirst({
     where: {
-      project_id: Number(projectId),
+      project_id: id,
       status_aktif: true,
     },
   });
@@ -88,23 +94,37 @@ const findAll = async ({
 };
 
 const update = async (projectId, data) => {
+  const id = BigInt(projectId);
   return await prisma.project.update({
-    where: { project_id: Number(projectId) },
+    where: { project_id: id },
     data,
   });
 };
 
 const softDelete = async (projectId) => {
+  const id = BigInt(projectId);
   return await prisma.project.update({
-    where: { project_id: Number(projectId) },
+    where: { project_id: id },
     data: { status_aktif: false },
   });
 };
 
 const restore = async (projectId) => {
+  const id = BigInt(projectId);
   return await prisma.project.update({
-    where: { project_id: Number(projectId) },
+    where: { project_id: id },
     data: { status_aktif: true },
+  });
+};
+
+const remove = async (projectId) => {
+  const idNum = Number(projectId);
+  if (!idNum || Number.isNaN(idNum)) {
+    throw new Error("ID tidak valid");
+  }
+
+  return await prisma.project.delete({
+    where: { project_id: idNum },
   });
 };
 
@@ -113,6 +133,7 @@ module.exports = {
   findByProjectId,
   findAll,
   update,
+  remove,
   softDelete,
   restore,
 };

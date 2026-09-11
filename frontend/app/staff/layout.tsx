@@ -5,6 +5,8 @@ import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import { ProtectedRoute } from "@/lib/protected-route";
 import { useSidebar } from "@/components/sidebar-context";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 function SidebarSkeleton() {
   const { width } = useSidebar();
@@ -32,13 +34,32 @@ export default function StaffLayout({
 }) {
   const { user, isLoading } = useAuth();
   const { width } = useSidebar();
+  const router = useRouter();
 
   const userRole = mapRole(user?.role);
+
+  useEffect(() => {
+    if (!isLoading) {
+      if (!user) {
+        router.push("/");
+      } else if (userRole !== "staff") {
+        router.push("/dashboard");
+      }
+    }
+  }, [isLoading, user, userRole, router]);
+
+  if (isLoading || !user || userRole !== "staff") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#FAF8F5] text-slate-500">
+        Memuat...
+      </div>
+    );
+  }
 
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-[#FAFAF8] overflow-x-hidden">
-        {isLoading || !user ? <SidebarSkeleton /> : <CompactSidebar userRole={userRole} />}
+        <CompactSidebar userRole={userRole} />
         <main className="mt-16 min-h-screen transition-all duration-300" style={{ marginLeft: `${width}px` }}>
           {children}
         </main>

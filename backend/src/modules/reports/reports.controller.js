@@ -164,6 +164,7 @@ const uploadReconciliationFile = async (req, res, next) => {
         const kodeTiket = row["Kode Tiket"] || row["kode_tiket"] || row["KODE_TIKET"];
         const mos = Number(row["MOS"] || row["mos"] || row["Material on Site"] || 0);
         const used = Number(row["Used"] || row["used"] || 0);
+        const usedTerpasang = Number(row["Used Terpasang"] || row["used_terpasang"] || row["Qty Terpasang"] || row["Terpasang"] || 0);
 
         if (!kodeTiket) {
           failed.push({ row: i + 2, reason: "Kode Tiket tidak ditemukan" });
@@ -184,6 +185,7 @@ const uploadReconciliationFile = async (req, res, next) => {
           area: tiket.project?.area || "-",
           mos,
           used,
+          used_terpasang: usedTerpasang,
         });
       }
 
@@ -263,6 +265,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
       const dataSebelum = {
         mos: tiket.mos ? Number(tiket.mos) : null,
         used: tiket.used ? Number(tiket.used) : null,
+        used_terpasang: tiket.used_terpasang ? Number(tiket.used_terpasang) : null,
       };
 
       try {
@@ -271,6 +274,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
           data: {
             mos: item.mos,
             used: item.used,
+            used_terpasang: item.used_terpasang,
           },
         });
 
@@ -280,6 +284,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
             kode_tiket: tiket.kode_tiket,
             mos: Number(item.mos || 0),
             used: Number(item.used || 0),
+            used_terpasang: Number(item.used_terpasang || 0),
             status: "berhasil",
             reason: null,
           },
@@ -290,6 +295,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
           kode_tiket: tiket.kode_tiket,
           mos: item.mos,
           used: item.used,
+          used_terpasang: item.used_terpasang,
         });
       } catch (updateErr) {
         await prisma.reconciliation_upload_detail.create({
@@ -298,6 +304,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
             kode_tiket: tiket.kode_tiket,
             mos: Number(item.mos || 0),
             used: Number(item.used || 0),
+            used_terpasang: Number(item.used_terpasang || 0),
             status: "gagal",
             reason: updateErr.message || "Gagal memperbarui tiket",
           },
@@ -315,6 +322,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
           data_sesudah: {
             mos: item.mos,
             used: item.used,
+            used_terpasang: item.used_terpasang,
             source_file: filename,
           },
         },

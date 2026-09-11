@@ -175,6 +175,23 @@ const update = async (personil_id, data) => {
   });
 };
 
+const remove = async (personil_id) => {
+  try {
+    return await prisma.personil.delete({
+      where: { personil_id: Number(personil_id) },
+    });
+  } catch (err) {
+    if (err && err.code === "P2003") {
+      return await prisma.personil.update({
+        where: { personil_id: Number(personil_id) },
+        data: { is_aktif: false },
+      });
+    }
+
+    throw err;
+  }
+};
+
 module.exports = {
   create,
   findByPersonilId,
@@ -183,4 +200,5 @@ module.exports = {
   findByEmail,
   findAll,
   update,
+  remove,
 };

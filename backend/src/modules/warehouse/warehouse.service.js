@@ -1,6 +1,7 @@
 const warehouseRepository = require("./warehouse.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
+const notificationService = require("../../modules/notifications/notifications.service");
 
 const create = async (data, userId) => {
   const existingWarehouse = await warehouseRepository.findByNama(data.nama_gudang, {
@@ -17,7 +18,45 @@ const create = async (data, userId) => {
     updated_by: Number(userId),
   };
 
-  return await warehouseRepository.create(createData);
+  const result = await warehouseRepository.create(createData);
+
+  if (result.project_id) {
+    try {
+      const project = await prisma.project.findUnique({
+        where: { project_id: result.project_id },
+        select: { nama_project: true },
+      });
+
+      const personnel = await prisma.personil.findMany({
+        where: {
+          gudang_id: result.gudang_id,
+          user: {
+            role: { in: ["supervisor", "staf_gudang"] },
+            is_aktif: true,
+          },
+        },
+        select: { user_id: true },
+      });
+
+      const userIds = personnel
+        .map((p) => p.user_id)
+        .filter((id) => id != null);
+
+      for (const uid of userIds) {
+        await notificationService.create({
+          userId: uid,
+          type: "info",
+          title: "Gudang Dikaitkan dengan Project",
+          message: `Gudang ${result.nama_gudang} telah dikaitkan dengan Project ${project?.nama_project || result.project_id}.`,
+          link: "/dashboard/master-data",
+        });
+      }
+    } catch (notifErr) {
+      console.error("Gagal membuat notifikasi create warehouse project assignment:", notifErr);
+    }
+  }
+
+  return result;
 };
 
 const findAll = async (query) => {
@@ -64,7 +103,84 @@ const update = async (gudang_id, data, userId) => {
     updated_by: Number(userId),
   };
 
-  return await warehouseRepository.update(warehouse.gudang_id, updateData);
+  const result = await warehouseRepository.update(warehouse.gudang_id, updateData);
+
+  const previousProjectId = warehouse.project_id;
+  const newProjectId = result.project_id;
+
+  if (newProjectId && newProjectId !== previousProjectId) {
+    try {
+      const project = await prisma.project.findUnique({
+        where: { project_id: newProjectId },
+        select: { nama_project: true },
+      });
+
+      const personnel = await prisma.personil.findMany({
+        where: {
+          gudang_id: warehouse.gudang_id,
+          user: {
+            role: { in: ["supervisor", "staf_gudang"] },
+            is_aktif: true,
+          },
+        },
+        select: { user_id: true },
+      });
+
+      const userIds = personnel
+        .map((p) => p.user_id)
+        .filter((id) => id != null);
+
+      for (const uid of userIds) {
+        await notificationService.create({
+          userId: uid,
+          type: "info",
+          title: "Gudang Dikaitkan dengan Project",
+          message: `Gudang ${result.nama_gudang} telah dikaitkan dengan Project ${project?.nama_project || newProjectId}.`,
+          link: "/dashboard/master-data",
+        });
+      }
+    } catch (notifErr) {
+      console.error("Gagal membuat notifikasi project assignment warehouse:", notifErr);
+    }
+  }
+
+  try {
+    const [supervisors, staff] = await Promise.all([
+      prisma.user_account.findMany({
+        where: { role: "supervisor", is_aktif: true },
+        select: { user_id: true },
+      }),
+      prisma.personil.findMany({
+        where: {
+          gudang_id: warehouse.gudang_id,
+          user: {
+            role: { in: ["staf_gudang"] },
+            is_aktif: true,
+          },
+        },
+        select: { user_id: true },
+      }),
+    ]);
+
+    const userIds = [
+      ...supervisors.map((s) => s.user_id).filter((id) => id != null),
+      ...staff.map((p) => p.user_id).filter((id) => id != null),
+    ];
+
+    for (const uid of userIds) {
+      await notificationService.create({
+        userId: uid,
+        type: "info",
+        title: "Gudang Diperbarui",
+        message: `Gudang ${warehouse.nama_gudang} telah diperbarui.`,
+        link: "/dashboard/master-data",
+      });
+    }
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi update warehouse:", notifErr);
+  }
+
+  return result;
 };
 
 const softDelete = async (gudang_id) => {

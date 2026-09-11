@@ -25,6 +25,10 @@ type ApiSuratJalan = {
   gudang_tujuan?: { nama_gudang: string } | null;
   project_id?: number | null;
   items: ApiSuratJalanItem[];
+  tujuan_tipe?: string | null;
+  titik_lapangan?: { nama_lokasi?: string } | null;
+  tipe_pengirim?: string | null;
+  pengirim_eksternal_nama?: string | null;
 };
 
 type ApiZona = {
@@ -254,6 +258,20 @@ export default function PickingDetailPage() {
     return zonas.filter((z) => Number(z.gudang_id) === Number(data.gudang_asal_id));
   }, [zonas, data]);
 
+  const tujuanLabel =
+    data?.tujuan_tipe === "lapangan"
+      ? data?.titik_lapangan?.nama_lokasi || "-"
+      : data?.tujuan_tipe === "gudang"
+        ? data?.gudang_tujuan?.nama_gudang || "-"
+        : data?.gudang_tujuan?.nama_gudang || "-";
+
+  const tujuanBadge =
+    data?.tujuan_tipe === "lapangan" ? (
+      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Lapangan</span>
+    ) : data?.tujuan_tipe === "gudang" ? (
+      <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Gudang</span>
+    ) : null;
+
   const isSelesai = data?.status === "diterima_didistribusikan";
   const cannotPick = isSelesai || data?.status !== "disetujui";
 
@@ -407,7 +425,11 @@ export default function PickingDetailPage() {
         <h1 className="text-3xl font-bold text-gray-900">{data.nomor_surat_jalan}</h1>
         <p className="mt-1 flex items-center gap-1.5 text-sm text-gray-500">
           <MapPin size={14} />
-          Ambil dari: {data.gudang_asal?.nama_gudang || "-"}
+          Tujuan:{" "}
+          <span>
+            {tujuanLabel}
+            {tujuanBadge}
+          </span>
         </p>
       </div>
 

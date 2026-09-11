@@ -201,6 +201,7 @@ const getHardwareReconciliation = async (filters = {}) => {
           tipe: true,
           project_id: true,
           boq_id: true,
+          tujuan_tipe: true,
         },
       },
     },
@@ -223,7 +224,7 @@ const getHardwareReconciliation = async (filters = {}) => {
         inboundByProjectBarang.set(key, (inboundByProjectBarang.get(key) || 0) + qty);
       }
     }
-    if (item.surat_jalan?.tipe === "outbound") {
+    if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
       outboundByProjectBarang.set(key, (outboundByProjectBarang.get(key) || 0) + qty);
     }
   }

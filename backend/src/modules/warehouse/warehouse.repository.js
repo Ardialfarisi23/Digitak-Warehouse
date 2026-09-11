@@ -45,6 +45,7 @@ const findAll = async ({
   sortBy = "created_at",
   sortOrder = "desc",
   is_aktif,
+  is_internal,
 } = {}) => {
   const sanitizedPage = Math.max(
     parseInt(page, 10) || DEFAULT_PAGE,
@@ -72,6 +73,12 @@ const findAll = async ({
     where.is_aktif = true;
   } else if (is_aktif === "false") {
     where.is_aktif = false;
+  }
+
+  if (is_internal === "true") {
+    where.is_internal = true;
+  } else if (is_internal === "false") {
+    where.is_internal = false;
   }
 
   if (search) {

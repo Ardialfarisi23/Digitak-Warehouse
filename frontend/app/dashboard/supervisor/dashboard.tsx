@@ -70,7 +70,7 @@ const summaryCards = [
 
 const approvalCards = [
   {
-    title: "Barang Masuk Menunggu Approval",
+    title: "Barang Masuk Menunggu Persetujuan",
     value: "14",
     badge: "Tertua: 1 hari",
     badgeTone: "bg-slate-100 text-slate-600",
@@ -78,7 +78,7 @@ const approvalCards = [
     icon: ArrowDownLeft,
   },
   {
-    title: "Barang Keluar Approval",
+    title: "Barang Keluar Menunggu Persetujuan",
     value: "8",
     badge: "Kritis!",
     badgeTone: "bg-rose-500 text-white font-bold",
@@ -148,7 +148,7 @@ const recentApprovals = [
 const latestActivities = [
   {
     time: "10:42 WIB",
-    activity: "Approve SJ-2024000",
+    activity: "Setujui SJ-2024000",
     actor: "Andi P.",
     result: "Sukses",
     resultTone: "bg-emerald-100 text-emerald-700",
@@ -557,7 +557,7 @@ export default function SupervisorDashboard() {
                   <div>
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-bold text-slate-900">
-                        Menunggu Approval
+                        Menunggu Persetujuan
                       </h3>
                       <button className="text-xs font-bold text-orange-500 hover:underline">
                         Lihat Semua

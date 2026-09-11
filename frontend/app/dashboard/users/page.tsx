@@ -6,12 +6,6 @@ import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole, formatRole } from "@/lib/navigation";
 import { Button } from "@/components/ui/button";
-import { Plus_Jakarta_Sans } from "next/font/google";
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
@@ -530,8 +524,8 @@ export default function UsersPage() {
    ========================================================= */
 
   return (
-    <div className={`${plusJakartaSans.className} flex flex-1 flex-col p-6`}>
-      <div className="mx-auto w-full max-w-6xl">
+    <div className="flex flex-1 flex-col">
+      <div className="w-full">
         {/* HEADER */}
         <header className="mb-6 flex items-start justify-between">
           <div>

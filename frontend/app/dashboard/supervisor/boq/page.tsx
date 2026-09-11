@@ -259,7 +259,6 @@ export default function BoqPage() {
       params.set("status", activeTab);
       if (projectFilter) params.set("projectId", projectFilter);
       if (areaFilter) params.set("area", areaFilter);
-      if (warehouseFilter) params.set("warehouseId", warehouseFilter);
       if (search.trim()) params.set("search", search.trim());
 
       const res = await get(`${API_BASE}/api/boqs?${params.toString()}`);
@@ -273,7 +272,7 @@ export default function BoqPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, projectFilter, areaFilter, warehouseFilter, search, get]);
+  }, [activeTab, projectFilter, areaFilter, search, get]);
 
   const fetchSummary = useCallback(async () => {
     try {
@@ -656,6 +655,31 @@ export default function BoqPage() {
     return items.filter((i) => i.kode_perangkat.toLowerCase().includes(q) || i.nama_barang.toLowerCase().includes(q));
   }, [items, itemSearch]);
 
+  const filteredBoqs = useMemo(() => {
+    if (!warehouseFilter) return boqs;
+    return boqs.filter((boq) =>
+      boq.items.some(
+        (item) =>
+          item.destinationWarehouseId === warehouseFilter ||
+          item.destinationWarehouse?.id === warehouseFilter
+      )
+    );
+  }, [boqs, warehouseFilter]);
+
+  const uniqueWarehouses = useMemo(() => {
+    const map = new Map<string, string>();
+    boqs.forEach((boq) => {
+      boq.items.forEach((item) => {
+        const id = item.destinationWarehouseId || (item as any).destinationWarehouse?.id;
+        const name = (item as any).destinationWarehouse?.name;
+        if (id && name) {
+          map.set(String(id), String(name));
+        }
+      });
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [boqs]);
+
   return (
     <div className={`${plusJakartaSans.className}`}>
       <div className="flex flex-1 flex-col p-6">
@@ -758,7 +782,7 @@ export default function BoqPage() {
           </select>
           <select value={warehouseFilter} onChange={(e) => setWarehouseFilter(e.target.value)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400">
             <option value="">Semua Gudang Tujuan</option>
-            {warehouses.map((wh) => (<option key={wh.id} value={wh.id}>{wh.name}</option>))}
+            {uniqueWarehouses.map((wh) => (<option key={wh.id} value={wh.id}>{wh.name}</option>))}
           </select>
         </div>
 
@@ -789,12 +813,12 @@ export default function BoqPage() {
                   ))
                 ) : error ? (
                   <tr><td colSpan={9} className="px-6 py-16 text-center text-sm text-rose-500">{error}</td></tr>
-                ) : boqs.length === 0 ? (
+                ) : filteredBoqs.length === 0 ? (
                   <tr><td colSpan={9} className="px-6 py-16 text-center text-sm text-slate-400">
                     {activeTab === "draft" ? "Belum ada BOQ draft. BOQ baru dari email/PO akan muncul di sini." : "Tidak ada data BOQ."}
                   </td></tr>
                 ) : (
-                  boqs.map((boq) => {
+                  filteredBoqs.map((boq) => {
                     const statusBadge = getStatusBadge(boq.status);
                     const sourceBadge = getSourceBadge(boq.source);
                     const verificationBadge = getVerificationBadge(boq.externalVerificationStatus);

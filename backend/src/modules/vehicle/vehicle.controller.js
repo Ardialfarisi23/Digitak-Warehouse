@@ -37,9 +37,19 @@ const update = async (req, res, next) => {
   }
 };
 
+const remove = async (req, res, next) => {
+  try {
+    const result = await vehicleService.remove(req.params.kendaraan_id, req.user.id);
+    return response.success(res, "Vehicle berhasil dihapus.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   create,
   findAll,
   findByNoPolisi,
   update,
+  remove,
 };

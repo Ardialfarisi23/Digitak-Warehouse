@@ -13,7 +13,7 @@ import BoqPicker, { type BoqPickerItem } from "@/components/BoqPicker";
 type InboundStatus = "draft_diajukan" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "ditolak" | "menunggu_verifikasi" | "ready_putaway" | "sedang_dikirim";
 
 const STATUS_META: Record<InboundStatus, { label: string; tone: string }> = {
-  draft_diajukan: { label: "Menunggu Approval", tone: "bg-amber-50 text-amber-600" },
+  draft_diajukan: { label: "Menunggu Persetujuan", tone: "bg-amber-50 text-amber-600" },
   menunggu_verifikasi: { label: "Menunggu Verifikasi", tone: "bg-amber-50 text-amber-600" },
   ready_putaway: { label: "Siap Putaway", tone: "bg-blue-50 text-blue-600" },
   disetujui: { label: "Disetujui", tone: "bg-emerald-50 text-emerald-600" },
@@ -354,6 +354,11 @@ export default function InboundListPage() {
   );
 
   const handleSubmitInbound = async () => {
+    if (!selectedGudangTujuanId) {
+      setFormError("Pilih gudang tujuan terlebih dahulu.");
+      return;
+    }
+
     if (!canSubmitModal) return;
     setFormError(null);
     setSubmitting(true);
@@ -365,6 +370,7 @@ export default function InboundListPage() {
         gudang_tujuan_id: selectedGudangTujuanId,
         tanggal: tanggalMasuk,
         project_id: selectedProjectId || null,
+        tujuan_tipe: "gudang",
         pengirim_or_vendor: asalPengiriman.trim() || null,
         kendaraan_id: selectedKendaraanId || null,
         personil_pengantar_id: selectedDriverId || null,
@@ -559,9 +565,7 @@ export default function InboundListPage() {
                 onChange={(e) => setSelectedGudangTujuanId(e.target.value)}
                 className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
               >
-                <option value="" disabled>
-                  Pilih Gudang Tujuan...
-                </option>
+                <option value="" disabled>Pilih Gudang Tujuan...</option>
                 {warehouseOptions.map((w) => (
                   <option key={w.gudang_id} value={String(w.gudang_id)}>
                     {w.nama_gudang} {w.tipe ? `(${w.tipe})` : ""}
