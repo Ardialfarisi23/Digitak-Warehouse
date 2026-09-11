@@ -136,7 +136,7 @@ const collectBoqGudangIds = (boq) => {
 };
 
 const create = async (data, userId) => {
-  const { items, projectId, area, ticketNumber, notes, referenceFile, ...boqData } = data;
+  const { items, projectId, area, ticketNumber, notes, referenceFile, emailReference, ...boqData } = data;
 
   if (!ticketNumber) {
     throw new AppError("Kode tiket wajib diisi.", 400);
@@ -173,11 +173,13 @@ const create = async (data, userId) => {
     external_verification_status: normalizeVerification(boqData.external_verification_status),
     catatan: notes || boqData.notes || null,
     reference_file: referenceFile || null,
+    email_reference: emailReference || null,
   };
 
   delete boqDataWithMeta.externalVerificationStatus;
   delete boqDataWithMeta.notes;
   delete boqDataWithMeta.referenceFile;
+  delete boqDataWithMeta.emailReference;
 
   if (items && items.length > 0) {
     const barangMap = new Map();
@@ -352,7 +354,7 @@ const update = async (id, data, userId) => {
     throw new AppError("BOQ yang sudah aktif atau selesai tidak dapat diubah.", 400);
   }
 
-  const { items, projectId, area, ticketNumber, notes, referenceFile, ...boqData } = data;
+  const { items, projectId, area, ticketNumber, notes, referenceFile, emailReference, ...boqData } = data;
 
   const updateData = {
     ...boqData,
@@ -374,6 +376,11 @@ const update = async (id, data, userId) => {
   if (referenceFile !== undefined) {
     updateData.reference_file = referenceFile || null;
     delete updateData.referenceFile;
+  }
+
+  if (emailReference !== undefined) {
+    updateData.email_reference = emailReference || null;
+    delete updateData.emailReference;
   }
 
   if (projectId || area || ticketNumber) {

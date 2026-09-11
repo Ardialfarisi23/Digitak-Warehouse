@@ -22,6 +22,7 @@ const transformBoq = (boq) => {
     externalVerificationStatus: boq.external_verification_status,
     notes: boq.catatan || "",
     referenceFile: boq.reference_file || "",
+    emailReference: boq.email_reference || "",
     createdAt: boq.created_at,
     updatedAt: boq.updated_at,
     createdBy: boq.creator?.nama || boq.created_by ? String(boq.created_by) : "",
@@ -38,6 +39,12 @@ const transformBoq = (boq) => {
         name: item.gudang_tujuan.nama_gudang,
       } : null,
       quantity: Number(item.qty_rencana || 0),
+    })),
+    suratJalanHistory: (boq.surat_jalans || []).map((sj) => ({
+      id: String(sj.surat_jalan_id),
+      number: sj.nomor_surat_jalan,
+      date: sj.tanggal,
+      qty: (sj.items || []).reduce((sum, item) => sum + Number(item.qty || 0), 0),
     })),
   };
 };

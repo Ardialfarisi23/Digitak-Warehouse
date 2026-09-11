@@ -292,6 +292,7 @@ model boq {
   diaktifkan_oleh              BigInt?
   catatan                      String?
   reference_file               String?
+  email_reference              String?
   created_at                   DateTime                     @default(now())
   updated_at                   DateTime                     @default(now())
   created_by                   BigInt

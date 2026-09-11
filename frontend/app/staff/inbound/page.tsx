@@ -354,6 +354,11 @@ export default function InboundListPage() {
   );
 
   const handleSubmitInbound = async () => {
+    if (!selectedBoqId) {
+      setFormError("Pilih BOQ terlebih dahulu.");
+      return;
+    }
+
     if (!selectedGudangTujuanId) {
       setFormError("Pilih gudang tujuan terlebih dahulu.");
       return;
@@ -560,7 +565,7 @@ export default function InboundListPage() {
         )}
         <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">BOQ / Tiket</label>
+            <label className="mb-1 block text-xs font-medium text-gray-600">BOQ / Tiket <span className="text-rose-500">*</span></label>
             <BoqPicker
               value={selectedBoqId}
               onSelect={(picked) => {

@@ -202,7 +202,6 @@ export default function BoqPage() {
   const [searchInput, setSearchInput] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
   const [areaFilter, setAreaFilter] = useState("");
-  const [warehouseFilter, setWarehouseFilter] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
@@ -655,31 +654,6 @@ export default function BoqPage() {
     return items.filter((i) => i.kode_perangkat.toLowerCase().includes(q) || i.nama_barang.toLowerCase().includes(q));
   }, [items, itemSearch]);
 
-  const filteredBoqs = useMemo(() => {
-    if (!warehouseFilter) return boqs;
-    return boqs.filter((boq) =>
-      boq.items.some(
-        (item) =>
-          item.destinationWarehouseId === warehouseFilter ||
-          item.destinationWarehouse?.id === warehouseFilter
-      )
-    );
-  }, [boqs, warehouseFilter]);
-
-  const uniqueWarehouses = useMemo(() => {
-    const map = new Map<string, string>();
-    boqs.forEach((boq) => {
-      boq.items.forEach((item) => {
-        const id = item.destinationWarehouseId || (item as any).destinationWarehouse?.id;
-        const name = (item as any).destinationWarehouse?.name;
-        if (id && name) {
-          map.set(String(id), String(name));
-        }
-      });
-    });
-    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [boqs]);
-
   return (
     <div className={`${plusJakartaSans.className}`}>
       <div className="flex flex-1 flex-col p-6">
@@ -780,10 +754,6 @@ export default function BoqPage() {
             <option value="">Semua Area</option>
             {areas.map((area) => (<option key={area} value={area}>{area}</option>))}
           </select>
-          <select value={warehouseFilter} onChange={(e) => setWarehouseFilter(e.target.value)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400">
-            <option value="">Semua Gudang Tujuan</option>
-            {uniqueWarehouses.map((wh) => (<option key={wh.id} value={wh.id}>{wh.name}</option>))}
-          </select>
         </div>
 
         <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -813,12 +783,12 @@ export default function BoqPage() {
                   ))
                 ) : error ? (
                   <tr><td colSpan={9} className="px-6 py-16 text-center text-sm text-rose-500">{error}</td></tr>
-                ) : filteredBoqs.length === 0 ? (
+                ) : boqs.length === 0 ? (
                   <tr><td colSpan={9} className="px-6 py-16 text-center text-sm text-slate-400">
                     {activeTab === "draft" ? "Belum ada BOQ draft. BOQ baru dari email/PO akan muncul di sini." : "Tidak ada data BOQ."}
                   </td></tr>
                 ) : (
-                  filteredBoqs.map((boq) => {
+                  boqs.map((boq) => {
                     const statusBadge = getStatusBadge(boq.status);
                     const sourceBadge = getSourceBadge(boq.source);
                     const verificationBadge = getVerificationBadge(boq.externalVerificationStatus);
@@ -1094,7 +1064,7 @@ export default function BoqPage() {
               )}
 
               <div>
-                <p className="text-xs font-medium text-slate-400 mb-2">Daftar Barang (Master Data)</p>
+                <p className="text-xs font-medium text-slate-400 mb-2">Daftar Barang</p>
                 <div className="rounded-xl border border-slate-100 overflow-hidden">
                   <table className="w-full text-left text-sm">
                     <thead>
@@ -1103,7 +1073,6 @@ export default function BoqPage() {
                         <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Nama</th>
                         <th className="px-4 py-2 text-[11px] font-semibold text-slate-400 text-right">Qty</th>
                         <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Satuan</th>
-                        <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Gudang Tujuan</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
@@ -1123,7 +1092,6 @@ export default function BoqPage() {
                           </td>
                           <td className="px-4 py-2.5 text-right font-semibold text-slate-800">{item.quantity}</td>
                           <td className="px-4 py-2.5 text-slate-500">{item.unit || "-"}</td>
-                          <td className="px-4 py-2.5 text-slate-500">{item.destinationWarehouse?.name || "-"}</td>
                         </tr>
                       ))}
                     </tbody>

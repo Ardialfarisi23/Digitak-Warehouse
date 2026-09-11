@@ -235,7 +235,6 @@ export default function BoqPage() {
   const [searchInput, setSearchInput] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
   const [areaFilter, setAreaFilter] = useState("");
-  const [warehouseFilter, setWarehouseFilter] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
@@ -247,7 +246,6 @@ export default function BoqPage() {
   const [confirmSelesaiBoq, setConfirmSelesaiBoq] = useState<Boq | null>(null);
 
   const [projects, setProjects] = useState<Project[]>([]);
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [areas, setAreas] = useState<string[]>([]);
   const [items, setItems] = useState<{ id: string; kode_perangkat: string; nama_barang: string; satuan?: { kode_satuan: string } }[]>([]);
   const [itemSearch, setItemSearch] = useState("");
@@ -298,7 +296,6 @@ export default function BoqPage() {
 
       if (projectFilter) params.set("projectId", projectFilter);
       if (areaFilter) params.set("area", areaFilter);
-      if (warehouseFilter) params.set("warehouseId", warehouseFilter);
       if (search.trim()) params.set("search", search.trim());
 
       const res = await get(`${API_BASE}/api/boqs?${params.toString()}`);
@@ -316,7 +313,7 @@ export default function BoqPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, projectFilter, areaFilter, warehouseFilter, search, get]);
+  }, [activeTab, projectFilter, areaFilter, search, get]);
 
   const fetchSummary = useCallback(async () => {
     try {
@@ -337,14 +334,12 @@ export default function BoqPage() {
 
   const fetchMasterData = useCallback(async () => {
     try {
-      const [projectsRes, warehousesRes, itemsRes] = await Promise.all([
+      const [projectsRes, itemsRes] = await Promise.all([
         get(`${API_BASE}/api/projects?all=true`),
-        get(`${API_BASE}/api/warehouses`),
         get(`${API_BASE}/api/items?limit=100`),
       ]);
 
       const projectsJson = await projectsRes.json();
-      const warehousesJson = await warehousesRes.json();
       const itemsJson = await itemsRes.json();
 
       if (projectsRes.ok) {
@@ -365,16 +360,6 @@ export default function BoqPage() {
           provinsi: p.provinsi || "",
         }));
         setProjects(list);
-      }
-
-      if (warehousesRes.ok) {
-        const rawList = Array.isArray(warehousesJson?.data) ? warehousesJson.data : [];
-        const list = rawList.map((w: any) => ({
-          id: String(w.gudang_id || w.id || ""),
-          name: w.nama_gudang || w.name || "",
-          code: w.kode_gudang || w.code || "",
-        }));
-        setWarehouses(list);
       }
 
       if (itemsRes.ok) {
@@ -642,6 +627,7 @@ export default function BoqPage() {
         externalVerificationStatus: "MENUNGGU",
         notes: form.notes || null,
         referenceFile: form.referenceFile || null,
+        emailReference: form.emailReference || null,
         items: validItems.map((item) => ({
           itemCode: item.itemCode,
           itemName: item.itemName,
@@ -981,18 +967,6 @@ export default function BoqPage() {
             ))}
           </select>
 
-          <select
-            value={warehouseFilter}
-            onChange={(e) => setWarehouseFilter(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
-          >
-            <option value="">Semua Gudang Tujuan</option>
-            {warehouses.map((wh) => (
-              <option key={wh.id} value={wh.id}>
-                {wh.name}
-              </option>
-            ))}
-          </select>
         </div>
 
         {/* 5. Tabel BOQ */}
@@ -1689,30 +1663,6 @@ export default function BoqPage() {
                         </button>
                       )}
                     </div>
-
-                    {(() => {
-                      let attachment: { url?: string; filename?: string } | null = null;
-                      try {
-                        const parsed = JSON.parse(detailBoq.notes || "{}");
-                        if (parsed.url || parsed.filename) attachment = parsed;
-                      } catch {
-                        if (detailBoq.referenceFile) attachment = { url: detailBoq.referenceFile };
-                      }
-                      if (!attachment) return null;
-                      return (
-                        <div className="mt-2 flex items-center gap-2">
-                          <FileText size={14} className="text-slate-400" />
-                          <a
-                            href={attachment.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs font-medium text-orange-600 hover:text-orange-700"
-                          >
-                            {attachment.filename || "Lihat file referensi"}
-                          </a>
-                        </div>
-                      );
-                    })()}
                   </div>
                 )}
 
@@ -1753,17 +1703,15 @@ export default function BoqPage() {
 
                 {/* Daftar barang */}
                 <div>
-                  <p className="text-xs font-medium text-slate-400 mb-2">Daftar Barang (Master Data)</p>
+                  <p className="text-xs font-medium text-slate-400 mb-2">Daftar Barang</p>
                   <div className="rounded-xl border border-slate-100 overflow-hidden">
                     <table className="w-full text-left text-sm">
                       <thead>
                         <tr className="border-b border-slate-100 bg-slate-50">
                           <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Kode</th>
                           <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Nama</th>
-                          <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Kategori</th>
                           <th className="px-4 py-2 text-[11px] font-semibold text-slate-400 text-right">Qty</th>
                           <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Satuan</th>
-                          <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Gudang Tujuan</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
@@ -1793,16 +1741,10 @@ export default function BoqPage() {
                                 )}
                               </div>
                             </td>
-                            <td className="px-4 py-2.5 text-slate-500">
-                              {item.barang?.kategori?.nama_kategori || "-"}
-                            </td>
                             <td className="px-4 py-2.5 text-right font-semibold text-slate-800">
                               {item.quantity}
                             </td>
                             <td className="px-4 py-2.5 text-slate-500">{item.unit || "-"}</td>
-                            <td className="px-4 py-2.5 text-slate-500">
-                              {item.destinationWarehouse?.name || "-"}
-                            </td>
                           </tr>
                         ))}
                       </tbody>

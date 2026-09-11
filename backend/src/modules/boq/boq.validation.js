@@ -36,6 +36,7 @@ const createBoqSchema = z.object({
   externalVerificationStatus: z.enum(["TERVERIFIKASI", "MENUNGGU", "VERIFIED", "PENDING"]).optional().default("MENUNGGU"),
   notes: z.string().optional().nullable(),
   referenceFile: z.string().optional().nullable(),
+  emailReference: z.string().optional().nullable(),
   items: z.array(boqItemSchema).min(1, "Minimal satu item harus diisi."),
 });
 
@@ -48,6 +49,7 @@ const updateBoqSchema = z.object({
   externalVerificationStatus: z.enum(["TERVERIFIKASI", "MENUNGGU", "VERIFIED", "PENDING", "terverifikasi", "menunggu", "tidak_berlaku"]).optional().nullable(),
   notes: z.string().optional().nullable(),
   referenceFile: z.string().optional().nullable(),
+  emailReference: z.string().optional().nullable(),
   items: z.array(boqItemSchema).optional().nullable(),
 }).refine(
   (data) => Object.keys(data).length > 0,
