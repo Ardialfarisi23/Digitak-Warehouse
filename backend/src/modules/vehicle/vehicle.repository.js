@@ -19,6 +19,7 @@ const create = async (data) => {
     no_polisi: data.no_polisi,
     kapasitas_angkut: String(data.kapasitas_angkut || "0"),
     keterangan: data.keterangan || "",
+    foto: data.foto || null,
     gudang_id: data.gudang_id || data.gudangId || data.warehouseId ? Number(data.gudang_id || data.gudangId || data.warehouseId) : null,
     created_by: data.created_by,
     updated_by: data.updated_by,
@@ -147,6 +148,7 @@ const update = async (kendaraan_id, data) => {
     no_polisi: data.no_polisi,
     kapasitas_angkut: data.kapasitas_angkut !== undefined ? String(data.kapasitas_angkut) : undefined,
     keterangan: data.keterangan,
+    foto: data.foto || null,
     gudang_id: data.gudang_id || data.gudangId || data.warehouseId ? Number(data.gudang_id || data.gudangId || data.warehouseId) : undefined,
     updated_by: data.updated_by,
   };

@@ -375,7 +375,7 @@ export default function InboundListPage() {
         kendaraan_id: selectedKendaraanId || null,
         personil_pengantar_id: selectedDriverId || null,
         pic_pemohon_nama: picPemohon.trim() || null,
-        boq_id: selectedBoqId ? Number(selectedBoqId) : null,
+        boq_id: selectedBoqId ? String(selectedBoqId) : null,
         notes: null,
         kategori_approval: "manual_override",
         surat_jalan_url: suratJalanPdfUrl || null,
@@ -391,8 +391,34 @@ export default function InboundListPage() {
 
       const response = await post(`${baseUrl}/api/surat-jalan/inbound/staff`, payload);
       if (!response.ok) {
-        const err = await response.json().catch(() => null);
-        throw new Error(err?.message || "Gagal membuat pengajuan inbound.");
+        let result: unknown = null;
+        let rawText: string | null = null;
+
+        try {
+          result = await response.json();
+        } catch {
+          try {
+            rawText = await response.text();
+          } catch {
+            rawText = null;
+          }
+          result = null;
+        }
+
+        const resultObj = result && typeof result === "object" ? result : null;
+        const message =
+          (resultObj as any)?.message ||
+          rawText ||
+          "Gagal membuat pengajuan inbound.";
+
+        const validationDetails =
+          (resultObj as any)?.errors || (resultObj as any)?.details || null;
+
+        const fullMessage = validationDetails
+          ? `${message} Detail: ${JSON.stringify(validationDetails)}`
+          : message;
+
+        throw new Error(fullMessage);
       }
 
       setShowSuccessModal(true);

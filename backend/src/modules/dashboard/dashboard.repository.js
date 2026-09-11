@@ -24,7 +24,7 @@ const getCapacityPerGudang = async (gudangIds) => {
   if (!Array.isArray(gudangIds) || gudangIds.length === 0) return [];
 
   const gList = await prisma.gudang.findMany({
-    where: { gudang_id: { in: gudangIds.map((x) => BigInt(x)) } },
+    where: { gudang_id: { in: gudangIds.map((x) => BigInt(x)) }, is_aktif: true },
     select: {
       gudang_id: true,
       nama_gudang: true,
@@ -108,7 +108,7 @@ const getStats = async (actor = null) => {
       prisma.project.count({ where: { status_aktif: true } }),
     ]);
 
-  const allGudangIds = (await prisma.gudang.findMany({ select: { gudang_id: true } }))
+  const allGudangIds = (await prisma.gudang.findMany({ where: { is_aktif: true }, select: { gudang_id: true } }))
     .map((x) => Number(x.gudang_id));
 
   // Hitung on-the-fly (TIDAK tulis ke kolom status_kecukupan_gudang).

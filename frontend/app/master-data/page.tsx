@@ -176,7 +176,7 @@ const TAB_PERMISSIONS: Record<MasterDataType, { create: string[]; edit: string[]
     delete: PERSONNEL_PERMISSIONS.delete,
   },
   vehicles: {
-    create: [ROLE.ADMIN, ROLE.SUPERVISOR],
+    create: [ROLE.ADMIN],
     edit: [ROLE.ADMIN, ROLE.SUPERVISOR],
     delete: [ROLE.ADMIN, ROLE.SUPERVISOR],
   },
@@ -227,7 +227,10 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
   ],
   warehouses: [
     { key: "nama_gudang", label: "Nama Gudang", type: "text", required: true },
-    { key: "tipe", label: "Tipe", type: "text" },
+    { key: "tipe", label: "Tipe", type: "select", required: true, options: [
+      { value: "tetap", label: "Tetap" },
+      { value: "dadakan", label: "Transit (Dadakan)" },
+    ] },
     { key: "alamat", label: "Alamat", type: "textarea" },
     { key: "latitude", label: "Latitude", type: "text" },
     { key: "longitude", label: "Longitude", type: "text" },
@@ -313,15 +316,30 @@ const PHOTO_FIELD_NAMES = ["photo", "photoUrl", "image", "imageUrl", "picture", 
 
 function getPhotoUrl(record: GenericRecord | null): string | null {
   if (!record) return null;
+
   for (const key of PHOTO_FIELD_NAMES) {
     const value = record[key];
+
     if (!value) continue;
+
     const str = String(value).trim();
+
     if (!str) continue;
+
     if (str.startsWith("http://") || str.startsWith("https://") || str.startsWith("data:")) {
       return str;
     }
+
+    if (str.startsWith("/uploads/") || str.includes("/uploads/")) {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const trimmed = str.replace(/^\/+/, "");
+      const apiHost = baseUrl.replace(/\/$/, "");
+      return `${apiHost}/${trimmed}`;
+    }
+
+    return str;
   }
+
   return null;
 }
 
@@ -720,6 +738,8 @@ function FormModal({
           if (currentValue instanceof File) {
             const photoUrl = await uploadFile(currentValue);
             submitData[field.key] = photoUrl;
+          } else if (currentValue && typeof currentValue === "string") {
+            submitData[field.key] = currentValue;
           } else {
             delete submitData[field.key];
           }
@@ -766,15 +786,24 @@ function FormModal({
 
       if (!response.ok) {
         let result: unknown = null;
+        let rawText: string | null = null;
+
         try {
           result = await response.json();
         } catch {
+          try {
+            rawText = await response.text();
+          } catch {
+            rawText = null;
+          }
           result = null;
         }
 
         const resultObj = result && typeof result === "object" ? result : null;
         const message =
-          (resultObj as any)?.message || `Gagal ${mode === "create" ? "menambah" : "menyimpan"} ${tabLabel.toLowerCase()}.`;
+          (resultObj as any)?.message ||
+          rawText ||
+          `Gagal ${mode === "create" ? "menambah" : "menyimpan"} ${tabLabel.toLowerCase()}.`;
 
         const validationDetails =
           (resultObj as any)?.errors || (resultObj as any)?.details || null;
@@ -785,7 +814,9 @@ function FormModal({
 
         console.error(`[FormModal] ${tabLabel} ${mode} failed:`, {
           status: response.status,
+          statusText: response.statusText,
           body: resultObj,
+          rawText,
           url,
           payload: submitData,
         });
@@ -1471,7 +1502,7 @@ function MasterDataPageContent() {
             <p className="mt-0.5 text-xs text-slate-400">{meta.total} data</p>
           </div>
 
-          {canCreate && activeTab !== "personnel" && activeTab !== "vehicles" && (
+          {canCreate && activeTab !== "personnel" && (
             <button
               type="button"
               onClick={() => setFormModal({ mode: "create", record: null })}
@@ -1524,24 +1555,16 @@ function MasterDataPageContent() {
                     </td>
                   </tr>
                 ) : (
-                  data.map((record) => {
-                    const item = record as Item;
+                   data.map((record, index) => {
+                     const item = record as Item;
 
-                    const primaryKey =
-                      activeTab === "projects"
-                        ? (record as any)?.project_id
-                        : activeTab === "personnel"
-                          ? (record as any)?.personil_id
-                          : activeTab === "vehicles"
-                            ? (record as any)?.kendaraan_id
-                            : activeTab === "warehouses"
-                              ? (record as any)?.gudang_id
-                              : activeTab === "items"
-                                ? (record as any)?.barang_id
-                                : record.id;
+                     const idFields = activeConfig.idFields || [activeConfig.idField || "id"];
+                     const rawId = idFields.map((field) => (record as any)?.[field]).find((value) => value !== undefined && value !== null && value !== "");
+                     const basePrimaryKey = rawId !== undefined && rawId !== null && rawId !== "" ? String(rawId) : String((record as any)?.id ?? `record-${index}`);
+                     const primaryKey = `${basePrimaryKey}-${index}`;
 
-                    return (
-                      <tr key={String(primaryKey ?? record.id ?? Math.random())} onClick={() => setDetailRecord(record)} className="group cursor-pointer transition-colors hover:bg-slate-50">
+                     return (
+                       <tr key={primaryKey} onClick={() => setDetailRecord(record)} className="group cursor-pointer transition-colors hover:bg-slate-50">
                         {columns.map((column) => {
                           let value = record[column];
 
@@ -1555,34 +1578,39 @@ function MasterDataPageContent() {
                             );
                           }
 
-                          if (column === "foto") {
-                            const photoUrl = String(value || "");
+                           if (column === "foto") {
+                             const photoUrl = String(value || "");
 
-                            return (
-                              <td key={column} className="px-3 py-3">
-                                {photoUrl ? (
-                                  <div className="relative h-10 w-10 overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
-                                    <img
-                                      src={photoUrl}
-                                      alt="Foto"
-                                      className="h-full w-full object-contain"
-                                      onError={(e) => {
-                                        (e.target as HTMLImageElement).style.display = "none";
-                                        (e.target as HTMLImageElement).nextElementSibling?.dispatchEvent(new Event("show-placeholder"));
-                                      }}
-                                    />
-                                    <div className="hidden absolute inset-0 items-center justify-center text-slate-300">
-                                      <ImageOff size={16} />
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-slate-300">
-                                    <ImageOff size={16} />
-                                  </div>
-                                )}
-                              </td>
-                            );
-                          }
+                             return (
+                               <td key={column} className="px-3 py-3">
+                                 {photoUrl ? (
+                                   <div className="relative h-10 w-10 overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
+                                     <img
+                                       src={photoUrl}
+                                       alt="Foto"
+                                       className="h-full w-full object-contain"
+                                       onError={(e) => {
+                                         const img = e.target as HTMLImageElement;
+                                         img.style.display = "none";
+                                         const placeholder = img.nextElementSibling as HTMLDivElement | null;
+                                         if (placeholder) {
+                                           placeholder.classList.remove("hidden");
+                                           placeholder.classList.add("flex");
+                                         }
+                                       }}
+                                     />
+                                     <div className="hidden absolute inset-0 items-center justify-center text-slate-300">
+                                       <ImageOff size={16} />
+                                     </div>
+                                   </div>
+                                 ) : (
+                                   <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-slate-300">
+                                     <ImageOff size={16} />
+                                   </div>
+                                 )}
+                               </td>
+                             );
+                           }
 
                           if (column === "bisa_menyetir") {
                             return (

@@ -14,25 +14,6 @@ const API_BASE =
    DATA GUDANG
 ======================================================== */
 
-const warehouseOptions = [
-  {
-    id: "1",
-    nama: "Gudang Rancamanyar",
-  },
-  {
-    id: "2",
-    nama: "Gudang Ciamis",
-  },
-  {
-    id: "3",
-    nama: "Gudang Transit",
-  },
-];
-
-/* =========================================================
-   DATA PERSONIL
-======================================================== */
-
 const personilOptions = [
   {
     id: "",
@@ -148,6 +129,8 @@ export default function UsersPage() {
     }
   }, [user]);
 
+  const [warehouseOptions, setWarehouseOptions] = useState<Array<{ id: string; nama: string }>>([]);
+
   /* =========================================================
      AMBIL DATA USER
   ========================================================= */
@@ -204,6 +187,25 @@ export default function UsersPage() {
 
     fetchUsers();
   }, [user]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    get(`${API_BASE}/api/warehouses?limit=1000&is_aktif=true&sortBy=nama_gudang&sortOrder=asc`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        const list = Array.isArray(json?.data) ? json.data : Array.isArray(json?.data?.data) ? json.data.data : Array.isArray(json) ? json : [];
+        setWarehouseOptions(list.map((w: any) => ({ id: String(w.gudang_id), nama: w.nama_gudang })));
+      })
+      .catch(() => {
+        if (!cancelled) setWarehouseOptions([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, get]);
 
   /* =========================================================
      SEARCH
