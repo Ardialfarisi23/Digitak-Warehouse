@@ -23,13 +23,14 @@ const getRelatedUserIdsByGudang = async (gudangIds, roles) => {
     select: { user_id: true },
   });
 
-  return personnel.map((p) => p.user_id).filter((id) => id != null);
+  return personnel.map((p) => Number(p.user_id)).filter((id) => !Number.isNaN(id) && id > 0);
 };
 
 const getRelatedSupervisorIds = async (gudangIds, excludeUserId = null) => {
   const ids = await getRelatedUserIdsByGudang(gudangIds, ["supervisor"]);
   if (excludeUserId != null) {
-    return ids.filter((id) => id !== excludeUserId);
+    const numericExclude = Number(excludeUserId);
+    return ids.filter((id) => id !== numericExclude);
   }
   return ids;
 };
@@ -43,9 +44,10 @@ const getAllAdminIds = async (excludeUserId = null) => {
     where: { role: "admin_general", is_aktif: true },
     select: { user_id: true },
   });
-  let ids = admins.map((a) => a.user_id).filter((id) => id != null);
+  let ids = admins.map((a) => Number(a.user_id)).filter((id) => !Number.isNaN(id) && id > 0);
   if (excludeUserId != null) {
-    ids = ids.filter((id) => id !== excludeUserId);
+    const numericExclude = Number(excludeUserId);
+    ids = ids.filter((id) => id !== numericExclude);
   }
   return ids;
 };
@@ -134,7 +136,7 @@ const create = async (data, actorId) => {
               type: "approval",
               title: "Outbound Menunggu Approval",
               message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
-              link: "/dashboard/supervisor/approval/outbound",
+              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
             });
           }
           if (staffIds.length > 0) {
@@ -143,7 +145,7 @@ const create = async (data, actorId) => {
               type: "approval",
               title: "Outbound Menunggu Approval",
               message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
-              link: "/dashboard/supervisor/approval/outbound",
+              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
             });
           }
         } else if (actor?.role === "staf_gudang") {
@@ -156,7 +158,7 @@ const create = async (data, actorId) => {
               type: "approval",
               title: "Outbound Menunggu Approval",
               message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
-              link: "/dashboard/supervisor/approval/outbound",
+              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
             });
           }
           if (supervisorIds.length > 0) {
@@ -165,7 +167,7 @@ const create = async (data, actorId) => {
               type: "approval",
               title: "Outbound Menunggu Approval",
               message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
-              link: "/dashboard/supervisor/approval/outbound",
+              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
             });
           }
         }
@@ -448,8 +450,8 @@ const approveInbound = async (id, itemAdjustments = [], actorId) => {
   const gudangIds = collectShipmentGudangIds(updatedShipment);
   const targets = new Set();
 
-  if (updatedShipment.created_by && updatedShipment.created_by !== Number(actorId)) {
-    targets.add(updatedShipment.created_by);
+  if (updatedShipment.created_by && Number(updatedShipment.created_by) !== Number(actorId)) {
+    targets.add(Number(updatedShipment.created_by));
   }
 
   if (actor?.role === "supervisor") {
@@ -540,8 +542,8 @@ const approveOutbound = async (id, actorId) => {
     const gudangIds = collectShipmentGudangIds(shipment);
     const targets = new Set();
 
-    if (shipment.created_by && shipment.created_by !== Number(actorId)) {
-      targets.add(shipment.created_by);
+    if (shipment.created_by && Number(shipment.created_by) !== Number(actorId)) {
+      targets.add(Number(shipment.created_by));
     }
 
     if (actor?.role === "supervisor") {
@@ -620,8 +622,8 @@ const confirmDistributed = async (id, actorId) => {
   const gudangIds = collectShipmentGudangIds(updatedShipment);
   const targets = new Set();
 
-  if (updatedShipment.created_by && updatedShipment.created_by !== Number(actorId)) {
-    targets.add(updatedShipment.created_by);
+  if (updatedShipment.created_by && Number(updatedShipment.created_by) !== Number(actorId)) {
+    targets.add(Number(updatedShipment.created_by));
   }
 
   if (actor?.role === "supervisor") {
@@ -689,8 +691,8 @@ const rejectInbound = async (id, catatan = null, actorId) => {
     const gudangIds = collectShipmentGudangIds(updatedShipment);
     const targets = new Set();
 
-    if (updatedShipment.created_by && updatedShipment.created_by !== Number(actorId)) {
-      targets.add(updatedShipment.created_by);
+    if (updatedShipment.created_by && Number(updatedShipment.created_by) !== Number(actorId)) {
+      targets.add(Number(updatedShipment.created_by));
     }
 
     if (actor?.role === "supervisor") {
@@ -758,8 +760,8 @@ const rejectInbound = async (id, catatan = null, actorId) => {
     const gudangIds = collectShipmentGudangIds(updatedShipment);
     const targets = new Set();
 
-    if (updatedShipment.created_by && updatedShipment.created_by !== Number(actorId)) {
-      targets.add(updatedShipment.created_by);
+    if (updatedShipment.created_by && Number(updatedShipment.created_by) !== Number(actorId)) {
+      targets.add(Number(updatedShipment.created_by));
     }
 
     if (actor?.role === "supervisor") {

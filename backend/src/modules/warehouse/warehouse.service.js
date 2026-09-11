@@ -18,7 +18,45 @@ const create = async (data, userId) => {
     updated_by: Number(userId),
   };
 
-  return await warehouseRepository.create(createData);
+  const result = await warehouseRepository.create(createData);
+
+  if (result.project_id) {
+    try {
+      const project = await prisma.project.findUnique({
+        where: { project_id: result.project_id },
+        select: { nama_project: true },
+      });
+
+      const personnel = await prisma.personil.findMany({
+        where: {
+          gudang_id: result.gudang_id,
+          user: {
+            role: { in: ["supervisor", "staf_gudang"] },
+            is_aktif: true,
+          },
+        },
+        select: { user_id: true },
+      });
+
+      const userIds = personnel
+        .map((p) => p.user_id)
+        .filter((id) => id != null);
+
+      for (const uid of userIds) {
+        await notificationService.create({
+          userId: uid,
+          type: "info",
+          title: "Gudang Dikaitkan dengan Project",
+          message: `Gudang ${result.nama_gudang} telah dikaitkan dengan Project ${project?.nama_project || result.project_id}.`,
+          link: "/dashboard/master-data",
+        });
+      }
+    } catch (notifErr) {
+      console.error("Gagal membuat notifikasi create warehouse project assignment:", notifErr);
+    }
+  }
+
+  return result;
 };
 
 const findAll = async (query) => {
@@ -66,6 +104,45 @@ const update = async (gudang_id, data, userId) => {
   };
 
   const result = await warehouseRepository.update(warehouse.gudang_id, updateData);
+
+  const previousProjectId = warehouse.project_id;
+  const newProjectId = result.project_id;
+
+  if (newProjectId && newProjectId !== previousProjectId) {
+    try {
+      const project = await prisma.project.findUnique({
+        where: { project_id: newProjectId },
+        select: { nama_project: true },
+      });
+
+      const personnel = await prisma.personil.findMany({
+        where: {
+          gudang_id: warehouse.gudang_id,
+          user: {
+            role: { in: ["supervisor", "staf_gudang"] },
+            is_aktif: true,
+          },
+        },
+        select: { user_id: true },
+      });
+
+      const userIds = personnel
+        .map((p) => p.user_id)
+        .filter((id) => id != null);
+
+      for (const uid of userIds) {
+        await notificationService.create({
+          userId: uid,
+          type: "info",
+          title: "Gudang Dikaitkan dengan Project",
+          message: `Gudang ${result.nama_gudang} telah dikaitkan dengan Project ${project?.nama_project || newProjectId}.`,
+          link: "/dashboard/master-data",
+        });
+      }
+    } catch (notifErr) {
+      console.error("Gagal membuat notifikasi project assignment warehouse:", notifErr);
+    }
+  }
 
   try {
     const personnel = await prisma.personil.findMany({

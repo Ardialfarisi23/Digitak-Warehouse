@@ -26,8 +26,8 @@ const create = async (data) => {
     });
 
     const adminIds = admins
-      .filter((admin) => admin.user_id !== result.user_id)
-      .map((admin) => admin.user_id);
+      .filter((admin) => Number(admin.user_id) !== Number(result.user_id))
+      .map((admin) => Number(admin.user_id));
 
     if (adminIds.length > 0) {
       await require("../../modules/notifications/notifications.service").create({
@@ -107,8 +107,8 @@ const update = async (user_id, data) => {
     });
 
     const adminIds = admins
-      .filter((admin) => admin.user_id !== user_id)
-      .map((admin) => admin.user_id);
+      .filter((admin) => Number(admin.user_id) !== Number(user_id))
+      .map((admin) => Number(admin.user_id));
 
     if (adminIds.length > 0) {
       await require("../../modules/notifications/notifications.service").create({
