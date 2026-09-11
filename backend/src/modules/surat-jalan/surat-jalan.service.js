@@ -432,9 +432,6 @@ const approveInbound = async (id, itemAdjustments = [], actorId) => {
 
   await prisma.$transaction(async (tx) => {
     await suratJalanRepository.addInboundStock(shipment, tx);
-    // Ubah status menjadi 'ready_putaway' setelah approval supervisor,
-    // bukan 'disetujui'. Status 'disetujui' akan dicapai setelah putaway.
-    // Ini akan menghilangkannya dari antrean verifikasi.
     await suratJalanRepository.updateStatus(id, "ready_putaway", tx);
 
     if (shipment.boq_id && shipment.boq?.tiket_id) {
@@ -502,7 +499,7 @@ const approveInbound = async (id, itemAdjustments = [], actorId) => {
     await sendNotification(staffIds, `/staff/inbound/${updatedShipment.surat_jalan_id}`);
   }
 
-  return updatedShipment;
+  return await suratJalanRepository.findById(id);
 };
 
 const approveOutbound = async (id, actorId) => {

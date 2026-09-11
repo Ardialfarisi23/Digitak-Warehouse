@@ -8,6 +8,7 @@ import { useApi } from "@/lib/api";
 
 type ApiSuratJalanItem = {
   item_id: number;
+  barang_id: number;
   qty: number;
   kondisi?: string | null;
   is_kelebihan?: boolean;
@@ -22,7 +23,7 @@ type ApiSuratJalan = {
   gudang_asal_id?: number | null;
   gudang_asal?: { nama_gudang: string } | null;
   gudang_tujuan?: { nama_gudang: string } | null;
-  project?: { nama_project?: string } | null;
+  project_id?: number | null;
   items: ApiSuratJalanItem[];
   tujuan_tipe?: string | null;
   titik_lapangan?: { nama_lokasi?: string } | null;
@@ -48,9 +49,20 @@ type ConfirmModalProps = {
   zonaByItem: Record<number, string>;
 };
 
+type StockAvailability = {
+  barang_id: number;
+  zona_id: number | null;
+  kondisi: string;
+  available_qty: number;
+};
+
 function zonaLabel(z: ApiZona): string {
   const nama = z.nama_zona || z.kode_zona;
   return z.tipe_zona ? `${nama} — ${z.tipe_zona}` : nama;
+}
+
+function stockKey(barangId: number, zonaId: number | null, kondisi: string): string {
+  return `${barangId}|${zonaId ?? "global"}|${kondisi}`;
 }
 
 function ConfirmModal({
@@ -174,6 +186,7 @@ export default function PickingDetailPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [zonaByItem, setZonaByItem] = useState<Record<number, string>>({});
+  const [stockAvailability, setStockAvailability] = useState<Record<string, StockAvailability>>({});
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -227,6 +240,18 @@ export default function PickingDetailPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.suratJalanId]);
+
+  useEffect(() => {
+    if (!data?.items?.length || !data?.gudang_asal_id) return;
+    fetchStockCheck(data.items, data.gudang_asal_id, data.project_id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.surat_jalan_id]);
+
+  useEffect(() => {
+    if (!data?.items?.length || !data?.gudang_asal_id) return;
+    fetchStockCheck(data.items, data.gudang_asal_id, data.project_id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Object.values(zonaByItem).join(",")]);
 
   const zonasForGudang = useMemo(() => {
     if (!data?.gudang_asal_id) return [];
@@ -289,6 +314,50 @@ export default function PickingDetailPage() {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ message, type });
     toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+  }
+
+  async function fetchStockCheck(items: ApiSuratJalanItem[], gudangAsalId: number | null | undefined, projectId?: number | null) {
+    if (!gudangAsalId || !items.length) return;
+
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    const uniqueKeys = new Set<string>();
+
+    const payloadItems = items
+      .map((it) => {
+        const zonaId = zonaByItem[it.item_id] ? Number(zonaByItem[it.item_id]) : null;
+        const key = stockKey(it.item_id, zonaId, it.kondisi || "baik");
+        if (uniqueKeys.has(key)) return null;
+        uniqueKeys.add(key);
+        return {
+          barang_id: Number(it.barang_id),
+          zona_id: zonaId,
+          kondisi: it.kondisi || "baik",
+        };
+      })
+      .filter(Boolean) as Array<{ barang_id: number; zona_id: number | null; kondisi: string }>;
+
+    if (!payloadItems.length) return;
+
+    try {
+      const params = new URLSearchParams();
+      params.set("items", JSON.stringify(payloadItems));
+      if (projectId) params.set("project_id", String(projectId));
+
+      const res = await get(`${baseUrl}/api/warehouses/${gudangAsalId}/stock-check?${params.toString()}`);
+      if (!res.ok) return;
+
+      const json = await res.json();
+      const rows: StockAvailability[] = Array.isArray(json?.data) ? json.data : [];
+
+      const map: Record<string, StockAvailability> = {};
+      for (const row of rows) {
+        const key = stockKey(row.barang_id, row.zona_id, row.kondisi);
+        map[key] = row;
+      }
+      setStockAvailability(map);
+    } catch {
+      // silently ignore stock check fetch errors
+    }
   }
 
   async function handleSubmit() {
@@ -397,16 +466,35 @@ export default function PickingDetailPage() {
           </thead>
           <tbody>
             {data.items.map((item) => (
-              <tr key={item.item_id} className="border-b border-gray-50 last:border-0 align-top">
+               <tr key={item.item_id} className="border-b border-gray-50 last:border-0 align-top">
                 <td className="py-3 pr-4">
                   <p className="font-medium text-gray-800">{item.barang?.nama_barang || "-"}</p>
                   <p className="text-xs text-gray-400">{item.barang?.kode_perangkat || "-"}</p>
-                  {item.is_kelebihan && (
-                    <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-[#E8632C]">
-                      <PackagePlus size={10} />
-                      Kelebihan Barang
-                    </span>
-                  )}
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    {item.is_kelebihan && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-[#E8632C]">
+                        <PackagePlus size={10} />
+                        Kelebihan Barang
+                      </span>
+                    )}
+                    {(() => {
+                      const currentZonaId = zonaByItem[item.item_id] ? Number(zonaByItem[item.item_id]) : null;
+                      const key = stockKey(item.item_id, currentZonaId, item.kondisi || "baik");
+                      const stock = stockAvailability[key];
+                      if (!stock) return null;
+                      const available = Number(stock.available_qty || 0);
+                      const required = Number(item.qty || 0);
+                      if (available < required) {
+                        return (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700 border border-red-200">
+                            <AlertCircle size={10} />
+                            Stok Tidak Cukup (tersedia: {available}, diminta: {required})
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
                 </td>
                 <td className="py-3 pr-4 text-gray-600">{item.kondisi || "-"}</td>
                 <td className="py-3 pr-4 text-right text-gray-600">{item.qty}</td>

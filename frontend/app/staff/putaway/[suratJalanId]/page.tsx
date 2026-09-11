@@ -175,6 +175,8 @@ export default function PutawayDetailPage() {
   // Simpan pilihan zona per item — dikirim sebagai zona_id saat submit.
   const [zonaByItem, setZonaByItem] = useState<Record<number, string>>({});
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successModalMessage, setSuccessModalMessage] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -251,6 +253,7 @@ export default function PutawayDetailPage() {
         </div>
       </div>
     );
+    
   }
 
   if (data === null) {
@@ -318,16 +321,18 @@ export default function PutawayDetailPage() {
           ? `Putaway berhasil disimpan — ${successDetails[0]}`
           : `Putaway berhasil disimpan — ${successDetails[0]} dan ${successDetails.length - 1} item lain`;
 
-      showToast(successMessage, "success");
-
-      setTimeout(() => {
-        router.push("/staff/putaway");
-      }, 1500);
+      setSuccessModalMessage(successMessage);
+      setShowSuccessModal(true);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Terjadi kesalahan saat menyimpan.", "error");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleSuccessModalClose() {
+    setShowSuccessModal(false);
+    router.push("/staff/putaway");
   }
 
   return (
@@ -469,6 +474,35 @@ export default function PutawayDetailPage() {
           >
             <X size={14} />
           </button>
+        </div>
+      )}
+
+      {showSuccessModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+          onClick={handleSuccessModalClose}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center px-6 py-8 text-center">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Barang Berhasil Ditempatkan</h3>
+              <p className="mt-2 text-sm text-gray-500">{successModalMessage}</p>
+              <button
+                type="button"
+                onClick={handleSuccessModalClose}
+                className="mt-6 w-full rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F]"
+              >
+                OK
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

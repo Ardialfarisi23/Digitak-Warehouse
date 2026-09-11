@@ -371,6 +371,27 @@ const getZoneStockSnapshot = async (gudang_id, zona_id, query = {}) => {
   };
 };
 
+const getStockCheck = async (gudang_id, query = {}) => {
+  let items = [];
+  if (Array.isArray(query.items)) {
+    items = query.items;
+  } else if (typeof query.items === "string" && query.items.trim()) {
+    try {
+      items = JSON.parse(query.items);
+    } catch {
+      items = [];
+    }
+  }
+
+  const projectId = query.project_id ? Number(query.project_id) : null;
+
+  if (!Array.isArray(items) || !items.length) {
+    return [];
+  }
+
+  return await warehouseRepository.getStockAvailability(gudang_id, items, projectId);
+};
+
 module.exports = {
   create,
   findAll,
@@ -380,4 +401,5 @@ module.exports = {
   restore,
   getLayout,
   getZoneStockSnapshot,
+  getStockCheck,
 };

@@ -115,6 +115,9 @@ export default function InboundDetailPage() {
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [uploadingFoto, setUploadingFoto] = useState<Record<number, boolean>>({});
   const [fotoErrors, setFotoErrors] = useState<Record<number, string | null>>({});
+  const [showFotoSuccessModal, setShowFotoSuccessModal] = useState(false);
+  const [showFotoErrorModal, setShowFotoErrorModal] = useState(false);
+  const [fotoModalMessage, setFotoModalMessage] = useState("");
 
   const [showExcessModal, setShowExcessModal] = useState(false);
   const [excessNotesDraft, setExcessNotesDraft] = useState<Record<number, string>>({});
@@ -264,11 +267,16 @@ export default function InboundDetailPage() {
           fotos: [...(items[index].fotos || []), newFoto],
         });
       }
+
+      setFotoModalMessage("Foto berhasil diupload.");
+      setShowFotoSuccessModal(true);
     } catch (err) {
       setFotoErrors((prev) => ({
         ...prev,
         [index]: err instanceof Error ? err.message : "Gagal upload foto.",
       }));
+      setFotoModalMessage(err instanceof Error ? err.message : "Upload foto gagal, silakan coba lagi.");
+      setShowFotoErrorModal(true);
     } finally {
       setUploadingFoto((prev) => ({ ...prev, [index]: false }));
     }
@@ -651,6 +659,64 @@ export default function InboundDetailPage() {
               <Button onClick={handleConfirmExcessAndSave} disabled={!excessNoteFilled || submitting} className="h-auto rounded-full bg-[#E8632C] px-5 py-2 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40">
                 {submitting ? "Menyimpan..." : "Simpan & Ajukan Verifikasi"}
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFotoSuccessModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+          onClick={() => setShowFotoSuccessModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center px-6 py-8 text-center">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Foto Berhasil Diupload</h3>
+              <p className="mt-2 text-sm text-gray-500">{fotoModalMessage}</p>
+              <button
+                type="button"
+                onClick={() => setShowFotoSuccessModal(false)}
+                className="mt-6 w-full rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F]"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFotoErrorModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+          onClick={() => setShowFotoErrorModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center px-6 py-8 text-center">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+                <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Upload Foto Gagal</h3>
+              <p className="mt-2 text-sm text-gray-500">{fotoModalMessage}</p>
+              <button
+                type="button"
+                onClick={() => setShowFotoErrorModal(false)}
+                className="mt-6 w-full rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F]"
+              >
+                OK
+              </button>
             </div>
           </div>
         </div>

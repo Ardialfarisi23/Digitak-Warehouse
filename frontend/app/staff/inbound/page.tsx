@@ -8,6 +8,7 @@ import BarangPicker, {
   type BarangPickerItem,
 } from "@/components/BarangPicker";
 import { useApi } from "@/lib/api";
+import BoqPicker, { type BoqPickerItem } from "@/components/BoqPicker";
 
 type InboundStatus = "draft_diajukan" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "ditolak" | "menunggu_verifikasi" | "ready_putaway" | "sedang_dikirim";
 
@@ -26,12 +27,6 @@ interface InboundItem {
   item_id: number;
   nama_barang?: string;
   qty: number;
-}
-
-interface ProjectOption {
-  project_id: string | number;
-  nama_project: string;
-  has_active_boq?: boolean;
 }
 
 interface VehicleOption {
@@ -145,16 +140,15 @@ export default function InboundListPage() {
   const [submitting, setSubmitting] = useState(false);
   const [barangOptions, setBarangOptions] = useState<BarangOption[]>([]);
   const [warehouseOptions, setWarehouseOptions] = useState<WarehouseOption[]>([]);
-  const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
   const [vehicleOptions, setVehicleOptions] = useState<VehicleOption[]>([]);
   const [personnelOptions, setPersonnelOptions] = useState<PersonnelOption[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
 
-  const [nomorTiket, setNomorTiket] = useState("");
+  const [selectedBoqId, setSelectedBoqId] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState("");
   const [nomorSuratJalan, setNomorSuratJalan] = useState("");
   const [selectedGudangTujuanId, setSelectedGudangTujuanId] = useState("");
   const [tanggalMasuk, setTanggalMasuk] = useState("");
-  const [selectedProjectId, setSelectedProjectId] = useState("");
   const [asalPengiriman, setAsalPengiriman] = useState("");
   const [selectedKendaraanId, setSelectedKendaraanId] = useState("");
   const [selectedDriverId, setSelectedDriverId] = useState("");
@@ -164,6 +158,7 @@ export default function InboundListPage() {
   const [suratJalanPdf, setSuratJalanPdf] = useState<File | null>(null);
   const [suratJalanPdfUrl, setSuratJalanPdfUrl] = useState<string>("");
   const [uploadingPdf, setUploadingPdf] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const fetchList = async () => {
     setIsLoading(true);
@@ -193,23 +188,20 @@ export default function InboundListPage() {
     setLoadingOptions(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const [itemRes, warehouseRes, projectRes, vehicleRes, personnelRes] = await Promise.all([
+      const [itemRes, warehouseRes, vehicleRes, personnelRes] = await Promise.all([
         get(`${baseUrl}/api/items?limit=200`),
         get(`${baseUrl}/api/warehouses`),
-        get(`${baseUrl}/api/projects`),
         get(`${baseUrl}/api/vehicles`),
         get(`${baseUrl}/api/personnels`),
       ]);
       if (!itemRes.ok) throw new Error("Gagal mengambil daftar barang.");
       if (!warehouseRes.ok) throw new Error("Gagal mengambil daftar gudang.");
-      if (!projectRes.ok) throw new Error("Gagal mengambil daftar project.");
       if (!vehicleRes.ok) throw new Error("Gagal mengambil daftar kendaraan.");
       if (!personnelRes.ok) throw new Error("Gagal mengambil daftar personil.");
 
-      const [itemJson, warehouseJson, projectJson, vehicleJson, personnelJson] = await Promise.all([
+      const [itemJson, warehouseJson, vehicleJson, personnelJson] = await Promise.all([
         itemRes.json(),
         warehouseRes.json(),
-        projectRes.json(),
         vehicleRes.json(),
         personnelRes.json(),
       ]);
@@ -217,7 +209,6 @@ export default function InboundListPage() {
       const unwrap = (json: any) => Array.isArray(json?.data) ? json.data : json?.data?.data || [];
       setBarangOptions(unwrap(itemJson));
       setWarehouseOptions(unwrap(warehouseJson));
-      setProjectOptions(unwrap(projectJson));
       setVehicleOptions(unwrap(vehicleJson));
       setPersonnelOptions(unwrap(personnelJson));
     } catch (err) {
@@ -228,11 +219,11 @@ export default function InboundListPage() {
   };
 
   const openModal = async () => {
-    setNomorTiket("");
+    setSelectedBoqId("");
+    setSelectedProjectId("");
     setNomorSuratJalan("");
     setSelectedGudangTujuanId("");
     setTanggalMasuk("");
-    setSelectedProjectId("");
     setAsalPengiriman("");
     setSelectedKendaraanId("");
     setSelectedDriverId("");
@@ -348,6 +339,7 @@ export default function InboundListPage() {
     selectedGudangTujuanId &&
     tanggalMasuk &&
     selectedProjectId &&
+    selectedBoqId &&
     modalItems.length > 0 &&
     modalItems.every((row) => row.barang_id && row.qty > 0 && row.satuan_id);
 
@@ -383,7 +375,7 @@ export default function InboundListPage() {
         kendaraan_id: selectedKendaraanId || null,
         personil_pengantar_id: selectedDriverId || null,
         pic_pemohon_nama: picPemohon.trim() || null,
-        nomor_tiket: nomorTiket.trim() || null,
+        boq_id: selectedBoqId ? Number(selectedBoqId) : null,
         notes: null,
         kategori_approval: "manual_override",
         surat_jalan_url: suratJalanPdfUrl || null,
@@ -403,7 +395,7 @@ export default function InboundListPage() {
         throw new Error(err?.message || "Gagal membuat pengajuan inbound.");
       }
 
-      setToast({ message: "Pengajuan Inbound berhasil dikirim, menunggu verifikasi Supervisor.", type: "success" });
+      setShowSuccessModal(true);
       setModalOpen(false);
       await fetchList();
     } catch (err) {
@@ -413,6 +405,10 @@ export default function InboundListPage() {
       setSubmitting(false);
     }
   };
+
+  function handleSuccessModalClose() {
+    setShowSuccessModal(false);
+  }
 
   useEffect(() => {
     if (!toast) return;
@@ -505,12 +501,16 @@ export default function InboundListPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <Link
-                        href={`/staff/inbound/${sj.surat_jalan_id}`}
-                        className="text-sm font-semibold text-[#E8632C] hover:underline"
-                      >
-                        Buka
-                      </Link>
+                      {sj.status === "diterima_didistribusikan" ? (
+                        <span className="text-sm font-semibold text-gray-400">Selesai</span>
+                      ) : (
+                        <Link
+                          href={`/staff/inbound/${sj.surat_jalan_id}`}
+                          className="text-sm font-semibold text-[#E8632C] hover:underline"
+                        >
+                          Buka
+                        </Link>
+                      )}
                     </td>
                   </tr>
                 );
@@ -534,13 +534,16 @@ export default function InboundListPage() {
         )}
         <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Nomor Tiket Gudang</label>
-            <input
-              type="text"
-              value={nomorTiket}
-              onChange={(e) => setNomorTiket(e.target.value)}
-              placeholder="Contoh: TKT-2026-001"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+            <label className="mb-1 block text-xs font-medium text-gray-600">BOQ / Tiket</label>
+            <BoqPicker
+              value={selectedBoqId}
+              onSelect={(picked) => {
+                setSelectedBoqId(picked.boq_id);
+                if (picked.project_id) {
+                  setSelectedProjectId(String(picked.project_id));
+                }
+              }}
+              placeholder="Pilih BOQ / Tiket"
             />
           </div>
           <div>
@@ -580,31 +583,6 @@ export default function InboundListPage() {
               onChange={(e) => setTanggalMasuk(e.target.value)}
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
             />
-          </div>
-
-          <div className="sm:col-span-2 border-t border-gray-100 pt-4 mt-2">
-            <label className="mb-1 block text-xs font-medium text-gray-600">Project <span className="text-rose-500">*</span></label>
-            <div className="relative">
-              <select
-                value={selectedProjectId}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
-                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
-              >
-                <option value="" disabled>Pilih Project...</option>
-                {projectOptions.map((p) => (
-                  <option key={p.project_id} value={String(p.project_id)}>
-                    {p.nama_project} {p.has_active_boq === false ? "(BOQ belum aktif)" : ""}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            </div>
-            {selectedProjectId && (() => {
-              const selectedProject = projectOptions.find((p) => String(p.project_id) === selectedProjectId);
-              return selectedProject && selectedProject.has_active_boq === false ? (
-                <p className="mt-1.5 text-xs text-amber-600">Perhatian: BOQ/Project ini belum diaktifkan oleh Admin. Transaksi surat jalan tidak dapat diproses.</p>
-              ) : null;
-            })()}
           </div>
 
           <div>
@@ -796,6 +774,37 @@ export default function InboundListPage() {
           </Button>
         </div>
       </Modal>
+
+      {showSuccessModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+          onClick={handleSuccessModalClose}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center px-6 py-8 text-center">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Surat Jalan Inbound Berhasil Diajukan</h3>
+              <p className="mt-2 text-sm text-gray-500">
+                Menunggu konfirmasi persetujuan dari supervisor.
+              </p>
+              <button
+                type="button"
+                onClick={handleSuccessModalClose}
+                className="mt-6 w-full rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F]"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div
