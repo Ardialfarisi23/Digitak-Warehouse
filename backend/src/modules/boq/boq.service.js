@@ -74,8 +74,12 @@ const getRelatedUserIdsByGudang = async (gudangIds, roles) => {
   return personnel.map((p) => Number(p.user_id)).filter((id) => !Number.isNaN(id) && id > 0);
 };
 
-const getRelatedSupervisorIds = async (gudangIds, excludeUserId = null) => {
-  const ids = await getRelatedUserIdsByGudang(gudangIds, ["supervisor"]);
+const getRelatedSupervisorIds = async (excludeUserId = null) => {
+  const supervisors = await prisma.user_account.findMany({
+    where: { role: "supervisor", is_aktif: true },
+    select: { user_id: true },
+  });
+  let ids = supervisors.map((s) => s.user_id).filter((id) => id != null);
   if (excludeUserId != null) {
     const numericExclude = Number(excludeUserId);
     return ids.filter((id) => id !== numericExclude);
@@ -246,7 +250,7 @@ const create = async (data, userId) => {
 
   try {
     if (actor?.role === "admin_general") {
-      const supervisorIds = await getRelatedSupervisorIds(gudangIds);
+      const supervisorIds = await getRelatedSupervisorIds();
       const staffIds = await getRelatedStaffIds(gudangIds);
 
       if (supervisorIds.length > 0) {
@@ -269,7 +273,7 @@ const create = async (data, userId) => {
       }
     } else if (actor?.role === "supervisor") {
       const adminIds = await getAllAdminIds(userId);
-      const supervisorIds = await getRelatedSupervisorIds(gudangIds, Number(userId));
+      const supervisorIds = await getRelatedSupervisorIds(Number(userId));
       const staffIds = await getRelatedStaffIds(gudangIds);
 
       if (adminIds.length > 0) {
@@ -478,14 +482,14 @@ const update = async (id, data, userId) => {
   }
 
   if (actor?.role === "admin_general") {
-    const supervisorIds = await getRelatedSupervisorIds(gudangIds);
+    const supervisorIds = await getRelatedSupervisorIds();
     supervisorIds.forEach((id) => targets.add(id));
     const staffIds = await getRelatedStaffIds(gudangIds);
     staffIds.forEach((id) => targets.add(id));
   } else if (actor?.role === "supervisor") {
     const adminIds = await getAllAdminIds(Number(userId));
     adminIds.forEach((id) => targets.add(id));
-    const supervisorIds = await getRelatedSupervisorIds(gudangIds, Number(userId));
+    const supervisorIds = await getRelatedSupervisorIds(Number(userId));
     supervisorIds.forEach((id) => targets.add(id));
     const staffIds = await getRelatedStaffIds(gudangIds);
     staffIds.forEach((id) => targets.add(id));
@@ -653,14 +657,14 @@ const softDelete = async (id, userId) => {
   }
 
   if (actor?.role === "admin_general") {
-    const supervisorIds = await getRelatedSupervisorIds(gudangIds);
+    const supervisorIds = await getRelatedSupervisorIds();
     supervisorIds.forEach((id) => targets.add(id));
     const staffIds = await getRelatedStaffIds(gudangIds);
     staffIds.forEach((id) => targets.add(id));
   } else if (actor?.role === "supervisor") {
     const adminIds = await getAllAdminIds(Number(userId));
     adminIds.forEach((id) => targets.add(id));
-    const supervisorIds = await getRelatedSupervisorIds(gudangIds, Number(userId));
+    const supervisorIds = await getRelatedSupervisorIds(Number(userId));
     supervisorIds.forEach((id) => targets.add(id));
     const staffIds = await getRelatedStaffIds(gudangIds);
     staffIds.forEach((id) => targets.add(id));
@@ -705,14 +709,14 @@ const restore = async (id, userId) => {
   }
 
   if (actor?.role === "admin_general") {
-    const supervisorIds = await getRelatedSupervisorIds(gudangIds);
+    const supervisorIds = await getRelatedSupervisorIds();
     supervisorIds.forEach((id) => targets.add(id));
     const staffIds = await getRelatedStaffIds(gudangIds);
     staffIds.forEach((id) => targets.add(id));
   } else if (actor?.role === "supervisor") {
     const adminIds = await getAllAdminIds(Number(userId));
     adminIds.forEach((id) => targets.add(id));
-    const supervisorIds = await getRelatedSupervisorIds(gudangIds, Number(userId));
+    const supervisorIds = await getRelatedSupervisorIds(Number(userId));
     supervisorIds.forEach((id) => targets.add(id));
     const staffIds = await getRelatedStaffIds(gudangIds);
     staffIds.forEach((id) => targets.add(id));

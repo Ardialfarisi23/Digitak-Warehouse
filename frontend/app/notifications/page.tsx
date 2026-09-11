@@ -91,7 +91,7 @@ function NotificationsPageContent() {
         const qs = new URLSearchParams();
         qs.set("page", String(page));
         qs.set("limit", String(limit));
-        if (filter === "unread") qs.set("is_read", "true");
+        if (filter === "unread") qs.set("is_read", "false");
 
         const res = await get(`${API_BASE}/api/notifications?${qs.toString()}`);
 

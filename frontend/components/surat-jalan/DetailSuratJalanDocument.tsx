@@ -85,24 +85,10 @@ function tampilkan(value: unknown, fallback = "-") {
 
 export interface DetailSuratJalanDocumentProps {
   data: DetailSuratJalanData | null | undefined;
-  /**
-   * Tampilkan kolom-kolom yang hanya relevan untuk dokumen yang siap dicetak.
-   * - "full"   : lengkap (header info + tabel item + 3 kolom ttd + footer). Default.
-   * - "compact": versi ringkas tanpa item table (untuk preview / sidebar) — belum
-   *              digunakan di fase ini, disediakan untuk fleksibilitas.
-   */
   variant?: "full" | "compact";
-  /**
-   * Renderer opsional untuk kolom "Aksi" pada setiap baris item (kolom tambahan
-   * di paling kanan tabel). Jika tidak diberikan, kolom Aksi tidak ditampilkan.
-   * Dipakai oleh halaman Admin Delivery untuk membuka modal dokumentasi barang.
-   */
   renderItemAction?: (item: DetailSuratJalanItem, index: number) => React.ReactNode;
-  /**
-   * Tampilkan kolom "Aksi" di tabel item. Default: true bila `renderItemAction`
-   * diberikan, false bila tidak.
-   */
   showItemAction?: boolean;
+  hideTujuanBadge?: boolean;
 }
 
 export function DetailSuratJalanDocument({
@@ -110,6 +96,7 @@ export function DetailSuratJalanDocument({
   variant = "full",
   renderItemAction,
   showItemAction,
+  hideTujuanBadge = false,
 }: DetailSuratJalanDocumentProps) {
   if (!data) {
     return (
@@ -138,7 +125,7 @@ export function DetailSuratJalanDocument({
   const tujuanBadge =
     data.tujuan_tipe === "lapangan" ? (
       <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Lapangan</span>
-    ) : data.tujuan_tipe === "gudang" ? (
+    ) : data.tujuan_tipe === "gudang" && !hideTujuanBadge ? (
       <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Gudang</span>
     ) : null;
 
@@ -181,7 +168,7 @@ export function DetailSuratJalanDocument({
   return (
     <div
       id="surat-jalan-document"
-      className="mx-auto max-w-3xl rounded-2xl border border-[#F3D9C7] bg-white p-10 print:rounded-none print:border-0 print:p-0"
+      className="w-full rounded-2xl border border-[#F3D9C7] bg-white p-10 print:rounded-none print:border-0 print:p-0"
     >
       {/* Kop surat dengan logo */}
       <div className="mb-8 flex items-start justify-between border-b-2 border-[#E8632C] pb-6">
@@ -201,10 +188,10 @@ export function DetailSuratJalanDocument({
         </div>
       </div>
 
-      {/* Info grid — 2 kolom */}
-      <div className="mb-8 grid grid-cols-2 gap-x-12 gap-y-3 text-sm">
+      {/* Info grid — responsive */}
+      <div className="mb-8 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-xs">
         <div className="space-y-3">
-          <InfoRow label="No Surat Jalan" value={tampilkan(data.nomor_surat_jalan)} />
+          <InfoRow label="No Surat Jalan" value={<span className="break-all font-semibold">{tampilkan(data.nomor_surat_jalan)}</span>} />
           <InfoRow label="Tipe" value={tipeLabel} />
           <InfoRow label="Project" value={namaProject} />
           <InfoRow
@@ -238,31 +225,26 @@ export function DetailSuratJalanDocument({
       {variant === "full" && (
         <>
           {/* Tabel item */}
-          <table className="mb-10 w-full border-collapse text-sm">
+          <table className="w-full table-fixed border-collapse text-xs">
+            <colgroup>
+              <col className="w-[8%]" />
+              <col className="w-[22%]" />
+              <col className="w-[32%]" />
+              <col className="w-[8%]" />
+              <col className="w-[8%]" />
+              <col className="w-[14%]" />
+              {showAksi && <col className="w-[8%]" />}
+            </colgroup>
             <thead>
               <tr className="bg-[#FFF7ED]">
-                <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">
-                  No
-                </th>
-                <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">
-                  Kode Barang
-                </th>
-                <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">
-                  Nama Barang
-                </th>
-                <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">
-                  QTY
-                </th>
-                <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">
-                  UOM
-                </th>
-                <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">
-                  Keterangan
-                </th>
+                <th className="border p-1 text-center font-semibold whitespace-nowrap">No</th>
+                <th className="border p-1 text-center font-semibold whitespace-nowrap">Kode Barang</th>
+                <th className="border p-1 text-left font-semibold whitespace-nowrap">Nama Barang</th>
+                <th className="border p-1 text-center font-semibold whitespace-nowrap">QTY</th>
+                <th className="border p-1 text-center font-semibold whitespace-nowrap">UOM</th>
+                <th className="border p-1 text-center font-semibold whitespace-nowrap">Keterangan</th>
                 {showAksi && (
-                  <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">
-                    Aksi
-                  </th>
+                  <th className="border p-1 text-center font-semibold whitespace-nowrap">Aksi</th>
                 )}
               </tr>
             </thead>
@@ -271,7 +253,7 @@ export function DetailSuratJalanDocument({
                 <tr>
                   <td
                     colSpan={emptyColSpan}
-                    className="border border-gray-200 px-3 py-6 text-center text-slate-400"
+                    className="border p-1 text-center text-slate-400"
                   >
                     Belum ada item barang.
                   </td>
@@ -279,28 +261,14 @@ export function DetailSuratJalanDocument({
               ) : (
                 items.map((item, i) => (
                   <tr key={item.item_id ?? i} className="even:bg-gray-50">
-                    <td className="border border-gray-200 px-3 py-2.5">{i + 1}</td>
-                    <td className="border border-gray-200 px-3 py-2.5 font-medium">
-                      {tampilkan(item.barang?.kode_perangkat)}
-                    </td>
-                    <td className="border border-gray-200 px-3 py-2.5">
-                      {tampilkan(item.barang?.nama_barang)}
-                    </td>
-                    <td className="border border-gray-200 px-3 py-2.5 text-center font-semibold">
-                      {Number(item.qty || 0)}
-                    </td>
-                    <td className="border border-gray-200 px-3 py-2.5 text-center">
-                      {tampilkan(
-                        item.satuan?.kode_satuan ?? item.barang?.satuan_default?.kode_satuan,
-                      )}
-                    </td>
-                    <td className="border border-gray-200 px-3 py-2.5 text-gray-500">
-                      {tampilkan(item.kondisi ?? item.catatan)}
-                    </td>
+                    <td className="border p-1 text-center">{i + 1}</td>
+                    <td className="border p-1 text-center">{tampilkan(item.barang?.kode_perangkat)}</td>
+                    <td className="border p-1 text-left truncate">{tampilkan(item.barang?.nama_barang)}</td>
+                    <td className="border p-1 text-center font-semibold">{Number(item.qty || 0)}</td>
+                    <td className="border p-1 text-center">{tampilkan(item.satuan?.kode_satuan ?? item.barang?.satuan_default?.kode_satuan)}</td>
+                    <td className="border p-1 text-center">{tampilkan(item.kondisi ?? item.catatan)}</td>
                     {showAksi && (
-                      <td className="border border-gray-200 px-3 py-2.5 text-center">
-                        {renderItemAction ? renderItemAction(item, i) : null}
-                      </td>
+                      <td className="border p-1 text-center">{renderItemAction ? renderItemAction(item, i) : null}</td>
                     )}
                   </tr>
                 ))

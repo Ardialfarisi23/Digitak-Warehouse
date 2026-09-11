@@ -18,20 +18,31 @@ const create = async (data, userId) => {
   const result = await itemRepository.create(createData);
 
   try {
-    await notificationService.create({
-      role: "admin_general",
-      type: "info",
-      title: "Item Baru Ditambahkan",
-      message: `Item ${result.kode_perangkat} - ${result.nama_barang || ""} telah ditambahkan oleh staf.`,
-      link: "/dashboard/master-data",
-    });
-    await notificationService.create({
-      role: "supervisor",
-      type: "info",
-      title: "Item Baru Ditambahkan",
-      message: `Item ${result.kode_perangkat} - ${result.nama_barang || ""} telah ditambahkan oleh staf.`,
-      link: "/dashboard/master-data",
-    });
+    const [admins, supervisors] = await Promise.all([
+      prisma.user_account.findMany({
+        where: { role: "admin_general", is_aktif: true },
+        select: { user_id: true },
+      }),
+      prisma.user_account.findMany({
+        where: { role: "supervisor", is_aktif: true },
+        select: { user_id: true },
+      }),
+    ]);
+
+    const userIds = [
+      ...admins.map((a) => a.user_id).filter((id) => id != null),
+      ...supervisors.map((s) => s.user_id).filter((id) => id != null),
+    ];
+
+    if (userIds.length > 0) {
+      await notificationService.create({
+        userId: userIds,
+        type: "info",
+        title: "Item Baru Ditambahkan",
+        message: `Item ${result.kode_perangkat} - ${result.nama_barang || ""} telah ditambahkan oleh staf.`,
+        link: "/dashboard/master-data",
+      });
+    }
   } catch (notifErr) {
     console.error("Gagal membuat notifikasi item baru:", notifErr);
   }
@@ -75,20 +86,31 @@ const update = async (kode_perangkat, data, userId) => {
   const result = await itemRepository.update(record.barang_id, updateData);
 
   try {
-    await notificationService.create({
-      role: "admin_general",
-      type: "info",
-      title: "Item Diperbarui",
-      message: `Item ${result.kode_perangkat} - ${result.nama_barang || ""} telah diperbarui.`,
-      link: "/dashboard/master-data",
-    });
-    await notificationService.create({
-      role: "supervisor",
-      type: "info",
-      title: "Item Diperbarui",
-      message: `Item ${result.kode_perangkat} - ${result.nama_barang || ""} telah diperbarui.`,
-      link: "/dashboard/master-data",
-    });
+    const [admins, supervisors] = await Promise.all([
+      prisma.user_account.findMany({
+        where: { role: "admin_general", is_aktif: true },
+        select: { user_id: true },
+      }),
+      prisma.user_account.findMany({
+        where: { role: "supervisor", is_aktif: true },
+        select: { user_id: true },
+      }),
+    ]);
+
+    const userIds = [
+      ...admins.map((a) => a.user_id).filter((id) => id != null),
+      ...supervisors.map((s) => s.user_id).filter((id) => id != null),
+    ];
+
+    if (userIds.length > 0) {
+      await notificationService.create({
+        userId: userIds,
+        type: "info",
+        title: "Item Diperbarui",
+        message: `Item ${result.kode_perangkat} - ${result.nama_barang || ""} telah diperbarui.`,
+        link: "/dashboard/master-data",
+      });
+    }
   } catch (notifErr) {
     console.error("Gagal membuat notifikasi item update:", notifErr);
   }
