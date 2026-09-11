@@ -734,18 +734,10 @@ const rejectInbound = async (id, catatan = null, actorId) => {
       status: newStatus,
     };
 
-    if (body.estimasi_tiba) {
-      updateData.estimasi_tiba = new Date(body.estimasi_tiba);
-    }
-
-    if (body.catatan_distribusi !== undefined) {
-      updateData.catatan_distribusi = body.catatan_distribusi || null;
-    }
-
     await suratJalanRepository.updateDeliveryStatus(id, updateData);
 
     if (actorId) {
-      await suratJalanRepository.createApprovalLog(id, actorId, "outbound_delivery", newStatus === "sedang_dikirim" ? "sedang_dikirim" : "diterima_didistribusikan", body.catatan_distribusi || null);
+      await suratJalanRepository.createApprovalLog(id, actorId, "outbound_delivery", "disetujui", body.catatan_distribusi || null);
     }
 
     return await suratJalanRepository.findById(id);

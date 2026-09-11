@@ -13,6 +13,7 @@ const createSuratJalanSchema = z.object({
   nomor_tiket: z.string().optional().nullable(),
   tanggal: z.string().optional().nullable(),
   surat_jalan_url: z.string().url("URL surat jalan tidak valid.").optional().nullable(),
+  boq_id: z.string().optional().nullable(),
   items: z
     .array(
       z.object({

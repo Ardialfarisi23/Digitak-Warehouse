@@ -30,6 +30,12 @@ type ApiSuratJalanItem = {
   catatan?: string | null;
   is_kelebihan?: boolean;
   barang?: ApiBarang;
+  zona?: {
+    zona_id: number;
+    kode_zona?: string;
+    nama_zona?: string;
+    tipe_zona?: string;
+  } | null;
   fotos?: Array<{
     foto_id: number;
     url: string;
@@ -485,6 +491,7 @@ export default function InboundDetailPage() {
               <th className="pb-3 pr-4 font-semibold text-right">Qty Rencana</th>
               <th className="pb-3 pr-6 font-semibold text-right">Qty Diterima</th>
               <th className="pb-3 pr-4 font-semibold">Kondisi</th>
+              <th className="pb-3 pr-4 font-semibold">Lokasi/Zona</th>
               <th className="pb-3 font-semibold">Serial Number</th>
               <th className="pb-3 font-semibold">Foto</th>
             </tr>
@@ -535,6 +542,18 @@ export default function InboundDetailPage() {
                         </option>
                       ))}
                      </select>
+                  </td>
+                  <td className="py-3 pr-4 text-xs text-gray-600">
+                    {item.zona ? (
+                      <span className="font-medium text-gray-800">
+                        {item.zona.nama_zona || item.zona.kode_zona}
+                        {item.zona.tipe_zona ? (
+                          <span className="ml-1 text-gray-400">— {item.zona.tipe_zona}</span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
                   </td>
                   <td className="py-3">
                     {item.qtyDiterima === 0 ? (

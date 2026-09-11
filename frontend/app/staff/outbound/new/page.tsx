@@ -6,6 +6,7 @@ import { ClipboardList, ChevronDown, Loader2, AlertCircle, Truck, User, MapPin, 
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import BoqPicker, { type BoqPickerItem } from "@/components/BoqPicker";
 
 type Project = {
   project_id: string | number;
@@ -274,6 +275,7 @@ export default function AjukanSuratJalanPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [selectedBoqId, setSelectedBoqId] = useState<string>("");
   const [qtyByItem, setQtyByItem] = useState<Record<string, number>>({});
   const [picPemohon, setPicPemohon] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
@@ -354,18 +356,18 @@ export default function AjukanSuratJalanPage() {
     const canDrive = personnel.filter((p) => p.bisa_menyetir);
     return canDrive.length > 0 ? canDrive : personnel;
   }, [personnel]);
-
-  async function handleSelectProject(id: string) {
-    setSelectedProjectId(id);
+  async function handleSelectProject(projectId: string, boqId?: string) {
+    setSelectedProjectId(projectId);
+    setSelectedBoqId(boqId || "");
     setQtyByItem({});
     setBoqItems([]);
 
-    if (!id) return;
+    if (!projectId) return;
 
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
     setBoqItemsLoading(true);
     try {
-      const res = await get(`${baseUrl}/api/boqs/items?projectId=${id}`);
+      const res = await get(`${baseUrl}/api/boqs/items?projectId=${projectId}`);
       if (!res.ok) throw new Error("Gagal mengambil daftar item BOQ Plan.");
       const json = await res.json();
       const rawList = Array.isArray(json?.data) ? json.data : [];
@@ -486,6 +488,7 @@ export default function AjukanSuratJalanPage() {
         kendaraan_id: selectedVehicleId || null,
         personil_pengantar_id: selectedPersonilId,
         project_id: selectedProjectId,
+        boq_id: selectedBoqId || null,
         kategori_approval: "manual_override",
         pic_pemohon_nama: picPemohon || null,
         items: selectedItems.map((i) => {
@@ -557,30 +560,24 @@ export default function AjukanSuratJalanPage() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="flex flex-col gap-5 lg:col-span-2">
-          {/* Dropdown Project */}
+          {/* BOQ / Tiket */}
           <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
             <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
               <ClipboardList size={16} />
-              Project
+              BOQ / Tiket
             </p>
-            <div className="relative">
-              <select
-                value={selectedProjectId}
-                onChange={(e) => handleSelectProject(e.target.value)}
-                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
-              >
-                <option value="" disabled>
-                  Pilih Project...
-                </option>
-                {projects.map((p) => (
-                  <option key={p.project_id} value={String(p.project_id)}>
-                    {p.nama_project} {p.klien ? `— ${p.klien}` : ""}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            </div>
-            {projects.length === 0 && <p className="mt-3 text-xs text-gray-400">Belum ada data Project di master data.</p>}
+            <BoqPicker
+              value={selectedBoqId}
+              onSelect={(picked) => {
+                handleSelectProject(String(picked.project_id || selectedProjectId), picked.boq_id);
+              }}
+              placeholder="Pilih BOQ / Tiket"
+            />
+            {selectedBoqId && (
+              <p className="mt-2 text-xs text-gray-500">
+                Tiket: {selectedProject?.nama_project || `Project ID ${selectedProjectId}`}
+              </p>
+            )}
           </div>
 
           {/* Gudang Asal & Tujuan */}

@@ -63,7 +63,7 @@ router.put(
 router.put(
   "/:id/delivery-status",
   authenticate,
-  authorize("SUPERVISOR"),
+  authorize("STAFF", "SUPERVISOR"),
   validate(deliveryStatusSchema),
   suratJalanController.updateDeliveryStatus
 );

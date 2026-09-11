@@ -369,7 +369,7 @@ export default function InboundListPage() {
         kendaraan_id: selectedKendaraanId || null,
         personil_pengantar_id: selectedDriverId || null,
         pic_pemohon_nama: picPemohon.trim() || null,
-        boq_id: selectedBoqId ? Number(selectedBoqId) : null,
+        boq_id: selectedBoqId || null,
         notes: null,
         kategori_approval: "manual_override",
         surat_jalan_url: suratJalanPdfUrl || null,

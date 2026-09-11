@@ -6,6 +6,14 @@ const baseInclude = {
   items: {
     include: {
       fotos: true,
+      zona: {
+        select: {
+          zona_id: true,
+          kode_zona: true,
+          nama_zona: true,
+          tipe_zona: true,
+        },
+      },
       barang: {
         include: {
           satuan_default: true,
@@ -148,8 +156,6 @@ const findOutboundQueue = async (filters = {}) => {
 
   if (status && status !== "all") {
     where.status = status;
-  } else {
-    where.status = { in: ["draft_diajukan", "disetujui", "digenerate"] };
   }
 
   const andConditions = [];
