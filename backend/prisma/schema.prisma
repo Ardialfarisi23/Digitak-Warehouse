@@ -42,6 +42,7 @@ model user_account {
   zona_dinilai_oleh               zona_gudang[]               @relation("ZonaGudangDinilaiOleh")
   surat_jalan_item_diperiksa_oleh surat_jalan_item[]          @relation("SuratJalanItemDiperiksaOleh")
   reconciliation_upload_logs      reconciliation_upload_log[] @relation("ReconciliationUploadLogActor")
+  laporan_mitras                  laporan_mitra[]             @relation("LaporanMitraUploader")
   notifications                   notification[]
 
   @@index([email])
@@ -126,6 +127,7 @@ model project {
   surat_jalans    surat_jalan[]
   tiket_materials tiket_material[]
   titik_lapangans titik_lapangan[]
+  laporans        laporan_mitra[]      @relation("LaporanMitraProject")
 
   @@index([area])
 }
@@ -276,6 +278,7 @@ model tiket_material {
   created_by      BigInt
   boq             boq?
   permintaan_boqs permintaan_boq[]
+  laporans        laporan_mitra[]      @relation("LaporanMitraTiket")
   creator         user_account     @relation("tiket_material_created_by", fields: [created_by], references: [user_id])
   project         project          @relation(fields: [project_id], references: [project_id])
 
@@ -521,7 +524,40 @@ model reconciliation_upload_detail {
 
   upload reconciliation_upload_log @relation(fields: [upload_id], references: [upload_id])
 
-  @@index([upload_id])
+   @@index([upload_id])
+}
+
+model laporan_mitra {
+  laporan_id      BigInt    @id @default(autoincrement())
+  tiket_id        BigInt
+  kode_tiket      String    @db.Text
+  project_id      BigInt
+  jenis_laporan   jenis_laporan_enum
+  tanggal_laporan DateTime  @db.Date
+  pic_mitra       String?   @db.Text
+  nama_barang     String?   @db.Text
+  mos             Decimal   @db.Decimal(14, 2)
+  used            Decimal   @db.Decimal(14, 2)
+  catatan         String?   @db.Text
+  kondisi         String?   @db.Text
+  uploaded_by     BigInt
+  uploaded_at     DateTime  @default(now())
+  is_aktif        Boolean   @default(true)
+
+  tiket    tiket_material @relation("LaporanMitraTiket", fields: [tiket_id], references: [tiket_id])
+  project  project        @relation("LaporanMitraProject", fields: [project_id], references: [project_id])
+  uploader user_account   @relation("LaporanMitraUploader", fields: [uploaded_by], references: [user_id])
+
+  @@index([tiket_id])
+  @@index([project_id])
+  @@index([tanggal_laporan])
+  @@index([uploaded_at])
+}
+
+enum jenis_laporan_enum {
+  excel
+  manual
+  migrasi_sistem
 }
 
 enum reconciliation_detail_status {

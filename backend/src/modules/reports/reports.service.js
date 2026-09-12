@@ -36,8 +36,8 @@ const getZoneUtilization = async (filters = {}) => {
   return await reportsRepository.getZoneUtilization(filters);
 };
 
-const backfillReconciliation = async () => {
-  return await reportsRepository.backfillReconciliation();
+const backfillReconciliation = async (actorId) => {
+  return await reportsRepository.backfillReconciliation(actorId);
 };
 
 module.exports = {

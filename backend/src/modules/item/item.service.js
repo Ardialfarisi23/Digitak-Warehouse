@@ -1,5 +1,6 @@
 const itemRepository = require("./item.repository");
 const AppError = require("../../shared/errors");
+const prisma = require("../../config/prisma");
 const notificationService = require("../../modules/notifications/notifications.service");
 
 const create = async (data, userId) => {
@@ -17,29 +18,19 @@ const create = async (data, userId) => {
 
   const result = await itemRepository.create(createData);
 
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(userId) },
+    select: { nama: true },
+  });
+
   try {
-    const [admins, supervisors] = await Promise.all([
-      prisma.user_account.findMany({
-        where: { role: "admin_general", is_aktif: true },
-        select: { user_id: true },
-      }),
-      prisma.user_account.findMany({
-        where: { role: "supervisor", is_aktif: true },
-        select: { user_id: true },
-      }),
-    ]);
-
-    const userIds = [
-      ...admins.map((a) => a.user_id).filter((id) => id != null),
-      ...supervisors.map((s) => s.user_id).filter((id) => id != null),
-    ];
-
-    if (userIds.length > 0) {
+    const roles = ["admin_general", "supervisor", "staf_gudang"];
+    for (const role of roles) {
       await notificationService.create({
-        userId: userIds,
+        role,
         type: "info",
-        title: "Item Baru Ditambahkan",
-        message: `Item ${result.kode_perangkat} - ${result.nama_barang || ""} telah ditambahkan oleh staf.`,
+        title: "Barang Baru Ditambahkan",
+        message: `Barang baru: ${result.nama_barang} (Kode: ${result.kode_perangkat}) telah ditambahkan oleh ${actor?.nama || "Staf"}.`,
         link: "/dashboard/master-data",
       });
     }

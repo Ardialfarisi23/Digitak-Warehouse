@@ -16,6 +16,8 @@ router.get("/hardware-reconciliation/per-tiket", authenticate, authorize("ADMIN"
 router.get("/hardware-reconciliation/detailed", authenticate, authorize("ADMIN"), reportsController.getHardwareReconciliationDetailed);
 router.get("/zone-utilization-history", authenticate, authorize("ADMIN"), reportsController.getZoneUtilizationHistory);
 router.get("/zone-utilization", authenticate, authorize("ADMIN"), reportsController.getZoneUtilization);
+router.get("/reconciliation/template", authenticate, authorize("ADMIN", "SUPERVISOR"), reportsController.downloadReconciliationTemplate);
+
 router.post("/reconciliation/backfill", authenticate, authorize("ADMIN"), reportsController.backfillReconciliation);
 
 router.post("/reconciliation/upload", authenticate, authorize("ADMIN", "SUPERVISOR"), reportsController.uploadReconciliationFile);

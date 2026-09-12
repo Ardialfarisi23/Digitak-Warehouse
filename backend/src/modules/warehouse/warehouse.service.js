@@ -45,6 +45,26 @@ const create = async (data, userId) => {
     return warehouse;
   });
 
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(userId) },
+    select: { nama: true },
+  });
+
+  try {
+    const roles = ["admin_general", "supervisor"];
+    for (const role of roles) {
+      await notificationService.create({
+        role,
+        type: "info",
+        title: "Gudang Baru Ditambahkan",
+        message: `Gudang baru: ${result.nama_gudang} (ID: ${result.gudang_id}) telah ditambahkan oleh ${actor?.nama || "Staf"}.`,
+        link: "/dashboard/master-data",
+      });
+    }
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi gudang baru:", notifErr);
+  }
+
   if (result.project_id) {
     try {
       const project = await prisma.project.findUnique({
@@ -52,24 +72,10 @@ const create = async (data, userId) => {
         select: { nama_project: true },
       });
 
-      const personnel = await prisma.personil.findMany({
-        where: {
-          gudang_id: result.gudang_id,
-          user: {
-            role: { in: ["supervisor", "staf_gudang"] },
-            is_aktif: true,
-          },
-        },
-        select: { user_id: true },
-      });
-
-      const userIds = personnel
-        .map((p) => p.user_id)
-        .filter((id) => id != null);
-
-      for (const uid of userIds) {
+      const roles = ["admin_general", "supervisor"];
+      for (const role of roles) {
         await notificationService.create({
-          userId: uid,
+          role,
           type: "info",
           title: "Gudang Dikaitkan dengan Project",
           message: `Gudang ${result.nama_gudang} telah dikaitkan dengan Project ${project?.nama_project || result.project_id}.`,

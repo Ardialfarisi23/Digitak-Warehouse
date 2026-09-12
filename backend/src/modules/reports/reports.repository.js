@@ -1,5 +1,6 @@
 const prisma = require("../../config/prisma");
 const AppError = require("../../shared/errors");
+const reconciliationService = require("../reconciliation/reconciliation.service");
 
 /**
  * Mengubah filter ID dari query string menjadi BigInt secara aman.
@@ -1283,7 +1284,7 @@ const getZoneUtilization = async (filters = {}) => {
   }));
 };
 
-const backfillReconciliation = async () => {
+const backfillReconciliation = async (actorId) => {
   const tikets = await prisma.tiket_material.findMany({
     include: {
       project: true,
@@ -1333,18 +1334,47 @@ const backfillReconciliation = async () => {
     }
   }
 
+  const affectedTiketIds = [];
+
   for (const tiket of tikets) {
+    const existingLaporan = await prisma.laporan_mitra.findFirst({
+      where: {
+        tiket_id: tiket.tiket_id,
+        is_aktif: true,
+      },
+    });
+
+    if (existingLaporan) {
+      continue;
+    }
+
     const pid = Number(tiket.project_id);
     const mos = Number(inboundByProject.get(pid) || 0);
     const used = Number(outboundByProject.get(pid) || 0);
 
-    await prisma.tiket_material.update({
-      where: { tiket_id: tiket.tiket_id },
-      data: { mos, used },
+    await prisma.laporan_mitra.create({
+      data: {
+        tiket_id: tiket.tiket_id,
+        kode_tiket: tiket.kode_tiket,
+        project_id: tiket.project_id,
+        jenis_laporan: "migrasi_sistem",
+        tanggal_laporan: new Date(),
+        mos,
+        used,
+        catatan: "Data migrasi otomatis dari sistem lama — belum dikonfirmasi mitra",
+        uploaded_by: BigInt(actorId || 0),
+        is_aktif: true,
+      },
     });
+
+    affectedTiketIds.push(String(tiket.tiket_id));
   }
 
-  return { updated: tikets.length };
+  for (const tiketId of affectedTiketIds) {
+    await reconciliationService.refreshTiketMosUsed(tiketId, prisma);
+  }
+
+  return { updated: affectedTiketIds.length };
 };
 
 const getReconciliationUploadLogs = async (filters = {}) => {

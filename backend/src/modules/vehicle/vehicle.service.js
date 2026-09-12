@@ -1,5 +1,7 @@
 const vehicleRepository = require("./vehicle.repository");
 const AppError = require("../../shared/errors");
+const prisma = require("../../config/prisma");
+const notificationService = require("../../modules/notifications/notifications.service");
 
 const create = async (data, userId) => {
   const existing = await vehicleRepository.findByNoPolisi(data.no_polisi, { includeInactive: true });
@@ -17,7 +19,29 @@ const create = async (data, userId) => {
     updated_by: Number(userId),
   };
 
-  return await vehicleRepository.create(createData);
+  const result = await vehicleRepository.create(createData);
+
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(userId) },
+    select: { nama: true },
+  });
+
+  try {
+    const roles = ["admin_general", "supervisor"];
+    for (const role of roles) {
+      await notificationService.create({
+        role,
+        type: "info",
+        title: "Kendaraan Baru Ditambahkan",
+        message: `Kendaraan baru ditambahkan: ${result.jenis_kendaraan} (Plat: ${result.no_polisi}) oleh ${actor?.nama || "Staf"}.`,
+        link: "/dashboard/master-data",
+      });
+    }
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi kendaraan baru:", notifErr);
+  }
+
+  return result;
 };
 
 const findAll = async (query) => {
