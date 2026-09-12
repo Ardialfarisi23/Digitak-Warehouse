@@ -66,6 +66,35 @@ const login = async (email, password) => {
     };
 };
 
+const changePassword = async (userId, currentPassword, newPassword) => {
+    const user = await authRepository.findByEmail(null, { userId });
+
+    if (!user) {
+        throw new AppError("Pengguna tidak ditemukan.", 404);
+    }
+
+    if (!user.is_aktif) {
+        throw new AppError("Akun telah dinonaktifkan.", 403);
+    }
+
+    const validPassword = await passwordHelper.compare(
+        currentPassword,
+        user.password_hash
+    );
+
+    if (!validPassword) {
+        throw new AppError("Password saat ini tidak sesuai.", 401);
+    }
+
+    const hashedNewPassword = await passwordHelper.hash(newPassword);
+
+    await authRepository.updatePassword(user.user_id, hashedNewPassword);
+
+    return {
+        message: "Password berhasil diperbarui.",
+    };
+};
+
 const refreshAccessToken = async (refreshToken) => {
     if (!refreshToken) {
         throw new AppError("Refresh token tidak ditemukan.", 401);
@@ -112,6 +141,7 @@ const logout = async () => {
 
 module.exports = {
     login,
+    changePassword,
     logout,
     refreshAccessToken,
 };

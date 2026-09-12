@@ -14,6 +14,7 @@ interface User {
   email?: string;
   role: string;
   isActive?: boolean;
+  must_change_password?: boolean;
   avatar_url?: string | null;
 }
 
