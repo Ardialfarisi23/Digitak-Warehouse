@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import { Search, Eye, X, ArrowUpRight, ArrowDownLeft, CheckCircle2, Clock, FileText, Loader2, AlertCircle, PackageCheck, Truck, ChevronDown } from "lucide-react";
 
+import { downloadInboundPdf } from "@/lib/staff/inbound-pdf";
+
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
-import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
+import { DetailSuratJalanDocument, DetailSuratJalanData } from "@/components/surat-jalan/DetailSuratJalanDocument";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -89,6 +91,7 @@ export default function AdminDeliveryPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [warehouses, setWarehouses] = useState<{ gudang_id: number; nama_gudang: string }[]>([]);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -216,6 +219,46 @@ export default function AdminDeliveryPage() {
       iconColor: "text-amber-500",
     },
   ];
+
+  const handleDownloadPdf = async () => {
+    if (!selectedRecord || isGeneratingPdf) return;
+    setIsGeneratingPdf(true);
+    try {
+      const data = {
+        id: String(selectedRecord.surat_jalan_id),
+        nomor: selectedRecord.nomor_surat_jalan,
+        namaProject: selectedRecord.project?.nama_project || "-",
+        asalGudang: selectedRecord.gudang_asal?.nama_gudang || "-",
+        tujuanGudang: selectedRecord.gudang_tujuan?.nama_gudang || "-",
+        kendaraan: selectedRecord.kendaraan?.jenis_kendaraan || "-",
+        noPolisi: selectedRecord.kendaraan?.no_polisi || "-",
+        namaDriver: selectedRecord.personil_pengantar?.nama || "-",
+        namaPicPemohon: (selectedRecord as any).pic_pemohon_nama || "-",
+        tanggal: selectedRecord.tanggal
+          ? new Date(selectedRecord.tanggal).toLocaleDateString("id-ID", {
+              day: "2-digit",
+              month: "long",
+              year: "numeric",
+            })
+          : "-",
+        items: selectedRecord.items.map((item) => ({
+          kodeBarang: item.barang.kode_perangkat,
+          namaBarang: item.barang.nama_barang,
+          qtyDiminta: item.qty,
+          qtyDiterima: item.qty,
+          kondisi: item.kondisi || "",
+          serialNumbers: [],
+        })),
+        status: (selectedRecord as any).status || "MENUNGGU_VERIFIKASI",
+      } as any;
+
+      await downloadInboundPdf(data, (selectedRecord as any).creator?.nama || "-");
+    } catch (err) {
+      console.error("Gagal generate PDF:", err);
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
 
   return (
     <div className={`${plusJakartaSans.className}`}>
@@ -434,10 +477,10 @@ export default function AdminDeliveryPage() {
                 </button>
               </div>
 
-              {/* Dokumen Surat Jalan — ini yang ke-print */}
+              {/* Dokumen Surat Jalan — untuk tampilan di layar */}
               <div className="p-6">
                 <DetailSuratJalanDocument
-                  data={selectedRecord}
+                  data={selectedRecord as DetailSuratJalanData | null | undefined}
                   variant="full"
                   renderItemAction={(item) => (
                     <button
@@ -456,15 +499,20 @@ export default function AdminDeliveryPage() {
               <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4 print:hidden">
                 <button
                   type="button"
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-2 rounded-lg border border-[#E8632C] bg-white px-4 py-2 text-xs font-semibold text-[#E8632C] shadow-sm transition hover:bg-[#E8632C] hover:text-white"
+                  onClick={handleDownloadPdf}
+                  disabled={isGeneratingPdf}
+                  className="inline-flex items-center gap-2 rounded-lg border border-[#E8632C] bg-white px-4 py-2 text-xs font-semibold text-[#E8632C] shadow-sm transition hover:bg-[#E8632C] hover:text-white disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="6 9 6 2 18 2 18 9" />
-                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-                    <rect x="6" y="14" width="12" height="8" />
-                  </svg>
-                  Cetak / PDF
+                  {isGeneratingPdf ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                  )}
+                  {isGeneratingPdf ? "Mengenerate..." : "Download PDF"}
                 </button>
                 <button type="button" onClick={() => setSelectedRecord(null)} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
                   Tutup
