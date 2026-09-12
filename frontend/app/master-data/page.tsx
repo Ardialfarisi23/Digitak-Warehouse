@@ -682,6 +682,12 @@ function FormModal({
     }
   }, [open, buildInitialForm]);
 
+  useEffect(() => {
+    if (form.posisi === "Supervisor" && form.gudang_id !== "" && form.gudang_id != null) {
+      setForm((prev) => ({ ...prev, gudang_id: "" }));
+    }
+  }, [form.posisi, form.gudang_id]);
+
   function handleChange(key: string, value: unknown) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
@@ -853,13 +859,15 @@ function FormModal({
                       </div>
                       <div className="text-xs text-slate-500">
                         <p className="font-medium text-slate-700">Foto saat ini</p>
-                        <p>Klik ganti foto untuk mengubah</p>
+                        <p>{tab === "personnel" ? "Foto dapat diubah melalui halaman profil personil." : "Klik ganti foto untuk mengubah"}</p>
                       </div>
                     </div>
 
-                    <button type="button" onClick={() => handleChange(field.key, null)} className="rounded-full border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">
-                      Ganti Foto
-                    </button>
+                    {tab !== "personnel" && (
+                      <button type="button" onClick={() => handleChange(field.key, null)} className="rounded-full border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                        Ganti Foto
+                      </button>
+                    )}
 
                     {form[field.key] instanceof File && <p className="text-[11px] text-slate-400">File terpilih: {(form[field.key] as File).name}</p>}
                   </div>
@@ -891,7 +899,8 @@ function FormModal({
                   <select
                     value={String(form[field.key] ?? "")}
                     onChange={(e) => handleChange(field.key, e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                    disabled={field.key === "gudang_id" && form.posisi === "Supervisor"}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400 disabled:opacity-60 disabled:bg-slate-50 disabled:cursor-not-allowed"
                   >
                     <option value="">Pilih {field.label.toLowerCase()}</option>
                     {(field.options || []).map((opt) => {
