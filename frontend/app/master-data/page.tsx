@@ -470,7 +470,7 @@ function Modal({ open, onClose, title, subtitle, widthClass = "max-w-lg", childr
 function DetailModal({ open, onClose, tab, tabLabel, record }: { open: boolean; onClose: () => void; tab: MasterDataType; tabLabel: string; record: GenericRecord | null }) {
   if (!record) return null;
 
-  const fields = TAB_FIELDS[tab];
+  const fields = TAB_FIELDS[tab].filter((field) => field.type !== "file");
   const hasAudit = (record as any)?.created_at || (record as any)?.updated_at || record.createdAt || record.updatedAt;
   const showPhoto = tab !== "projects";
   const primaryPhoto = showPhoto ? getPhotoUrl(record) : null;
@@ -486,17 +486,6 @@ function DetailModal({ open, onClose, tab, tabLabel, record }: { open: boolean; 
 
       <dl className="divide-y divide-slate-50">
         {fields.map((field) => {
-          if (field.key === "photo") {
-            const photoUrl = getPhotoUrl(record);
-
-            return (
-              <div key={field.key} className="flex items-start justify-between gap-4 py-2.5">
-                <dt className="text-xs font-medium text-slate-400">{field.label}</dt>
-                <dd className="text-right text-sm font-medium text-slate-800">{photoUrl ? <span className="text-slate-700">Ada foto</span> : <span className="text-slate-400">Tidak ada foto</span>}</dd>
-              </div>
-            );
-          }
-
           if (field.key === "kategori_id" || field.key === "satuan_default_id") {
             const label = field.key === "kategori_id" ? (record as any)?.kategori?.nama_kategori : (record as any)?.satuan_default?.kode_satuan;
 
