@@ -27,6 +27,7 @@ import {
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
+import BoqPicker, { type BoqPickerItem } from "@/components/BoqPicker";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -81,6 +82,20 @@ function getStatusBadge(status: ReconciliationRecord["status"]) {
   }
 }
 
+const DUPLICATE_REASON_PREFIX = "duplikat: ";
+
+function isDuplicateReason(reason?: string | null) {
+  return Boolean(reason && reason.startsWith(DUPLICATE_REASON_PREFIX));
+}
+
+function stripDuplicatePrefix(reason?: string | null) {
+  if (!reason) return "-";
+  if (reason.startsWith(DUPLICATE_REASON_PREFIX)) {
+    return reason.slice(DUPLICATE_REASON_PREFIX.length);
+  }
+  return reason;
+}
+
 export default function ReconciliationInventoryPage() {
   const { user } = useAuth();
   const { get, post } = useApi();
@@ -101,11 +116,23 @@ export default function ReconciliationInventoryPage() {
   const [mitraFile, setMitraFile] = useState<File | null>(null);
   const [mitraPreview, setMitraPreview] = useState<any>(null);
   const [mitraLoading, setMitraLoading] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [mitraError, setMitraError] = useState<string | null>(null);
   const [mitraConfirming, setMitraConfirming] = useState(false);
-  const [manualRows, setManualRows] = useState<any[]>([]);
-  const [manualForm, setManualForm] = useState({ kode_tiket: "", project_nama: "", mos: "", used: "" });
+  const [manualRows, setManualRows] = useState<Array<{
+    id: string;
+    nama_barang: string;
+    mos: string;
+    used: string;
+    catatan: string;
+    kondisi: string;
+    expanded: boolean;
+  }>>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [selectedBoqId, setSelectedBoqId] = useState("");
+  const [selectedKodeTiket, setSelectedKodeTiket] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [mitraReportMeta, setMitraReportMeta] = useState({ tanggal_laporan: new Date().toISOString().slice(0, 10), pic_mitra: "" });
 
   const [reconcTab, setReconcTab] = useState<"inventory" | "history">("inventory");
   const [historyData, setHistoryData] = useState<any[]>([]);
@@ -230,6 +257,33 @@ export default function ReconciliationInventoryPage() {
     setMitraPreview(null);
   };
 
+  const handleDownloadTemplate = async () => {
+    setDownloadingTemplate(true);
+    setMitraError(null);
+    try {
+      const response = await get(`${API_BASE}/api/reports/reconciliation/template`);
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || "Gagal mengunduh template.");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "Template_Rekonsiliasi.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setMitraError(err instanceof Error ? err.message : "Terjadi kesalahan saat mengunduh template.");
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  };
+
   const handleMitraUpload = async () => {
     if (!mitraFile) return;
     setMitraLoading(true);
@@ -257,18 +311,64 @@ export default function ReconciliationInventoryPage() {
   const handleMitraConfirm = async () => {
     if (!mitraPreview && manualRows.length === 0) return;
     if (!user?.id) return;
-    setMitraConfirming(true);
     setMitraError(null);
+
+    if (!mitraReportMeta.tanggal_laporan.trim()) {
+      setMitraError("Tanggal Laporan wajib diisi.");
+      return;
+    }
+    if (!mitraReportMeta.pic_mitra.trim()) {
+      setMitraError("Nama PIC Mitra wajib diisi.");
+      return;
+    }
+    if (!mitraPreview && !selectedProjectId) {
+      setMitraError("Project wajib dipilih.");
+      return;
+    }
+    if (!mitraPreview && !selectedKodeTiket) {
+      setMitraError("Kode Tiket wajib dipilih.");
+      return;
+    }
+    if (!mitraPreview && manualRows.length === 0) {
+      setMitraError("Minimal 1 item harus ditambahkan.");
+      return;
+    }
+    for (const row of manualRows) {
+      if (!row.nama_barang.trim()) {
+        setMitraError("Setiap item harus memiliki Nama Barang.");
+        return;
+      }
+      if (Number(row.mos) <= 0 && Number(row.used) <= 0) {
+        setMitraError("Setiap item harus memiliki minimal salah satu Qty MOS atau Qty Used > 0.");
+        return;
+      }
+    }
+
+    setMitraConfirming(true);
     try {
-      const preview = (mitraPreview?.preview || manualRows).map((row) => {
-        const { used_terpasang, ...rest } = row;
-        return rest;
-      });
+      let preview: any[];
+
+      if (mitraPreview) {
+        preview = mitraPreview.preview || [];
+      } else {
+        const projectName = projectOptions.find(([id]) => id === selectedProjectId)?.[1] || "";
+        preview = manualRows.map((row) => ({
+          kode_tiket: selectedKodeTiket,
+          project_nama: projectName,
+          nama_barang: row.nama_barang.trim(),
+          mos: Number(row.mos) || 0,
+          used: Number(row.used) || 0,
+          catatan: row.catatan.trim() || null,
+          kondisi: row.kondisi.trim() || null,
+        }));
+      }
 
       const payload = {
         filename: mitraPreview?.filename || "manual-input",
         preview,
         actorId: user.id,
+        tanggal_laporan: mitraReportMeta.tanggal_laporan,
+        pic_mitra: mitraReportMeta.pic_mitra,
       };
 
       const res = await post(`${API_BASE}/api/reports/reconciliation/confirm`, payload);
@@ -287,26 +387,36 @@ export default function ReconciliationInventoryPage() {
     }
   };
 
-  const handleAddManualRow = () => {
-    if (!manualForm.kode_tiket.trim() || !manualForm.project_nama.trim() || !manualForm.mos.trim()) {
-      setMitraError("Kode Tiket, Project, dan MOS wajib diisi.");
-      return;
-    }
+  const addManualRow = () => {
     setMitraError(null);
-    setManualRows([
-      ...manualRows,
+    setManualRows((prev) => [
+      ...prev,
       {
-        kode_tiket: manualForm.kode_tiket.trim(),
-        project_nama: manualForm.project_nama.trim(),
-        mos: Number(manualForm.mos) || 0,
-        used: Number(manualForm.used) || 0,
+        id: `${Date.now()}-${prev.length}`,
+        nama_barang: "",
+        mos: "",
+        used: "",
+        catatan: "",
+        kondisi: "",
+        expanded: false,
       },
     ]);
-    setManualForm({ kode_tiket: "", project_nama: "", mos: "", used: "" });
   };
 
-  const handleRemoveManualRow = (idx: number) => {
-    setManualRows(manualRows.filter((_, i) => i !== idx));
+  const removeManualRow = (id: string) => {
+    setManualRows((prev) => prev.filter((row) => row.id !== id));
+  };
+
+  const updateManualRow = (id: string, field: string, value: string) => {
+    setManualRows((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, [field]: value } : row))
+    );
+  };
+
+  const toggleRowExpanded = (id: string) => {
+    setManualRows((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, expanded: !row.expanded } : row))
+    );
   };
 
   const openMitraModal = () => {
@@ -315,8 +425,12 @@ export default function ReconciliationInventoryPage() {
     setMitraFile(null);
     setMitraPreview(null);
     setMitraError(null);
+    setMitraConfirming(false);
     setManualRows([]);
-    setManualForm({ kode_tiket: "", project_nama: "", mos: "", used: "" });
+    setSelectedProjectId("");
+    setSelectedBoqId("");
+    setSelectedKodeTiket("");
+    setMitraReportMeta({ tanggal_laporan: new Date().toISOString().slice(0, 10), pic_mitra: "" });
   };
 
   const closeMitraModal = () => {
@@ -327,7 +441,10 @@ export default function ReconciliationInventoryPage() {
     setMitraError(null);
     setMitraConfirming(false);
     setManualRows([]);
-    setManualForm({ kode_tiket: "", project_nama: "", mos: "", used: "" });
+    setSelectedProjectId("");
+    setSelectedBoqId("");
+    setSelectedKodeTiket("");
+    setMitraReportMeta({ tanggal_laporan: new Date().toISOString().slice(0, 10), pic_mitra: "" });
   };
 
   useEffect(() => {
@@ -942,11 +1059,46 @@ export default function ReconciliationInventoryPage() {
                     Kembali ke pilihan
                   </button>
 
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">Tanggal Laporan</label>
+                      <input
+                        type="date"
+                        value={mitraReportMeta.tanggal_laporan}
+                        onChange={(e) => setMitraReportMeta({ ...mitraReportMeta, tanggal_laporan: e.target.value })}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-orange-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">Nama PIC Mitra</label>
+                      <input
+                        type="text"
+                        value={mitraReportMeta.pic_mitra}
+                        onChange={(e) => setMitraReportMeta({ ...mitraReportMeta, pic_mitra: e.target.value })}
+                        placeholder="Nama PIC Mitra"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-orange-400"
+                      />
+                    </div>
+                  </div>
+
                   {!mitraPreview ? (
                     <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center">
                       <FileSpreadsheet size={32} className="mx-auto text-slate-400" />
                       <p className="mt-2 text-sm font-semibold text-slate-700">Upload Laporan Compile Material</p>
                       <p className="mt-1 text-xs text-slate-400">Format Excel (.xlsx, .xls). Multi Kode Tiket dalam satu file didukung.</p>
+
+                      <button
+                        type="button"
+                        onClick={handleDownloadTemplate}
+                        disabled={downloadingTemplate}
+                        className="mt-4 inline-flex items-center gap-2 rounded-full border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        {downloadingTemplate && <Loader2 size={14} className="animate-spin" />}
+                        {downloadingTemplate ? "Mengunduh..." : "Unduh Template"}
+                      </button>
+                      <p className="mt-2 text-[11px] text-slate-400">
+                        Gunakan template ini agar kolom terbaca sistem dengan benar.
+                      </p>
 
                       <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600">
                         <Upload size={16} />
@@ -964,6 +1116,21 @@ export default function ReconciliationInventoryPage() {
                           File terpilih: <span className="font-semibold">{mitraFile.name}</span> ({(mitraFile.size / 1024).toFixed(1)} KB)
                         </p>
                       )}
+
+                      <div className="mt-4">
+                        <button
+                          type="button"
+                          onClick={handleMitraUpload}
+                          disabled={!mitraFile || !mitraReportMeta.tanggal_laporan.trim() || !mitraReportMeta.pic_mitra.trim()}
+                          className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-600 disabled:opacity-50"
+                        >
+                          {mitraLoading && <Loader2 size={14} className="animate-spin" />}
+                          {mitraLoading ? "Memproses..." : "Proses File"}
+                        </button>
+                        <p className="mt-2 text-[11px] text-slate-400">
+                          Tanggal Laporan dan Nama PIC Mitra wajib diisi sebelum memproses file.
+                        </p>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -974,49 +1141,55 @@ export default function ReconciliationInventoryPage() {
                         </span>
                       </div>
 
-                      <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200">
-                        <table className="min-w-full text-left text-sm">
-                          <thead>
-                            <tr className="border-b border-slate-100 bg-slate-50">
-                              <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
-                              <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
-                              <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
-                              <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
-                              <th className="px-4 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-50">
-                            {(mitraPreview.preview || []).map((row: any, idx: number) => (
-                              <tr key={idx} className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-mono text-xs font-semibold text-orange-600">{row.kode_tiket}</td>
-                                <td className="px-4 py-2 text-slate-700">{row.project_nama}</td>
-                                <td className="px-4 py-2 text-right font-mono text-slate-600">{row.mos}</td>
-                                <td className="px-4 py-2 text-right font-mono text-slate-600">{row.used}</td>
-                                <td className="px-4 py-2 text-center">
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                                    <CheckCircle2 size={12} />
-                                    OK
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                            {(mitraPreview.failed || []).map((row: any, idx: number) => (
-                              <tr key={`fail-${idx}`} className="bg-rose-50/50 hover:bg-rose-50">
-                                <td className="px-4 py-2 font-mono text-xs font-semibold text-slate-700">{row.kode_tiket || "-"}</td>
-                                <td className="px-4 py-2 text-slate-700">-</td>
-                                <td className="px-4 py-2 text-right font-mono text-slate-400">-</td>
-                                <td className="px-4 py-2 text-right font-mono text-slate-400">-</td>
-                                <td className="px-4 py-2 text-center">
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700">
-                                    <AlertTriangle size={12} />
-                                    {row.reason}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                       <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200">
+                         <table className="min-w-full text-left text-sm">
+                           <thead>
+                             <tr className="border-b border-slate-100 bg-slate-50">
+                               <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
+                               <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
+                               <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
+                               <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
+                               <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
+                               <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kondisi</th>
+                               <th className="px-4 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+                             </tr>
+                           </thead>
+                           <tbody className="divide-y divide-slate-50">
+                             {(mitraPreview.preview || []).map((row: any, idx: number) => (
+                               <tr key={idx} className="hover:bg-slate-50">
+                                 <td className="px-4 py-2 font-mono text-xs font-semibold text-orange-600">{row.kode_tiket}</td>
+                                 <td className="px-4 py-2 text-slate-700">{row.project_nama}</td>
+                                 <td className="px-4 py-2 text-slate-700">{row.nama_barang || "-"}</td>
+                                 <td className="px-4 py-2 text-right font-mono text-slate-600">{row.mos}</td>
+                                 <td className="px-4 py-2 text-right font-mono text-slate-600">{row.used}</td>
+                                 <td className="px-4 py-2 text-slate-700">{row.kondisi || "-"}</td>
+                                 <td className="px-4 py-2 text-center">
+                                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                                     <CheckCircle2 size={12} />
+                                     OK
+                                   </span>
+                                 </td>
+                               </tr>
+                             ))}
+                             {(mitraPreview.failed || []).map((row: any, idx: number) => (
+                               <tr key={`fail-${idx}`} className="bg-rose-50/50 hover:bg-rose-50">
+                                 <td className="px-4 py-2 font-mono text-xs font-semibold text-slate-700">{row.kode_tiket || "-"}</td>
+                                 <td className="px-4 py-2 text-slate-700">-</td>
+                                 <td className="px-4 py-2 text-slate-700">-</td>
+                                 <td className="px-4 py-2 text-right font-mono text-slate-400">-</td>
+                                 <td className="px-4 py-2 text-right font-mono text-slate-400">-</td>
+                                 <td className="px-4 py-2 text-slate-700">-</td>
+                                 <td className="px-4 py-2 text-center">
+                                   <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                                     <AlertTriangle size={12} />
+                                     {row.reason}
+                                   </span>
+                                 </td>
+                               </tr>
+                             ))}
+                           </tbody>
+                         </table>
+                       </div>
                     </div>
                   )}
                 </div>
@@ -1027,90 +1200,181 @@ export default function ReconciliationInventoryPage() {
                 <div className="space-y-4">
                   <button
                     type="button"
-                    onClick={() => { setMitraFlow("select"); setManualRows([]); setMitraError(null); setManualForm({ kode_tiket: "", project_nama: "", mos: "", used: "" }); }}
+                    onClick={() => { setMitraFlow("select"); setManualRows([]); setMitraError(null); setSelectedProjectId(""); setSelectedBoqId(""); setSelectedKodeTiket(""); setMitraReportMeta({ tanggal_laporan: new Date().toISOString().slice(0, 10), pic_mitra: "" }); }}
                     className="flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-slate-600"
                   >
                     <ArrowUpRight size={12} className="-rotate-90" />
                     Kembali ke pilihan
                   </button>
 
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">Tambah Data Manual</p>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">Tanggal Laporan</label>
                       <input
-                        type="text"
-                        value={manualForm.kode_tiket}
-                        onChange={(e) => setManualForm({ ...manualForm, kode_tiket: e.target.value })}
-                        placeholder="Kode Tiket"
-                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
-                      />
-                      <input
-                        type="text"
-                        value={manualForm.project_nama}
-                        onChange={(e) => setManualForm({ ...manualForm, project_nama: e.target.value })}
-                        placeholder="Project"
-                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
-                      />
-                      <input
-                        type="number"
-                        value={manualForm.mos}
-                        onChange={(e) => setManualForm({ ...manualForm, mos: e.target.value })}
-                        placeholder="MOS"
-                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
-                      />
-                      <input
-                        type="number"
-                        value={manualForm.used}
-                        onChange={(e) => setManualForm({ ...manualForm, used: e.target.value })}
-                        placeholder="Used (opsional)"
-                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
+                        type="date"
+                        value={mitraReportMeta.tanggal_laporan}
+                        onChange={(e) => setMitraReportMeta({ ...mitraReportMeta, tanggal_laporan: e.target.value })}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
                       />
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleAddManualRow}
-                      className="mt-3 flex items-center gap-2 rounded-full bg-blue-500 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-600"
-                    >
-                      <Plus size={14} />
-                      Tambah Baris
-                    </button>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">Nama PIC Mitra</label>
+                      <input
+                        type="text"
+                        value={mitraReportMeta.pic_mitra}
+                        onChange={(e) => setMitraReportMeta({ ...mitraReportMeta, pic_mitra: e.target.value })}
+                        placeholder="Nama PIC Mitra"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
+                      />
+                    </div>
                   </div>
 
-                  {manualRows.length > 0 && (
-                    <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200">
-                      <table className="min-w-full text-left text-sm">
-                        <thead>
-                          <tr className="border-b border-slate-100 bg-slate-50">
-                            <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
-                            <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
-                            <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
-                            <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
-                            <th className="px-4 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {manualRows.map((row, idx) => (
-                            <tr key={idx} className="hover:bg-slate-50">
-                              <td className="px-4 py-2 font-mono text-xs font-semibold text-orange-600">{row.kode_tiket}</td>
-                              <td className="px-4 py-2 text-slate-700">{row.project_nama}</td>
-                              <td className="px-4 py-2 text-right font-mono text-slate-600">{row.mos}</td>
-                              <td className="px-4 py-2 text-right font-mono text-slate-600">{row.used}</td>
-                              <td className="px-4 py-2 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveManualRow(idx)}
-                                  className="rounded-lg p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                                  title="Hapus baris"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">Project</label>
+                      <select
+                        value={selectedProjectId}
+                        onChange={(e) => {
+                          setSelectedProjectId(e.target.value);
+                          setSelectedBoqId("");
+                          setSelectedKodeTiket("");
+                        }}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
+                      >
+                        <option value="">Pilih Project</option>
+                        {projectOptions.map(([id, nama]) => (
+                          <option key={id} value={id}>
+                            {nama}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                  )}
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">Kode Tiket</label>
+                      <BoqPicker
+                        value={selectedBoqId}
+                        onSelect={(picked: BoqPickerItem) => {
+                          setSelectedBoqId(picked.boq_id);
+                          setSelectedKodeTiket(picked.kode_tiket);
+                          if (picked.project_id) {
+                            setSelectedProjectId(String(picked.project_id));
+                          }
+                        }}
+                        placeholder="Pilih Kode Tiket"
+                        disabled={!selectedProjectId}
+                        projectId={selectedProjectId || undefined}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Daftar Item Barang</p>
+                      <button
+                        type="button"
+                        onClick={addManualRow}
+                        disabled={!selectedKodeTiket}
+                        className="flex items-center gap-1 text-xs font-semibold text-blue-500 hover:text-blue-600 disabled:opacity-50"
+                      >
+                        <Plus size={14} />
+                        Tambah Item
+                      </button>
+                    </div>
+
+                    {manualRows.length === 0 ? (
+                      <div className="mt-3 rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-xs text-slate-400">
+                        {selectedKodeTiket ? "Belum ada barang. Klik 'Tambah Item' untuk menambah." : "Pilih Kode Tiket terlebih dahulu."}
+                      </div>
+                    ) : (
+                      <div className="mt-3 space-y-2">
+                        {manualRows.map((row) => (
+                          <div
+                            key={row.id}
+                            className="rounded-xl border border-slate-100 bg-white p-3"
+                          >
+                            <div className="grid grid-cols-12 gap-2">
+                              <div className="col-span-12 sm:col-span-4">
+                                <label className="mb-1 block text-[11px] font-medium text-slate-500">Nama Barang</label>
+                                <input
+                                  type="text"
+                                  value={row.nama_barang}
+                                  onChange={(e) => updateManualRow(row.id, "nama_barang", e.target.value)}
+                                  placeholder="Nama barang"
+                                  className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-400"
+                                />
+                              </div>
+                              <div className="col-span-6 sm:col-span-3">
+                                <label className="mb-1 block text-[11px] font-medium text-slate-500">Qty Sampai di Site (MOS)</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={row.mos}
+                                  onChange={(e) => updateManualRow(row.id, "mos", e.target.value)}
+                                  placeholder="0"
+                                  className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-400"
+                                />
+                              </div>
+                              <div className="col-span-6 sm:col-span-3">
+                                <label className="mb-1 block text-[11px] font-medium text-slate-500">Qty Terpasang (Used)</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={row.used}
+                                  onChange={(e) => updateManualRow(row.id, "used", e.target.value)}
+                                  placeholder="0"
+                                  className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-400"
+                                />
+                              </div>
+                              <div className="col-span-12 sm:col-span-2 flex items-end justify-between">
+                                <div className="flex gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleRowExpanded(row.id)}
+                                    className={`rounded-lg px-2 py-1.5 text-xs font-medium ${row.expanded ? "bg-slate-100 text-slate-700" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
+                                  >
+                                    Detail
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeManualRow(row.id)}
+                                    className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                                    title="Hapus baris"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {row.expanded && (
+                              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                <div>
+                                  <label className="mb-1 block text-[11px] font-medium text-slate-500">Catatan</label>
+                                  <input
+                                    type="text"
+                                    value={row.catatan}
+                                    onChange={(e) => updateManualRow(row.id, "catatan", e.target.value)}
+                                    placeholder="Catatan (opsional)"
+                                    className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-400"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-[11px] font-medium text-slate-500">Kondisi</label>
+                                  <input
+                                    type="text"
+                                    value={row.kondisi}
+                                    onChange={(e) => updateManualRow(row.id, "kondisi", e.target.value)}
+                                    placeholder="Kondisi (opsional)"
+                                    className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-400"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1139,7 +1403,7 @@ export default function ReconciliationInventoryPage() {
                   className="flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-600 disabled:opacity-60"
                 >
                   {mitraConfirming && <Loader2 size={14} className="animate-spin" />}
-                  {mitraConfirming ? "Menyimpan…" : "Konfirmasi & Simpan"}
+                  {mitraConfirming ? "Menyimpan…" : "Simpan Laporan"}
                 </button>
               )}
             </div>
@@ -1323,6 +1587,10 @@ export default function ReconciliationInventoryPage() {
                   <p className="text-xs font-medium text-slate-400">Total / Berhasil / Gagal</p>
                   <p className="text-sm font-semibold text-slate-800">
                     {historyDetail.total_rows} / {historyDetail.success_rows} / {historyDetail.failed_rows}
+                    {(() => {
+                      const dupCount = (historyDetail.details || []).filter((d: any) => isDuplicateReason(d.reason)).length;
+                      return dupCount > 0 ? ` / ${dupCount} dilewati (duplikat)` : "";
+                    })()}
                   </p>
                 </div>
               </div>
@@ -1341,21 +1609,30 @@ export default function ReconciliationInventoryPage() {
                           <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Alasan Gagal</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-50">
-                        {historyDetail.details.map((d: any) => (
-                          <tr key={d.detail_id} className="hover:bg-slate-50">
-                            <td className="px-3 py-2 font-mono font-semibold text-slate-700">{d.kode_tiket}</td>
-                            <td className="px-3 py-2 text-right font-mono text-slate-600">{d.mos}</td>
-                            <td className="px-3 py-2 text-right font-mono text-slate-600">{d.used}</td>
-                            <td className="px-3 py-2">
-                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${d.status === "berhasil" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
-                                {d.status === "berhasil" ? "Berhasil" : "Gagal"}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2 text-slate-500">{d.reason || "-"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
+                        <tbody className="divide-y divide-slate-50">
+                          {historyDetail.details.map((d: any) => {
+                            const duplicate = isDuplicateReason(d.reason);
+                            return (
+                              <tr key={d.detail_id} className="hover:bg-slate-50">
+                                <td className="px-3 py-2 font-mono font-semibold text-slate-700">{d.kode_tiket}</td>
+                                <td className="px-3 py-2 text-right font-mono text-slate-600">{d.mos}</td>
+                                <td className="px-3 py-2 text-right font-mono text-slate-600">{d.used}</td>
+                                <td className="px-3 py-2">
+                                  {duplicate ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                                      Duplikat
+                                    </span>
+                                  ) : (
+                                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${d.status === "berhasil" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+                                      {d.status === "berhasil" ? "Berhasil" : "Gagal"}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-slate-500">{stripDuplicatePrefix(d.reason)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
                     </table>
                   </div>
                 ) : (

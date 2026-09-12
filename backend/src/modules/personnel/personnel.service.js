@@ -1,5 +1,7 @@
 const personnelRepository = require("./personnel.repository");
 const AppError = require("../../shared/errors");
+const prisma = require("../../config/prisma");
+const notificationService = require("../../modules/notifications/notifications.service");
 
 
 const create = async (data, userId) => {
@@ -33,7 +35,29 @@ const create = async (data, userId) => {
     updated_by: Number(userId),
   };
 
-  return await personnelRepository.create(createData);
+  const result = await personnelRepository.create(createData);
+
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(userId) },
+    select: { nama: true },
+  });
+
+  try {
+    const roles = ["admin_general", "supervisor"];
+    for (const role of roles) {
+      await notificationService.create({
+        role,
+        type: "info",
+        title: "Personil Baru Ditambahkan",
+        message: `Personil baru ditambahkan: ${result.nama} (Role: ${result.posisi || result.jenis}).`,
+        link: "/dashboard/master-data",
+      });
+    }
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi personil baru:", notifErr);
+  }
+
+  return result;
 };
 
 const findAll = async (query) => {

@@ -434,21 +434,9 @@ const approveInbound = async (id, itemAdjustments = [], actorId) => {
     await suratJalanRepository.addInboundStock(shipment, tx);
     await suratJalanRepository.updateStatus(id, "ready_putaway", tx);
 
-    if (shipment.boq_id && shipment.boq?.tiket_id) {
-      const totalQty = shipment.items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
-      if (totalQty > 0) {
-        const tiket = await tx.tiket_material.findUnique({
-          where: { tiket_id: Number(shipment.boq.tiket_id) },
-        });
-        if (tiket) {
-          const currentMos = Number(tiket.mos || 0);
-          await tx.tiket_material.update({
-            where: { tiket_id: Number(shipment.boq.tiket_id) },
-            data: { mos: currentMos + totalQty },
-          });
-        }
-      }
-    }
+    // NOTE: Auto-increment tiket.mos saat inbound DIHAPUS (2026-09-12).
+    // tiket.mos sekarang murni representasi "MOS Mitra" — hanya diisi via laporan mitra (Excel/manual).
+    // MOS Sistem (dari inbound) dihitung on-the-fly di reconciliation.repository.js, TIDAK disimpan di kolom ini.
 
     if (actorId) {
       await suratJalanRepository.createApprovalLog(id, actorId, "inbound_verifikasi", "disetujui", null, tx);
@@ -526,21 +514,9 @@ const approveOutbound = async (id, actorId) => {
     await suratJalanRepository.reduceBoqAllocation(shipment, tx);
     await suratJalanRepository.updateStatus(id, "disetujui", tx);
 
-    if (shipment.boq_id && shipment.boq?.tiket_id && shipment.tujuan_tipe !== "gudang") {
-      const totalQty = shipment.items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
-      if (totalQty > 0) {
-        const tiket = await tx.tiket_material.findUnique({
-          where: { tiket_id: Number(shipment.boq.tiket_id) },
-        });
-        if (tiket) {
-          const currentUsed = Number(tiket.used || 0);
-          await tx.tiket_material.update({
-            where: { tiket_id: Number(shipment.boq.tiket_id) },
-            data: { used: currentUsed + totalQty },
-          });
-        }
-      }
-    }
+    // NOTE: Auto-increment tiket_material.used saat outbound disetujui DIHAPUS (2026-09-12).
+    // used sekarang murni merepresentasikan "Qty Terpasang" dari laporan mitra — hanya diisi via laporan mitra (Excel/manual).
+    // Verifikasi SPV outbound tetap berfungsi sebagai tracking status surat jalan, TIDAK menulis ke kolom used.
 
     if (actorId) {
       await suratJalanRepository.createApprovalLog(id, actorId, "outbound_approval", "disetujui", null, tx);
