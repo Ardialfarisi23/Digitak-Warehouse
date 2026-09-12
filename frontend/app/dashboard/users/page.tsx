@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Search, Plus, UserCheck, UserX, X, Clock3, Eye, Pencil } from "lucide-react";
+import { Search, Plus, UserCheck, UserX, X, Clock3, Eye, Pencil, ShieldAlert } from "lucide-react";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole, formatRole } from "@/lib/navigation";
@@ -9,17 +9,6 @@ import { Button } from "@/components/ui/button";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
-
-/* =========================================================
-   DATA GUDANG
-======================================================== */
-
-const personilOptions = [
-  {
-    id: "",
-    nama: "Tidak dihubungkan",
-  },
-];
 
 /* =========================================================
    HELPER FOTO
@@ -98,8 +87,7 @@ export default function UsersPage() {
     no_telepon: "",
     role: "staf_gudang",
     gudang_id: "",
-    personil_id: "",
-    metode_aktivasi: "email" as "email" | "manual",
+    metode_aktivasi: "manual" as "email" | "manual",
     password: "",
   });
 
@@ -112,8 +100,11 @@ export default function UsersPage() {
      nextStatus: boolean;
    }>({ open: false, record: null, nextStatus: false });
 
-   const [showEditModal, setShowEditModal] = useState(false);
-   const [editForm, setEditForm] = useState<any | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState<any | null>(null);
+
+  const [showTempPasswordModal, setShowTempPasswordModal] = useState(false);
+  const [tempPassword, setTempPassword] = useState("");
 
   /* =========================================================
      CEK ROLE ADMIN
@@ -326,8 +317,7 @@ export default function UsersPage() {
       no_telepon: "",
       role: "supervisor",
       gudang_id: "",
-      personil_id: "",
-      metode_aktivasi: "email",
+      metode_aktivasi: "manual",
       password: "",
     });
 
@@ -337,22 +327,31 @@ export default function UsersPage() {
   /* =========================================================
      TAMBAH USER
   ========================================================= */
-
   const handleCreateUser = async () => {
     if (
       !newUser.nama.trim() ||
       !newUser.email.trim() ||
-      !newUser.role ||
-      !newUser.gudang_id
+      !newUser.role
     ) {
       setError(
-        "Nama lengkap, email, role, dan gudang yang ditugaskan wajib diisi."
+        "Nama lengkap, email, dan role wajib diisi."
       );
       return;
     }
 
     if (
-      newUser.metode_aktivasi === "manual" &&
+      newUser.role === "staf_gudang" &&
+      !newUser.gudang_id
+    ) {
+      setError(
+        "Gudang yang ditugaskan wajib diisi untuk role Staf Gudang."
+      );
+      return;
+    }
+
+    if (
+      newUser.metode_aktivasi ===
+      "manual" &&
       !newUser.password.trim()
     ) {
       setError(
@@ -382,10 +381,6 @@ export default function UsersPage() {
           selectedWarehouse?.nama ?? "",
       };
 
-      if (newUser.personil_id) {
-        payload.personil_id =
-          newUser.personil_id;
-      }
 
       if (
         newUser.metode_aktivasi ===
@@ -409,7 +404,12 @@ export default function UsersPage() {
         );
       }
 
-      setShowAddModal(false);
+      if (newUser.metode_aktivasi === "manual") {
+        setTempPassword(newUser.password.trim());
+        setShowTempPasswordModal(true);
+      } else {
+        setShowAddModal(false);
+      }
 
       setNewUser({
         nama: "",
@@ -417,8 +417,7 @@ export default function UsersPage() {
         no_telepon: "",
         role: "staf_gudang",
         gudang_id: "",
-        personil_id: "",
-        metode_aktivasi: "email",
+        metode_aktivasi: "manual",
         password: "",
       });
 
@@ -458,9 +457,9 @@ export default function UsersPage() {
 
       const role = editForm.role;
 
-      if (role === "supervisor" || role === "staf_gudang") {
+      if (role === "staf_gudang") {
         if (!editForm.gudang_id) {
-          setError("Gudang yang ditugaskan wajib diisi untuk role Supervisor atau Staf Gudang.");
+          setError("Gudang yang ditugaskan wajib diisi untuk role Staf Gudang.");
           return;
         }
       }
@@ -1211,14 +1210,15 @@ export default function UsersPage() {
 
                   <select
                     value={newUser.role}
-                    onChange={(event) =>
-                      setNewUser({
-                        ...newUser,
-                        role:
-                          event.target
-                            .value as "admin_general" | "supervisor" | "staf_gudang",
-                      })
-                    }
+                    onChange={(event) => {
+                      const newRole = event.target.value as "admin_general" | "supervisor" | "staf_gudang";
+                      setNewUser((prev) => ({
+                        ...prev,
+                        role: newRole,
+                        gudang_id:
+                          newRole === "supervisor" ? "" : prev.gudang_id,
+                      }));
+                    }}
                     className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100"
                   >
                     <option value="admin_general">
@@ -1251,7 +1251,8 @@ export default function UsersPage() {
                           event.target.value,
                       })
                     }
-                    className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100"
+                    disabled={newUser.role === "supervisor"}
+                    className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="">
                       Pilih gudang
@@ -1269,127 +1270,52 @@ export default function UsersPage() {
                     )}
                   </select>
 
-                  <p className="mt-1.5 text-[9px] text-slate-400">
-                    Menentukan lingkup data yang bisa dilihat dan
-                    disetujui akun ini.
-                  </p>
-                </div>
-
-                {/* PERSONIL */}
-
-                <div>
-                  <label className="mb-1.5 block text-[11px] font-medium text-slate-700">
-                    Hubungkan ke data personil{" "}
-                    <span className="font-normal text-slate-400">
-                      (opsional)
-                    </span>
-                  </label>
-
-                  <select
-                    value={newUser.personil_id}
-                    onChange={(event) =>
-                      setNewUser({
-                        ...newUser,
-                        personil_id:
-                          event.target.value,
-                      })
-                    }
-                    className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100"
-                  >
-                    {personilOptions.map(
-                      (personil) => (
-                        <option
-                          key={personil.id}
-                          value={personil.id}
-                        >
-                          {personil.nama}
-                        </option>
-                      )
-                    )}
-                  </select>
+                  {newUser.role === "supervisor" ? (
+                    <p className="mt-1.5 text-[9px] text-slate-400">
+                      Supervisor dapat mengakses semua gudang, tidak perlu ditugaskan ke gudang tertentu.
+                    </p>
+                  ) : (
+                    <p className="mt-1.5 text-[9px] text-slate-400">
+                      Menentukan lingkup data yang bisa dilihat dan
+                      disetujui akun ini.
+                    </p>
+                  )}
                 </div>
               </div>
 
-              {/* =================================================
-                  KEAMANAN DAN STATUS
-              ================================================= */}
+               {/* =================================================
+                   KEAMANAN DAN STATUS
+               ================================================= */}
 
-              <div className="mt-5">
-                <p className="mb-2.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400">
-                  Keamanan dan status
-                </p>
+               <div className="mt-5">
+                 <p className="mb-2.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                   Keamanan dan status
+                 </p>
 
-                {/* RADIO EMAIL */}
+                 {/* TODO: Opsi "Kirim link undangan lewat email" disembunyikan sementara — infrastruktur email (nodemailer/SMTP + activation token) belum diimplementasikan. Aktifkan kembali setelah backend siap. */}
 
-                <label className="flex cursor-pointer items-center gap-2 text-[11px] text-slate-700">
-                  <input
-                    type="radio"
-                    name="metode_aktivasi"
-                    value="email"
-                    checked={
-                      newUser.metode_aktivasi ===
-                      "email"
-                    }
-                    onChange={() =>
-                      setNewUser({
-                        ...newUser,
-                        metode_aktivasi: "email",
-                        password: "",
-                      })
-                    }
-                    className="h-3.5 w-3.5 accent-slate-700"
-                  />
+                 <div className="flex items-center gap-2 text-[11px] text-slate-700">
+                   <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-slate-900 text-[9px] font-bold text-white">1</span>
+                   <span>Metode aktivasi: Password sementara (manual)</span>
+                 </div>
 
-                  <span>
-                    Kirim link undangan lewat email
-                  </span>
-                </label>
+                 {/* PASSWORD MANUAL */}
 
-                {/* RADIO MANUAL */}
-
-                <label className="mt-2 flex cursor-pointer items-center gap-2 text-[11px] text-slate-700">
-                  <input
-                    type="radio"
-                    name="metode_aktivasi"
-                    value="manual"
-                    checked={
-                      newUser.metode_aktivasi ===
-                      "manual"
-                    }
-                    onChange={() =>
-                      setNewUser({
-                        ...newUser,
-                        metode_aktivasi: "manual",
-                      })
-                    }
-                    className="h-3.5 w-3.5 accent-slate-700"
-                  />
-
-                  <span>
-                    Buat password sementara secara manual
-                  </span>
-                </label>
-
-                {/* PASSWORD MANUAL */}
-
-                {newUser.metode_aktivasi ===
-                  "manual" && (
-                  <div className="mt-2.5">
-                    <input
-                      type="password"
-                      value={newUser.password}
-                      onChange={(event) =>
-                        setNewUser({
-                          ...newUser,
-                          password:
-                            event.target.value,
-                        })
-                      }
-                      placeholder="Masukkan password sementara"
-                      className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-300 focus:ring-2 focus:ring-slate-100"
-                    />
-                  </div>
-                )}
+                 <div className="mt-2.5">
+                   <input
+                     type="password"
+                     value={newUser.password}
+                     onChange={(event) =>
+                       setNewUser({
+                         ...newUser,
+                         password:
+                           event.target.value,
+                       })
+                     }
+                     placeholder="Masukkan password sementara"
+                     className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-300 focus:ring-2 focus:ring-slate-100"
+                   />
+                 </div>
 
                 {/* STATUS */}
 
@@ -1724,13 +1650,76 @@ export default function UsersPage() {
                    {isSaving
                      ? "Menyimpan..."
                      : "Simpan Perubahan"}
-                 </button>
-               </div>
-             </div>
-           </div>
-         </div>
-       )}
-     </div>
-   );
- }
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showTempPasswordModal && (
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/40 p-3 sm:p-4"
+            onClick={() => setShowTempPasswordModal(false)}
+          >
+            <div
+              className="w-full max-w-[480px] overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
+                <div className="min-w-0 pr-4">
+                  <h2 className="text-base font-semibold leading-tight text-slate-900">
+                    Password Sementara
+                  </h2>
+                  <p className="mt-1 text-[11px] leading-[1.4] text-slate-500">
+                    Bagikan password ini kepada pengguna. Password ini hanya ditampilkan sekali.
+                  </p>
+                </div>
+              </div>
+
+              <div className="px-5 py-4">
+                <div className="flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5 text-[10px] text-amber-700">
+                  <ShieldAlert className="h-4 w-4 text-amber-500 shrink-0" />
+                  <span>Simpan dan bagikan password ini secara aman. Setelah ditutup, password tidak akan ditampilkan kembali.</span>
+                </div>
+
+                <div className="mt-4">
+                  <label className="mb-1.5 block text-[11px] font-medium text-slate-700">
+                    Password Sementara
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={tempPassword}
+                      className="h-9 flex-1 rounded-lg border border-slate-200 bg-[#FAF8F5] px-3 text-xs text-slate-700 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(tempPassword);
+                      }}
+                      className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-medium text-slate-600 transition hover:bg-slate-50"
+                    >
+                      Salin
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-0 flex justify-end gap-2 border-t border-slate-200 px-5 py-3">
+                <button
+                  type="button"
+                  onClick={() => setShowTempPasswordModal(false)}
+                  className="h-8 rounded-lg bg-slate-900 px-3.5 text-[10px] font-semibold text-white transition hover:bg-slate-800"
+                >
+                  Saya sudah menyimpan password
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 

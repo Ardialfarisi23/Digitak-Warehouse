@@ -21,6 +21,27 @@ const login = async (req, res, next) => {
   }
 };
 
+const changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return response.error(res, "Tidak dapat mengidentifikasi pengguna.", 401);
+    }
+
+    const result = await authService.changePassword(userId, currentPassword, newPassword);
+
+    return response.success(
+      res,
+      result.message,
+      result
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+
 const refresh = async (req, res, next) => {
   try {
     const { refreshToken } = req.body;
@@ -76,6 +97,7 @@ const me = async (req, res, next) => {
 
 module.exports = {
     login,
+    changePassword,
     refresh,
     logout,
     me

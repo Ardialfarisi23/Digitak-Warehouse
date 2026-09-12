@@ -14,6 +14,7 @@ model user_account {
   password_hash                   String
   role                            user_role
   is_aktif                        Boolean                     @default(true)
+  must_change_password             Boolean                     @default(false)
   created_at                      DateTime                    @default(now())
   updated_at                      DateTime                    @default(now())
   approval_logs                   approval_log[]
