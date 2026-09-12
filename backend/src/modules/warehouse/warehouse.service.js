@@ -18,7 +18,32 @@ const create = async (data, userId) => {
     updated_by: Number(userId),
   };
 
-  const result = await warehouseRepository.create(createData);
+  const defaultZonaLayout = [
+    { kode_zona: "A", nama_zona: "Zona A", tipe_zona: "Indoor", status_kecukupan: "CUKUP" },
+    { kode_zona: "B", nama_zona: "Zona B", tipe_zona: "Indoor", status_kecukupan: "CUKUP" },
+    { kode_zona: "C", nama_zona: "Zona C", tipe_zona: "Outdoor", status_kecukupan: "CUKUP" },
+    { kode_zona: "D", nama_zona: "Zona D", tipe_zona: "Outdoor", status_kecukupan: "CUKUP" },
+  ];
+
+  const result = await prisma.$transaction(async (tx) => {
+    const warehouse = await tx.gudang.create({
+      data: createData,
+    });
+
+    for (const zona of defaultZonaLayout) {
+      await tx.zona_gudang.create({
+        data: {
+          gudang_id: warehouse.gudang_id,
+          kode_zona: zona.kode_zona,
+          nama_zona: zona.nama_zona,
+          tipe_zona: zona.tipe_zona,
+          status_kecukupan: zona.status_kecukupan,
+        },
+      });
+    }
+
+    return warehouse;
+  });
 
   if (result.project_id) {
     try {

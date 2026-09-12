@@ -25,23 +25,17 @@ router.post(
 router.get("/", authenticate, zoneController.findAll);
 router.get("/:code", authenticate, zoneController.findByCode);
 router.put(
-  "/:code",
+  "/:zona_id",
   authenticate,
   authorize("ADMIN"),
   validate(updateZoneSchema),
-  zoneController.update
+  zoneController.updateById
 );
 router.delete(
-  "/:code",
+  "/:zona_id",
   authenticate,
   authorize("ADMIN"),
-  zoneController.softDelete
-);
-router.patch(
-  "/:code/restore",
-  authenticate,
-  authorize("ADMIN"),
-  zoneController.restore
+  zoneController.deleteById
 );
 router.patch(
   "/:zona_id/utilization-status",
