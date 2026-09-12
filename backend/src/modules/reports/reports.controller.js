@@ -4,6 +4,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const XLSX = require("xlsx");
+const ExcelJS = require("exceljs");
 const prisma = require("../../config/prisma");
 const reportsRepository = require("./reports.repository");
 
@@ -20,6 +21,166 @@ const getAuditLogs = async (req, res, next) => {
   try {
     const result = await reportsService.getAuditLogs(req.query);
     return response.success(res, "Log audit berhasil diambil.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const exportAuditLogExcel = async (req, res, next) => {
+  try {
+    const result = await reportsService.exportAuditLog(req.query);
+    const rows = result.data;
+    const truncated = result.meta.truncated;
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Audit Log");
+
+    const headerFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4F46E5" } };
+    const headerFont = { bold: true, color: { argb: "FFFFFFFF" } };
+    const borderStyle = {
+      top: { style: "thin" },
+      left: { style: "thin" },
+      bottom: { style: "thin" },
+      right: { style: "thin" },
+    };
+
+    const headers = ["Waktu", "Pengguna", "Peran", "Aksi", "Entitas Terkait", "Referensi Tambahan"];
+    headers.forEach((header, index) => {
+      const cell = worksheet.getCell(1, index + 1);
+      cell.value = header;
+      cell.font = headerFont;
+      cell.fill = headerFill;
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.border = borderStyle;
+    });
+
+    rows.forEach((row, rowIndex) => {
+      const excelRow = rowIndex + 2;
+      const ds = row.data_sesudah || {};
+      const entityLabel = (() => {
+        const kode = ds.kode_tiket || row.data_sebelum?.kode_tiket;
+        if (kode) return kode;
+        if (row.entity_type && row.entity_id && row.entity_id !== "0") {
+          return `${row.entity_type} #${row.entity_id}`;
+        }
+        return row.entity_type || "-";
+      })();
+      const extraRef = (() => {
+        const parts = [];
+        if (ds.source_file || ds.filename || ds.nama_file) {
+          parts.push(ds.source_file || ds.filename || ds.nama_file);
+        }
+        if (ds.username_target || ds.target_user || ds.user_target) {
+          parts.push(`user: ${ds.username_target || ds.target_user || ds.user_target}`);
+        }
+        if (ds.catatan) {
+          parts.push(ds.catatan);
+        }
+        return parts.length > 0 ? parts.join(" | ") : "—";
+      })();
+
+      const values = [
+        row.created_at ? new Date(row.created_at).toLocaleString("id-ID") : "-",
+        row.actor_nama || "-",
+        row.actor_role || "-",
+        row.aksi || "-",
+        entityLabel,
+        extraRef,
+      ];
+
+      values.forEach((value, colIndex) => {
+        const cell = worksheet.getCell(excelRow, colIndex + 1);
+        cell.value = value;
+        cell.border = borderStyle;
+        cell.alignment = { vertical: "middle", wrapText: true };
+      });
+    });
+
+    worksheet.getRow(1).height = 22;
+    for (let i = 1; i <= headers.length; i++) {
+      worksheet.getColumn(i).width = 28;
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const filename = `Audit-Log-Export_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename=${encodeURIComponent(filename)}`);
+    if (truncated) {
+      res.setHeader("X-Export-Truncated", "true");
+      res.setHeader("X-Export-Truncated-Message", "Data melebihi batas 10.000 baris. Mohon persempit filter tanggal.");
+    }
+    return res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const exportStockHistoryExcel = async (req, res, next) => {
+  try {
+    const result = await reportsService.exportStockHistory(req.query);
+    const rows = result.data;
+    const truncated = result.meta.truncated;
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Riwayat Stok");
+
+    const headerFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4F46E5" } };
+    const headerFont = { bold: true, color: { argb: "FFFFFFFF" } };
+    const borderStyle = {
+      top: { style: "thin" },
+      left: { style: "thin" },
+      bottom: { style: "thin" },
+      right: { style: "thin" },
+    };
+
+    const headers = ["Tanggal", "Kode Tiket", "Jenis Transaksi", "Status", "Diproses Oleh", "Kode Perangkat", "Nama Barang", "Qty", "Zona", "Asal", "Tujuan"];
+    headers.forEach((header, index) => {
+      const cell = worksheet.getCell(1, index + 1);
+      cell.value = header;
+      cell.font = headerFont;
+      cell.fill = headerFill;
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.border = borderStyle;
+    });
+
+    rows.forEach((row, rowIndex) => {
+      const excelRow = rowIndex + 2;
+      const values = [
+        row.waktu_mutasi ? new Date(row.waktu_mutasi).toLocaleString("id-ID") : "-",
+        row.kode_tiket || "-",
+        row.tipe_surat_jalan || "-",
+        row.status_surat_jalan || "-",
+        row.diproses_oleh || "-",
+        row.kode_perangkat || "-",
+        row.nama_barang || "-",
+        `${row.qty}${row.satuan && row.satuan !== "-" ? ` ${row.satuan}` : ""}`,
+        row.zona_kode && row.zona_kode !== "-" ? `${row.zona_gudang} / ${row.zona_kode}` : "—",
+        row.gudang_asal || "-",
+        row.gudang_tujuan || "-",
+      ];
+
+      values.forEach((value, colIndex) => {
+        const cell = worksheet.getCell(excelRow, colIndex + 1);
+        cell.value = value;
+        cell.border = borderStyle;
+        cell.alignment = { vertical: "middle", wrapText: true };
+      });
+    });
+
+    worksheet.getRow(1).height = 22;
+    for (let i = 1; i <= headers.length; i++) {
+      worksheet.getColumn(i).width = 28;
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const filename = `Riwayat-Stok-Export_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename=${encodeURIComponent(filename)}`);
+    if (truncated) {
+      res.setHeader("X-Export-Truncated", "true");
+      res.setHeader("X-Export-Truncated-Message", "Data melebihi batas 10.000 baris. Mohon persempit filter tanggal.");
+    }
+    return res.send(buffer);
   } catch (err) {
     next(err);
   }
@@ -368,7 +529,9 @@ const getReconciliationUploadLogs = async (req, res, next) => {
 
 module.exports = {
   getStockHistory,
+  exportStockHistoryExcel,
   getAuditLogs,
+  exportAuditLogExcel,
   getHardwareReconciliation,
   getHardwareReconciliationPerTiket,
   getHardwareReconciliationDetailed,

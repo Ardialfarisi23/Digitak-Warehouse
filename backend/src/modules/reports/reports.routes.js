@@ -7,7 +7,9 @@ const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
 
 router.get("/stock-history", authenticate, authorize("ADMIN"), reportsController.getStockHistory);
+router.get("/stock-history/export", authenticate, authorize("ADMIN"), reportsController.exportStockHistoryExcel);
 router.get("/audit-log", authenticate, authorize("ADMIN"), reportsController.getAuditLogs);
+router.get("/audit-log/export", authenticate, authorize("ADMIN"), reportsController.exportAuditLogExcel);
 router.get("/reconciliation-upload-logs", authenticate, authorize("ADMIN"), reportsController.getReconciliationUploadLogs);
 router.get("/hardware-reconciliation", authenticate, authorize("ADMIN"), reportsController.getHardwareReconciliation);
 router.get("/hardware-reconciliation/per-tiket", authenticate, authorize("ADMIN"), reportsController.getHardwareReconciliationPerTiket);

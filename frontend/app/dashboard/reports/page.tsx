@@ -18,6 +18,8 @@ import {
   ArrowUpRight,
   XCircle,
   Upload,
+  Download,
+  Loader2,
 } from "lucide-react";
 import { useApi } from "@/lib/api";
 
@@ -132,7 +134,15 @@ function TabAuditLog({ get }) {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [detailRow, setDetailRow] = useState(null);
+  const [exporting, setExporting] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "warning" } | null>(null);
   const limit = 20;
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -171,6 +181,49 @@ function TabAuditLog({ get }) {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const handleExportAuditLog = async () => {
+    setExporting(true);
+    setToast(null);
+    try {
+      const params = new URLSearchParams();
+      if (q.trim()) params.set("search", q.trim());
+      if (q.trim()) params.set("kodeTiket", q.trim());
+      if (actorRole) params.set("actorRole", actorRole);
+      if (aksi) params.set("action", aksi);
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
+
+      const res = await get(`${API_BASE}/api/reports/audit-log/export?${params.toString()}`);
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json?.message || "Gagal mengekspor audit log.");
+      }
+
+      const truncated = res.headers.get("X-Export-Truncated") === "true";
+      const truncatedMessage = res.headers.get("X-Export-Truncated-Message");
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Audit-Log-Export_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      if (truncated && truncatedMessage) {
+        setToast({ message: truncatedMessage, type: "warning" });
+      } else {
+        setToast({ message: "Audit Log berhasil diekspor.", type: "success" });
+      }
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Gagal mengekspor Audit Log.", type: "error" });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const aksiList = ["create", "update", "delete", "approve", "receive_inbound", "approve_inbound", "approve_outbound", "confirm_distributed", "reject_inbound", "reject_outbound"];
 
@@ -312,7 +365,81 @@ function TabAuditLog({ get }) {
             className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
           />
         </div>
+
+        <button
+          type="button"
+          onClick={handleExportAuditLog}
+          disabled={exporting}
+          className="flex items-center gap-2 rounded-full bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {exporting ? (
+            <span className="flex items-center gap-2">
+              <Loader2 size={16} className="animate-spin" />
+              Mengekspor...
+            </span>
+          ) : (
+            <span className="flex items-center gap-2">
+              <Download size={16} />
+              Ekspor
+            </span>
+          )}
+        </button>
       </div>
+
+      {toast && (
+        <div
+          className={[
+            "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
+            toast.type === "success"
+              ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
+              : toast.type === "warning"
+                ? "border-amber-200/80 bg-amber-50/95 text-amber-800"
+                : "border-rose-200/80 bg-rose-50/95 text-rose-800",
+          ].join(" ")}
+        >
+          <div
+            className={[
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+              toast.type === "success"
+                ? "bg-emerald-100"
+                : toast.type === "warning"
+                  ? "bg-amber-100"
+                  : "bg-rose-100",
+            ].join(" ")}
+          >
+            {toast.type === "success" ? (
+              <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : toast.type === "warning" ? (
+              <svg className="h-5 w-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+          </div>
+          <p className="flex-1 leading-snug">{toast.message}</p>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className={[
+              "ml-2 shrink-0 rounded-full p-1 transition-colors",
+              toast.type === "success"
+                ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
+                : toast.type === "warning"
+                  ? "text-amber-400 hover:bg-amber-100 hover:text-amber-600"
+                  : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
+            ].join(" ")}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
@@ -681,6 +808,61 @@ function TabRiwayatStok({ get }) {
     fetchData();
   }, [fetchData]);
 
+  const [exporting, setExporting] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "warning" } | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  const handleExportRiwayatStok = async () => {
+    setExporting(true);
+    setToast(null);
+    try {
+      const params = new URLSearchParams();
+      if (q.trim()) params.set("search", q.trim());
+      if (gudang) params.set("warehouseId", gudang);
+      if (zona) params.set("zonaId", zona);
+      if (project) params.set("projectId", project);
+      if (kategori) params.set("kategoriId", kategori);
+      if (jenis) params.set("type", jenis);
+      if (status) params.set("status", status);
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
+
+      const res = await get(`${API_BASE}/api/reports/stock-history/export?${params.toString()}`);
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json?.message || "Gagal mengekspor riwayat stok.");
+      }
+
+      const truncated = res.headers.get("X-Export-Truncated") === "true";
+      const truncatedMessage = res.headers.get("X-Export-Truncated-Message");
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Riwayat-Stok-Export_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      if (truncated && truncatedMessage) {
+        setToast({ message: truncatedMessage, type: "warning" });
+      } else {
+        setToast({ message: "Riwayat Stok berhasil diekspor.", type: "success" });
+      }
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Gagal mengekspor Riwayat Stok.", type: "error" });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const jenisLabel = {
     inbound: "Inbound",
     outbound: "Outbound",
@@ -811,7 +993,81 @@ function TabRiwayatStok({ get }) {
             className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
           />
         </div>
+
+        <button
+          type="button"
+          onClick={handleExportRiwayatStok}
+          disabled={exporting}
+          className="flex items-center gap-2 rounded-full bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {exporting ? (
+            <span className="flex items-center gap-2">
+              <Loader2 size={16} className="animate-spin" />
+              Mengekspor...
+            </span>
+          ) : (
+            <span className="flex items-center gap-2">
+              <Download size={16} />
+              Ekspor
+            </span>
+          )}
+        </button>
       </div>
+
+      {toast && (
+        <div
+          className={[
+            "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
+            toast.type === "success"
+              ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
+              : toast.type === "warning"
+                ? "border-amber-200/80 bg-amber-50/95 text-amber-800"
+                : "border-rose-200/80 bg-rose-50/95 text-rose-800",
+          ].join(" ")}
+        >
+          <div
+            className={[
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+              toast.type === "success"
+                ? "bg-emerald-100"
+                : toast.type === "warning"
+                  ? "bg-amber-100"
+                  : "bg-rose-100",
+            ].join(" ")}
+          >
+            {toast.type === "success" ? (
+              <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : toast.type === "warning" ? (
+              <svg className="h-5 w-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+          </div>
+          <p className="flex-1 leading-snug">{toast.message}</p>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className={[
+              "ml-2 shrink-0 rounded-full p-1 transition-colors",
+              toast.type === "success"
+                ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
+                : toast.type === "warning"
+                  ? "text-amber-400 hover:bg-amber-100 hover:text-amber-600"
+                  : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
+            ].join(" ")}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
