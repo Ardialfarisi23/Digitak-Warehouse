@@ -13,7 +13,7 @@ function SidebarSkeleton() {
 
   return (
     <aside
-      className="fixed left-0 top-0 z-30 flex h-screen flex-col items-center bg-[#F5F3EF] py-6 px-2 select-none border-r border-stone-200/60 shadow-xs animate-pulse transition-all duration-300"
+      className="fixed left-0 top-0 z-[60] flex h-screen flex-col items-center bg-[#F5F3EF] py-6 px-2 select-none border-r border-stone-200/60 shadow-xs animate-pulse transition-all duration-300"
       style={{ width: `${width}px` }}
     >
       <div className="w-12 h-12 bg-stone-300/50 rounded-full mb-8"></div>
@@ -58,7 +58,7 @@ export default function StaffLayout({
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-[#FAFAF8] overflow-x-hidden">
+      <div className="min-h-screen bg-[#FAFAF8] overflow-visible">
         <CompactSidebar userRole={userRole} />
         <main className="mt-16 min-h-screen transition-all duration-300" style={{ marginLeft: `${width}px` }}>
           {children}

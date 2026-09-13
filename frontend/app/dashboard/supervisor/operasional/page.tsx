@@ -46,6 +46,7 @@ type Item = {
 type Warehouse = {
   gudang_id: number | string;
   nama_gudang: string;
+  tipe?: string;
 };
 
 const FALLBACK_WAREHOUSES: Warehouse[] = [
@@ -177,7 +178,8 @@ export default function SupervisorOperasionalPage() {
           : [];
         const list = rawList.map((w: any) => ({
           gudang_id: w.gudang_id,
-          nama_gudang: w.nama_gudang,
+          nama_gudang: w.nama_gudang + (w.tipe === "dadakan" ? " (Dadakan)" : ""),
+          tipe: w.tipe,
         }));
         if (list.length) {
           setWarehouses(list);
@@ -548,11 +550,11 @@ export default function SupervisorOperasionalPage() {
               className="bg-transparent text-slate-600 outline-none"
             >
               <option value="">Semua Gudang</option>
-              {warehouses.map((wh) => (
-                <option key={wh.gudang_id} value={String(wh.gudang_id)}>
-                  {wh.nama_gudang}
-                </option>
-              ))}
+                    {warehouses.map((wh) => (
+                      <option key={wh.gudang_id} value={String(wh.gudang_id)}>
+                        {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Dadakan)" : ""}
+                      </option>
+                    ))}
             </select>
           </label>
           {selectedWarehouseName && (
@@ -926,7 +928,7 @@ export default function SupervisorOperasionalPage() {
                     <option value="">Pilih gudang (opsional)</option>
                     {warehouses.map((wh) => (
                       <option key={wh.gudang_id} value={String(wh.gudang_id)}>
-                        {wh.nama_gudang}
+                        {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Dadakan)" : ""}
                       </option>
                     ))}
                   </select>
@@ -1067,7 +1069,7 @@ export default function SupervisorOperasionalPage() {
                     <option value="">Pilih gudang (opsional)</option>
                     {warehouses.map((wh) => (
                       <option key={wh.gudang_id} value={String(wh.gudang_id)}>
-                        {wh.nama_gudang}
+                        {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Dadakan)" : ""}
                       </option>
                     ))}
                   </select>
@@ -1139,7 +1141,7 @@ export default function SupervisorOperasionalPage() {
                     <option value="">Pilih gudang (opsional)</option>
                     {warehouses.map((wh) => (
                       <option key={wh.gudang_id} value={String(wh.gudang_id)}>
-                        {wh.nama_gudang}
+                        {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Dadakan)" : ""}
                       </option>
                     ))}
                   </select>

@@ -455,6 +455,84 @@ export default function SpvWarehouseLayoutPage() {
   }
 
   /* =========================================================
+     RENDER FLOOR PLAN
+  ========================================================= */
+
+  function renderFloorPlan() {
+    const zones = sortedZones;
+    const count = zones.length;
+
+    if (count === 0) {
+      return (
+        <div className="flex min-h-[360px] items-center justify-center bg-[#fafafa]">
+          <div className="text-center">
+            <Boxes size={32} className="mx-auto mb-3 text-[#b0b7c0]" />
+            <p className="text-[13px] font-semibold text-[#667085]">Belum ada zona</p>
+            <p className="mt-1 text-[12px] text-[#98a2b3]">Tambahkan zona terlebih dahulu</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (count === 1) {
+      return (
+        <div className="flex min-h-[360px] items-center justify-center p-6">
+          <div className="w-full max-w-[420px]">{renderZone(zones[0], zones[0].kode_zona)}</div>
+        </div>
+      );
+    }
+
+    if (count === 2) {
+      return (
+        <div className="grid min-h-[360px] grid-cols-2 gap-4">
+          {zones.map((zone) => (
+            <div key={zone.zona_id}>{renderZone(zone, zone.kode_zona)}</div>
+          ))}
+        </div>
+      );
+    }
+
+    if (count === 3) {
+      return (
+        <div className="grid min-h-[360px] grid-cols-2 gap-4">
+          <div>{renderZone(zones[0], zones[0].kode_zona)}</div>
+          <div>{renderZone(zones[1], zones[1].kode_zona)}</div>
+          <div className="col-span-2">{renderZone(zones[2], zones[2].kode_zona)}</div>
+        </div>
+      );
+    }
+
+    if (count === 4) {
+      return (
+        <div className="grid min-h-[360px] grid-cols-[1fr_90px_1fr] grid-rows-[1fr_1fr]">
+          <div className="border-b border-r border-white">{renderZone(zones[0], "Zona A")}</div>
+          <div className="relative flex items-center justify-center bg-[#e8fbe8]">
+            <div className="absolute inset-y-0 left-0 w-px bg-[#d6efd6]" />
+            <div className="absolute inset-y-0 right-0 w-px bg-[#d6efd6]" />
+            <span className="rotate-[-90deg] text-[17px] font-extrabold tracking-[-0.2px] text-[#111827]">Lorong</span>
+          </div>
+          <div className="border-b border-l border-white">{renderZone(zones[1], "Zona B")}</div>
+          <div className="border-r border-white">{renderZone(zones[2], "Zona C")}</div>
+          <div className="relative flex items-center justify-center bg-[#e8fbe8]">
+            <div className="absolute inset-y-0 left-0 w-px bg-[#d6efd6]" />
+            <div className="absolute inset-y-0 right-0 w-px bg-[#d6efd6]" />
+            <span className="rotate-[-90deg] text-[17px] font-extrabold tracking-[-0.2px] text-[#111827]">Lorong</span>
+          </div>
+          <div className="border-l border-white">{renderZone(zones[3], "Zona D")}</div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid min-h-[360px] grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {zones.map((zone) => (
+          <div key={zone.zona_id}>{renderZone(zone, zone.kode_zona)}</div>
+        ))}
+      </div>
+    );
+  }
+
+  /* =========================================================
      LOADING STATE
   ========================================================= */
 
@@ -491,7 +569,7 @@ export default function SpvWarehouseLayoutPage() {
               >
                 {warehouses.map((warehouse) => (
                   <option key={warehouse.gudang_id} value={warehouse.gudang_id}>
-                    {warehouse.nama_gudang}
+                    {warehouse.nama_gudang} {warehouse.tipe === "dadakan" ? "(Dadakan)" : ""}
                   </option>
                 ))}
               </select>
@@ -520,29 +598,24 @@ export default function SpvWarehouseLayoutPage() {
           </div>
 
           <div className="mb-4">
-            <h2 className="text-[19px] font-bold tracking-[-0.2px] text-[#111827]">Denah Gudang</h2>
-            <p className="mt-1 text-[13px] text-[#6b7280]">{selectedWarehouse?.nama_gudang || "Gudang"}</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <div>
+                <h2 className="text-[19px] font-bold tracking-[-0.2px] text-[#111827]">Denah Gudang</h2>
+                <p className="mt-1 text-[13px] text-[#6b7280]">{selectedWarehouse?.nama_gudang || "Gudang"}</p>
+              </div>
+
+              {selectedWarehouse?.tipe === "dadakan" && (
+                <span className="inline-flex items-center rounded-full border border-[#d6efd6] bg-[#e8fbe8] px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-[#14532d]">
+                  Dadakan
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="flex justify-center">
             <div className="w-full max-w-[900px]">
               <div className="overflow-hidden rounded-[10px] border border-[#dfe3e8] bg-[#e8fbe8]">
-                <div className="grid min-h-[360px] grid-cols-[1fr_90px_1fr] grid-rows-[1fr_1fr] md:min-h-[400px]">
-                  <div className="border-b border-r border-white">{renderZone(zoneA, "Zona A")}</div>
-                  <div className="relative flex items-center justify-center bg-[#e8fbe8]">
-                    <div className="absolute inset-y-0 left-0 w-px bg-[#d6efd6]" />
-                    <div className="absolute inset-y-0 right-0 w-px bg-[#d6efd6]" />
-                    <span className="rotate-[-90deg] text-[17px] font-extrabold tracking-[-0.2px] text-[#111827]">Lorong</span>
-                  </div>
-                  <div className="border-b border-l border-white">{renderZone(zoneB, "Zona B")}</div>
-                  <div className="border-r border-white">{renderZone(zoneC, "Zona C")}</div>
-                  <div className="relative flex items-center justify-center bg-[#e8fbe8]">
-                    <div className="absolute inset-y-0 left-0 w-px bg-[#d6efd6]" />
-                    <div className="absolute inset-y-0 right-0 w-px bg-[#d6efd6]" />
-                    <span className="rotate-[-90deg] text-[17px] font-extrabold tracking-[-0.2px] text-[#111827]">Lorong</span>
-                  </div>
-                  <div className="border-l border-white">{renderZone(zoneD, "Zona D")}</div>
-                </div>
+                {renderFloorPlan()}
               </div>
             </div>
           </div>

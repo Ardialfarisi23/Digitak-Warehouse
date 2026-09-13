@@ -638,7 +638,7 @@ function TabRiwayatStok({ get }) {
   const [q, setQ] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [warehouses, setWarehouses] = useState<{ id: string; nama: string }[]>([]);
+  const [warehouses, setWarehouses] = useState<{ id: string; nama: string; tipe?: string }[]>([]);
   const [zonas, setZonas] = useState<{ id: string; gudangId: string; label: string }[]>([]);
   const [projects, setProjects] = useState<{ id: string; label: string }[]>([]);
   const [kategoris, setKategoris] = useState<{ id: string; nama: string }[]>([]);
@@ -689,7 +689,7 @@ function TabRiwayatStok({ get }) {
 
         if (whRes.ok) {
           setWarehouses(
-            readList(whJson).map((w) => ({ id: String(w.gudang_id), nama: w.nama_gudang }))
+            readList(whJson).map((w) => ({ id: String(w.gudang_id), nama: w.nama_gudang + (w.tipe === "dadakan" ? " (Dadakan)" : ""), tipe: w.tipe }))
           );
         }
 

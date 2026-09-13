@@ -90,7 +90,7 @@ export default function AdminDeliveryPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [warehouses, setWarehouses] = useState<{ gudang_id: number; nama_gudang: string }[]>([]);
+  const [warehouses, setWarehouses] = useState<{ gudang_id: number; nama_gudang: string; tipe?: string }[]>([]);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   useEffect(() => {
@@ -103,7 +103,7 @@ export default function AdminDeliveryPage() {
 
   useEffect(() => {
     get(`${API_BASE}/api/warehouses?limit=100`).then((r) => r.json()).then((json) => {
-      setWarehouses(Array.isArray(json?.data) ? json.data : []);
+      setWarehouses(Array.isArray(json?.data) ? json.data.map((w: any) => ({ ...w, nama_gudang: w.nama_gudang + (w.tipe === "dadakan" ? " (Dadakan)" : "") })) : []);
     }).catch(() => {
       setWarehouses([]);
     });
