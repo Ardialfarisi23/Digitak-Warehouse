@@ -95,6 +95,7 @@ interface FieldConfig {
   required?: boolean;
   placeholder?: string;
   options?: string[];
+  helperText?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -227,10 +228,11 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
   ],
   warehouses: [
     { key: "nama_gudang", label: "Nama Gudang", type: "text", required: true },
-    { key: "tipe", label: "Tipe", type: "select", required: true, options: [
+    { key: "tipe", label: "Tipe", type: "select", required: true, helperText: "Gudang Tetap: lokasi permanen (Kantor Pusat/Cabang). Gudang Dadakan: staging sementara di lokasi klien.", options: [
       { value: "tetap", label: "Tetap" },
-      { value: "dadakan", label: "Transit (Dadakan)" },
+      { value: "dadakan", label: "Dadakan" },
     ] },
+    { key: "project_id", label: "Project", type: "select", required: false, options: [] },
     { key: "alamat", label: "Alamat", type: "textarea" },
     { key: "latitude", label: "Latitude", type: "text" },
     { key: "longitude", label: "Longitude", type: "text" },
@@ -588,6 +590,8 @@ function FormModal({
         const direct = (record as any)?.gudang_id;
         const nested = (record as any)?.gudang?.gudang_id;
         initial[field.key] = direct ?? nested ?? "";
+      } else if (field.key === "tipe" && tab === "warehouses" && mode === "create") {
+        initial[field.key] = "tetap";
       } else {
         initial[field.key] = record?.[field.key] ?? "";
       }
@@ -600,7 +604,8 @@ function FormModal({
   const [error, setError] = useState<string | null>(null);
   const [categoryOptions, setCategoryOptions] = useState<Array<{ value: number; label: string }>>([]);
   const [unitOptions, setUnitOptions] = useState<Array<{ value: number; label: string }>>([]);
-  const [warehouseOptions, setWarehouseOptions] = useState<Array<{ value: number; label: string }>>([]);
+  const [warehouseOptions, setWarehouseOptions] = useState<Array<{ value: number; label: string; tipe?: string }>>([]);
+  const [projectOptions, setProjectOptions] = useState<Array<{ value: number; label: string }>>([]);
 
   useEffect(() => {
     if (open && tab === "items") {
@@ -644,10 +649,30 @@ function FormModal({
         .then((result) => {
           if (cancelled) return;
           const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
-          setWarehouseOptions(list.map((w: any) => ({ value: Number(w.gudang_id), label: w.nama_gudang })));
+          setWarehouseOptions(list.map((w: any) => ({ value: Number(w.gudang_id), label: w.nama_gudang + (w.tipe === "dadakan" ? " (Dadakan)" : ""), tipe: w.tipe })));
         })
         .catch(() => {
           if (!cancelled) setWarehouseOptions([]);
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (open && tab === "warehouses") {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      let cancelled = false;
+
+      get(`${baseUrl}/api/projects`)
+        .then((res) => res.json())
+        .then((result) => {
+          if (cancelled) return;
+          const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+          setProjectOptions(list.map((p: any) => ({ value: Number(p.project_id), label: p.nama_project || p.title || `Project ${p.project_id}` })));
+        })
+        .catch(() => {
+          if (!cancelled) setProjectOptions([]);
         });
 
       return () => {
@@ -672,8 +697,27 @@ function FormModal({
       });
     }
 
+    if (tab === "warehouses") {
+      return fields.map((field) => {
+        if (field.key === "project_id") return { ...field, options: projectOptions };
+        return field;
+      });
+    }
+
     return fields;
-  }, [tab, fields, categoryOptions, unitOptions, warehouseOptions]);
+  }, [tab, fields, categoryOptions, unitOptions, warehouseOptions, projectOptions]);
+
+  const visibleFormFields = useMemo(() => {
+    if (tab === "warehouses") {
+      return formFields.filter((field) => {
+        if (field.key === "project_id") {
+          return form.tipe === "dadakan";
+        }
+        return true;
+      });
+    }
+    return formFields;
+  }, [tab, formFields, form.tipe]);
 
   useEffect(() => {
     if (open) {
@@ -718,6 +762,11 @@ function FormModal({
       return;
     }
 
+    if (tab === "warehouses" && form.tipe === "dadakan" && (!form.project_id || String(form.project_id).trim() === "")) {
+      setError("Gudang Dadakan wajib memiliki Project terkait.");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
 
@@ -754,6 +803,19 @@ function FormModal({
           } else {
             delete submitData[field.key];
           }
+        } else if (field.key === "project_id" && submitData[field.key] !== undefined && submitData[field.key] !== "") {
+          const numVal = Number(submitData[field.key]);
+          if (!Number.isNaN(numVal) && numVal > 0) {
+            submitData[field.key] = numVal;
+          } else {
+            delete submitData[field.key];
+          }
+        }
+      }
+
+      for (const key of Object.keys(submitData)) {
+        if (submitData[key] === "") {
+          delete submitData[key];
         }
       }
 
@@ -840,7 +902,7 @@ function FormModal({
   return (
     <Modal open={open} onClose={onClose} title={mode === "create" ? `Tambah ${tabLabel}` : `Edit ${tabLabel}`} subtitle={mode === "edit" ? getRecordTitle(tab, record) : undefined}>
       <form onSubmit={handleSubmit} className="space-y-4">
-        {formFields.map((field) => (
+        {visibleFormFields.map((field) => (
           <div key={field.key}>
             {field.type === "checkbox" ? (
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
@@ -892,14 +954,20 @@ function FormModal({
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-slate-500">
                   {field.label}
-                  {field.required && <span className="text-rose-500"> *</span>}
+                  {(field.required || (field.key === "project_id" && form.tipe === "dadakan")) && <span className="text-rose-500"> *</span>}
                 </label>
+
+                {field.helperText && <p className="mb-2 text-[11px] text-slate-400">{field.helperText}</p>}
+
+                {mode === "edit" && field.key === "tipe" && record?.dapat_ubah_tipe === false && (
+                  <p className="mb-2 text-[11px] text-amber-600">Tipe tidak dapat diubah karena gudang ini sudah memiliki stok atau lebih dari 1 zona.</p>
+                )}
 
                 {field.type === "select" ? (
                   <select
                     value={String(form[field.key] ?? "")}
                     onChange={(e) => handleChange(field.key, e.target.value)}
-                    disabled={field.key === "gudang_id" && form.posisi === "Supervisor"}
+                    disabled={field.key === "gudang_id" && form.posisi === "Supervisor" || field.key === "tipe" && mode === "edit" && record?.dapat_ubah_tipe === false}
                     className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400 disabled:opacity-60 disabled:bg-slate-50 disabled:cursor-not-allowed"
                   >
                     <option value="">Pilih {field.label.toLowerCase()}</option>
@@ -1618,7 +1686,20 @@ function MasterDataPageContent() {
                             );
                           }
 
-                          if (column === "gudang") {
+                           if (column === "tipe" && activeTab === "warehouses") {
+                             const tipeVal = String(value || "").toLowerCase();
+                             const isDadakan = tipeVal === "dadakan";
+
+                             return (
+                               <td key={column} className="px-3 py-3">
+                                 <span className={["inline-flex rounded-full px-3 py-1 text-xs font-semibold", isDadakan ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-500"].join(" ")}>
+                                   {isDadakan ? "Dadakan" : (value ? formatValue(value) : "-")}
+                                 </span>
+                               </td>
+                             );
+                           }
+
+                           if (column === "gudang") {
                             const gudangNama = (record as any)?.gudang?.nama_gudang;
                             return (
                               <td key={column} className="px-6 py-4 text-sm text-slate-600">

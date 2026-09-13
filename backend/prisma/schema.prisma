@@ -156,7 +156,7 @@ model titik_lapangan {
 model gudang {
   gudang_id               BigInt                 @id @default(autoincrement())
   nama_gudang             String
-  tipe                    gudang_tipe
+  tipe                    gudang_tipe @default(tetap)
   alamat                  String?
   project_id              BigInt?
   latitude                String?

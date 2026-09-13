@@ -120,7 +120,7 @@ export default function UsersPage() {
     }
   }, [user]);
 
-  const [warehouseOptions, setWarehouseOptions] = useState<Array<{ id: string; nama: string }>>([]);
+  const [warehouseOptions, setWarehouseOptions] = useState<Array<{ id: string; nama: string; tipe?: string }>>([]);
 
   /* =========================================================
      AMBIL DATA USER
@@ -187,7 +187,7 @@ export default function UsersPage() {
       .then((json) => {
         if (cancelled) return;
         const list = Array.isArray(json?.data) ? json.data : Array.isArray(json?.data?.data) ? json.data.data : Array.isArray(json) ? json : [];
-        setWarehouseOptions(list.map((w: any) => ({ id: String(w.gudang_id), nama: w.nama_gudang })));
+        setWarehouseOptions(list.map((w: any) => ({ id: String(w.gudang_id), nama: w.nama_gudang + (w.tipe === "dadakan" ? " (Dadakan)" : ""), tipe: w.tipe })));
       })
       .catch(() => {
         if (!cancelled) setWarehouseOptions([]);

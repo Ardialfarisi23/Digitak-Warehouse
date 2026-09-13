@@ -21,7 +21,7 @@ type ApiSuratJalan = {
   status: string;
   tanggal?: string;
   gudang_asal_id?: number | null;
-  gudang_asal?: { nama_gudang: string } | null;
+  gudang_asal?: { nama_gudang: string; tipe?: string } | null;
   gudang_tujuan?: { nama_gudang: string } | null;
   project_id?: number | null;
   items: ApiSuratJalanItem[];
@@ -257,6 +257,25 @@ export default function PickingDetailPage() {
     if (!data?.gudang_asal_id) return [];
     return zonas.filter((z) => Number(z.gudang_id) === Number(data.gudang_asal_id));
   }, [zonas, data]);
+
+  const isDadakanSingleZone = useMemo(() => {
+    return data?.gudang_asal?.tipe === "dadakan" && zonasForGudang.length === 1;
+  }, [data, zonasForGudang]);
+
+  useEffect(() => {
+    if (isDadakanSingleZone) {
+      const onlyZoneId = String(zonasForGudang[0].zona_id);
+      setZonaByItem((prev) => {
+        const next = { ...prev };
+        data.items.forEach((it) => {
+          if (!next[it.item_id]) {
+            next[it.item_id] = onlyZoneId;
+          }
+        });
+        return next;
+      });
+    }
+  }, [isDadakanSingleZone, zonasForGudang, data]);
 
   const tujuanLabel =
     data?.tujuan_tipe === "lapangan"
@@ -501,20 +520,27 @@ export default function PickingDetailPage() {
 
                 {!isSelesai && (
                   <td className="py-3">
-                    <select
-                      value={zonaByItem[item.item_id] || ""}
-                      onChange={(e) =>
-                        setZonaByItem((prev) => ({ ...prev, [item.item_id]: e.target.value }))
-                      }
-                      className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
-                    >
-                      <option value="">Pilih zona...</option>
-                      {zonasForGudang.map((z) => (
-                        <option key={z.zona_id} value={String(z.zona_id)}>
-                          {zonaLabel(z)}
-                        </option>
-                      ))}
-                    </select>
+                    {isDadakanSingleZone ? (
+                      <div className="flex items-center gap-2 rounded-md bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600">
+                        <MapPin size={14} className="text-[#E8632C]" />
+                        {zonaLabel(zonasForGudang[0])} <span className="text-[10px] text-slate-400">(otomatis)</span>
+                      </div>
+                    ) : (
+                      <select
+                        value={zonaByItem[item.item_id] || ""}
+                        onChange={(e) =>
+                          setZonaByItem((prev) => ({ ...prev, [item.item_id]: e.target.value }))
+                        }
+                        className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
+                      >
+                        <option value="">Pilih zona...</option>
+                        {zonasForGudang.map((z) => (
+                          <option key={z.zona_id} value={String(z.zona_id)}>
+                            {zonaLabel(z)}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                 )}
               </tr>

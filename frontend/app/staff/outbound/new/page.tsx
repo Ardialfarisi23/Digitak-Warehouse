@@ -742,7 +742,7 @@ export default function AjukanSuratJalanPage() {
                       <option value="">Pilih Gudang Asal...</option>
                       {warehouses.filter((w) => w.is_internal === true).map((w) => (
                         <option key={w.gudang_id} value={String(w.gudang_id)}>
-                          {w.nama_gudang} {w.tipe ? `(${w.tipe})` : ""}
+                          {w.nama_gudang} {w.tipe === "dadakan" ? "(Dadakan)" : ""}
                         </option>
                       ))}
                     </select>
@@ -809,7 +809,7 @@ export default function AjukanSuratJalanPage() {
                       <option value="">Pilih Gudang Tujuan...</option>
                       {warehouses.map((w) => (
                         <option key={w.gudang_id} value={String(w.gudang_id)}>
-                          {w.nama_gudang} {w.tipe ? `(${w.tipe})` : ""}
+                          {w.nama_gudang} {w.tipe === "dadakan" ? "(Dadakan)" : ""}
                         </option>
                       ))}
                     </select>
