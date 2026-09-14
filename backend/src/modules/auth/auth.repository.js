@@ -28,7 +28,36 @@ const updatePassword = async (userId, passwordHash) => {
   });
 };
 
+const createPasswordResetToken = async (data) => {
+  await prisma.password_reset_token.deleteMany({
+    where: { email: data.email },
+  });
+
+  return prisma.password_reset_token.create({
+    data,
+  });
+};
+
+const findPasswordResetToken = async (token, email) => {
+  return prisma.password_reset_token.findFirst({
+    where: {
+      token,
+      email,
+      expires: { gt: new Date() },
+    },
+  });
+};
+
+const deletePasswordResetToken = async (token) => {
+  return prisma.password_reset_token.deleteMany({
+    where: { token },
+  });
+};
+
 module.exports = {
   findByEmail,
   updatePassword,
+  createPasswordResetToken,
+  findPasswordResetToken,
+  deletePasswordResetToken,
 };
