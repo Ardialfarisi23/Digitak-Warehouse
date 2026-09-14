@@ -603,7 +603,7 @@ export default function WarehouseLayoutPage() {
       return (
         <div className="grid min-h-[360px] grid-cols-2 gap-4">
           {zones.map((zone) => (
-            <div key={zone.zona_id}>{renderZone(zone, zone.kode_zona)}</div>
+            <div key={zone.zona_id} className="h-full">{renderZone(zone, zone.kode_zona)}</div>
           ))}
         </div>
       );
@@ -612,9 +612,9 @@ export default function WarehouseLayoutPage() {
     if (count === 3) {
       return (
         <div className="grid min-h-[360px] grid-cols-2 gap-4">
-          <div>{renderZone(zones[0], zones[0].kode_zona)}</div>
-          <div>{renderZone(zones[1], zones[1].kode_zona)}</div>
-          <div className="col-span-2">{renderZone(zones[2], zones[2].kode_zona)}</div>
+          <div className="h-full">{renderZone(zones[0], zones[0].kode_zona)}</div>
+          <div className="h-full">{renderZone(zones[1], zones[1].kode_zona)}</div>
+          <div className="col-span-2 h-full">{renderZone(zones[2], zones[2].kode_zona)}</div>
         </div>
       );
     }
@@ -622,20 +622,20 @@ export default function WarehouseLayoutPage() {
     if (count === 4) {
       return (
         <div className="grid min-h-[360px] grid-cols-[1fr_90px_1fr] grid-rows-[1fr_1fr]">
-          <div className="border-b border-r border-white">{renderZone(zones[0], "Zona A")}</div>
+          <div className="h-full border-b border-r border-white">{renderZone(zones[0], "Zona A")}</div>
           <div className="relative flex items-center justify-center bg-[#e8fbe8]">
             <div className="absolute inset-y-0 left-0 w-px bg-[#d6efd6]" />
             <div className="absolute inset-y-0 right-0 w-px bg-[#d6efd6]" />
             <span className="rotate-[-90deg] text-[17px] font-extrabold tracking-[-0.2px] text-[#111827]">Lorong</span>
           </div>
-          <div className="border-b border-l border-white">{renderZone(zones[1], "Zona B")}</div>
-          <div className="border-r border-white">{renderZone(zones[2], "Zona C")}</div>
+          <div className="h-full border-b border-l border-white">{renderZone(zones[1], "Zona B")}</div>
+          <div className="h-full border-r border-white">{renderZone(zones[2], "Zona C")}</div>
           <div className="relative flex items-center justify-center bg-[#e8fbe8]">
             <div className="absolute inset-y-0 left-0 w-px bg-[#d6efd6]" />
             <div className="absolute inset-y-0 right-0 w-px bg-[#d6efd6]" />
             <span className="rotate-[-90deg] text-[17px] font-extrabold tracking-[-0.2px] text-[#111827]">Lorong</span>
           </div>
-          <div className="border-l border-white">{renderZone(zones[3], "Zona D")}</div>
+          <div className="h-full border-l border-white">{renderZone(zones[3], "Zona D")}</div>
         </div>
       );
     }
@@ -643,7 +643,7 @@ export default function WarehouseLayoutPage() {
     return (
       <div className="grid min-h-[360px] grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {zones.map((zone) => (
-          <div key={zone.zona_id}>{renderZone(zone, zone.kode_zona)}</div>
+          <div key={zone.zona_id} className="h-full">{renderZone(zone, zone.kode_zona)}</div>
         ))}
       </div>
     );
@@ -693,19 +693,19 @@ export default function WarehouseLayoutPage() {
     const isIndoor = zoneType === "Indoor";
     const isSelected = selectedZone?.zona_id === zone.zona_id;
 
-     return (
-       <div
-         role="button"
-         tabIndex={0}
-         onClick={() => openZone(zone)}
-         onKeyDown={(e) => {
-           if (e.key === "Enter" || e.key === " ") {
-             e.preventDefault();
-             openZone(zone);
-           }
-         }}
-         className={`group relative flex min-h-[180px] w-full flex-col items-center justify-center overflow-hidden p-4 text-center transition-all duration-200 hover:brightness-[0.97] cursor-pointer ${getZoneBackground(zone)} ${getZoneSelectedClass(zone)}`}
-       >
+      return (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => openZone(zone)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              openZone(zone);
+            }
+          }}
+          className={`group relative flex min-h-[180px] h-full w-full flex-col overflow-hidden p-4 text-center transition-all duration-200 hover:brightness-[0.97] cursor-pointer ${getZoneBackground(zone)} ${getZoneSelectedClass(zone)}`}
+        >
         {/* SELECTED INDICATOR */}
         {isSelected && (
           <div className="absolute left-3 top-3">
@@ -734,96 +734,99 @@ export default function WarehouseLayoutPage() {
           )}
         </div>
 
-        {/* ZONE NAME */}
-        <div className="relative z-10">
-          <div className="flex items-center justify-center gap-2">
-            <h3 className="text-[23px] font-extrabold uppercase leading-tight tracking-[-0.5px] text-[#171717] md:text-[25px]">
-              {getCleanZoneCode(zone)}
-            </h3>
+         {/* ZONE NAME */}
+         <div className="relative z-10 flex flex-grow flex-col items-center justify-center">
+           <div className="flex items-center justify-center gap-2">
+             <h3 className="text-[23px] font-extrabold uppercase leading-tight tracking-[-0.5px] text-[#171717] md:text-[25px]">
+               {getCleanZoneCode(zone)}
+             </h3>
 
-            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isIndoor ? "bg-[#FFA86B]/20 text-[#8B4513]" : "bg-[#FCEBDD] text-[#6b5647]"}`}>
-              {isIndoor ? "Indoor" : "Outdoor"}
-            </span>
-          </div>
+             <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isIndoor ? "bg-[#FFA86B]/20 text-[#8B4513]" : "bg-[#FCEBDD] text-[#6b5647]"}`}>
+               {isIndoor ? "Indoor" : "Outdoor"}
+             </span>
+           </div>
 
-          {(zone.total_item ?? 0) > 0 || (zone.total_qty ?? 0) > 0 && (
-            <div className="mt-2">
-              <p className="text-[12px] font-semibold text-[#344054]">
-                {(zone.total_item ?? 0)} barang • {Number(zone.total_qty ?? 0).toLocaleString("id-ID")} unit
-              </p>
-            </div>
-          )}
+           {(zone.total_item ?? 0) > 0 || (zone.total_qty ?? 0) > 0 && (
+             <div className="mt-2">
+               <p className="text-[12px] font-semibold text-[#344054]">
+                 {(zone.total_item ?? 0)} barang • {Number(zone.total_qty ?? 0).toLocaleString("id-ID")} unit
+               </p>
+             </div>
+           )}
 
-          {zone.status_kecukupan ? (
-            <div className="mt-2">
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${getStatusBadgeClass(zone.status_kecukupan)}`}>
-                  {getStatusLabel(zone.status_kecukupan)}
-                </span>
-                {zone.kapasitas_belum_diatur && (
-                  <span className="inline-block rounded-full border border-[#e5e7eb] bg-[#f2f4f7] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#475467]">
-                    Kapasitas belum diatur
-                  </span>
-                )}
-              </div>
-              <p className="mt-1 text-[10px] text-[#667085]">
-                {getStatusSourceLabel(zone)}
-              </p>
-              {(() => {
-                const sisaText = formatSisaCapacity(zone.sisa ?? null, zone.kapasitas_maksimum ?? null);
-                if (!sisaText) return null;
-                return (
-                  <p className="mt-1 text-[10px] font-semibold text-[#344054]">
-                    Sisa: {sisaText}
-                  </p>
-                );
-              })()}
-            </div>
-          ) : (
-            <p className="mt-2 text-[10px] text-[#98a2b3]">Belum dinilai</p>
-          )}
+           {zone.status_kecukupan ? (
+             <div className="mt-2">
+               <div className="flex flex-wrap items-center justify-center gap-2">
+                 <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${getStatusBadgeClass(zone.status_kecukupan)}`}>
+                   {getStatusLabel(zone.status_kecukupan)}
+                 </span>
+                 {zone.kapasitas_belum_diatur && (
+                   <span className="inline-block rounded-full border border-[#e5e7eb] bg-[#f2f4f7] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#475467]">
+                     Kapasitas belum diatur
+                   </span>
+                 )}
+               </div>
+               <p className="mt-1 text-[10px] text-[#667085]">
+                 {getStatusSourceLabel(zone)}
+               </p>
+               {(() => {
+                 const sisaText = formatSisaCapacity(zone.sisa ?? null, zone.kapasitas_maksimum ?? null);
+                 if (!sisaText) return null;
+                 return (
+                   <p className="mt-1 text-[10px] font-semibold text-[#344054]">
+                     Sisa: {sisaText}
+                   </p>
+                 );
+               })()}
+             </div>
+           ) : (
+             <p className="mt-2 text-[10px] text-[#98a2b3]">Belum dinilai</p>
+           )}
+         </div>
 
-          {canEditStatus && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                openStatusModal(zone);
-              }}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-[#111827]/10 bg-white px-3 py-1.5 text-[11px] font-semibold text-[#111827] shadow-sm transition hover:border-[#111827]/30 hover:bg-[#f7f8fa]"
-            >
-              <span>Input Status</span>
-            </button>
-          )}
+         {/* ACTIONS */}
+         <div className="relative z-10 mt-auto flex w-full flex-wrap items-center justify-center gap-1.5">
+           {canEditStatus && (
+             <button
+               type="button"
+               onClick={(e) => {
+                 e.stopPropagation();
+                 openStatusModal(zone);
+               }}
+               className="inline-flex items-center gap-1 rounded-lg border border-[#111827]/10 bg-white px-2.5 py-1 text-[10px] font-semibold text-[#111827] shadow-sm transition hover:border-[#111827]/30 hover:bg-[#f7f8fa]"
+             >
+               <span>Input Status</span>
+             </button>
+           )}
 
-          {mapRole(user?.role) === "admin" && (
-            <div className="mt-2 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openEditZone(zone);
-                }}
-                className="inline-flex items-center gap-1 rounded-lg border border-[#111827]/10 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#111827] shadow-sm transition hover:border-[#111827]/30 hover:bg-[#f7f8fa]"
-              >
-                <Pencil size={12} />
-                <span>Edit</span>
-              </button>
+           {mapRole(user?.role) === "admin" && (
+             <>
+               <button
+                 type="button"
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   openEditZone(zone);
+                 }}
+                 className="inline-flex items-center gap-1 rounded-lg border border-[#111827]/10 bg-white px-2.5 py-1 text-[10px] font-semibold text-[#111827] shadow-sm transition hover:border-[#111827]/30 hover:bg-[#f7f8fa]"
+               >
+                 <Pencil size={12} />
+                 <span>Edit</span>
+               </button>
 
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openDeleteConfirm(zone);
-                }}
-                className="inline-flex items-center gap-1 rounded-lg border border-[#b42318]/10 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#b42318] shadow-sm transition hover:border-[#b42318]/30 hover:bg-[#fef2f2]"
-              >
-                <Trash2 size={12} />
-                <span>Hapus</span>
-              </button>
-            </div>
-          )}
-        </div>
+               <button
+                 type="button"
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   openDeleteConfirm(zone);
+                 }}
+                 className="inline-flex items-center gap-1 rounded-lg border border-[#b42318]/10 bg-white px-2.5 py-1 text-[10px] font-semibold text-[#b42318] shadow-sm transition hover:border-[#b42318]/30 hover:bg-[#fef2f2]"
+               >
+                 <Trash2 size={12} />
+                 <span>Hapus</span>
+               </button>
+             </>
+           )}
+         </div>
 
         {/* HOVER INDICATOR */}
         <div className="absolute bottom-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-white/60 opacity-0 transition-opacity group-hover:opacity-100">
