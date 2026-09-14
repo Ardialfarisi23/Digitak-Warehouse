@@ -705,19 +705,30 @@ enum notification_type {
 }
 
 model notification {
-  id         BigInt            @id @default(autoincrement())
-  user_id    BigInt?
-  role       user_role?
-  type       notification_type @default(info)
-  title      String            @db.Text
-  message    String            @db.Text
-  link       String?           @db.Text
-  is_read    Boolean           @default(false)
-  read_at    DateTime?
-  created_at DateTime          @default(now())
-  user       user_account?     @relation(fields: [user_id], references: [user_id])
+   id         BigInt            @id @default(autoincrement())
+   user_id    BigInt?
+   role       user_role?
+   type       notification_type @default(info)
+   title      String            @db.Text
+   message    String            @db.Text
+   link       String?           @db.Text
+   is_read    Boolean           @default(false)
+   read_at    DateTime?
+   created_at DateTime          @default(now())
+   user       user_account?     @relation(fields: [user_id], references: [user_id])
 
-  @@index([user_id, is_read])
-  @@index([role, is_read])
-  @@index([created_at])
+   @@index([user_id, is_read])
+   @@index([role, is_read])
+   @@index([created_at])
+ }
+
+model password_reset_token {
+  id        String   @id
+  email     String
+  token     String   @unique
+  expires   DateTime
+  createdAt DateTime @default(now())
+
+  @@map("password_resets")
 }
+

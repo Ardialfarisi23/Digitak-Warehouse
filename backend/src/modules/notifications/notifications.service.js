@@ -90,6 +90,39 @@ const markAllRead = async (user, isRead = true) => {
   };
 };
 
+const deleteOne = async (user, id) => {
+  const where = {
+    id,
+    ...buildUserScope(user),
+  };
+
+  const record = await prisma.notification.findFirst({ where });
+
+  if (!record) {
+    throw new AppError("Notifikasi tidak ditemukan.", 404);
+  }
+
+  await prisma.notification.delete({
+    where: { id },
+  });
+
+  return { deleted: true };
+};
+
+const deleteMany = async (user) => {
+  const where = {
+    ...buildUserScope(user),
+  };
+
+  const result = await prisma.notification.deleteMany({
+    where,
+  });
+
+  return {
+    count: result.count,
+  };
+};
+
 const create = async ({ userId, role, type, title, message, link }) => {
   const createOne = async (targetUserId, targetRole) => {
     return prisma.notification.create({
@@ -117,5 +150,7 @@ module.exports = {
   unreadCount,
   markRead,
   markAllRead,
+  deleteOne,
+  deleteMany,
   create,
 };

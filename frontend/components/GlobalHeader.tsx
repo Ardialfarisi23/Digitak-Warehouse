@@ -16,6 +16,7 @@ import {
   ExternalLink,
   ChevronDown,
   Menu,
+  Trash2,
 } from "lucide-react";
 
 import { useNotifications } from "@/hooks/use-notifications";
@@ -25,7 +26,7 @@ export function GlobalHeader() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const { width, isMobile, setMobileOpen } = useSidebar();
-  const { notifications, unreadCount, markAsRead } = useNotifications();
+  const { notifications, unreadCount, markAsRead, deleteNotification, deleteAllNotifications } = useNotifications();
 
   const [notifOpen, setNotifOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -138,13 +139,41 @@ export function GlobalHeader() {
               <div className="absolute right-0 top-full mt-2 w-80 rounded-2xl border border-stone-200 bg-white shadow-xl shadow-stone-200/40 z-50">
                 <div className="flex items-center justify-between border-b border-stone-100 px-4 py-3">
                   <h3 className="text-sm font-bold text-slate-900">Notifikasi</h3>
-                  <button
-                    type="button"
-                    onClick={() => setNotifOpen(false)}
-                    className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                  >
-                    <ChevronDown size={14} className="rotate-180" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    {unreadCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          markAllAsRead();
+                        }}
+                        className="rounded-lg px-2 py-1 text-[11px] font-semibold text-orange-600 hover:bg-orange-50"
+                        title="Tandai semua dibaca"
+                      >
+                        Tandai dibaca
+                      </button>
+                    )}
+                    {notifications.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteAllNotifications();
+                        }}
+                        className="rounded-lg p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                        title="Bersihkan semua notifikasi"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setNotifOpen(false)}
+                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                    >
+                      <ChevronDown size={14} className="rotate-180" />
+                    </button>
+                  </div>
                 </div>
                 <div className="max-h-80 overflow-y-auto">
                   {notifications.length === 0 ? (
@@ -156,12 +185,12 @@ export function GlobalHeader() {
                       {notifications.map((notif) => (
                         <li
                           key={notif.id}
-                          className={`px-4 py-3 transition-colors hover:bg-slate-50 cursor-pointer ${
+                          className={`group px-4 py-3 transition-colors hover:bg-slate-50 cursor-pointer ${
                             !notif.is_read ? "bg-orange-50/40" : ""
                           }`}
                           onClick={() => handleNotificationClick(notif)}
                         >
-                          <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start justify-between gap-2">
                             <div className="flex-1">
                               <p
                                 className={`text-xs font-semibold ${
@@ -175,9 +204,22 @@ export function GlobalHeader() {
                               </p>
                               <p className="mt-1 text-[10px] text-slate-400">{timeAgo(notif.created_at)}</p>
                             </div>
-                            {!notif.is_read && (
-                              <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-orange-500" />
-                            )}
+                            <div className="flex items-center gap-1">
+                              {!notif.is_read && (
+                                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-orange-500" />
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteNotification(notif.id);
+                                }}
+                                className="rounded-lg p-1 text-slate-300 opacity-0 transition-all group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600"
+                                title="Hapus notifikasi"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
                           </div>
                         </li>
                       ))}

@@ -40,4 +40,18 @@ router.patch(
   notificationController.markAllRead
 );
 
+router.delete(
+  "/:id",
+  authenticate,
+  authorize("ADMIN", "SUPERVISOR", "STAFF"),
+  notificationController.deleteOne
+);
+
+router.delete(
+  "/",
+  authenticate,
+  authorize("ADMIN", "SUPERVISOR", "STAFF"),
+  notificationController.deleteMany
+);
+
 module.exports = router;

@@ -40,6 +40,7 @@ export default function SupervisorApprovalPage() {
   const [rejectTarget, setRejectTarget] = useState<InboundRequest | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [activeTab, setActiveTab] = useState<"pending" | "history">("pending");
 
   const fetchInboundList = async () => {
     setLoading(true);
@@ -76,9 +77,14 @@ export default function SupervisorApprovalPage() {
   const filteredRequests = useMemo(() => {
     if (!Array.isArray(requests)) return [];
 
-    return requests.filter((r) => {
-      const isPending = r.status === "menunggu_verifikasi";
+    const tabFiltered = requests.filter((r) => {
+      if (activeTab === "pending") {
+        return r.status === "menunggu_verifikasi";
+      }
+      return ["disetujui", "ditolak", "diterima_didistribusikan"].includes(r.status);
+    });
 
+    return tabFiltered.filter((r) => {
       const matchSearch =
         !query.trim() ||
         (r.nomor_surat_jalan || "").toLowerCase().includes(query.toLowerCase()) ||
@@ -87,18 +93,51 @@ export default function SupervisorApprovalPage() {
 
       const matchCat = selectedCategory === "all" || (r.kategori_approval || "inbound_di_luar_po") === selectedCategory;
 
-      return isPending && matchSearch && matchCat;
+      return matchSearch && matchCat;
     });
-  }, [requests, query, selectedCategory]);
+  }, [requests, query, selectedCategory, activeTab]);
 
   const stats = useMemo(() => {
-    const totalAntrean = filteredRequests.length;
-    const fisikRusak = filteredRequests.filter((r) => r.ada_fisik_rusak).length;
-    const selisihPo = filteredRequests.filter((r) => r.selisih_po).length;
-    const diLuarPo = filteredRequests.filter((r) => (r.kategori_approval || "inbound_di_luar_po") === "inbound_di_luar_po").length;
+    const tabRequests = requests.filter((r) => {
+      if (activeTab === "pending") {
+        return r.status === "menunggu_verifikasi";
+      }
+      return ["disetujui", "ditolak", "diterima_didistribusikan"].includes(r.status);
+    });
+
+    const totalAntrean = tabRequests.length;
+    const fisikRusak = tabRequests.filter((r) => {
+      const item = r as any;
+      return (
+        item.hasDamage === true ||
+        item.condition === "DAMAGED" ||
+        item.physicalStatus === "RUSAK" ||
+        (typeof item.damagedQty === "number" && item.damagedQty > 0) ||
+        item.ada_fisik_rusak === true
+      );
+    }).length;
+    const selisihPo = tabRequests.filter((r) => {
+      const item = r as any;
+      return (
+        item.hasDiscrepancy === true ||
+        (typeof item.qtyReceived === "number" && typeof item.qtyPo === "number" && item.qtyReceived !== item.qtyPo) ||
+        item.isSelisih === true ||
+        item.selisih_po === true
+      );
+    }).length;
+    const diLuarPo = tabRequests.filter((r) => {
+      const item = r as any;
+      return (
+        item.isUnscheduled === true ||
+        item.isOutsidePo === true ||
+        item.type === "UNSCHEDULED" ||
+        item.poNumber === null ||
+        (item.kategori_approval || "inbound_di_luar_po") === "inbound_di_luar_po"
+      );
+    }).length;
 
     return { totalAntrean, fisikRusak, selisihPo, diLuarPo };
-  }, [filteredRequests]);
+  }, [requests, activeTab]);
 
   const openApproveConfirm = (req: InboundRequest) => {
     setConfirmTarget(req);
@@ -137,7 +176,7 @@ export default function SupervisorApprovalPage() {
         catatan: rejectReason.trim() || null,
       });
       if (res.ok) {
-        setRequests((prev) => (Array.isArray(prev) ? prev.filter((item) => item.id !== target.id) : []));
+        setRequests((prev) => (Array.isArray(prev) ? prev.map((item) => item.id === target.id ? { ...item, status: "ditolak" } : item) : []));
         setToast({ message: "Inbound berhasil ditolak.", type: "success" });
       } else {
         const err = await res.json().catch(() => null);
@@ -160,7 +199,7 @@ export default function SupervisorApprovalPage() {
     try {
       const res = await put(`${API_BASE_URL}/api/surat-jalan/${target.id}/approve-inbound`, {});
       if (res.ok) {
-        setRequests((prev) => (Array.isArray(prev) ? prev.filter((item) => item.id !== target.id) : []));
+        setRequests((prev) => (Array.isArray(prev) ? prev.map((item) => item.id === target.id ? { ...item, status: "disetujui" } : item) : []));
         setToast({ message: "Inbound berhasil disetujui.", type: "success" });
       } else {
         const err = await res.json().catch(() => null);
@@ -268,6 +307,29 @@ export default function SupervisorApprovalPage() {
         </select>
       </div>
 
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setActiveTab("pending")}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
+            activeTab === "pending"
+              ? "bg-emerald-600 text-white shadow-sm"
+              : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          Perlu Persetujuan
+        </button>
+        <button
+          onClick={() => setActiveTab("history")}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
+            activeTab === "history"
+              ? "bg-emerald-600 text-white shadow-sm"
+              : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          Riwayat Persetujuan
+        </button>
+      </div>
+
       {loading ? (
         <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400 font-medium">Memuat data antrean...</div>
       ) : filteredRequests.length > 0 ? (
@@ -310,26 +372,46 @@ export default function SupervisorApprovalPage() {
                 >
                   Review Detail
                 </button>
-                <button
-                  onClick={() => openApproveConfirm(req)}
-                  disabled={approveLoading}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm shadow-emerald-600/20 disabled:opacity-60"
-                >
-                  Setujui &amp; Tambah Stok
-                </button>
-                <button
-                  onClick={() => openRejectConfirm(req)}
-                  disabled={approveLoading}
-                  className="px-4 py-2.5 border border-rose-200 text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-semibold transition-colors disabled:opacity-60"
-                >
-                  Tolak
-                </button>
+                {activeTab === "pending" ? (
+                  <>
+                    <button
+                      onClick={() => openApproveConfirm(req)}
+                      disabled={approveLoading}
+                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm shadow-emerald-600/20 disabled:opacity-60"
+                    >
+                      Setujui &amp; Tambah Stok
+                    </button>
+                    <button
+                      onClick={() => openRejectConfirm(req)}
+                      disabled={approveLoading}
+                      className="px-4 py-2.5 border border-rose-200 text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-semibold transition-colors disabled:opacity-60"
+                    >
+                      Tolak
+                    </button>
+                  </>
+                ) : (
+                  <span className={`px-3 py-2 rounded-xl text-xs font-semibold border ${
+                    req.status === "disetujui"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : req.status === "ditolak"
+                        ? "bg-rose-50 text-rose-700 border-rose-200"
+                        : req.status === "diterima_didistribusikan"
+                          ? "bg-blue-50 text-blue-700 border-blue-200"
+                          : "bg-slate-100 text-slate-600 border-slate-200"
+                  }`}>
+                    {req.status === "disetujui" ? "Disetujui" : req.status === "ditolak" ? "Ditolak" : req.status === "diterima_didistribusikan" ? "Diterima & Didistribusikan" : req.status}
+                  </span>
+                )}
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400 font-medium shadow-sm">Tidak ada pengajuan inbound yang menunggu persetujuan.</div>
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400 font-medium shadow-sm">
+          {activeTab === "pending"
+            ? "Tidak ada pengajuan inbound yang menunggu persetujuan."
+            : "Tidak ada riwayat persetujuan inbound."}
+        </div>
       )}
 
       {confirmTarget && (
