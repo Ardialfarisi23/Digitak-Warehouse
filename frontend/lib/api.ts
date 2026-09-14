@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./auth-context";
 
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
 interface FetchOptions extends RequestInit {
   skipAuth?: boolean;
 }

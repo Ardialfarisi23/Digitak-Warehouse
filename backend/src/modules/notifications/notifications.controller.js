@@ -37,9 +37,29 @@ const markAllRead = async (req, res, next) => {
   }
 };
 
+const deleteOne = async (req, res, next) => {
+  try {
+    const result = await notificationService.deleteOne(req.user, Number(req.params.id));
+    return response.success(res, "Notifikasi berhasil dihapus.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const deleteMany = async (req, res, next) => {
+  try {
+    const result = await notificationService.deleteMany(req.user);
+    return response.success(res, "Semua notifikasi berhasil dihapus.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   list,
   unreadCount,
   markRead,
   markAllRead,
+  deleteOne,
+  deleteMany,
 };

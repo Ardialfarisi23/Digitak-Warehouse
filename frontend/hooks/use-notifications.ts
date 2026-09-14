@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useApi } from "@/lib/api";
+import { useApi, API_BASE } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 interface NotificationItem {
   id: number;
@@ -25,6 +23,8 @@ interface UseNotificationsResult {
   loading: boolean;
   markAsRead: (id: number) => Promise<void>;
   markAllAsRead: () => Promise<void>;
+  deleteNotification: (id: number) => Promise<void>;
+  deleteAllNotifications: () => Promise<void>;
   refresh: () => Promise<void>;
 }
 
@@ -48,7 +48,7 @@ export function useNotifications(): UseNotificationsResult {
         }
       }
     } catch (err) {
-      console.error("Failed to fetch unread count:", err);
+      console.warn("Notification unread count fetch skipped:", err);
     }
   }, [get, isAuthenticated]);
 
@@ -65,7 +65,7 @@ export function useNotifications(): UseNotificationsResult {
         }
       }
     } catch (err) {
-      console.error("Failed to fetch notifications:", err);
+      console.warn("Notification fetch skipped:", err);
     } finally {
       setLoading(false);
     }
@@ -87,7 +87,7 @@ export function useNotifications(): UseNotificationsResult {
         setUnreadCount((prev) => Math.max(0, prev - 1));
       }
     } catch (err) {
-      console.error("Failed to mark notification as read:", err);
+      console.warn("Failed to mark notification as read:", err);
     }
   }, [request, isAuthenticated]);
 
@@ -106,7 +106,45 @@ export function useNotifications(): UseNotificationsResult {
         setUnreadCount(0);
       }
     } catch (err) {
-      console.error("Failed to mark all notifications as read:", err);
+      console.warn("Failed to mark all notifications as read:", err);
+    }
+  }, [request, isAuthenticated]);
+
+  const deleteNotification = useCallback(async (id: number) => {
+    if (!isAuthenticated) return;
+
+    try {
+      const res = await request(`${API_BASE}/api/notifications/${id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setNotifications((prev) => prev.filter((n) => n.id !== id));
+        setUnreadCount((prev) => {
+          const target = notifications.find((n) => n.id === id);
+          if (target && !target.is_read) {
+            return Math.max(0, prev - 1);
+          }
+          return prev;
+        });
+      }
+    } catch (err) {
+      console.warn("Failed to delete notification:", err);
+    }
+  }, [request, isAuthenticated, notifications]);
+
+  const deleteAllNotifications = useCallback(async () => {
+    if (!isAuthenticated) return;
+
+    try {
+      const res = await request(`${API_BASE}/api/notifications`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setNotifications([]);
+        setUnreadCount(0);
+      }
+    } catch (err) {
+      console.warn("Failed to delete all notifications:", err);
     }
   }, [request, isAuthenticated]);
 
@@ -124,8 +162,8 @@ export function useNotifications(): UseNotificationsResult {
     refresh();
 
     const interval = setInterval(() => {
-      fetchUnreadCount();
-      fetchNotifications();
+      fetchUnreadCount().catch(() => {});
+      fetchNotifications().catch(() => {});
     }, 30000);
 
     return () => clearInterval(interval);
@@ -137,6 +175,8 @@ export function useNotifications(): UseNotificationsResult {
     loading,
     markAsRead,
     markAllAsRead,
+    deleteNotification,
+    deleteAllNotifications,
     refresh,
   };
 }

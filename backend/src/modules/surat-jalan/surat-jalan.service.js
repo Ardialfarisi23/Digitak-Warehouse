@@ -132,7 +132,6 @@ const create = async (data, actorId) => {
 
         if (actor?.role === "admin_general") {
           const supervisorIds = await getRelatedSupervisorIds();
-          const staffIds = await getRelatedStaffIds(gudangIds);
 
           if (supervisorIds.length > 0) {
             await notificationService.create({
@@ -143,28 +142,9 @@ const create = async (data, actorId) => {
               link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
             });
           }
-          if (staffIds.length > 0) {
-            await notificationService.create({
-              userId: staffIds,
-              type: "approval",
-              title: "Outbound Menunggu Approval",
-              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
-              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
-            });
-          }
         } else if (actor?.role === "staf_gudang") {
-          const adminIds = await getAllAdminIds(actorId);
           const supervisorIds = await getRelatedSupervisorIds();
 
-          if (adminIds.length > 0) {
-            await notificationService.create({
-              userId: adminIds,
-              type: "approval",
-              title: "Outbound Menunggu Approval",
-              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
-              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
-            });
-          }
           if (supervisorIds.length > 0) {
             await notificationService.create({
               userId: supervisorIds,
@@ -215,41 +195,9 @@ const createStaffInbound = async (data, actorId) => {
   const gudangIds = collectShipmentGudangIds(result);
 
   try {
-    if (actor?.role === "admin_general") {
-      const supervisorIds = await getRelatedSupervisorIds();
-      const staffIds = await getRelatedStaffIds(gudangIds);
-
-      if (supervisorIds.length > 0) {
-        await notificationService.create({
-          userId: supervisorIds,
-          type: "approval",
-          title: "Inbound Menunggu Verifikasi",
-          message: `Pengajuan inbound ${result?.nomor_surat_jalan || ""} menunggu verifikasi supervisor.`,
-          link: "/dashboard/supervisor/approval/inbound",
-        });
-      }
-      if (staffIds.length > 0) {
-        await notificationService.create({
-          userId: staffIds,
-          type: "approval",
-          title: "Inbound Menunggu Verifikasi",
-          message: `Pengajuan inbound ${result?.nomor_surat_jalan || ""} menunggu verifikasi supervisor.`,
-          link: "/dashboard/supervisor/approval/inbound",
-        });
-      }
-    } else if (actor?.role === "staf_gudang") {
-      const adminIds = await getAllAdminIds(actorId);
+    if (actor?.role === "admin_general" || actor?.role === "staf_gudang") {
       const supervisorIds = await getRelatedSupervisorIds();
 
-      if (adminIds.length > 0) {
-        await notificationService.create({
-          userId: adminIds,
-          type: "approval",
-          title: "Inbound Menunggu Verifikasi",
-          message: `Pengajuan inbound ${result?.nomor_surat_jalan || ""} menunggu verifikasi supervisor.`,
-          link: "/dashboard",
-        });
-      }
       if (supervisorIds.length > 0) {
         await notificationService.create({
           userId: supervisorIds,
@@ -478,13 +426,8 @@ const approveInbound = async (id, itemAdjustments = [], actorId) => {
   };
 
   if (actor?.role === "supervisor") {
-    const adminIds = await getAllAdminIds(Number(actorId));
-    const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
-    const staffIds = await getRelatedStaffIds(gudangIds);
-
-    await sendNotification(adminIds, `/dashboard`);
-    await sendNotification(supervisorIds, `/dashboard/supervisor/approval/inbound/${updatedShipment.surat_jalan_id}`);
-    await sendNotification(staffIds, `/staff/inbound/${updatedShipment.surat_jalan_id}`);
+    const creatorId = updatedShipment.created_by ? [Number(updatedShipment.created_by)] : [];
+    await sendNotification(creatorId, `/staff/inbound/${updatedShipment.surat_jalan_id}`);
   }
 
   return await suratJalanRepository.findById(id);
@@ -510,7 +453,6 @@ const approveOutbound = async (id, actorId) => {
   }
 
   await prisma.$transaction(async (tx) => {
-    await suratJalanRepository.deductOutboundStock(shipment, tx);
     await suratJalanRepository.reduceBoqAllocation(shipment, tx);
     await suratJalanRepository.updateStatus(id, "disetujui", tx);
 
@@ -555,13 +497,8 @@ const approveOutbound = async (id, actorId) => {
     };
 
     if (actor?.role === "supervisor") {
-      const adminIds = await getAllAdminIds(Number(actorId));
-      const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
-      const staffIds = await getRelatedStaffIds(gudangIds);
-
-      await sendNotification(adminIds, `/dashboard`);
-      await sendNotification(supervisorIds, `/dashboard/supervisor/approval/outbound/${shipment.surat_jalan_id}`);
-      await sendNotification(staffIds, `/staff/outbound/${shipment.surat_jalan_id}`);
+      const creatorId = shipment.created_by ? [Number(shipment.created_by)] : [];
+      await sendNotification(creatorId, `/staff/outbound/${shipment.surat_jalan_id}`);
     }
   });
 
@@ -698,13 +635,8 @@ const rejectInbound = async (id, catatan = null, actorId) => {
     };
 
     if (actor?.role === "supervisor") {
-      const adminIds = await getAllAdminIds(Number(actorId));
-      const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
-      const staffIds = await getRelatedStaffIds(gudangIds);
-
-      await sendNotification(adminIds, `/dashboard`);
-      await sendNotification(supervisorIds, `/dashboard/supervisor/approval/inbound/${updatedShipment.surat_jalan_id}`);
-      await sendNotification(staffIds, `/staff/inbound/${updatedShipment.surat_jalan_id}`);
+      const creatorId = updatedShipment.created_by ? [Number(updatedShipment.created_by)] : [];
+      await sendNotification(creatorId, `/staff/inbound/${updatedShipment.surat_jalan_id}`);
     }
 
     return updatedShipment;
@@ -764,13 +696,8 @@ const rejectInbound = async (id, catatan = null, actorId) => {
     };
 
     if (actor?.role === "supervisor") {
-      const adminIds = await getAllAdminIds(Number(actorId));
-      const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
-      const staffIds = await getRelatedStaffIds(gudangIds);
-
-      await sendNotification(adminIds, `/dashboard`);
-      await sendNotification(supervisorIds, `/dashboard/supervisor/approval/outbound/${updatedShipment.surat_jalan_id}`);
-      await sendNotification(staffIds, `/staff/outbound/${updatedShipment.surat_jalan_id}`);
+      const creatorId = updatedShipment.created_by ? [Number(updatedShipment.created_by)] : [];
+      await sendNotification(creatorId, `/staff/outbound/${updatedShipment.surat_jalan_id}`);
     }
 
     return updatedShipment;
