@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 import { navigationConfig, UserRole } from "@/lib/navigation";
 import { useSidebar } from "@/components/sidebar-context";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 const SECTION_LABELS: Record<string, string> = {
   utama: "Utama",
@@ -33,6 +34,7 @@ interface CompactSidebarProps {
 export function CompactSidebar({ userRole }: CompactSidebarProps) {
   const pathname = usePathname();
   const { collapsed, toggle, isMobile, mobileOpen, setMobileOpen } = useSidebar();
+  const [hoveredItem, setHoveredItem] = useState<{ title: string; top: number; left: number } | null>(null);
 
   let filteredNav = navigationConfig.filter((item) =>
     item.roles.includes(userRole)
@@ -145,6 +147,11 @@ export function CompactSidebar({ userRole }: CompactSidebarProps) {
                       window.location.href = item.href;
                     }
                   }}
+                  onMouseEnter={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setHoveredItem({ title: item.title, top: rect.top + rect.height / 2, left: rect.right + 8 });
+                  }}
+                  onMouseLeave={() => setHoveredItem(null)}
                 >
                   {!collapsed && !isMobileSidebar && isActive && (
                     <div className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-[#FF5500]" />
@@ -201,47 +208,79 @@ export function CompactSidebar({ userRole }: CompactSidebarProps) {
             {renderNavItems(true)}
           </nav>
         </aside>
+        {hoveredItem && typeof document !== "undefined" && createPortal(
+          <div
+            style={{
+              position: "fixed",
+              top: hoveredItem.top,
+              left: hoveredItem.left,
+              transform: "translateY(-50%)",
+              zIndex: 9999,
+            }}
+            className="pointer-events-none whitespace-nowrap rounded-md bg-slate-800 px-2 py-1 text-xs text-white shadow-lg"
+          >
+            {hoveredItem.title}
+          </div>,
+          document.body
+        )}
       </>
     );
   }
 
   return (
-    <aside
-      className={`fixed left-0 top-0 z-30 flex h-screen flex-col bg-[#F5F3EF] border-r border-stone-200/60 shadow-xs transition-all duration-300 ease-in-out overflow-x-hidden ${
-        collapsed ? "w-20" : "w-60"
-      }`}
-    >
-      <div className="flex h-16 w-full items-center justify-center border-b border-stone-200/60 shrink-0">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/40 shadow-sm ring-1 ring-stone-200/70">
-          <Image
-            src="/logo digitak .png"
-            alt="Digitak Logo"
-            width={28}
-            height={28}
-            className="object-contain"
-            priority
-          />
+    <>
+      <aside
+        className={`fixed left-0 top-0 z-30 flex h-screen flex-col bg-[#F5F3EF] border-r border-stone-200/60 shadow-xs transition-all duration-300 ease-in-out overflow-x-hidden ${
+          collapsed ? "w-20" : "w-60"
+        }`}
+      >
+        <div className="flex h-16 w-full items-center justify-center border-b border-stone-200/60 shrink-0">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/40 shadow-sm ring-1 ring-stone-200/70">
+            <Image
+              src="/logo digitak .png"
+              alt="Digitak Logo"
+              width={28}
+              height={28}
+              className="object-contain"
+              priority
+            />
+          </div>
         </div>
-      </div>
 
-      <nav className="flex w-full flex-1 flex-col justify-start items-center overflow-y-auto px-2 py-4 scrollbar-thin scrollbar-thumb-stone-300 scrollbar-track-transparent">
-        {renderNavItems(false)}
-      </nav>
+        <nav className="flex w-full flex-1 flex-col justify-start items-center overflow-y-auto px-2 py-4 scrollbar-thin scrollbar-thumb-stone-300 scrollbar-track-transparent">
+          {renderNavItems(false)}
+        </nav>
 
-      <div className="flex w-full shrink-0 justify-center border-t border-stone-200/60 py-3">
-        <button
-          type="button"
-          onClick={toggle}
-          className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-stone-200/60 hover:text-[#FF5500] transition-all duration-200"
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        <div className="flex w-full shrink-0 justify-center border-t border-stone-200/60 py-3">
+          <button
+            type="button"
+            onClick={toggle}
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-stone-200/60 hover:text-[#FF5500] transition-all duration-200"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? (
+              <ChevronRight className="h-5 w-5" />
+            ) : (
+              <ChevronLeft className="h-5 w-5" />
+            )}
+          </button>
+        </div>
+      </aside>
+      {hoveredItem && typeof document !== "undefined" && createPortal(
+        <div
+          style={{
+            position: "fixed",
+            top: hoveredItem.top,
+            left: hoveredItem.left,
+            transform: "translateY(-50%)",
+            zIndex: 9999,
+          }}
+          className="pointer-events-none whitespace-nowrap rounded-md bg-slate-800 px-2 py-1 text-xs text-white shadow-lg"
         >
-          {collapsed ? (
-            <ChevronRight className="h-5 w-5" />
-          ) : (
-            <ChevronLeft className="h-5 w-5" />
-          )}
-        </button>
-      </div>
-    </aside>
+          {hoveredItem.title}
+        </div>,
+        document.body
+      )}
+    </>
   );
 }

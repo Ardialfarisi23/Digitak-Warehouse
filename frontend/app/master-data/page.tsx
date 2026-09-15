@@ -95,6 +95,7 @@ interface FieldConfig {
   required?: boolean;
   placeholder?: string;
   options?: string[];
+  helperText?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -176,7 +177,7 @@ const TAB_PERMISSIONS: Record<MasterDataType, { create: string[]; edit: string[]
     delete: PERSONNEL_PERMISSIONS.delete,
   },
   vehicles: {
-    create: [ROLE.ADMIN, ROLE.SUPERVISOR],
+    create: [ROLE.ADMIN],
     edit: [ROLE.ADMIN, ROLE.SUPERVISOR],
     delete: [ROLE.ADMIN, ROLE.SUPERVISOR],
   },
@@ -227,7 +228,11 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
   ],
   warehouses: [
     { key: "nama_gudang", label: "Nama Gudang", type: "text", required: true },
-    { key: "tipe", label: "Tipe", type: "text" },
+    { key: "tipe", label: "Tipe", type: "select", required: true, helperText: "Gudang Tetap: lokasi permanen (Kantor Pusat/Cabang). Gudang Dadakan: staging sementara di lokasi klien.", options: [
+      { value: "tetap", label: "Tetap" },
+      { value: "dadakan", label: "Dadakan" },
+    ] },
+    { key: "project_id", label: "Project", type: "select", required: false, options: [] },
     { key: "alamat", label: "Alamat", type: "textarea" },
     { key: "latitude", label: "Latitude", type: "text" },
     { key: "longitude", label: "Longitude", type: "text" },
@@ -313,15 +318,30 @@ const PHOTO_FIELD_NAMES = ["photo", "photoUrl", "image", "imageUrl", "picture", 
 
 function getPhotoUrl(record: GenericRecord | null): string | null {
   if (!record) return null;
+
   for (const key of PHOTO_FIELD_NAMES) {
     const value = record[key];
+
     if (!value) continue;
+
     const str = String(value).trim();
+
     if (!str) continue;
+
     if (str.startsWith("http://") || str.startsWith("https://") || str.startsWith("data:")) {
       return str;
     }
+
+    if (str.startsWith("/uploads/") || str.includes("/uploads/")) {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const trimmed = str.replace(/^\/+/, "");
+      const apiHost = baseUrl.replace(/\/$/, "");
+      return `${apiHost}/${trimmed}`;
+    }
+
+    return str;
   }
+
   return null;
 }
 
@@ -452,7 +472,7 @@ function Modal({ open, onClose, title, subtitle, widthClass = "max-w-lg", childr
 function DetailModal({ open, onClose, tab, tabLabel, record }: { open: boolean; onClose: () => void; tab: MasterDataType; tabLabel: string; record: GenericRecord | null }) {
   if (!record) return null;
 
-  const fields = TAB_FIELDS[tab];
+  const fields = TAB_FIELDS[tab].filter((field) => field.type !== "file");
   const hasAudit = (record as any)?.created_at || (record as any)?.updated_at || record.createdAt || record.updatedAt;
   const showPhoto = tab !== "projects";
   const primaryPhoto = showPhoto ? getPhotoUrl(record) : null;
@@ -468,17 +488,6 @@ function DetailModal({ open, onClose, tab, tabLabel, record }: { open: boolean; 
 
       <dl className="divide-y divide-slate-50">
         {fields.map((field) => {
-          if (field.key === "photo") {
-            const photoUrl = getPhotoUrl(record);
-
-            return (
-              <div key={field.key} className="flex items-start justify-between gap-4 py-2.5">
-                <dt className="text-xs font-medium text-slate-400">{field.label}</dt>
-                <dd className="text-right text-sm font-medium text-slate-800">{photoUrl ? <span className="text-slate-700">Ada foto</span> : <span className="text-slate-400">Tidak ada foto</span>}</dd>
-              </div>
-            );
-          }
-
           if (field.key === "kategori_id" || field.key === "satuan_default_id") {
             const label = field.key === "kategori_id" ? (record as any)?.kategori?.nama_kategori : (record as any)?.satuan_default?.kode_satuan;
 
@@ -581,6 +590,8 @@ function FormModal({
         const direct = (record as any)?.gudang_id;
         const nested = (record as any)?.gudang?.gudang_id;
         initial[field.key] = direct ?? nested ?? "";
+      } else if (field.key === "tipe" && tab === "warehouses" && mode === "create") {
+        initial[field.key] = "tetap";
       } else {
         initial[field.key] = record?.[field.key] ?? "";
       }
@@ -593,7 +604,8 @@ function FormModal({
   const [error, setError] = useState<string | null>(null);
   const [categoryOptions, setCategoryOptions] = useState<Array<{ value: number; label: string }>>([]);
   const [unitOptions, setUnitOptions] = useState<Array<{ value: number; label: string }>>([]);
-  const [warehouseOptions, setWarehouseOptions] = useState<Array<{ value: number; label: string }>>([]);
+  const [warehouseOptions, setWarehouseOptions] = useState<Array<{ value: number; label: string; tipe?: string }>>([]);
+  const [projectOptions, setProjectOptions] = useState<Array<{ value: number; label: string }>>([]);
 
   useEffect(() => {
     if (open && tab === "items") {
@@ -637,10 +649,30 @@ function FormModal({
         .then((result) => {
           if (cancelled) return;
           const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
-          setWarehouseOptions(list.map((w: any) => ({ value: Number(w.gudang_id), label: w.nama_gudang })));
+          setWarehouseOptions(list.map((w: any) => ({ value: Number(w.gudang_id), label: w.nama_gudang + (w.tipe === "dadakan" ? " (Dadakan)" : ""), tipe: w.tipe })));
         })
         .catch(() => {
           if (!cancelled) setWarehouseOptions([]);
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (open && tab === "warehouses") {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      let cancelled = false;
+
+      get(`${baseUrl}/api/projects`)
+        .then((res) => res.json())
+        .then((result) => {
+          if (cancelled) return;
+          const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+          setProjectOptions(list.map((p: any) => ({ value: Number(p.project_id), label: p.nama_project || p.title || `Project ${p.project_id}` })));
+        })
+        .catch(() => {
+          if (!cancelled) setProjectOptions([]);
         });
 
       return () => {
@@ -665,8 +697,27 @@ function FormModal({
       });
     }
 
+    if (tab === "warehouses") {
+      return fields.map((field) => {
+        if (field.key === "project_id") return { ...field, options: projectOptions };
+        return field;
+      });
+    }
+
     return fields;
-  }, [tab, fields, categoryOptions, unitOptions, warehouseOptions]);
+  }, [tab, fields, categoryOptions, unitOptions, warehouseOptions, projectOptions]);
+
+  const visibleFormFields = useMemo(() => {
+    if (tab === "warehouses") {
+      return formFields.filter((field) => {
+        if (field.key === "project_id") {
+          return form.tipe === "dadakan";
+        }
+        return true;
+      });
+    }
+    return formFields;
+  }, [tab, formFields, form.tipe]);
 
   useEffect(() => {
     if (open) {
@@ -674,6 +725,12 @@ function FormModal({
       setError(null);
     }
   }, [open, buildInitialForm]);
+
+  useEffect(() => {
+    if (form.posisi === "Supervisor" && form.gudang_id !== "" && form.gudang_id != null) {
+      setForm((prev) => ({ ...prev, gudang_id: "" }));
+    }
+  }, [form.posisi, form.gudang_id]);
 
   function handleChange(key: string, value: unknown) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -705,6 +762,11 @@ function FormModal({
       return;
     }
 
+    if (tab === "warehouses" && form.tipe === "dadakan" && (!form.project_id || String(form.project_id).trim() === "")) {
+      setError("Gudang Dadakan wajib memiliki Project terkait.");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
 
@@ -720,6 +782,8 @@ function FormModal({
           if (currentValue instanceof File) {
             const photoUrl = await uploadFile(currentValue);
             submitData[field.key] = photoUrl;
+          } else if (currentValue && typeof currentValue === "string") {
+            submitData[field.key] = currentValue;
           } else {
             delete submitData[field.key];
           }
@@ -739,6 +803,19 @@ function FormModal({
           } else {
             delete submitData[field.key];
           }
+        } else if (field.key === "project_id" && submitData[field.key] !== undefined && submitData[field.key] !== "") {
+          const numVal = Number(submitData[field.key]);
+          if (!Number.isNaN(numVal) && numVal > 0) {
+            submitData[field.key] = numVal;
+          } else {
+            delete submitData[field.key];
+          }
+        }
+      }
+
+      for (const key of Object.keys(submitData)) {
+        if (submitData[key] === "") {
+          delete submitData[key];
         }
       }
 
@@ -766,15 +843,24 @@ function FormModal({
 
       if (!response.ok) {
         let result: unknown = null;
+        let rawText: string | null = null;
+
         try {
           result = await response.json();
         } catch {
+          try {
+            rawText = await response.text();
+          } catch {
+            rawText = null;
+          }
           result = null;
         }
 
         const resultObj = result && typeof result === "object" ? result : null;
         const message =
-          (resultObj as any)?.message || `Gagal ${mode === "create" ? "menambah" : "menyimpan"} ${tabLabel.toLowerCase()}.`;
+          (resultObj as any)?.message ||
+          rawText ||
+          `Gagal ${mode === "create" ? "menambah" : "menyimpan"} ${tabLabel.toLowerCase()}.`;
 
         const validationDetails =
           (resultObj as any)?.errors || (resultObj as any)?.details || null;
@@ -785,7 +871,9 @@ function FormModal({
 
         console.error(`[FormModal] ${tabLabel} ${mode} failed:`, {
           status: response.status,
+          statusText: response.statusText,
           body: resultObj,
+          rawText,
           url,
           payload: submitData,
         });
@@ -814,7 +902,7 @@ function FormModal({
   return (
     <Modal open={open} onClose={onClose} title={mode === "create" ? `Tambah ${tabLabel}` : `Edit ${tabLabel}`} subtitle={mode === "edit" ? getRecordTitle(tab, record) : undefined}>
       <form onSubmit={handleSubmit} className="space-y-4">
-        {formFields.map((field) => (
+        {visibleFormFields.map((field) => (
           <div key={field.key}>
             {field.type === "checkbox" ? (
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
@@ -833,13 +921,15 @@ function FormModal({
                       </div>
                       <div className="text-xs text-slate-500">
                         <p className="font-medium text-slate-700">Foto saat ini</p>
-                        <p>Klik ganti foto untuk mengubah</p>
+                        <p>{tab === "personnel" ? "Foto dapat diubah melalui halaman profil personil." : "Klik ganti foto untuk mengubah"}</p>
                       </div>
                     </div>
 
-                    <button type="button" onClick={() => handleChange(field.key, null)} className="rounded-full border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">
-                      Ganti Foto
-                    </button>
+                    {tab !== "personnel" && (
+                      <button type="button" onClick={() => handleChange(field.key, null)} className="rounded-full border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                        Ganti Foto
+                      </button>
+                    )}
 
                     {form[field.key] instanceof File && <p className="text-[11px] text-slate-400">File terpilih: {(form[field.key] as File).name}</p>}
                   </div>
@@ -864,14 +954,21 @@ function FormModal({
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-slate-500">
                   {field.label}
-                  {field.required && <span className="text-rose-500"> *</span>}
+                  {(field.required || (field.key === "project_id" && form.tipe === "dadakan")) && <span className="text-rose-500"> *</span>}
                 </label>
+
+                {field.helperText && <p className="mb-2 text-[11px] text-slate-400">{field.helperText}</p>}
+
+                {mode === "edit" && field.key === "tipe" && record?.dapat_ubah_tipe === false && (
+                  <p className="mb-2 text-[11px] text-amber-600">Tipe tidak dapat diubah karena gudang ini sudah memiliki stok atau lebih dari 1 zona.</p>
+                )}
 
                 {field.type === "select" ? (
                   <select
                     value={String(form[field.key] ?? "")}
                     onChange={(e) => handleChange(field.key, e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                    disabled={field.key === "gudang_id" && form.posisi === "Supervisor" || field.key === "tipe" && mode === "edit" && record?.dapat_ubah_tipe === false}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400 disabled:opacity-60 disabled:bg-slate-50 disabled:cursor-not-allowed"
                   >
                     <option value="">Pilih {field.label.toLowerCase()}</option>
                     {(field.options || []).map((opt) => {
@@ -1471,7 +1568,7 @@ function MasterDataPageContent() {
             <p className="mt-0.5 text-xs text-slate-400">{meta.total} data</p>
           </div>
 
-          {canCreate && activeTab !== "personnel" && activeTab !== "vehicles" && (
+          {canCreate && activeTab !== "personnel" && (
             <button
               type="button"
               onClick={() => setFormModal({ mode: "create", record: null })}
@@ -1524,24 +1621,16 @@ function MasterDataPageContent() {
                     </td>
                   </tr>
                 ) : (
-                  data.map((record) => {
-                    const item = record as Item;
+                   data.map((record, index) => {
+                     const item = record as Item;
 
-                    const primaryKey =
-                      activeTab === "projects"
-                        ? (record as any)?.project_id
-                        : activeTab === "personnel"
-                          ? (record as any)?.personil_id
-                          : activeTab === "vehicles"
-                            ? (record as any)?.kendaraan_id
-                            : activeTab === "warehouses"
-                              ? (record as any)?.gudang_id
-                              : activeTab === "items"
-                                ? (record as any)?.barang_id
-                                : record.id;
+                     const idFields = activeConfig.idFields || [activeConfig.idField || "id"];
+                     const rawId = idFields.map((field) => (record as any)?.[field]).find((value) => value !== undefined && value !== null && value !== "");
+                     const basePrimaryKey = rawId !== undefined && rawId !== null && rawId !== "" ? String(rawId) : String((record as any)?.id ?? `record-${index}`);
+                     const primaryKey = `${basePrimaryKey}-${index}`;
 
-                    return (
-                      <tr key={String(primaryKey ?? record.id ?? Math.random())} onClick={() => setDetailRecord(record)} className="group cursor-pointer transition-colors hover:bg-slate-50">
+                     return (
+                       <tr key={primaryKey} onClick={() => setDetailRecord(record)} className="group cursor-pointer transition-colors hover:bg-slate-50">
                         {columns.map((column) => {
                           let value = record[column];
 
@@ -1555,34 +1644,39 @@ function MasterDataPageContent() {
                             );
                           }
 
-                          if (column === "foto") {
-                            const photoUrl = String(value || "");
+                           if (column === "foto") {
+                             const photoUrl = String(value || "");
 
-                            return (
-                              <td key={column} className="px-3 py-3">
-                                {photoUrl ? (
-                                  <div className="relative h-10 w-10 overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
-                                    <img
-                                      src={photoUrl}
-                                      alt="Foto"
-                                      className="h-full w-full object-contain"
-                                      onError={(e) => {
-                                        (e.target as HTMLImageElement).style.display = "none";
-                                        (e.target as HTMLImageElement).nextElementSibling?.dispatchEvent(new Event("show-placeholder"));
-                                      }}
-                                    />
-                                    <div className="hidden absolute inset-0 items-center justify-center text-slate-300">
-                                      <ImageOff size={16} />
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-slate-300">
-                                    <ImageOff size={16} />
-                                  </div>
-                                )}
-                              </td>
-                            );
-                          }
+                             return (
+                               <td key={column} className="px-3 py-3">
+                                 {photoUrl ? (
+                                   <div className="relative h-10 w-10 overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
+                                     <img
+                                       src={photoUrl}
+                                       alt="Foto"
+                                       className="h-full w-full object-contain"
+                                       onError={(e) => {
+                                         const img = e.target as HTMLImageElement;
+                                         img.style.display = "none";
+                                         const placeholder = img.nextElementSibling as HTMLDivElement | null;
+                                         if (placeholder) {
+                                           placeholder.classList.remove("hidden");
+                                           placeholder.classList.add("flex");
+                                         }
+                                       }}
+                                     />
+                                     <div className="hidden absolute inset-0 items-center justify-center text-slate-300">
+                                       <ImageOff size={16} />
+                                     </div>
+                                   </div>
+                                 ) : (
+                                   <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-slate-300">
+                                     <ImageOff size={16} />
+                                   </div>
+                                 )}
+                               </td>
+                             );
+                           }
 
                           if (column === "bisa_menyetir") {
                             return (
@@ -1592,7 +1686,20 @@ function MasterDataPageContent() {
                             );
                           }
 
-                          if (column === "gudang") {
+                           if (column === "tipe" && activeTab === "warehouses") {
+                             const tipeVal = String(value || "").toLowerCase();
+                             const isDadakan = tipeVal === "dadakan";
+
+                             return (
+                               <td key={column} className="px-3 py-3">
+                                 <span className={["inline-flex rounded-full px-3 py-1 text-xs font-semibold", isDadakan ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-500"].join(" ")}>
+                                   {isDadakan ? "Dadakan" : (value ? formatValue(value) : "-")}
+                                 </span>
+                               </td>
+                             );
+                           }
+
+                           if (column === "gudang") {
                             const gudangNama = (record as any)?.gudang?.nama_gudang;
                             return (
                               <td key={column} className="px-6 py-4 text-sm text-slate-600">

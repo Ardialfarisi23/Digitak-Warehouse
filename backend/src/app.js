@@ -55,8 +55,13 @@ app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 app.use((req, res, next) => {
   const originalJson = res.json.bind(res);
   res.json = (body) => {
-    const json = JSON.stringify(body, (_, value) => (typeof value === "bigint" ? value.toString() : value));
-    return originalJson(JSON.parse(json));
+    try {
+      const json = JSON.stringify(body, (_, value) => (typeof value === "bigint" ? value.toString() : value));
+      return originalJson(JSON.parse(json));
+    } catch (jsonError) {
+      console.error("Gagal serialize JSON response:", jsonError);
+      return originalJson({ success: false, message: "Internal Server Error" });
+    }
   };
   next();
 });

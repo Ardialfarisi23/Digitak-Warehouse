@@ -52,6 +52,11 @@ const findById = async (boq_id) => {
           gudang_tujuan: true,
         },
       },
+      surat_jalans: {
+        include: {
+          items: true,
+        },
+      },
       diaktifkan_user: true,
       creator: true,
       updater: true,
@@ -256,7 +261,7 @@ const getSummary = async (boq_id) => {
   };
 };
 
-const exportBoqs = async ({ status, search, projectId, area, warehouseId }) => {
+const exportBoqs = async ({ status, search, projectId, area }) => {
   const where = {};
 
   if (status) {
@@ -268,10 +273,6 @@ const exportBoqs = async ({ status, search, projectId, area, warehouseId }) => {
     if (projectId) tiketFilter.project_id = Number(projectId);
     if (area) tiketFilter.area = { contains: area, mode: "insensitive" };
     where.tiket = tiketFilter;
-  }
-
-  if (warehouseId) {
-    where.items = { some: { gudang_tujuan_id: Number(warehouseId) } };
   }
 
   if (search) {
@@ -324,7 +325,7 @@ const getStats = async () => {
 };
 
 const getAreas = async () => {
-  const areas = await prisma.tiket_material.findMany({
+  const areas = await prisma.project.findMany({
     select: { area: true },
     distinct: ["area"],
     orderBy: { area: "asc" },

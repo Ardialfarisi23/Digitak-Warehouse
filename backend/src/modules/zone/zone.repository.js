@@ -40,6 +40,21 @@ const findByKode = async (kode_zona, options = {}) => {
   });
 };
 
+const findByKodeAndGudangId = async (kode_zona, gudang_id, options = {}) => {
+  const where = {
+    kode_zona,
+    gudang_id: Number(gudang_id),
+  };
+
+  return await prisma.zona_gudang.findFirst({
+    where,
+    include: {
+      gudang: true,
+      dinilai_oleh_user: true,
+    },
+  });
+};
+
 const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sortBy = "zona_id", sortOrder = "desc" } = {}) => {
   const sanitizedPage = Math.max(parseInt(page, 10) || DEFAULT_PAGE, DEFAULT_PAGE);
 
@@ -98,9 +113,21 @@ const update = async (zona_id, data) => {
   });
 };
 
+const findById = async (zona_id) => {
+  return await prisma.zona_gudang.findUnique({
+    where: { zona_id: Number(zona_id) },
+    include: {
+      gudang: true,
+      dinilai_oleh_user: true,
+    },
+  });
+};
+
 module.exports = {
   create,
   findByKode,
+  findByKodeAndGudangId,
+  findById,
   findAll,
   update,
 };

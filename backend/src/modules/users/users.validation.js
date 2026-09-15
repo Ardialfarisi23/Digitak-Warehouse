@@ -12,14 +12,14 @@ const createUserSchema = z.object({
 }).superRefine((data, ctx) => {
   const role = data.role;
 
-  if (role === "supervisor" || role === "staf_gudang") {
+  if (role === "staf_gudang") {
     const gudangId = data.gudang_id;
 
     if (gudangId === undefined || gudangId === null || gudangId === "") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["gudang_id"],
-        message: "Gudang yang ditugaskan wajib diisi untuk role Supervisor atau Staf Gudang.",
+        message: "Gudang yang ditugaskan wajib diisi untuk role Staf Gudang.",
       });
     }
   }
@@ -35,13 +35,13 @@ const updateUserSchema = z.object({
   gudang_id: createUserSchema.shape.gudang_id.optional().nullable(),
   personil_id: createUserSchema.shape.personil_id.optional().nullable(),
 }).superRefine((data, ctx) => {
-  if (data.role === "supervisor" || data.role === "staf_gudang") {
+  if (data.role === "staf_gudang") {
     const gudangId = data.gudang_id;
     if (gudangId === undefined || gudangId === null || gudangId === "") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["gudang_id"],
-        message: "Gudang yang ditugaskan wajib diisi untuk role Supervisor atau Staf Gudang.",
+        message: "Gudang yang ditugaskan wajib diisi untuk role Staf Gudang.",
       });
     }
   }

@@ -25,7 +25,7 @@ const findAll = async (req, res, next) => {
 
 const findByCode = async (req, res, next) => {
   try {
-    const result = await zoneService.findByCode(req.params.code);
+    const result = await zoneService.findByKode(req.params.code);
     return response.success(res, "Detail Zone berhasil diambil.", result);
   } catch (err) {
     next(err);
@@ -45,10 +45,24 @@ const update = async (req, res, next) => {
   }
 };
 
-const softDelete = async (req, res, next) => {
+const updateById = async (req, res, next) => {
   try {
-    await zoneService.softDelete(req.params.code);
-    return response.success(res, "Zone berhasil dinonaktifkan.");
+    const body = {
+      ...req.body,
+    };
+    delete body.gudang_id;
+
+    const result = await zoneService.updateById(req.params.zona_id, body);
+    return response.success(res, "Zone berhasil diperbarui.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const deleteById = async (req, res, next) => {
+  try {
+    const result = await zoneService.deleteById(req.params.zona_id);
+    return response.success(res, result.message, result);
   } catch (err) {
     next(err);
   }
@@ -89,7 +103,7 @@ module.exports = {
   findAll,
   findByCode,
   update,
-  softDelete,
-  restore,
+  updateById,
+  deleteById,
   updateUtilizationStatus,
 };

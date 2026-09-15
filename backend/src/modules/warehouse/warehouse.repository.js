@@ -69,10 +69,10 @@ const findAll = async ({
 
   const where = {};
 
-  if (is_aktif === "true") {
-    where.is_aktif = true;
-  } else if (is_aktif === "false") {
+  if (is_aktif === "false") {
     where.is_aktif = false;
+  } else {
+    where.is_aktif = true;
   }
 
   if (is_internal === "true") {

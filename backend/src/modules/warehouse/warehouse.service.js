@@ -3,7 +3,38 @@ const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
 const notificationService = require("../../modules/notifications/notifications.service");
 
-const create = async (data, userId) => {
+const canEditType = async (gudang_id) => {
+  const warehouse = await warehouseRepository.findById(gudang_id);
+
+  if (!warehouse) {
+    throw new AppError("Warehouse tidak ditemukan.", 404);
+  }
+
+  const [zonaCount, stockExists] = await Promise.all([
+    prisma.zona_gudang.count({
+      where: { gudang_id: warehouse.gudang_id },
+    }),
+    prisma.stok_gudang.findFirst({
+      where: {
+        gudang_id: warehouse.gudang_id,
+        qty: { gt: 0 },
+      },
+      select: { stok_id: true },
+    }),
+  ]);
+
+  return {
+    dapat_ubah_tipe: zonaCount <= 1 && !stockExists,
+    zona_count: zonaCount,
+    has_stock: Boolean(stockExists),
+  };
+};
+
+const create = async (data, userId, userRole) => {
+  if (data.tipe === "dadakan" && userRole !== "admin_general") {
+    throw new AppError("Hanya Admin yang dapat membuat Gudang Dadakan.", 403);
+  }
+
   const existingWarehouse = await warehouseRepository.findByNama(data.nama_gudang, {
     includeInactive: true,
   });
@@ -14,11 +45,63 @@ const create = async (data, userId) => {
 
   const createData = {
     ...data,
+    tipe: data.tipe || "tetap",
     created_by: Number(userId),
     updated_by: Number(userId),
   };
 
-  const result = await warehouseRepository.create(createData);
+  const defaultZonaLayout = [
+    { kode_zona: "A", nama_zona: "Zona A", tipe_zona: "Indoor", status_kecukupan: "CUKUP" },
+    { kode_zona: "B", nama_zona: "Zona B", tipe_zona: "Indoor", status_kecukupan: "CUKUP" },
+    { kode_zona: "C", nama_zona: "Zona C", tipe_zona: "Outdoor", status_kecukupan: "CUKUP" },
+    { kode_zona: "D", nama_zona: "Zona D", tipe_zona: "Outdoor", status_kecukupan: "CUKUP" },
+  ];
+
+  const dadakanZonaLayout = [
+    { kode_zona: "DEFAULT", nama_zona: "Area Utama", tipe_zona: "Indoor", status_kecukupan: "CUKUP" },
+  ];
+
+  const zonaLayout = createData.tipe === "dadakan" ? dadakanZonaLayout : defaultZonaLayout;
+
+  const result = await prisma.$transaction(async (tx) => {
+    const warehouse = await tx.gudang.create({
+      data: createData,
+    });
+
+    for (const zona of zonaLayout) {
+      await tx.zona_gudang.create({
+        data: {
+          gudang_id: warehouse.gudang_id,
+          kode_zona: zona.kode_zona,
+          nama_zona: zona.nama_zona,
+          tipe_zona: zona.tipe_zona,
+          status_kecukupan: zona.status_kecukupan,
+        },
+      });
+    }
+
+    return warehouse;
+  });
+
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(userId) },
+    select: { nama: true },
+  });
+
+  try {
+    const roles = ["admin_general", "supervisor"];
+    for (const role of roles) {
+      await notificationService.create({
+        role,
+        type: "info",
+        title: "Gudang Baru Ditambahkan",
+        message: `Gudang baru: ${result.nama_gudang} (ID: ${result.gudang_id}) telah ditambahkan oleh ${actor?.nama || "Staf"}.`,
+        link: "/dashboard/master-data",
+      });
+    }
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi gudang baru:", notifErr);
+  }
 
   if (result.project_id) {
     try {
@@ -27,24 +110,10 @@ const create = async (data, userId) => {
         select: { nama_project: true },
       });
 
-      const personnel = await prisma.personil.findMany({
-        where: {
-          gudang_id: result.gudang_id,
-          user: {
-            role: { in: ["supervisor", "staf_gudang"] },
-            is_aktif: true,
-          },
-        },
-        select: { user_id: true },
-      });
-
-      const userIds = personnel
-        .map((p) => p.user_id)
-        .filter((id) => id != null);
-
-      for (const uid of userIds) {
+      const roles = ["admin_general", "supervisor"];
+      for (const role of roles) {
         await notificationService.create({
-          userId: uid,
+          role,
           type: "info",
           title: "Gudang Dikaitkan dengan Project",
           message: `Gudang ${result.nama_gudang} telah dikaitkan dengan Project ${project?.nama_project || result.project_id}.`,
@@ -60,7 +129,22 @@ const create = async (data, userId) => {
 };
 
 const findAll = async (query) => {
-  return await warehouseRepository.findAll(query);
+  const result = await warehouseRepository.findAll(query);
+
+  const dataWithFlag = await Promise.all(
+    result.data.map(async (warehouse) => {
+      const check = await canEditType(warehouse.gudang_id);
+      return {
+        ...warehouse,
+        dapat_ubah_tipe: check.dapat_ubah_tipe,
+      };
+    })
+  );
+
+  return {
+    ...result,
+    data: dataWithFlag,
+  };
 };
 
 const findByNama = async (nama_gudang) => {
@@ -72,7 +156,12 @@ const findByNama = async (nama_gudang) => {
     throw new AppError("Warehouse tidak ditemukan.", 404);
   }
 
-  return warehouse;
+  const check = await canEditType(warehouse.gudang_id);
+
+  return {
+    ...warehouse,
+    dapat_ubah_tipe: check.dapat_ubah_tipe,
+  };
 };
 
 const update = async (gudang_id, data, userId) => {
@@ -86,6 +175,14 @@ const update = async (gudang_id, data, userId) => {
 
   if (!warehouse.is_aktif) {
     throw new AppError("Warehouse telah dinonaktifkan. Pulihkan untuk mengubah data.", 400);
+  }
+
+  if (data.tipe && data.tipe !== warehouse.tipe) {
+    const check = await canEditType(warehouse.gudang_id);
+
+    if (!check.dapat_ubah_tipe) {
+      throw new AppError("Tipe gudang tidak dapat diubah karena sudah memiliki stok atau lebih dari 1 zona.", 400);
+    }
   }
 
   if (data.nama_gudang && data.nama_gudang !== warehouse.nama_gudang) {
@@ -183,8 +280,32 @@ const update = async (gudang_id, data, userId) => {
   return result;
 };
 
+const hasActiveStock = async (gudang_id) => {
+  const stock = await prisma.stok_gudang.findFirst({
+    where: {
+      gudang_id,
+      qty: { gt: 0 },
+    },
+    select: { stok_id: true },
+  });
+
+  return Boolean(stock);
+};
+
 const softDelete = async (gudang_id) => {
-  return await warehouseRepository.softDelete(gudang_id);
+  const warehouse = await warehouseRepository.findById(gudang_id);
+
+  if (!warehouse) {
+    throw new AppError("Warehouse tidak ditemukan.", 404);
+  }
+
+  const stockExists = await hasActiveStock(warehouse.gudang_id);
+
+  if (stockExists) {
+    throw new AppError("Gudang tidak dapat dinonaktifkan karena masih memiliki stok tersisa. Pindahkan seluruh stok ke gudang lain terlebih dahulu.", 400);
+  }
+
+  return await warehouseRepository.softDelete(warehouse.gudang_id);
 };
 
 const restore = async (gudang_id) => {

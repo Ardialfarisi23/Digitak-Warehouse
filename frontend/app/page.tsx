@@ -128,6 +128,11 @@ export default function Home() {
 
       login(data.data.user, data.data.token);
 
+      if (data.data.user.must_change_password) {
+        router.replace("/dashboard/change-password");
+        return;
+      }
+
       const userRole = mapRole(data.data.user?.role);
 
       const redirectPath =

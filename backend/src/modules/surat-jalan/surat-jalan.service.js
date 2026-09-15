@@ -132,7 +132,6 @@ const create = async (data, actorId) => {
 
         if (actor?.role === "admin_general") {
           const supervisorIds = await getRelatedSupervisorIds();
-          const staffIds = await getRelatedStaffIds(gudangIds);
 
           if (supervisorIds.length > 0) {
             await notificationService.create({
@@ -143,28 +142,9 @@ const create = async (data, actorId) => {
               link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
             });
           }
-          if (staffIds.length > 0) {
-            await notificationService.create({
-              userId: staffIds,
-              type: "approval",
-              title: "Outbound Menunggu Approval",
-              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
-              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
-            });
-          }
         } else if (actor?.role === "staf_gudang") {
-          const adminIds = await getAllAdminIds(actorId);
           const supervisorIds = await getRelatedSupervisorIds();
 
-          if (adminIds.length > 0) {
-            await notificationService.create({
-              userId: adminIds,
-              type: "approval",
-              title: "Outbound Menunggu Approval",
-              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
-              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
-            });
-          }
           if (supervisorIds.length > 0) {
             await notificationService.create({
               userId: supervisorIds,
@@ -215,41 +195,9 @@ const createStaffInbound = async (data, actorId) => {
   const gudangIds = collectShipmentGudangIds(result);
 
   try {
-    if (actor?.role === "admin_general") {
-      const supervisorIds = await getRelatedSupervisorIds();
-      const staffIds = await getRelatedStaffIds(gudangIds);
-
-      if (supervisorIds.length > 0) {
-        await notificationService.create({
-          userId: supervisorIds,
-          type: "approval",
-          title: "Inbound Menunggu Verifikasi",
-          message: `Pengajuan inbound ${result?.nomor_surat_jalan || ""} menunggu verifikasi supervisor.`,
-          link: "/dashboard/supervisor/approval/inbound",
-        });
-      }
-      if (staffIds.length > 0) {
-        await notificationService.create({
-          userId: staffIds,
-          type: "approval",
-          title: "Inbound Menunggu Verifikasi",
-          message: `Pengajuan inbound ${result?.nomor_surat_jalan || ""} menunggu verifikasi supervisor.`,
-          link: "/dashboard/supervisor/approval/inbound",
-        });
-      }
-    } else if (actor?.role === "staf_gudang") {
-      const adminIds = await getAllAdminIds(actorId);
+    if (actor?.role === "admin_general" || actor?.role === "staf_gudang") {
       const supervisorIds = await getRelatedSupervisorIds();
 
-      if (adminIds.length > 0) {
-        await notificationService.create({
-          userId: adminIds,
-          type: "approval",
-          title: "Inbound Menunggu Verifikasi",
-          message: `Pengajuan inbound ${result?.nomor_surat_jalan || ""} menunggu verifikasi supervisor.`,
-          link: "/dashboard",
-        });
-      }
       if (supervisorIds.length > 0) {
         await notificationService.create({
           userId: supervisorIds,
@@ -434,21 +382,9 @@ const approveInbound = async (id, itemAdjustments = [], actorId) => {
     await suratJalanRepository.addInboundStock(shipment, tx);
     await suratJalanRepository.updateStatus(id, "ready_putaway", tx);
 
-    if (shipment.boq_id && shipment.boq?.tiket_id) {
-      const totalQty = shipment.items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
-      if (totalQty > 0) {
-        const tiket = await tx.tiket_material.findUnique({
-          where: { tiket_id: Number(shipment.boq.tiket_id) },
-        });
-        if (tiket) {
-          const currentMos = Number(tiket.mos || 0);
-          await tx.tiket_material.update({
-            where: { tiket_id: Number(shipment.boq.tiket_id) },
-            data: { mos: currentMos + totalQty },
-          });
-        }
-      }
-    }
+    // NOTE: Auto-increment tiket.mos saat inbound DIHAPUS (2026-09-12).
+    // tiket.mos sekarang murni representasi "MOS Mitra" — hanya diisi via laporan mitra (Excel/manual).
+    // MOS Sistem (dari inbound) dihitung on-the-fly di reconciliation.repository.js, TIDAK disimpan di kolom ini.
 
     if (actorId) {
       await suratJalanRepository.createApprovalLog(id, actorId, "inbound_verifikasi", "disetujui", null, tx);
@@ -465,14 +401,33 @@ const approveInbound = async (id, itemAdjustments = [], actorId) => {
     }
   });
 
-  if (shipment.created_by) {
-    await notificationService.create({
-      userId: shipment.created_by,
-      type: "success",
-      title: "Inbound Siap Putaway",
-      message: `Surat Jalan ${shipment.nomor_surat_jalan} sudah diverifikasi dan siap ditempatkan ke zona.`,
-      link: `/staff/putaway/${shipment.surat_jalan_id}`,
-    });
+  const updatedShipment = await suratJalanRepository.findById(id);
+
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(actorId) },
+    select: { nama: true, role: true },
+  });
+
+  const gudangIds = collectShipmentGudangIds(updatedShipment);
+
+  const sendNotification = async (users, link) => {
+    if (!Array.isArray(users) || users.length === 0) return;
+    try {
+      await notificationService.create({
+        userId: users,
+        type: "success",
+        title: "Inbound Disetujui",
+        message: `Pengajuan inbound ${updatedShipment.nomor_surat_jalan} telah disetujui oleh ${actor?.nama || "Supervisor"}.`,
+        link,
+      });
+    } catch (notifErr) {
+      console.error("Gagal membuat notifikasi approve inbound:", notifErr);
+    }
+  };
+
+  if (actor?.role === "supervisor") {
+    const creatorId = updatedShipment.created_by ? [Number(updatedShipment.created_by)] : [];
+    await sendNotification(creatorId, `/staff/inbound/${updatedShipment.surat_jalan_id}`);
   }
 
   return await suratJalanRepository.findById(id);
@@ -498,25 +453,12 @@ const approveOutbound = async (id, actorId) => {
   }
 
   await prisma.$transaction(async (tx) => {
-    await suratJalanRepository.deductOutboundStock(shipment, tx);
     await suratJalanRepository.reduceBoqAllocation(shipment, tx);
     await suratJalanRepository.updateStatus(id, "disetujui", tx);
 
-    if (shipment.boq_id && shipment.boq?.tiket_id && shipment.tujuan_tipe !== "gudang") {
-      const totalQty = shipment.items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
-      if (totalQty > 0) {
-        const tiket = await tx.tiket_material.findUnique({
-          where: { tiket_id: Number(shipment.boq.tiket_id) },
-        });
-        if (tiket) {
-          const currentUsed = Number(tiket.used || 0);
-          await tx.tiket_material.update({
-            where: { tiket_id: Number(shipment.boq.tiket_id) },
-            data: { used: currentUsed + totalQty },
-          });
-        }
-      }
-    }
+    // NOTE: Auto-increment tiket_material.used saat outbound disetujui DIHAPUS (2026-09-12).
+    // used sekarang murni merepresentasikan "Qty Terpasang" dari laporan mitra — hanya diisi via laporan mitra (Excel/manual).
+    // Verifikasi SPV outbound tetap berfungsi sebagai tracking status surat jalan, TIDAK menulis ke kolom used.
 
     if (actorId) {
       await suratJalanRepository.createApprovalLog(id, actorId, "outbound_approval", "disetujui", null, tx);
@@ -554,18 +496,9 @@ const approveOutbound = async (id, actorId) => {
       }
     };
 
-    if (shipment.created_by && Number(shipment.created_by) !== Number(actorId)) {
-      targets.add(Number(shipment.created_by));
-    }
-
     if (actor?.role === "supervisor") {
-      const adminIds = await getAllAdminIds(Number(actorId));
-      const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
-      const staffIds = await getRelatedStaffIds(gudangIds);
-
-      await sendNotification(adminIds, `/dashboard`);
-      await sendNotification(supervisorIds, `/dashboard/supervisor/approval/outbound/${shipment.surat_jalan_id}`);
-      await sendNotification(staffIds, `/staff/outbound/${shipment.surat_jalan_id}`);
+      const creatorId = shipment.created_by ? [Number(shipment.created_by)] : [];
+      await sendNotification(creatorId, `/staff/outbound/${shipment.surat_jalan_id}`);
     }
   });
 
@@ -635,10 +568,6 @@ const confirmDistributed = async (id, actorId) => {
     }
   };
 
-  if (updatedShipment.created_by && Number(updatedShipment.created_by) !== Number(actorId)) {
-    targets.add(Number(updatedShipment.created_by));
-  }
-
   if (actor?.role === "supervisor") {
     const adminIds = await getAllAdminIds(Number(actorId));
     const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
@@ -705,18 +634,9 @@ const rejectInbound = async (id, catatan = null, actorId) => {
       }
     };
 
-    if (updatedShipment.created_by && Number(updatedShipment.created_by) !== Number(actorId)) {
-      targets.add(Number(updatedShipment.created_by));
-    }
-
     if (actor?.role === "supervisor") {
-      const adminIds = await getAllAdminIds(Number(actorId));
-      const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
-      const staffIds = await getRelatedStaffIds(gudangIds);
-
-      await sendNotification(adminIds, `/dashboard`);
-      await sendNotification(supervisorIds, `/dashboard/supervisor/approval/inbound/${updatedShipment.surat_jalan_id}`);
-      await sendNotification(staffIds, `/staff/inbound/${updatedShipment.surat_jalan_id}`);
+      const creatorId = updatedShipment.created_by ? [Number(updatedShipment.created_by)] : [];
+      await sendNotification(creatorId, `/staff/inbound/${updatedShipment.surat_jalan_id}`);
     }
 
     return updatedShipment;
@@ -775,18 +695,9 @@ const rejectInbound = async (id, catatan = null, actorId) => {
       }
     };
 
-    if (updatedShipment.created_by && Number(updatedShipment.created_by) !== Number(actorId)) {
-      targets.add(Number(updatedShipment.created_by));
-    }
-
     if (actor?.role === "supervisor") {
-      const adminIds = await getAllAdminIds(Number(actorId));
-      const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
-      const staffIds = await getRelatedStaffIds(gudangIds);
-
-      await sendNotification(adminIds, `/dashboard`);
-      await sendNotification(supervisorIds, `/dashboard/supervisor/approval/outbound/${updatedShipment.surat_jalan_id}`);
-      await sendNotification(staffIds, `/staff/outbound/${updatedShipment.surat_jalan_id}`);
+      const creatorId = updatedShipment.created_by ? [Number(updatedShipment.created_by)] : [];
+      await sendNotification(creatorId, `/staff/outbound/${updatedShipment.surat_jalan_id}`);
     }
 
     return updatedShipment;
@@ -803,7 +714,7 @@ const rejectInbound = async (id, catatan = null, actorId) => {
       throw new AppError("Hanya inbound yang dapat diproses putaway.", 400);
     }
 
-    if (!Array.isArray(items) || items.length === 0) {
+if (!Array.isArray(items) || items.length === 0) {
       throw new AppError("Daftar item putaway kosong.", 400);
     }
 

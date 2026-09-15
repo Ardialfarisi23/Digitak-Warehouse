@@ -299,14 +299,16 @@ const create = async (data) => {
     no_telepon,
     gudang_id,
     gudang_nama, // tidak dipakai untuk insert, hanya info dari frontend
-    personil_id, // kalau nanti mau hubungkan ke personil yang sudah ada
     ...userData
   } = data;
 
   const result = await prisma.$transaction(async (tx) => {
     // 1. Buat user_account
     const user = await tx.user_account.create({
-      data: userData,
+      data: {
+        ...userData,
+        must_change_password: !!userData.password_hash,
+      },
     });
 
     // 2. Buat personil terhubung ke user ini

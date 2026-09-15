@@ -4,7 +4,7 @@ const router = express.Router();
 
 const authController = require("./auth.controller");
 
-const { loginSchema } = require("./auth.validation");
+const { loginSchema, changePasswordSchema } = require("./auth.validation");
 
 const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
@@ -15,6 +15,23 @@ router.post(
     "/login",
     validate(loginSchema),
     authController.login
+);
+
+router.post(
+    "/forgot-password",
+    authController.forgotPassword
+);
+
+router.post(
+    "/reset-password",
+    authController.resetPassword
+);
+
+router.put(
+    "/change-password",
+    authenticate,
+    validate(changePasswordSchema),
+    authController.changePassword
 );
 
 router.post(

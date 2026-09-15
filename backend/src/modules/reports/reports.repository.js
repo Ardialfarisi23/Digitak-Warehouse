@@ -1,5 +1,6 @@
 const prisma = require("../../config/prisma");
 const AppError = require("../../shared/errors");
+const reconciliationService = require("../reconciliation/reconciliation.service");
 
 /**
  * Mengubah filter ID dari query string menjadi BigInt secara aman.
@@ -269,6 +270,232 @@ const getStockHistory = async (filters = {}) => {
   };
 };
 
+const getStockHistoryForExport = async (filters = {}) => {
+  const {
+    search = "",
+    projectId = "all",
+    warehouseId = "all",
+    zonaId = "all",
+    kategoriId = "all",
+    type = "all",
+    status = "all",
+    startDate,
+    endDate,
+  } = filters;
+
+  const where = {};
+
+  if (search.trim()) {
+    const s = search.trim();
+    where.OR = [
+      { barang: { nama_barang: { contains: s, mode: "insensitive" } } },
+      { barang: { kode_perangkat: { contains: s, mode: "insensitive" } } },
+      {
+        surat_jalan_item: {
+          surat_jalan: {
+            OR: [
+              { nomor_surat_jalan: { contains: s, mode: "insensitive" } },
+              {
+                boq: {
+                  tiket: {
+                    kode_tiket: { contains: s, mode: "insensitive" } },
+                },
+              },
+            ],
+          },
+        },
+      },
+    ];
+  }
+
+  const suratJalanWhere = {};
+
+  const projectIdFilter = parseIdFilter(projectId, "projectId");
+  if (projectIdFilter !== null) {
+    suratJalanWhere.project_id = projectIdFilter;
+  }
+  if (type && type !== "all") {
+    suratJalanWhere.tipe = type;
+  }
+  if (status && status !== "all") {
+    suratJalanWhere.status = status;
+  }
+
+  const warehouseIdFilter = parseIdFilter(warehouseId, "warehouseId");
+  if (warehouseIdFilter !== null) {
+    suratJalanWhere.OR = [
+      { gudang_asal_id: warehouseIdFilter },
+      { gudang_tujuan_id: warehouseIdFilter },
+    ];
+  }
+
+  const suratJalanItemWhere = {};
+
+  const zonaIdFilter = parseIdFilter(zonaId, "zonaId");
+  if (zonaIdFilter !== null) {
+    suratJalanItemWhere.zona_id = zonaIdFilter;
+  }
+
+  if (Object.keys(suratJalanWhere).length > 0) {
+    suratJalanItemWhere.surat_jalan = suratJalanWhere;
+  }
+
+  if (Object.keys(suratJalanItemWhere).length > 0) {
+    where.surat_jalan_item = suratJalanItemWhere;
+  }
+
+  const kategoriIdFilter = parseIdFilter(kategoriId, "kategoriId");
+  if (kategoriIdFilter !== null) {
+    where.barang = { kategori_id: kategoriIdFilter };
+  }
+
+  if (startDate || endDate) {
+    where.waktu_mutasi = {};
+    if (startDate) where.waktu_mutasi.gte = new Date(startDate);
+    if (endDate) where.waktu_mutasi.lte = new Date(endDate + "T23:59:59");
+  }
+
+  const EXPORT_LIMIT = 10000;
+
+  const [data, total] = await Promise.all([
+    prisma.stok_ledger.findMany({
+      where,
+      skip: 0,
+      take: EXPORT_LIMIT,
+      orderBy: { waktu_mutasi: "desc" },
+      include: {
+        surat_jalan_item: {
+          include: {
+            surat_jalan: {
+              include: {
+                project: {
+                  select: {
+                    nama_project: true,
+                    area: true,
+                  },
+                },
+                gudang_asal: {
+                  select: {
+                    nama_gudang: true,
+                  },
+                },
+                gudang_tujuan: {
+                  select: {
+                    nama_gudang: true,
+                  },
+                },
+                boq: {
+                  include: {
+                    tiket: {
+                      select: {
+                        tiket_id: true,
+                        kode_tiket: true,
+                      },
+                    },
+                  },
+                },
+                creator: {
+                  select: {
+                    nama: true,
+                    role: true,
+                  },
+                },
+              },
+            },
+            barang: {
+              select: {
+                kode_perangkat: true,
+                nama_barang: true,
+                kategori: {
+                  select: {
+                    kategori_id: true,
+                    nama_kategori: true,
+                  },
+                },
+              },
+            },
+            satuan: {
+              select: {
+                kode_satuan: true,
+              },
+            },
+            zona: {
+              select: {
+                zona_id: true,
+                kode_zona: true,
+                nama_zona: true,
+                tipe_zona: true,
+                gudang: {
+                  select: {
+                    nama_gudang: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.stok_ledger.count({ where }),
+  ]);
+
+  const rows = data.map((ledger) => {
+    const item = ledger.surat_jalan_item;
+    const suratJalan = item?.surat_jalan;
+    const barang = item?.barang;
+    const tiket = suratJalan?.boq?.tiket;
+    const zona = item?.zona;
+
+    const gudangAsal = suratJalan?.gudang_asal?.nama_gudang || null;
+    const gudangTujuan = suratJalan?.gudang_tujuan?.nama_gudang || null;
+
+    return {
+      ledger_id: String(ledger.ledger_id),
+      waktu_mutasi: ledger.waktu_mutasi,
+      jenis_mutasi: ledger.jenis_mutasi,
+      qty: Number(ledger.qty),
+      satuan: item?.satuan?.kode_satuan || "-",
+      saldo_setelah: Number(ledger.saldo_setelah),
+      barang_id: String(ledger.barang_id),
+      kode_perangkat: barang?.kode_perangkat || "-",
+      nama_barang: barang?.nama_barang || "-",
+      kategori_id: barang?.kategori?.kategori_id ? String(barang.kategori.kategori_id) : null,
+      kategori_nama: barang?.kategori?.nama_kategori || "-",
+      kondisi: item?.kondisi || "-",
+      surat_jalan_id: suratJalan ? String(suratJalan.surat_jalan_id) : "-",
+      nomor_surat_jalan: suratJalan?.nomor_surat_jalan || "-",
+      tipe_surat_jalan: suratJalan?.tipe || "-",
+      status_surat_jalan: suratJalan?.status || "-",
+      project_nama: suratJalan?.project?.nama_project || "-",
+      area: suratJalan?.project?.area || "-",
+      gudang: gudangAsal || gudangTujuan || "-",
+      gudang_asal: gudangAsal || "-",
+      gudang_tujuan: gudangTujuan || "-",
+      gudang_asal_id: suratJalan?.gudang_asal_id ? String(suratJalan.gudang_asal_id) : null,
+      gudang_tujuan_id: suratJalan?.gudang_tujuan_id ? String(suratJalan.gudang_tujuan_id) : null,
+      zona_id: zona?.zona_id ? String(zona.zona_id) : null,
+      zona_kode: zona?.kode_zona || "-",
+      zona_nama: zona?.nama_zona || "-",
+      zona_tipe: zona?.tipe_zona || "-",
+      zona_gudang: zona?.gudang?.nama_gudang || "-",
+      tiket_id: tiket ? String(tiket.tiket_id) : "-",
+      kode_tiket: tiket?.kode_tiket || "-",
+      is_kelebihan: item?.is_kelebihan || false,
+      diproses_oleh: suratJalan?.creator?.nama || "-",
+      diproses_oleh_role: suratJalan?.creator?.role || "-",
+    };
+  });
+
+  return {
+    data: rows,
+    meta: {
+      total,
+      limit: EXPORT_LIMIT,
+      truncated: total > EXPORT_LIMIT,
+    },
+  };
+};
+
 const getAuditLogs = async (filters = {}) => {
   const {
     search = "",
@@ -382,6 +609,119 @@ const getAuditLogs = async (filters = {}) => {
       page: Number(page),
       limit: Number(limit),
       totalPages: Math.ceil(total / Number(limit)) || 1,
+    },
+  };
+};
+
+const getAuditLogForExport = async (filters = {}) => {
+  const {
+    search = "",
+    actorId = "all",
+    actorRole = "all",
+    action = "all",
+    entityType = "all",
+    tiketId = "all",
+    kodeTiket = "",
+    startDate,
+    endDate,
+  } = filters;
+
+  const where = {};
+
+  if (search.trim()) {
+    where.OR = [
+      { entity_type: { contains: search, mode: "insensitive" } },
+      { actor: { nama: { contains: search, mode: "insensitive" } } },
+    ];
+  }
+
+  if (actorId !== "all") {
+    where.actor_id = BigInt(actorId);
+  }
+
+  if (actorRole !== "all") {
+    where.actor = { role: actorRole };
+  }
+
+  if (action !== "all") {
+    where.aksi = action;
+  }
+
+  if (entityType !== "all") {
+    where.entity_type = entityType;
+  }
+
+  if (kodeTiket.trim()) {
+    const tiket = await prisma.tiket_material.findFirst({
+      where: { kode_tiket: { contains: kodeTiket.trim(), mode: "insensitive" } },
+      select: { tiket_id: true },
+    });
+    if (tiket) {
+      where.AND = [
+        { entity_type: "reconciliation" },
+        { entity_id: BigInt(tiket.tiket_id) },
+      ];
+    } else {
+      where.AND = [
+        { entity_id: BigInt(-1) },
+      ];
+    }
+  } else if (tiketId !== "all") {
+    where.entity_id = BigInt(tiketId);
+  }
+
+  if (startDate || endDate) {
+    where.created_at = {};
+    if (startDate) where.created_at.gte = new Date(startDate);
+    if (endDate) where.created_at.lte = new Date(endDate + "T23:59:59");
+  }
+
+  const EXPORT_LIMIT = 10000;
+
+  const [data, total] = await Promise.all([
+    prisma.audit_log.findMany({
+      where,
+      skip: 0,
+      take: EXPORT_LIMIT,
+      orderBy: { created_at: "desc" },
+      include: {
+        actor: {
+          select: {
+            nama: true,
+            email: true,
+            role: true,
+            personils: {
+              select: {
+                nama: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.audit_log.count({ where }),
+  ]);
+
+  const rows = data.map((log) => ({
+    audit_id: String(log.audit_id),
+    created_at: log.created_at,
+    aksi: log.aksi,
+    entity_type: log.entity_type,
+    entity_id: String(log.entity_id),
+    actor_id: String(log.actor_id),
+    actor_nama: log.actor?.personils?.[0]?.nama || log.actor?.nama || "-",
+    actor_email: log.actor?.email || "-",
+    actor_role: log.actor?.role || "-",
+    data_sebelum: log.data_sebelum,
+    data_sesudah: log.data_sesudah,
+  }));
+
+  return {
+    data: rows,
+    meta: {
+      total,
+      limit: EXPORT_LIMIT,
+      truncated: total > EXPORT_LIMIT,
     },
   };
 };
@@ -944,7 +1284,7 @@ const getZoneUtilization = async (filters = {}) => {
   }));
 };
 
-const backfillReconciliation = async () => {
+const backfillReconciliation = async (actorId) => {
   const tikets = await prisma.tiket_material.findMany({
     include: {
       project: true,
@@ -994,18 +1334,47 @@ const backfillReconciliation = async () => {
     }
   }
 
+  const affectedTiketIds = [];
+
   for (const tiket of tikets) {
+    const existingLaporan = await prisma.laporan_mitra.findFirst({
+      where: {
+        tiket_id: tiket.tiket_id,
+        is_aktif: true,
+      },
+    });
+
+    if (existingLaporan) {
+      continue;
+    }
+
     const pid = Number(tiket.project_id);
     const mos = Number(inboundByProject.get(pid) || 0);
     const used = Number(outboundByProject.get(pid) || 0);
 
-    await prisma.tiket_material.update({
-      where: { tiket_id: tiket.tiket_id },
-      data: { mos, used },
+    await prisma.laporan_mitra.create({
+      data: {
+        tiket_id: tiket.tiket_id,
+        kode_tiket: tiket.kode_tiket,
+        project_id: tiket.project_id,
+        jenis_laporan: "migrasi_sistem",
+        tanggal_laporan: new Date(),
+        mos,
+        used,
+        catatan: "Data migrasi otomatis dari sistem lama — belum dikonfirmasi mitra",
+        uploaded_by: BigInt(actorId || 0),
+        is_aktif: true,
+      },
     });
+
+    affectedTiketIds.push(String(tiket.tiket_id));
   }
 
-  return { updated: tikets.length };
+  for (const tiketId of affectedTiketIds) {
+    await reconciliationService.refreshTiketMosUsed(tiketId, prisma);
+  }
+
+  return { updated: affectedTiketIds.length };
 };
 
 const getReconciliationUploadLogs = async (filters = {}) => {
@@ -1096,7 +1465,9 @@ const getReconciliationUploadLogs = async (filters = {}) => {
 
 module.exports = {
   getStockHistory,
+  getStockHistoryForExport,
   getAuditLogs,
+  getAuditLogForExport,
   getHardwareReconciliation,
   getHardwareReconciliationPerTiket,
   getHardwareReconciliationDetailed,

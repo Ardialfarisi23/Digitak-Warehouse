@@ -259,6 +259,7 @@ export default function AjukanSuratJalanPage() {
   const [submitting, setSubmitting] = useState(false);
   const [boqItems, setBoqItems] = useState<ItemBarang[]>([]);
   const [boqItemsLoading, setBoqItemsLoading] = useState(false);
+  const [boqs, setBoqs] = useState<{ boq_id: string; boq_number: string }[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -335,6 +336,8 @@ export default function AjukanSuratJalanPage() {
     setSelectedBoqId(boqId || "");
     setQtyByItem({});
     setBoqItems([]);
+    setBoqs([]);
+    setSelectedBoqId("");
     setSelectedTujuanKategori("");
     setSelectedPengirimKategori("");
     setSelectedTitikLapanganId("");
@@ -343,10 +346,14 @@ export default function AjukanSuratJalanPage() {
 
     if (!projectId) return;
 
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
     setBoqItemsLoading(true);
     try {
-      const [itemsRes, titikLapanganRes] = await Promise.all([get(`${baseUrl}/api/boqs/items?projectId=${projectId}`), get(`${baseUrl}/api/titik-lapangan?project_id=${projectId}`)]);
+      const [itemsRes, titikLapanganRes, boqsRes] = await Promise.all([
+        get(`${baseUrl}/api/boqs/items?projectId=${projectId}`),
+        get(`${baseUrl}/api/titik-lapangan?project_id=${projectId}`),
+        get(`${baseUrl}/api/boqs?projectId=${projectId}&status=aktif`),
+      ]);
 
       if (!itemsRes.ok) throw new Error("Gagal mengambil daftar item BOQ Plan.");
       const itemsJson = await itemsRes.json();
@@ -374,10 +381,28 @@ export default function AjukanSuratJalanPage() {
       } else {
         setTitikLapangans([]);
       }
+
+      if (boqsRes.ok) {
+        const boqsJson = await boqsRes.json();
+        const rawBoqs = Array.isArray(boqsJson?.data?.data)
+          ? boqsJson.data.data
+          : Array.isArray(boqsJson?.data)
+            ? boqsJson.data
+            : [];
+        setBoqs(
+          rawBoqs.map((b: any) => ({
+            boq_id: String(b.id ?? b.boq_id ?? ""),
+            boq_number: b.boqNumber || b.boq_number || `BOQ-${b.id ?? b.boq_id}`,
+          }))
+        );
+      } else {
+        setBoqs([]);
+      }
     } catch (err) {
       console.error(err);
       setBoqItems([]);
       setTitikLapangans([]);
+      setBoqs([]);
     } finally {
       setBoqItemsLoading(false);
     }
@@ -471,6 +496,10 @@ export default function AjukanSuratJalanPage() {
   async function confirmSubmit() {
     if (!selectedProject || !selectedPersonil) return;
 
+    if (!selectedBoqId) {
+      showToast("Pilih BOQ terlebih dahulu.", "error");
+      return;
+    }
     if (!selectedTujuanKategori) {
       showToast("Pilih kategori tujuan terlebih dahulu.", "error");
       return;
@@ -641,13 +670,11 @@ export default function AjukanSuratJalanPage() {
                       className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
                     >
                       <option value="">Pilih Gudang Asal...</option>
-                      {warehouses
-                        .filter((w) => w.is_internal === true)
-                        .map((w) => (
-                          <option key={w.gudang_id} value={String(w.gudang_id)}>
-                            {w.nama_gudang} {w.tipe ? `(${w.tipe})` : ""}
-                          </option>
-                        ))}
+{warehouses.filter((w) => w.is_internal === true).map((w) => (
+                        <option key={w.gudang_id} value={String(w.gudang_id)}>
+                          {w.nama_gudang} {w.tipe === "dadakan" ? "(Dadakan)" : ""}
+                        </option>
+                      ))}
                     </select>
                     <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   </div>
@@ -712,7 +739,7 @@ export default function AjukanSuratJalanPage() {
                       <option value="">Pilih Gudang Tujuan...</option>
                       {warehouses.map((w) => (
                         <option key={w.gudang_id} value={String(w.gudang_id)}>
-                          {w.nama_gudang} {w.tipe ? `(${w.tipe})` : ""}
+                          {w.nama_gudang} {w.tipe === "dadakan" ? "(Dadakan)" : ""}
                         </option>
                       ))}
                     </select>
@@ -755,6 +782,26 @@ export default function AjukanSuratJalanPage() {
           {selectedProject && (
             <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
               <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Pilih Barang & Kuantitas</p>
+
+              <div className="relative mb-4">
+                <label className="mb-1.5 block text-xs font-medium text-gray-500">BOQ <span className="text-rose-500">*</span></label>
+                <select
+                  value={selectedBoqId}
+                  onChange={(e) => setSelectedBoqId(e.target.value)}
+                  className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+                >
+                  <option value="">Pilih BOQ...</option>
+                  {boqs.map((b) => (
+                    <option key={b.boq_id} value={b.boq_id}>
+                      {b.boq_number}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                {boqs.length === 0 && selectedProjectId && (
+                  <p className="mt-2 text-xs text-gray-400">Project ini belum memiliki BOQ aktif.</p>
+                )}
+              </div>
 
               {boqItemsLoading ? (
                 <div className="flex items-center justify-center py-8">

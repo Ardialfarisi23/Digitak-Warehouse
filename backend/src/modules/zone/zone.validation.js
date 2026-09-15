@@ -1,10 +1,15 @@
 const { z } = require("zod");
 
 const createZoneSchema = z.object({
-  code: z.string().min(3, "Kode minimal 3 karakter.").max(20, "Kode maksimal 20 karakter."),
-  name: z.string().min(3, "Nama minimal 3 karakter.").max(100, "Nama maksimal 100 karakter."),
+  code: z.string().min(1, "Kode zone wajib diisi.").max(20, "Kode maksimal 20 karakter."),
+  name: z.string().min(1, "Nama zone wajib diisi.").max(100, "Nama maksimal 100 karakter."),
   description: z.string().optional(),
   gudang_id: z.string().optional(),
+  tipe_zona: z.string().optional(),
+  kapasitas_maksimum: z.union([
+    z.coerce.number().int().positive("Kapasitas harus lebih dari 0"),
+    z.literal(null),
+  ]).optional(),
 });
 
 const updateZoneSchema = createZoneSchema.partial().refine(

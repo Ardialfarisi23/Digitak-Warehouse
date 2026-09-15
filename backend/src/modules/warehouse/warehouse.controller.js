@@ -3,7 +3,7 @@ const response = require("../../shared/response");
 
 const create = async (req, res, next) => {
   try {
-    const result = await warehouseService.create(req.body, req.user.id);
+    const result = await warehouseService.create(req.body, req.user.id, req.user.role);
     return response.success(res, "Warehouse berhasil dibuat.", result, 201);
   } catch (err) {
     next(err);

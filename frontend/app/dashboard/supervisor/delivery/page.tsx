@@ -35,6 +35,7 @@ interface OutboundRow {
   created_at: string;
   tanggal?: string;
   kategori_approval?: string;
+  status?: string;
   project?: { nama_project?: string } | null;
   gudang_asal?: { nama_gudang?: string } | null;
   gudang_tujuan?: { nama_gudang?: string } | null;
@@ -74,6 +75,8 @@ export default function SupervisorApprovalOutboundPage() {
   const [selectedDocItem, setSelectedDocItem] = useState<any>(null);
 
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  const [activeTab, setActiveTab] = useState<"pending" | "history">("pending");
 
   const openDocModal = (item: any) => {
     setSelectedDocItem(item);
@@ -120,20 +123,58 @@ export default function SupervisorApprovalOutboundPage() {
 
   const filteredRequests = useMemo(() => {
     return requests.filter((r) => {
+      if (activeTab === "pending") {
+        return r.status === "draft_diajukan";
+      }
+      return ["disetujui", "ditolak"].includes(r.status || "");
+    }).filter((r) => {
       const matchCat =
         selectedCategory === "all" ||
         (r.kategori_approval || "manual_override") === selectedCategory;
       return matchCat;
     });
-  }, [requests, selectedCategory]);
+  }, [requests, selectedCategory, activeTab]);
 
   const stats = useMemo(() => {
-    const totalAntrean = filteredRequests.length;
-    const stokTidakCukup = filteredRequests.filter((r) => r.kategori_approval === "stok_kurang").length;
-    const melewatiLimit = filteredRequests.filter((r) => r.kategori_approval === "melewati_batas").length;
-    const manualOutbound = filteredRequests.filter((r) => r.kategori_approval === "manual_override").length;
+    const tabRequests = requests.filter((r) => {
+      if (activeTab === "pending") {
+        return r.status === "draft_diajukan";
+      }
+      return ["disetujui", "ditolak"].includes(r.status || "");
+    });
+
+    const totalAntrean = tabRequests.length;
+    const stokTidakCukup = tabRequests.filter((r) => {
+      const item = r as any;
+      return (
+        (typeof item.stockAvailable === "number" && typeof item.requestedQty === "number" && item.stockAvailable < item.requestedQty) ||
+        item.isInsufficient === true ||
+        item.stockStatus === "INSUFFICIENT" ||
+        item.kategori_approval === "stok_kurang"
+      );
+    }).length;
+    const melewatiLimit = tabRequests.filter((r) => {
+      const item = r as any;
+      return (
+        item.exceedsLimit === true ||
+        (typeof item.qty === "number" && typeof item.maxLimit === "number" && item.qty > item.maxLimit) ||
+        item.limitStatus === "EXCEEDED" ||
+        item.kategori_approval === "melewati_batas"
+      );
+    }).length;
+    const manualOutbound = tabRequests.filter((r) => {
+      const item = r as any;
+      return (
+        item.isManual === true ||
+        item.statusType === "Manual Outbound" ||
+        item.tipe === "MANUAL" ||
+        item.status === "Manual Outbound" ||
+        item.kategori_approval === "manual_override"
+      );
+    }).length;
+
     return { totalAntrean, stokTidakCukup, melewatiLimit, manualOutbound };
-  }, [filteredRequests]);
+  }, [requests, activeTab]);
 
   const formatDate = (value: string) => {
     if (!value) return "-";
@@ -168,8 +209,8 @@ export default function SupervisorApprovalOutboundPage() {
         const err = await response.json().catch(() => null);
         throw new Error(err?.message || "Gagal menyetujui outbound.");
       }
+      setRequests((prev) => prev.map((r) => r.surat_jalan_id === id ? { ...r, status: "disetujui" } : r));
       setToast({ message: "Surat Jalan berhasil diverifikasi dan disetujui.", type: "success" });
-      fetchApprovalQueue();
     } catch (err) {
       setToast({ message: err instanceof Error ? err.message : "Gagal menyetujui outbound.", type: "error" });
     } finally {
@@ -207,8 +248,8 @@ export default function SupervisorApprovalOutboundPage() {
         const err = await response.json().catch(() => null);
         throw new Error(err?.message || "Gagal menolak outbound.");
       }
+      setRequests((prev) => prev.map((r) => r.surat_jalan_id === id ? { ...r, status: "ditolak" } : r));
       setToast({ message: "Permintaan outbound berhasil ditolak.", type: "success" });
-      fetchApprovalQueue();
     } catch (err) {
       setToast({ message: err instanceof Error ? err.message : "Gagal menolak outbound.", type: "error" });
     } finally {
@@ -315,6 +356,31 @@ export default function SupervisorApprovalOutboundPage() {
         </div>
       </div>
 
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab("pending")}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
+            activeTab === "pending"
+              ? "bg-indigo-600 text-white shadow-sm"
+              : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          Perlu Persetujuan
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("history")}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
+            activeTab === "history"
+              ? "bg-indigo-600 text-white shadow-sm"
+              : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          Riwayat Persetujuan
+        </button>
+      </div>
+
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -339,8 +405,16 @@ export default function SupervisorApprovalOutboundPage() {
               ) : filteredRequests.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
-                    <p className="text-sm font-semibold text-slate-700">Tidak ada pengajuan outbound ditemukan</p>
-                    <p className="text-xs text-slate-400">Ganti kata kunci atau pilih filter lain.</p>
+                    <p className="text-sm font-semibold text-slate-700">
+                      {activeTab === "pending"
+                        ? "Tidak ada pengajuan outbound yang menunggu persetujuan"
+                        : "Tidak ada riwayat persetujuan outbound"}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {activeTab === "pending"
+                        ? "Ganti kata kunci atau pilih filter lain."
+                        : "Setujui atau tolak pengajuan untuk melihat riwayat."}
+                    </p>
                   </td>
                 </tr>
               ) : (
@@ -364,9 +438,25 @@ export default function SupervisorApprovalOutboundPage() {
                         {r.gudang_asal?.nama_gudang || "-"}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badgeClass}`}>
-                          {label}
-                        </span>
+                        {activeTab === "history" ? (
+                          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                            r.status === "disetujui"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : r.status === "ditolak"
+                                ? "bg-rose-50 text-rose-700 border-rose-200"
+                                : badgeClass
+                          }`}>
+                            {r.status === "disetujui"
+                              ? "Disetujui"
+                              : r.status === "ditolak"
+                                ? "Ditolak"
+                                : label}
+                          </span>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badgeClass}`}>
+                            {label}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-2">
@@ -379,26 +469,30 @@ export default function SupervisorApprovalOutboundPage() {
                             <Eye size={14} />
                             <span className="hidden sm:inline">Detail</span>
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => openConfirmDialog(r.surat_jalan_id)}
-                            disabled={actionLoading === String(r.surat_jalan_id)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-100 disabled:opacity-50"
-                            title="Setujui"
-                          >
-                            <CheckSquare size={14} />
-                            <span className="hidden sm:inline">Setujui</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openRejectDialog(r.surat_jalan_id)}
-                            disabled={actionLoading === String(r.surat_jalan_id)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-100 disabled:opacity-50"
-                            title="Tolak"
-                          >
-                            <XCircle size={14} />
-                            <span className="hidden sm:inline">Tolak</span>
-                          </button>
+                          {activeTab === "pending" && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => openConfirmDialog(r.surat_jalan_id)}
+                                disabled={actionLoading === String(r.surat_jalan_id)}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-100 disabled:opacity-50"
+                                title="Setujui"
+                              >
+                                <CheckSquare size={14} />
+                                <span className="hidden sm:inline">Setujui</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openRejectDialog(r.surat_jalan_id)}
+                                disabled={actionLoading === String(r.surat_jalan_id)}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-100 disabled:opacity-50"
+                                title="Tolak"
+                              >
+                                <XCircle size={14} />
+                                <span className="hidden sm:inline">Tolak</span>
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -14,6 +14,9 @@ import {
   ChevronDown,
   ArrowDown,
   Search,
+  Plus,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 
 import { useApi } from "@/lib/api";
@@ -76,6 +79,22 @@ export default function WarehouseLayoutPage() {
   const [statusFormValue, setStatusFormValue] = useState<string>("CUKUP");
   const [statusSaving, setStatusSaving] = useState(false);
   const [kapasitasMaksimumInput, setKapasitasMaksimumInput] = useState<string>("");
+
+  const [zoneFormOpen, setZoneFormOpen] = useState(false);
+  const [zoneFormMode, setZoneFormMode] = useState<"create" | "edit">("create");
+  const [zoneFormZone, setZoneFormZone] = useState<Zona | null>(null);
+  const [zoneFormCode, setZoneFormCode] = useState("");
+  const [zoneFormName, setZoneFormName] = useState("");
+  const [zoneFormTipe, setZoneFormTipe] = useState("");
+  const [zoneFormKapasitas, setZoneFormKapasitas] = useState("");
+  const [zoneFormSaving, setZoneFormSaving] = useState(false);
+  const [zoneFormError, setZoneFormError] = useState<string | null>(null);
+
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmZone, setDeleteConfirmZone] = useState<Zona | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   /* =========================================================
      AUTH
@@ -345,6 +364,128 @@ export default function WarehouseLayoutPage() {
     }
   }
 
+  function openCreateZone() {
+    setZoneFormMode("create");
+    setZoneFormZone(null);
+    setZoneFormCode("");
+    setZoneFormName("");
+    setZoneFormTipe("");
+    setZoneFormKapasitas("");
+    setZoneFormError(null);
+    setZoneFormOpen(true);
+  }
+
+  function openEditZone(zone: Zona) {
+    setZoneFormMode("edit");
+    setZoneFormZone(zone);
+    setZoneFormCode(zone.kode_zona);
+    setZoneFormName(zone.nama_zona || "");
+    setZoneFormTipe(zone.tipe_zona || "");
+    setZoneFormKapasitas(
+      zone.kapasitas_maksimum != null ? String(zone.kapasitas_maksimum) : ""
+    );
+    setZoneFormError(null);
+    setZoneFormOpen(true);
+  }
+
+  function closeZoneForm() {
+    setZoneFormOpen(false);
+    setZoneFormZone(null);
+    setZoneFormError(null);
+  }
+
+  async function saveZone() {
+    if (!selectedWarehouseId) return;
+
+    setZoneFormSaving(true);
+    setZoneFormError(null);
+
+    try {
+      const body: Record<string, unknown> = {
+        gudang_id: selectedWarehouseId,
+        code: zoneFormCode.trim(),
+        name: zoneFormName.trim() || undefined,
+        tipe_zona: zoneFormTipe || undefined,
+      };
+
+      if (zoneFormKapasitas.trim() !== "") {
+        body.kapasitas_maksimum = Number(zoneFormKapasitas);
+      }
+
+      const isEdit = zoneFormMode === "edit" && zoneFormZone;
+      const url = isEdit
+        ? `${API_BASE}/api/zones/${zoneFormZone.zona_id}`
+        : `${API_BASE}/api/zones`;
+
+      const res = await request(url, {
+        method: isEdit ? "PUT" : "POST",
+        body: JSON.stringify(body),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        const fieldError = json?.errors
+          ? Object.values(json.errors)[0]?.[0]
+          : json?.message;
+        throw new Error(fieldError || "Gagal menyimpan zona.");
+      }
+
+      await loadWarehouseLayout(selectedWarehouseId);
+      closeZoneForm();
+      setToast({ message: isEdit ? "Zona berhasil diperbarui." : "Zona berhasil dibuat.", type: "success" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Gagal menyimpan zona.";
+      setZoneFormError(message);
+      setToast({ message, type: "error" });
+    } finally {
+      setZoneFormSaving(false);
+    }
+  }
+
+  function openDeleteConfirm(zone: Zona) {
+    setDeleteConfirmZone(zone);
+    setDeleteConfirmOpen(true);
+  }
+
+  function closeDeleteConfirm() {
+    setDeleteConfirmOpen(false);
+    setDeleteConfirmZone(null);
+  }
+
+  async function confirmDeleteZone() {
+    if (!deleteConfirmZone) return;
+
+    setDeleteLoading(true);
+
+    try {
+      const res = await request(
+        `${API_BASE}/api/zones/${deleteConfirmZone.zona_id}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json?.message || "Gagal menghapus zona.");
+      }
+
+      if (selectedWarehouseId) {
+        await loadWarehouseLayout(selectedWarehouseId);
+      }
+
+      closeDeleteConfirm();
+      setToast({ message: "Zona berhasil dihapus.", type: "success" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Gagal menghapus zona.";
+      setToast({ message, type: "error" });
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   async function fetchZoneStock(zone: Zona) {
     if (!selectedWarehouseId || !zone) return;
 
@@ -399,6 +540,16 @@ export default function WarehouseLayoutPage() {
     };
   }, [panelOpen, selectedZone, fetchZoneStock]);
 
+  useEffect(() => {
+    if (!toast) return;
+
+    const timer = window.setTimeout(() => {
+      setToast(null);
+    }, 3000);
+
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
   /* =========================================================
      ZONE BACKGROUND
   ========================================================= */
@@ -418,6 +569,84 @@ export default function WarehouseLayoutPage() {
     return selectedZone?.zona_id === zone.zona_id
       ? "ring-2 ring-[#111827] ring-offset-2"
       : "";
+  }
+
+  /* =========================================================
+     RENDER FLOOR PLAN
+  ========================================================= */
+
+  function renderFloorPlan() {
+    const zones = sortedZones;
+    const count = zones.length;
+
+    if (count === 0) {
+      return (
+        <div className="flex min-h-[360px] items-center justify-center bg-[#fafafa]">
+          <div className="text-center">
+            <Boxes size={32} className="mx-auto mb-3 text-[#b0b7c0]" />
+            <p className="text-[13px] font-semibold text-[#667085]">Belum ada zona</p>
+            <p className="mt-1 text-[12px] text-[#98a2b3]">Tambahkan zona terlebih dahulu</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (count === 1) {
+      return (
+        <div className="flex min-h-[360px] items-center justify-center p-6">
+          <div className="w-full max-w-[420px]">{renderZone(zones[0], zones[0].kode_zona)}</div>
+        </div>
+      );
+    }
+
+    if (count === 2) {
+      return (
+        <div className="grid min-h-[360px] grid-cols-2 gap-4">
+          {zones.map((zone) => (
+            <div key={zone.zona_id} className="h-full">{renderZone(zone, zone.kode_zona)}</div>
+          ))}
+        </div>
+      );
+    }
+
+    if (count === 3) {
+      return (
+        <div className="grid min-h-[360px] grid-cols-2 gap-4">
+          <div className="h-full">{renderZone(zones[0], zones[0].kode_zona)}</div>
+          <div className="h-full">{renderZone(zones[1], zones[1].kode_zona)}</div>
+          <div className="col-span-2 h-full">{renderZone(zones[2], zones[2].kode_zona)}</div>
+        </div>
+      );
+    }
+
+    if (count === 4) {
+      return (
+        <div className="grid min-h-[360px] grid-cols-[1fr_90px_1fr] grid-rows-[1fr_1fr]">
+          <div className="h-full border-b border-r border-white">{renderZone(zones[0], "Zona A")}</div>
+          <div className="relative flex items-center justify-center bg-[#e8fbe8]">
+            <div className="absolute inset-y-0 left-0 w-px bg-[#d6efd6]" />
+            <div className="absolute inset-y-0 right-0 w-px bg-[#d6efd6]" />
+            <span className="rotate-[-90deg] text-[17px] font-extrabold tracking-[-0.2px] text-[#111827]">Lorong</span>
+          </div>
+          <div className="h-full border-b border-l border-white">{renderZone(zones[1], "Zona B")}</div>
+          <div className="h-full border-r border-white">{renderZone(zones[2], "Zona C")}</div>
+          <div className="relative flex items-center justify-center bg-[#e8fbe8]">
+            <div className="absolute inset-y-0 left-0 w-px bg-[#d6efd6]" />
+            <div className="absolute inset-y-0 right-0 w-px bg-[#d6efd6]" />
+            <span className="rotate-[-90deg] text-[17px] font-extrabold tracking-[-0.2px] text-[#111827]">Lorong</span>
+          </div>
+          <div className="h-full border-l border-white">{renderZone(zones[3], "Zona D")}</div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid min-h-[360px] grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {zones.map((zone) => (
+          <div key={zone.zona_id} className="h-full">{renderZone(zone, zone.kode_zona)}</div>
+        ))}
+      </div>
+    );
   }
 
   /* =========================================================
@@ -441,6 +670,20 @@ export default function WarehouseLayoutPage() {
             <p className="mt-1 text-[10px] text-[#98a2b3]">
               Tambahkan zona terlebih dahulu
             </p>
+
+            {mapRole(user?.role) === "admin" && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openCreateZone();
+                }}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-[#111827]/10 bg-white px-3 py-1.5 text-[11px] font-semibold text-[#111827] shadow-sm transition hover:border-[#111827]/30 hover:bg-[#f7f8fa]"
+              >
+                <Plus size={13} />
+                <span>Tambah Zona</span>
+              </button>
+            )}
           </div>
         </div>
       );
@@ -450,19 +693,19 @@ export default function WarehouseLayoutPage() {
     const isIndoor = zoneType === "Indoor";
     const isSelected = selectedZone?.zona_id === zone.zona_id;
 
-     return (
-       <div
-         role="button"
-         tabIndex={0}
-         onClick={() => openZone(zone)}
-         onKeyDown={(e) => {
-           if (e.key === "Enter" || e.key === " ") {
-             e.preventDefault();
-             openZone(zone);
-           }
-         }}
-         className={`group relative flex min-h-[180px] w-full flex-col items-center justify-center overflow-hidden p-4 text-center transition-all duration-200 hover:brightness-[0.97] cursor-pointer ${getZoneBackground(zone)} ${getZoneSelectedClass(zone)}`}
-       >
+      return (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => openZone(zone)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              openZone(zone);
+            }
+          }}
+          className={`group relative flex min-h-[180px] h-full w-full flex-col overflow-hidden p-4 text-center transition-all duration-200 hover:brightness-[0.97] cursor-pointer ${getZoneBackground(zone)} ${getZoneSelectedClass(zone)}`}
+        >
         {/* SELECTED INDICATOR */}
         {isSelected && (
           <div className="absolute left-3 top-3">
@@ -491,68 +734,99 @@ export default function WarehouseLayoutPage() {
           )}
         </div>
 
-        {/* ZONE NAME */}
-        <div className="relative z-10">
-          <div className="flex items-center justify-center gap-2">
-            <h3 className="text-[23px] font-extrabold uppercase leading-tight tracking-[-0.5px] text-[#171717] md:text-[25px]">
-              {getCleanZoneCode(zone)}
-            </h3>
+         {/* ZONE NAME */}
+         <div className="relative z-10 flex flex-grow flex-col items-center justify-center">
+           <div className="flex items-center justify-center gap-2">
+             <h3 className="text-[23px] font-extrabold uppercase leading-tight tracking-[-0.5px] text-[#171717] md:text-[25px]">
+               {getCleanZoneCode(zone)}
+             </h3>
 
-            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isIndoor ? "bg-[#FFA86B]/20 text-[#8B4513]" : "bg-[#FCEBDD] text-[#6b5647]"}`}>
-              {isIndoor ? "Indoor" : "Outdoor"}
-            </span>
-          </div>
+             <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isIndoor ? "bg-[#FFA86B]/20 text-[#8B4513]" : "bg-[#FCEBDD] text-[#6b5647]"}`}>
+               {isIndoor ? "Indoor" : "Outdoor"}
+             </span>
+           </div>
 
-          {(zone.total_item ?? 0) > 0 || (zone.total_qty ?? 0) > 0 && (
-            <div className="mt-2">
-              <p className="text-[12px] font-semibold text-[#344054]">
-                {(zone.total_item ?? 0)} barang • {Number(zone.total_qty ?? 0).toLocaleString("id-ID")} unit
-              </p>
-            </div>
-          )}
+           {(zone.total_item ?? 0) > 0 || (zone.total_qty ?? 0) > 0 && (
+             <div className="mt-2">
+               <p className="text-[12px] font-semibold text-[#344054]">
+                 {(zone.total_item ?? 0)} barang • {Number(zone.total_qty ?? 0).toLocaleString("id-ID")} unit
+               </p>
+             </div>
+           )}
 
-          {zone.status_kecukupan ? (
-            <div className="mt-2">
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${getStatusBadgeClass(zone.status_kecukupan)}`}>
-                  {getStatusLabel(zone.status_kecukupan)}
-                </span>
-                {zone.kapasitas_belum_diatur && (
-                  <span className="inline-block rounded-full border border-[#e5e7eb] bg-[#f2f4f7] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#475467]">
-                    Kapasitas belum diatur
-                  </span>
-                )}
-              </div>
-              <p className="mt-1 text-[10px] text-[#667085]">
-                {getStatusSourceLabel(zone)}
-              </p>
-              {(() => {
-                const sisaText = formatSisaCapacity(zone.sisa ?? null, zone.kapasitas_maksimum ?? null);
-                if (!sisaText) return null;
-                return (
-                  <p className="mt-1 text-[10px] font-semibold text-[#344054]">
-                    Sisa: {sisaText}
-                  </p>
-                );
-              })()}
-            </div>
-          ) : (
-            <p className="mt-2 text-[10px] text-[#98a2b3]">Belum dinilai</p>
-          )}
+           {zone.status_kecukupan ? (
+             <div className="mt-2">
+               <div className="flex flex-wrap items-center justify-center gap-2">
+                 <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${getStatusBadgeClass(zone.status_kecukupan)}`}>
+                   {getStatusLabel(zone.status_kecukupan)}
+                 </span>
+                 {zone.kapasitas_belum_diatur && (
+                   <span className="inline-block rounded-full border border-[#e5e7eb] bg-[#f2f4f7] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#475467]">
+                     Kapasitas belum diatur
+                   </span>
+                 )}
+               </div>
+               <p className="mt-1 text-[10px] text-[#667085]">
+                 {getStatusSourceLabel(zone)}
+               </p>
+               {(() => {
+                 const sisaText = formatSisaCapacity(zone.sisa ?? null, zone.kapasitas_maksimum ?? null);
+                 if (!sisaText) return null;
+                 return (
+                   <p className="mt-1 text-[10px] font-semibold text-[#344054]">
+                     Sisa: {sisaText}
+                   </p>
+                 );
+               })()}
+             </div>
+           ) : (
+             <p className="mt-2 text-[10px] text-[#98a2b3]">Belum dinilai</p>
+           )}
+         </div>
 
-          {canEditStatus && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                openStatusModal(zone);
-              }}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-[#111827]/10 bg-white px-3 py-1.5 text-[11px] font-semibold text-[#111827] shadow-sm transition hover:border-[#111827]/30 hover:bg-[#f7f8fa]"
-            >
-              <span>Input Status</span>
-            </button>
-          )}
-        </div>
+         {/* ACTIONS */}
+         <div className="relative z-10 mt-auto flex w-full flex-wrap items-center justify-center gap-1.5">
+           {canEditStatus && (
+             <button
+               type="button"
+               onClick={(e) => {
+                 e.stopPropagation();
+                 openStatusModal(zone);
+               }}
+               className="inline-flex items-center gap-1 rounded-lg border border-[#111827]/10 bg-white px-2.5 py-1 text-[10px] font-semibold text-[#111827] shadow-sm transition hover:border-[#111827]/30 hover:bg-[#f7f8fa]"
+             >
+               <span>Input Status</span>
+             </button>
+           )}
+
+           {mapRole(user?.role) === "admin" && (
+             <>
+               <button
+                 type="button"
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   openEditZone(zone);
+                 }}
+                 className="inline-flex items-center gap-1 rounded-lg border border-[#111827]/10 bg-white px-2.5 py-1 text-[10px] font-semibold text-[#111827] shadow-sm transition hover:border-[#111827]/30 hover:bg-[#f7f8fa]"
+               >
+                 <Pencil size={12} />
+                 <span>Edit</span>
+               </button>
+
+               <button
+                 type="button"
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   openDeleteConfirm(zone);
+                 }}
+                 className="inline-flex items-center gap-1 rounded-lg border border-[#b42318]/10 bg-white px-2.5 py-1 text-[10px] font-semibold text-[#b42318] shadow-sm transition hover:border-[#b42318]/30 hover:bg-[#fef2f2]"
+               >
+                 <Trash2 size={12} />
+                 <span>Hapus</span>
+               </button>
+             </>
+           )}
+         </div>
 
         {/* HOVER INDICATOR */}
         <div className="absolute bottom-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-white/60 opacity-0 transition-opacity group-hover:opacity-100">
@@ -797,14 +1071,22 @@ export default function WarehouseLayoutPage() {
           ================================================= */}
 
           <div className="mb-4">
-            <div>
-              <h2 className="text-[19px] font-bold tracking-[-0.2px] text-[#111827]">
-                Denah Gudang
-              </h2>
+            <div className="flex flex-wrap items-center gap-3">
+              <div>
+                <h2 className="text-[19px] font-bold tracking-[-0.2px] text-[#111827]">
+                  Denah Gudang
+                </h2>
 
-              <p className="mt-1 text-[13px] text-[#6b7280]">
-                {selectedWarehouse?.nama_gudang || "Gudang"}
-              </p>
+                <p className="mt-1 text-[13px] text-[#6b7280]">
+                  {selectedWarehouse?.nama_gudang || "Gudang"}
+                </p>
+              </div>
+
+              {selectedWarehouse?.tipe === "dadakan" && (
+                <span className="inline-flex items-center rounded-full border border-[#d6efd6] bg-[#e8fbe8] px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-[#14532d]">
+                  Dadakan
+                </span>
+              )}
             </div>
           </div>
 
@@ -816,72 +1098,7 @@ export default function WarehouseLayoutPage() {
             <div className="w-full max-w-[900px]">
 
               <div className="overflow-hidden rounded-[10px] border border-[#dfe3e8] bg-[#e8fbe8]">
-
-                <div className="grid min-h-[360px] grid-cols-[1fr_90px_1fr] grid-rows-[1fr_1fr] md:min-h-[400px]">
-
-                  {/* =========================
-                      ZONA A
-                  ========================= */}
-
-                  <div className="border-b border-r border-white">
-                    {renderZone(zoneA, "Zona A")}
-                  </div>
-
-                  {/* =========================
-                      LORONG ATAS
-                  ========================= */}
-
-                  <div className="relative flex items-center justify-center bg-[#e8fbe8]">
-
-                    <div className="absolute inset-y-0 left-0 w-px bg-[#d6efd6]" />
-
-                    <div className="absolute inset-y-0 right-0 w-px bg-[#d6efd6]" />
-
-                    <span className="rotate-[-90deg] text-[17px] font-extrabold tracking-[-0.2px] text-[#111827]">
-                      Lorong
-                    </span>
-                  </div>
-
-                  {/* =========================
-                      ZONA B
-                  ========================= */}
-
-                  <div className="border-b border-l border-white">
-                    {renderZone(zoneB, "Zona B")}
-                  </div>
-
-                  {/* =========================
-                      ZONA C
-                  ========================= */}
-
-                  <div className="border-r border-white">
-                    {renderZone(zoneC, "Zona C")}
-                  </div>
-
-                  {/* =========================
-                      LORONG BAWAH
-                  ========================= */}
-
-                  <div className="relative flex items-center justify-center bg-[#e8fbe8]">
-
-                    <div className="absolute inset-y-0 left-0 w-px bg-[#d6efd6]" />
-
-                    <div className="absolute inset-y-0 right-0 w-px bg-[#d6efd6]" />
-
-                    <span className="rotate-[-90deg] text-[17px] font-extrabold tracking-[-0.2px] text-[#111827]">
-                      Lorong
-                    </span>
-                  </div>
-
-                  {/* =========================
-                      ZONA D
-                  ========================= */}
-
-                  <div className="border-l border-white">
-                    {renderZone(zoneD, "Zona D")}
-                  </div>
-
-                </div>
+                {renderFloorPlan()}
               </div>
 
             </div>
@@ -1090,6 +1307,174 @@ export default function WarehouseLayoutPage() {
         kapasitasMaksimum={kapasitasMaksimumInput}
         onKapasitasChange={setKapasitasMaksimumInput}
       />
+
+      {/* =====================================================
+          MODAL: TAMBAH / EDIT ZONA
+      ===================================================== */}
+
+      <ZoneDetailModal open={zoneFormOpen} onClose={closeZoneForm}>
+        <div className="border-b border-[#edf0f2] px-6 py-4">
+          <h3 className="text-[17px] font-bold text-[#111827]">
+            {zoneFormMode === "create" ? "Tambah Zona" : `Edit Zona ${zoneFormZone ? getCleanZoneCode(zoneFormZone) : ""}`}
+          </h3>
+
+          <p className="mt-1 text-[12px] text-[#6b7280]">
+            {zoneFormMode === "create"
+              ? "Buat zona baru untuk gudang ini."
+              : "Perbarui data zona."}
+          </p>
+        </div>
+
+        <div className="px-6 py-5">
+          {zoneFormError && (
+            <div className="mb-4 flex items-center gap-2 rounded-[10px] border border-[#fecaca] bg-[#fef2f2] px-3 py-2.5 text-[13px] text-[#b42318]">
+              <AlertCircle size={16} className="shrink-0" />
+              <span>{zoneFormError}</span>
+            </div>
+          )}
+
+          <div className="mb-4">
+            <label className="mb-1 block text-[12px] font-semibold text-[#344054]">
+              Kode Zona <span className="text-[#b42318]">*</span>
+            </label>
+
+            <input
+              type="text"
+              value={zoneFormCode}
+              onChange={(e) => setZoneFormCode(e.target.value)}
+              placeholder="Contoh: A"
+              className="h-[38px] w-full rounded-xl border border-[#d0d5dd] bg-white px-3 text-[13px] text-[#111827] outline-none transition focus:border-[#111827]"
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="mb-1 block text-[12px] font-semibold text-[#344054]">
+              Nama Zona
+            </label>
+
+            <input
+              type="text"
+              value={zoneFormName}
+              onChange={(e) => setZoneFormName(e.target.value)}
+              placeholder="Contoh: Zona A"
+              className="h-[38px] w-full rounded-xl border border-[#d0d5dd] bg-white px-3 text-[13px] text-[#111827] outline-none transition focus:border-[#111827]"
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="mb-1 block text-[12px] font-semibold text-[#344054]">
+              Tipe Zona
+            </label>
+
+            <select
+              value={zoneFormTipe}
+              onChange={(e) => setZoneFormTipe(e.target.value)}
+              className="h-[38px] w-full rounded-xl border border-[#d0d5dd] bg-white px-3 text-[13px] text-[#111827] outline-none transition focus:border-[#111827]"
+            >
+              <option value="">— Pilih tipe —</option>
+              <option value="Indoor">Indoor</option>
+              <option value="Outdoor">Outdoor</option>
+            </select>
+          </div>
+
+          <div className="mb-2">
+            <label className="mb-1 block text-[12px] font-semibold text-[#344054]">
+              Kapasitas Maksimum (unit)
+            </label>
+
+            <input
+              type="number"
+              min={1}
+              value={zoneFormKapasitas}
+              onChange={(e) => setZoneFormKapasitas(e.target.value)}
+              placeholder="Kosongkan jika tidak diatur"
+              className="h-[38px] w-full rounded-xl border border-[#d0d5dd] bg-white px-3 text-[13px] text-[#111827] outline-none transition focus:border-[#111827]"
+            />
+
+            <p className="mt-1 text-[10px] text-[#9ca3af]">
+              Hanya angka bulat lebih dari 0. Kosongkan jika belum diatur.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-[#edf0f2] px-6 py-4">
+          <button
+            type="button"
+            onClick={closeZoneForm}
+            disabled={zoneFormSaving}
+            className="rounded-lg border border-[#d0d5dd] px-4 py-2 text-[13px] font-semibold text-[#344054] transition hover:bg-[#f7f8fa] disabled:opacity-60"
+          >
+            Batal
+          </button>
+
+          <button
+            type="button"
+            onClick={saveZone}
+            disabled={zoneFormSaving || !zoneFormCode.trim()}
+            className="rounded-lg bg-[#111827] px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-black disabled:opacity-60"
+          >
+            {zoneFormSaving ? "Menyimpan..." : zoneFormMode === "create" ? "Buat Zona" : "Simpan Perubahan"}
+          </button>
+        </div>
+      </ZoneDetailModal>
+
+      {/* =====================================================
+          DIALOG: KONFIRMASI HAPUS ZONA
+      ===================================================== */}
+
+      {deleteConfirmOpen && deleteConfirmZone && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/30 p-4" onClick={closeDeleteConfirm}>
+          <div className="w-full max-w-[420px] rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="border-b border-[#edf0f2] px-6 py-4">
+              <h3 className="text-[17px] font-bold text-[#111827]">
+                Hapus Zona {getCleanZoneCode(deleteConfirmZone)}
+              </h3>
+
+              <p className="mt-1 text-[12px] text-[#6b7280]">
+                Yakin ingin menghapus zona <span className="font-semibold">{getCleanZoneCode(deleteConfirmZone)}</span>? Aksi ini tidak bisa dibatalkan.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-[#edf0f2] px-6 py-4">
+              <button
+                type="button"
+                onClick={closeDeleteConfirm}
+                disabled={deleteLoading}
+                className="rounded-lg border border-[#d0d5dd] px-4 py-2 text-[13px] font-semibold text-[#344054] transition hover:bg-[#f7f8fa] disabled:opacity-60"
+              >
+                Batal
+              </button>
+
+              <button
+                type="button"
+                onClick={confirmDeleteZone}
+                disabled={deleteLoading}
+                className="rounded-lg bg-[#b42318] px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-[#8b1a10] disabled:opacity-60"
+              >
+                {deleteLoading ? "Menghapus..." : "Hapus Zona"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================
+          TOAST
+      ===================================================== */}
+
+      {toast && (
+        <div
+          className={`fixed right-6 top-6 z-[130] flex items-center gap-3 rounded-xl border px-4 py-3 shadow-lg transition-all ${
+            toast.type === "success"
+              ? "border-[#cddff7] bg-[#f3f8ff] text-[#344a67]"
+              : "border-[#fecaca] bg-[#fef2f2] text-[#7f1d1d]"
+          }`}
+        >
+          <AlertCircle size={17} className="shrink-0" />
+
+          <span className="text-[13px] font-semibold">{toast.message}</span>
+        </div>
+      )}
     </div>
   );
 }

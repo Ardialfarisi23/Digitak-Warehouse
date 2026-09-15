@@ -16,7 +16,7 @@ const authorize = require("../../middlewares/role.middleware");
 router.post(
   "/",
   authenticate,
-  authorize("ADMIN", "SUPERVISOR"),
+  authorize("ADMIN"),
   validate(createVehicleSchema),
   vehicleController.create
 );

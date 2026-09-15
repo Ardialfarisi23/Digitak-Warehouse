@@ -4,8 +4,16 @@ const getStockHistory = async (filters = {}) => {
   return await reportsRepository.getStockHistory(filters);
 };
 
+const exportStockHistory = async (filters = {}) => {
+  return await reportsRepository.getStockHistoryForExport(filters);
+};
+
 const getAuditLogs = async (filters = {}) => {
   return await reportsRepository.getAuditLogs(filters);
+};
+
+const exportAuditLog = async (filters = {}) => {
+  return await reportsRepository.getAuditLogForExport(filters);
 };
 
 const getHardwareReconciliation = async (filters = {}) => {
@@ -28,13 +36,15 @@ const getZoneUtilization = async (filters = {}) => {
   return await reportsRepository.getZoneUtilization(filters);
 };
 
-const backfillReconciliation = async () => {
-  return await reportsRepository.backfillReconciliation();
+const backfillReconciliation = async (actorId) => {
+  return await reportsRepository.backfillReconciliation(actorId);
 };
 
 module.exports = {
   getStockHistory,
+  exportStockHistory,
   getAuditLogs,
+  exportAuditLog,
   getHardwareReconciliation,
   getHardwareReconciliationPerTiket,
   getHardwareReconciliationDetailed,
