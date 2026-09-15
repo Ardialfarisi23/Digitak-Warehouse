@@ -9,7 +9,7 @@ import { useApi } from "@/lib/api";
 type SuratJalanStatus = "draft_diajukan" | "menunggu_verifikasi" | "ready_putaway" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "sedang_dikirim" | "ditolak";
 
 const STATUS_META: Record<SuratJalanStatus, { label: string; tone: string }> = {
-  draft_diajukan: { label: "Menunggu Approval", tone: "bg-amber-50 text-amber-600" },
+  draft_diajukan: { label: "Menunggu Persetujuan", tone: "bg-amber-50 text-amber-600" },
   menunggu_verifikasi: { label: "Menunggu Verifikasi", tone: "bg-amber-50 text-amber-600" },
   ready_putaway: { label: "Siap Putaway", tone: "bg-blue-50 text-blue-600" },
   disetujui: { label: "Disetujui — Siap Picking", tone: "bg-emerald-50 text-emerald-600" },
@@ -21,7 +21,7 @@ const STATUS_META: Record<SuratJalanStatus, { label: string; tone: string }> = {
 
 const FILTER_TABS: { key: "SEMUA" | SuratJalanStatus; label: string }[] = [
   { key: "SEMUA", label: "Semua" },
-  { key: "draft_diajukan", label: "Menunggu Approval" },
+  { key: "draft_diajukan", label: "Menunggu Persetujuan" },
   { key: "disetujui", label: "Disetujui" },
   { key: "digenerate", label: "Siap Kirim" },
   { key: "sedang_dikirim", label: "Sedang Dikirim" },

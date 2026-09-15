@@ -52,7 +52,8 @@ const baseInclude = {
   kendaraan: true,
   personil_pengantar: true,
   project: true,
-   creator: true,
+  creator: true,
+  titik_lapangan: true,
 };
 
 const APPROVAL_STATUS = "draft_diajukan";
@@ -130,6 +131,10 @@ const create = async (data, actorId, tx = prisma) => {
       tanggal: tanggal,
       created_by: Number(actorId),
       updated_by: Number(actorId),
+      titik_lapangan_id: data.titik_lapangan_id ? Number(data.titik_lapangan_id) : null,
+      tujuan_tipe: data.tujuan_tipe || null,
+      tipe_pengirim: data.tipe_pengirim || null,
+      pengirim_eksternal_nama: data.pengirim_eksternal_nama || null,
       items: {
         create: data.items.map((item) => ({
           barang_id: Number(item.barang_id),

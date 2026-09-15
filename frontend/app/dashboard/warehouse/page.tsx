@@ -698,8 +698,8 @@ export default function WarehouseLayoutPage() {
   ========================================================= */
 
   return (
-    <div className="min-h-full bg-[#f7f8fa] px-4 py-5 md:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1500px] overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_2px_10px_rgba(0,0,0,0.04)]">
+    <div className="min-h-full bg-[#f7f8fa]">
+      <div className="overflow-hidden rounded-[18px] border border-[#e5e7eb] bg-white shadow-[0_2px_10px_rgba(0,0,0,0.04)]">
 
         {/* =================================================
             HEADER

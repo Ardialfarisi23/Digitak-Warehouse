@@ -49,12 +49,23 @@ export function CompactSidebar({ userRole }: CompactSidebarProps) {
     });
   }
 
-  const activeRoute = filteredNav.reduce((matched, item) => {
+  let activeRoute = filteredNav.reduce((matched, item) => {
     if (pathname === item.href || (item.href !== "/" && pathname.startsWith(`${item.href}/`))) {
       return item.href.length > matched.length ? item.href : matched;
     }
     return matched;
   }, "");
+
+  if (
+    pathname === "/dashboard/supervisor/delivery" ||
+    pathname.startsWith("/dashboard/supervisor/delivery") ||
+    pathname.startsWith("/dashboard/supervisor/approval/outbound")
+  ) {
+    const approvalItem = filteredNav.find((item) => item.href === "/dashboard/supervisor/approval");
+    if (approvalItem) {
+      activeRoute = approvalItem.href;
+    }
+  }
 
   useEffect(() => {
     if (isMobile && mobileOpen) {

@@ -37,9 +37,19 @@ const update = async (req, res, next) => {
   }
 };
 
+const remove = async (req, res, next) => {
+  try {
+    const result = await personnelService.remove(req.params.personil_id, req.user.id);
+    return response.success(res, "Personnel berhasil dihapus permanen.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   create,
   findAll,
   findByPersonilId,
   update,
+  remove,
 };

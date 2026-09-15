@@ -49,6 +49,7 @@ type Warehouse = {
   nama_gudang: string;
   tipe?: string;
   alamat?: string;
+  is_internal?: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -86,6 +87,11 @@ function ConfirmModal({
   selectedVehicle,
   selectedPersonil,
   fotoUrlsByItem,
+  selectedTujuanKategori,
+  selectedTitikLapanganId,
+  titikLapangans,
+  selectedPengirimKategori,
+  pengirimEksternalNama,
 }: {
   open: boolean;
   onClose: () => void;
@@ -99,6 +105,11 @@ function ConfirmModal({
   selectedVehicle: Vehicle | null;
   selectedPersonil: Personil | null;
   fotoUrlsByItem: Record<string, string>;
+  selectedTujuanKategori: string;
+  selectedTitikLapanganId: string;
+  titikLapangans: { titik_lapangan_id: string | number; nama_lokasi: string }[];
+  selectedPengirimKategori: string;
+  pengirimEksternalNama: string;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -112,58 +123,34 @@ function ConfirmModal({
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
           <div>
             <h3 className="text-base font-semibold text-slate-900">Periksa Kembali Data Barang</h3>
-            <p className="mt-0.5 text-xs text-slate-400">
-              Pastikan semua data sudah benar sebelum diajukan.
-            </p>
+            <p className="mt-0.5 text-xs text-slate-400">Pastikan semua data sudah benar sebelum diajukan.</p>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-          >
+          <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
             <X size={16} />
           </button>
         </div>
 
         <div className="px-6 py-5">
-          <p className="mb-4 text-sm text-slate-600">
-            Pastikan daftar barang, jumlah, dan tujuan pengiriman sudah sesuai sebelum melanjutkan. Perubahan setelah submit memerlukan proses ulang.
-          </p>
+          <p className="mb-4 text-sm text-slate-600">Pastikan daftar barang, jumlah, dan tujuan pengiriman sudah sesuai sebelum melanjutkan. Perubahan setelah submit memerlukan proses ulang.</p>
 
           <div className="space-y-3">
             <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Daftar Barang
-              </p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Daftar Barang</p>
               <div className="space-y-2">
                 {selectedItems.map((item, idx) => {
                   const key = String(item.barang_id || item.id || "");
                   const fotoUrl = fotoUrlsByItem[key];
                   return (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between text-sm"
-                    >
+                    <div key={idx} className="flex items-center justify-between text-sm">
                       <div className="flex flex-col">
-                        <span className="font-medium text-slate-800">
-                          {item.nama_barang || item.kode_perangkat || "-"}
-                        </span>
-                        <span className="text-xs text-slate-400">
-                          {item.kode_perangkat || "-"}
-                        </span>
-                        {fotoUrl && (
-                          <img src={fotoUrl} alt="Foto barang" className="mt-1 h-10 w-10 rounded-md border border-gray-200 object-cover" />
-                        )}
+                        <span className="font-medium text-slate-800">{item.nama_barang || item.kode_perangkat || "-"}</span>
+                        <span className="text-xs text-slate-400">{item.kode_perangkat || "-"}</span>
+                        {fotoUrl && <img src={fotoUrl} alt="Foto barang" className="mt-1 h-10 w-10 rounded-md border border-gray-200 object-cover" />}
                       </div>
                       <div className="text-right">
                         <div className="font-medium text-slate-700">
@@ -177,36 +164,28 @@ function ConfirmModal({
             </div>
 
             <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Rute Pengiriman
-              </p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Rute Pengiriman</p>
               <div className="space-y-1 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Gudang Asal</span>
-                  <span className="font-medium text-slate-700">
-                    {selectedGudangAsal?.nama_gudang || "-"}
-                  </span>
+                  <span className="text-slate-500">Pengirim</span>
+                  <span className="font-medium text-slate-700">{selectedPengirimKategori === "external" ? `External: ${pengirimEksternalNama || "-"}` : selectedGudangAsal?.nama_gudang || "-"}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Gudang Tujuan</span>
+                  <span className="text-slate-500">Tujuan</span>
                   <span className="font-medium text-slate-700">
-                    {selectedGudangTujuan?.nama_gudang || "-"}
+                    {selectedTujuanKategori === "lapangan" ? titikLapangans.find((tl) => String(tl.titik_lapangan_id) === selectedTitikLapanganId)?.nama_lokasi || "-" : selectedGudangTujuan?.nama_gudang || "-"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500">Project</span>
-                  <span className="font-medium text-slate-700">
-                    {selectedProject?.nama_project || "-"}
-                  </span>
+                  <span className="font-medium text-slate-700">{selectedProject?.nama_project || "-"}</span>
                 </div>
               </div>
             </div>
 
             {(picPemohon || selectedVehicle || selectedPersonil) && (
               <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                  Detail Pengiriman
-                </p>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Detail Pengiriman</p>
                 <div className="space-y-1 text-sm">
                   {picPemohon && (
                     <div className="flex items-center justify-between">
@@ -238,20 +217,10 @@ function ConfirmModal({
           </div>
 
           <div className="mt-6 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={submitting}
-              className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-            >
+            <button type="button" onClick={onClose} disabled={submitting} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40">
               Periksa Kembali
             </button>
-            <button
-              type="button"
-              onClick={onConfirm}
-              disabled={submitting}
-              className="rounded-xl bg-[#E8632C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
-            >
+            <button type="button" onClick={onConfirm} disabled={submitting} className="rounded-xl bg-[#E8632C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40">
               {submitting ? "Mengajukan..." : "Ya, Ajukan Surat Jalan"}
             </button>
           </div>
@@ -282,6 +251,11 @@ export default function AjukanSuratJalanPage() {
   const [selectedPersonilId, setSelectedPersonilId] = useState<string>("");
   const [selectedGudangAsalId, setSelectedGudangAsalId] = useState<string>("");
   const [selectedGudangTujuanId, setSelectedGudangTujuanId] = useState<string>("");
+  const [selectedTujuanKategori, setSelectedTujuanKategori] = useState<string>("");
+  const [selectedPengirimKategori, setSelectedPengirimKategori] = useState<string>("");
+  const [selectedTitikLapanganId, setSelectedTitikLapanganId] = useState<string>("");
+  const [pengirimEksternalNama, setPengirimEksternalNama] = useState<string>("");
+  const [titikLapangans, setTitikLapangans] = useState<{ titik_lapangan_id: string | number; nama_lokasi: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [boqItems, setBoqItems] = useState<ItemBarang[]>([]);
   const [boqItemsLoading, setBoqItemsLoading] = useState(false);
@@ -361,16 +335,22 @@ export default function AjukanSuratJalanPage() {
     setSelectedBoqId(boqId || "");
     setQtyByItem({});
     setBoqItems([]);
+    setSelectedTujuanKategori("");
+    setSelectedPengirimKategori("");
+    setSelectedTitikLapanganId("");
+    setPengirimEksternalNama("");
+    setTitikLapangans([]);
 
     if (!projectId) return;
 
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
     setBoqItemsLoading(true);
     try {
-      const res = await get(`${baseUrl}/api/boqs/items?projectId=${projectId}`);
-      if (!res.ok) throw new Error("Gagal mengambil daftar item BOQ Plan.");
-      const json = await res.json();
-      const rawList = Array.isArray(json?.data) ? json.data : [];
+      const [itemsRes, titikLapanganRes] = await Promise.all([get(`${baseUrl}/api/boqs/items?projectId=${projectId}`), get(`${baseUrl}/api/titik-lapangan?project_id=${projectId}`)]);
+
+      if (!itemsRes.ok) throw new Error("Gagal mengambil daftar item BOQ Plan.");
+      const itemsJson = await itemsRes.json();
+      const rawList = Array.isArray(itemsJson?.data) ? itemsJson.data : [];
       const mapped: ItemBarang[] = rawList.map((it: any) => ({
         id: String(it.barang_id || it.id || ""),
         barang_id: String(it.barang_id || it.id || ""),
@@ -381,9 +361,23 @@ export default function AjukanSuratJalanPage() {
         qty_rencana: Number(it.qty_rencana || 0),
       }));
       setBoqItems(mapped);
+
+      if (titikLapanganRes.ok) {
+        const tlJson = await titikLapanganRes.json();
+        const rawTitikLapangan = Array.isArray(tlJson?.data?.data) ? tlJson.data.data : Array.isArray(tlJson?.data) ? tlJson.data : [];
+        setTitikLapangans(
+          rawTitikLapangan.map((tl: any) => ({
+            titik_lapangan_id: String(tl.titik_lapangan_id || tl.id || ""),
+            nama_lokasi: tl.nama_lokasi || "",
+          })),
+        );
+      } else {
+        setTitikLapangans([]);
+      }
     } catch (err) {
       console.error(err);
       setBoqItems([]);
+      setTitikLapangans([]);
     } finally {
       setBoqItemsLoading(false);
     }
@@ -413,7 +407,9 @@ export default function AjukanSuratJalanPage() {
   );
 
   const totalQty = selectedItems.reduce((sum, i) => sum + i.qty, 0);
-  const canSubmit = !!selectedProject && selectedItems.length > 0 && !!selectedGudangAsalId && !!selectedGudangTujuanId && !!selectedPersonil && Object.keys(fotoUrlsByItem).length > 0;
+  const tujuanValid = !selectedTujuanKategori ? false : selectedTujuanKategori === "lapangan" ? !!selectedTitikLapanganId : !!selectedGudangTujuanId;
+  const pengirimValid = !selectedPengirimKategori ? false : selectedPengirimKategori === "internal" ? !!selectedGudangAsalId : !!pengirimEksternalNama.trim();
+  const canSubmit = !!selectedProject && selectedItems.length > 0 && !!selectedPersonil && Object.keys(fotoUrlsByItem).length > 0 && tujuanValid && pengirimValid;
 
   async function handleSubmit() {
     if (!canSubmit || !selectedProject || !selectedPersonil) return;
@@ -473,7 +469,32 @@ export default function AjukanSuratJalanPage() {
   }
 
   async function confirmSubmit() {
-    if (!canSubmit || !selectedProject || !selectedPersonil) return;
+    if (!selectedProject || !selectedPersonil) return;
+
+    if (!selectedTujuanKategori) {
+      showToast("Pilih kategori tujuan terlebih dahulu.", "error");
+      return;
+    }
+    if (selectedTujuanKategori === "lapangan" && !selectedTitikLapanganId) {
+      showToast("Pilih titik lapangan terlebih dahulu.", "error");
+      return;
+    }
+    if (selectedTujuanKategori === "gudang" && !selectedGudangTujuanId) {
+      showToast("Pilih gudang tujuan terlebih dahulu.", "error");
+      return;
+    }
+    if (!selectedPengirimKategori) {
+      showToast("Pilih kategori pengirim terlebih dahulu.", "error");
+      return;
+    }
+    if (selectedPengirimKategori === "internal" && !selectedGudangAsalId) {
+      showToast("Pilih gudang asal terlebih dahulu.", "error");
+      return;
+    }
+    if (selectedPengirimKategori === "external" && !pengirimEksternalNama.trim()) {
+      showToast("Isi nama distributor/kolaborator terlebih dahulu.", "error");
+      return;
+    }
 
     setSubmitting(true);
     setShowConfirmModal(false);
@@ -483,12 +504,16 @@ export default function AjukanSuratJalanPage() {
       const payload = {
         tipe: "outbound",
         nomor_surat_jalan: generateNomorSuratJalanOutbound(),
-        gudang_asal_id: selectedGudangAsalId,
-        gudang_tujuan_id: selectedGudangTujuanId,
+        gudang_asal_id: selectedPengirimKategori === "internal" ? selectedGudangAsalId : null,
+        gudang_tujuan_id: selectedTujuanKategori === "gudang" ? selectedGudangTujuanId : null,
         kendaraan_id: selectedVehicleId || null,
         personil_pengantar_id: selectedPersonilId,
         project_id: selectedProjectId,
         boq_id: selectedBoqId || null,
+        tujuan_tipe: selectedTujuanKategori || null,
+        titik_lapangan_id: selectedTujuanKategori === "lapangan" ? selectedTitikLapanganId : null,
+        tipe_pengirim: selectedPengirimKategori || null,
+        pengirim_eksternal_nama: selectedPengirimKategori === "external" ? pengirimEksternalNama.trim() : null,
         kategori_approval: "manual_override",
         pic_pemohon_nama: picPemohon || null,
         items: selectedItems.map((i) => {
@@ -572,63 +597,157 @@ export default function AjukanSuratJalanPage() {
                 handleSelectProject(String(picked.project_id || selectedProjectId), picked.boq_id);
               }}
               placeholder="Pilih BOQ / Tiket"
+              tipe="outbound"
             />
-            {selectedBoqId && (
-              <p className="mt-2 text-xs text-gray-500">
-                Tiket: {selectedProject?.nama_project || `Project ID ${selectedProjectId}`}
-              </p>
-            )}
+            {selectedBoqId && <p className="mt-2 text-xs text-gray-500">Tiket: {selectedProject?.nama_project || `Project ID ${selectedProjectId}`}</p>}
           </div>
 
-          {/* Gudang Asal & Tujuan */}
+          {/* Gudang Pengirim & Tujuan */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Gudang Pengirim */}
             <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
               <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
                 <MapPin size={16} />
-                Gudang Asal
+                Gudang Pengirim
               </p>
-              <div className="relative">
+
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">Kategori Pengirim</label>
+              <div className="relative mb-3">
                 <select
-                  value={selectedGudangAsalId}
-                  onChange={(e) => setSelectedGudangAsalId(e.target.value)}
+                  value={selectedPengirimKategori}
+                  onChange={(e) => {
+                    setSelectedPengirimKategori(e.target.value);
+                    setSelectedGudangAsalId("");
+                    setPengirimEksternalNama("");
+                  }}
                   className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
                 >
-                  <option value="" disabled>
-                    Pilih Gudang Asal...
-                  </option>
-                  {warehouses.map((w) => (
-                    <option key={w.gudang_id} value={String(w.gudang_id)}>
-                      {w.nama_gudang} {w.tipe ? `(${w.tipe})` : ""}
-                    </option>
-                  ))}
+                  <option value="">Pilih Kategori...</option>
+                  <option value="internal">Internal</option>
+                  <option value="external">External</option>
                 </select>
                 <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
               </div>
-              {warehouses.length === 0 && <p className="mt-2 text-xs text-gray-400">Belum ada data Gudang di master data.</p>}
+
+              {selectedPengirimKategori === "internal" && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">
+                    Gudang Asal <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={selectedGudangAsalId}
+                      onChange={(e) => setSelectedGudangAsalId(e.target.value)}
+                      className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+                    >
+                      <option value="">Pilih Gudang Asal...</option>
+                      {warehouses
+                        .filter((w) => w.is_internal === true)
+                        .map((w) => (
+                          <option key={w.gudang_id} value={String(w.gudang_id)}>
+                            {w.nama_gudang} {w.tipe ? `(${w.tipe})` : ""}
+                          </option>
+                        ))}
+                    </select>
+                    <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  </div>
+                  {warehouses.filter((w) => w.is_internal === true).length === 0 && <p className="mt-2 text-xs text-gray-400">Belum ada data Gudang Internal di master data.</p>}
+                </div>
+              )}
+
+              {selectedPengirimKategori === "external" && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">
+                    Nama Distributor/Kolaborator <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={pengirimEksternalNama}
+                    onChange={(e) => setPengirimEksternalNama(e.target.value)}
+                    placeholder="Sesuai data di surat jalan yang diterima"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-[#E8632C] focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {!selectedPengirimKategori && <p className="mt-2 text-xs text-gray-400">Pilih kategori pengirim terlebih dahulu.</p>}
             </div>
 
+            {/* Gudang Tujuan */}
             <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
               <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
                 <MapPin size={16} />
                 Gudang Tujuan
               </p>
-              <div className="relative">
+
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">Kategori Tujuan</label>
+              <div className="relative mb-3">
                 <select
-                  value={selectedGudangTujuanId}
-                  onChange={(e) => setSelectedGudangTujuanId(e.target.value)}
+                  value={selectedTujuanKategori}
+                  onChange={(e) => {
+                    setSelectedTujuanKategori(e.target.value);
+                    setSelectedGudangTujuanId("");
+                    setSelectedTitikLapanganId("");
+                  }}
                   className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
                 >
-                  <option value="" disabled>
-                    Pilih Gudang Tujuan...
-                  </option>
-                  {warehouses.map((w) => (
-                    <option key={w.gudang_id} value={String(w.gudang_id)}>
-                      {w.nama_gudang} {w.tipe ? `(${w.tipe})` : ""}
-                    </option>
-                  ))}
+                  <option value="">Pilih Kategori...</option>
+                  <option value="gudang">Gudang</option>
+                  <option value="lapangan">Lapangan</option>
                 </select>
                 <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
               </div>
+
+              {selectedTujuanKategori === "gudang" && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">
+                    Gudang Tujuan <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={selectedGudangTujuanId}
+                      onChange={(e) => setSelectedGudangTujuanId(e.target.value)}
+                      className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+                    >
+                      <option value="">Pilih Gudang Tujuan...</option>
+                      {warehouses.map((w) => (
+                        <option key={w.gudang_id} value={String(w.gudang_id)}>
+                          {w.nama_gudang} {w.tipe ? `(${w.tipe})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  </div>
+                  {warehouses.length === 0 && <p className="mt-2 text-xs text-gray-400">Belum ada data Gudang di master data.</p>}
+                </div>
+              )}
+
+              {selectedTujuanKategori === "lapangan" && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">
+                    Titik Lapangan <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={selectedTitikLapanganId}
+                      onChange={(e) => setSelectedTitikLapanganId(e.target.value)}
+                      className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+                    >
+                      <option value="">Pilih Titik Lapangan...</option>
+                      {titikLapangans.map((tl) => (
+                        <option key={String(tl.titik_lapangan_id)} value={String(tl.titik_lapangan_id)}>
+                          {tl.nama_lokasi}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  </div>
+                  {titikLapangans.length === 0 && selectedProjectId && <p className="mt-2 text-xs text-gray-400">Project ini belum memiliki titik lapangan.</p>}
+                  {!selectedProjectId && <p className="mt-2 text-xs text-amber-600">Pilih project terlebih dahulu.</p>}
+                </div>
+              )}
+
+              {!selectedTujuanKategori && <p className="mt-2 text-xs text-gray-400">Pilih kategori tujuan terlebih dahulu.</p>}
             </div>
           </div>
 
@@ -650,7 +769,7 @@ export default function AjukanSuratJalanPage() {
                         <th className="pb-3 font-semibold">Nama Barang</th>
                         <th className="pb-3 font-semibold text-right">BOQ Plan</th>
                         <th className="pb-3 font-semibold text-right">Qty</th>
-                      <th className="pb-3 font-semibold">Foto Barang</th>
+                        <th className="pb-3 font-semibold">Foto Barang</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -697,11 +816,7 @@ export default function AjukanSuratJalanPage() {
                                 {fotoUrlsByItem[key] ? (
                                   <div className="relative">
                                     <img src={fotoUrlsByItem[key]} alt="Preview" className="h-10 w-10 rounded-md border border-gray-200 object-cover" />
-                                    <button
-                                      type="button"
-                                      onClick={() => handleFotoRemove(key)}
-                                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-white hover:bg-rose-600"
-                                    >
+                                    <button type="button" onClick={() => handleFotoRemove(key)} className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-white hover:bg-rose-600">
                                       <X size={10} />
                                     </button>
                                   </div>
@@ -714,28 +829,22 @@ export default function AjukanSuratJalanPage() {
                                   </label>
                                 )}
                               </div>
-                              {fotoErrorsByItem[key] && (
-                                <p className="mt-1 text-[10px] text-rose-600">{fotoErrorsByItem[key]}</p>
-                              )}
+                              {fotoErrorsByItem[key] && <p className="mt-1 text-[10px] text-rose-600">{fotoErrorsByItem[key]}</p>}
                             </td>
                           </tr>
                         );
                       })}
-                  {boqItems.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="py-8 text-center text-gray-400">
-                        Project ini belum memiliki BOQ Plan atau belum ada item di BOQ Plan.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                      {boqItems.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="py-8 text-center text-gray-400">
+                            Project ini belum memiliki BOQ aktif atau belum ada item di BOQ Plan.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
 
-              {Object.keys(fotoUrlsByItem).length === 0 && selectedProject && (
-                <p className="mt-3 text-xs text-gray-400">
-                  Upload minimal 1 foto barang sebelum dapat mengajukan Surat Jalan.
-                </p>
-              )}
+                  {Object.keys(fotoUrlsByItem).length === 0 && selectedProject && <p className="mt-3 text-xs text-gray-400">Upload minimal 1 foto barang sebelum dapat mengajukan Surat Jalan.</p>}
 
                   {formError && (
                     <div className="mt-3 flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">
@@ -826,37 +935,34 @@ export default function AjukanSuratJalanPage() {
         </div>
 
         <ConfirmModal
-            open={showConfirmModal}
-            onClose={() => setShowConfirmModal(false)}
-            onConfirm={confirmSubmit}
-            submitting={submitting}
-            selectedItems={selectedItems}
-            selectedGudangAsal={selectedGudangAsal}
-            selectedGudangTujuan={selectedGudangTujuan}
-            selectedProject={selectedProject}
-            picPemohon={picPemohon}
-            selectedVehicle={selectedVehicle}
-            selectedPersonil={selectedPersonil}
-            fotoUrlsByItem={fotoUrlsByItem}
-          />
-
+          open={showConfirmModal}
+          onClose={() => setShowConfirmModal(false)}
+          onConfirm={confirmSubmit}
+          submitting={submitting}
+          selectedItems={selectedItems}
+          selectedGudangAsal={selectedGudangAsal}
+          selectedGudangTujuan={selectedGudangTujuan}
+          selectedProject={selectedProject}
+          picPemohon={picPemohon}
+          selectedVehicle={selectedVehicle}
+          selectedPersonil={selectedPersonil}
+          fotoUrlsByItem={fotoUrlsByItem}
+          selectedTujuanKategori={selectedTujuanKategori}
+          selectedTitikLapanganId={selectedTitikLapanganId}
+          titikLapangans={titikLapangans}
+          selectedPengirimKategori={selectedPengirimKategori}
+          pengirimEksternalNama={pengirimEksternalNama}
+        />
       </div>
 
       {toast && (
         <div
           className={[
             "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
-            toast.type === "success"
-              ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
-              : "border-rose-200/80 bg-rose-50/95 text-rose-800",
+            toast.type === "success" ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800" : "border-rose-200/80 bg-rose-50/95 text-rose-800",
           ].join(" ")}
         >
-          <div
-            className={[
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-              toast.type === "success" ? "bg-emerald-100" : "bg-rose-100",
-            ].join(" ")}
-          >
+          <div className={["flex h-8 w-8 shrink-0 items-center justify-center rounded-full", toast.type === "success" ? "bg-emerald-100" : "bg-rose-100"].join(" ")}>
             {toast.type === "success" ? (
               <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -871,12 +977,7 @@ export default function AjukanSuratJalanPage() {
           <button
             type="button"
             onClick={() => setToast(null)}
-            className={[
-              "ml-2 shrink-0 rounded-full p-1 transition-colors",
-              toast.type === "success"
-                ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
-                : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
-            ].join(" ")}
+            className={["ml-2 shrink-0 rounded-full p-1 transition-colors", toast.type === "success" ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600" : "text-rose-400 hover:bg-rose-100 hover:text-rose-600"].join(" ")}
           >
             <X size={14} />
           </button>
@@ -884,14 +985,8 @@ export default function AjukanSuratJalanPage() {
       )}
 
       {showSuccessModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-          onClick={handleSuccessModalClose}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl bg-white shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={handleSuccessModalClose}>
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex flex-col items-center px-6 py-8 text-center">
               <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
                 <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -899,14 +994,8 @@ export default function AjukanSuratJalanPage() {
                 </svg>
               </div>
               <h3 className="text-lg font-bold text-gray-900">Surat Jalan Berhasil Diajukan</h3>
-              <p className="mt-2 text-sm text-gray-500">
-                Menunggu konfirmasi persetujuan dari supervisor.
-              </p>
-              <button
-                type="button"
-                onClick={handleSuccessModalClose}
-                className="mt-6 w-full rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F]"
-              >
+              <p className="mt-2 text-sm text-gray-500">Menunggu konfirmasi persetujuan dari supervisor.</p>
+              <button type="button" onClick={handleSuccessModalClose} className="mt-6 w-full rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F]">
                 OK
               </button>
             </div>

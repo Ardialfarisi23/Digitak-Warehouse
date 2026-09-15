@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import Link from "next/link";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Loader2, Search, AlertCircle, Eye } from "lucide-react";
+import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
 
 const STATUS_META: Record<string, { label: string; tone: string }> = {
   draft_diajukan: { label: "Draft Diajukan", tone: "bg-slate-100 text-slate-700" },
@@ -18,20 +19,128 @@ const STATUS_META: Record<string, { label: string; tone: string }> = {
   ditolak: { label: "Ditolak", tone: "bg-rose-100 text-rose-700" },
 };
 
+interface WarehouseStockItem {
+  stok_id: number;
+  barang_id: number;
+  kode_perangkat: string;
+  nama_barang: string;
+  kategori: string;
+  satuan: string;
+  kondisi: string;
+  qty: number;
+  zona_id: number | null;
+  kode_zona: string;
+  nama_zona: string;
+}
+
+interface OutboundRequest {
+  nomor_surat_jalan: string;
+  status: string;
+  tipe_pengirim: string;
+  gudang_asal?: { gudang_id: number; nama_gudang: string };
+  gudang_asal_id?: number;
+  gudang_tujuan?: { nama_gudang: string };
+  tujuan_tipe: string;
+  titik_lapangan?: { nama_lokasi: string };
+  kendaraan?: { jenis_kendaraan: string; no_polisi: string };
+  personil_pengantar?: { nama: string };
+  foto_bukti?: string;
+  surat_jalan_url?: string;
+  lampiran_url?: string;
+  foto_outbound?: string;
+  photos?: string[];
+  boq_id?: number;
+  boq?: { boq_number?: string; tiket?: { kode_tiket?: string } };
+  project?: { nama_project?: string; area?: string };
+  items?: Array<{
+    item_id: number;
+    barang?: { nama_barang?: string };
+    barang_id?: number;
+    serial_number?: string;
+    qty: number;
+    kondisi?: string;
+    foto_url?: string;
+    catatan?: string;
+  }>;
+}
+
 export default function SupervisorApprovalOutboundDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { get, put } = useApi();
-  const [request, setRequest] = useState<any>(null);
+  const [request, setRequest] = useState<OutboundRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
-  
-  // State Aksi Approval / Tolak
+
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectBox, setShowRejectBox] = useState(false);
 
+  const [stockLoading, setStockLoading] = useState(false);
+  const [stockError, setStockError] = useState<string | null>(null);
+  const [warehouseStock, setWarehouseStock] = useState<WarehouseStockItem[]>([]);
+  const [stockSearch, setStockSearch] = useState("");
+
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
+
+  const resolveUrl = (url: string | undefined | null) => {
+    if (!url) return null;
+    if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
+      return url;
+    }
+    return `${apiBase}${url.startsWith("/") ? "" : "/"}${url}`;
+  };
+
+  const outboundAttachmentUrl = resolveUrl(
+    request?.foto_bukti ||
+      request?.surat_jalan_url ||
+      request?.lampiran_url ||
+      request?.foto_outbound ||
+      (Array.isArray(request?.photos) ? request.photos[0] : null),
+  );
+
+  const isOutboundImage = /\.(jpg|jpeg|png|webp)$/i.test(outboundAttachmentUrl || "");
+  const isOutboundPdf = /\.pdf$/i.test(outboundAttachmentUrl || "");
+
+  const gudangAsalId = useMemo(() => {
+    const raw =
+      request?.gudang_asal?.gudang_id ||
+      request?.gudang_asal_id ||
+      (request as any)?.gudang_id ||
+      (request as any)?.gudangAsal?.id ||
+      (request as any)?.warehouse_id;
+    const id = raw != null ? Number(raw) : NaN;
+    return Number.isNaN(id) ? null : id;
+  }, [request]);
+
+  const gudangAsalName = request?.gudang_asal?.nama_gudang || "Gudang Utama";
+
+  const filteredStock = useMemo(() => {
+    if (!stockSearch.trim()) return warehouseStock;
+    const query = stockSearch.toLowerCase();
+    return warehouseStock.filter((item) => {
+      const kode = (item.kode_perangkat || "").toLowerCase();
+      const nama = (item.nama_barang || "").toLowerCase();
+      const zona = (item.kode_zona || "").toLowerCase();
+      return kode.includes(query) || nama.includes(query) || zona.includes(query);
+    });
+  }, [warehouseStock, stockSearch]);
+
+  const stockByBarang = useMemo(() => {
+    const map = new Map<number, WarehouseStockItem & { totalQty: number }>();
+    filteredStock.forEach((item) => {
+      const existing = map.get(item.barang_id);
+      if (existing) {
+        existing.qty += item.qty;
+        existing.zona_id = existing.zona_id ?? item.zona_id;
+        existing.kode_zona = existing.kode_zona || item.kode_zona;
+        existing.nama_zona = existing.nama_zona || item.nama_zona;
+      } else {
+        map.set(item.barang_id, { ...item, totalQty: item.qty });
+      }
+    });
+    return Array.from(map.values());
+  }, [filteredStock]);
 
   useEffect(() => {
     let mounted = true;
@@ -55,6 +164,92 @@ export default function SupervisorApprovalOutboundDetailPage() {
       mounted = false;
     };
   }, [get, apiBase, params.id]);
+
+    useEffect(() => {
+      let mounted = true;
+
+      const loadWarehouseStock = async () => {
+        const warehouseId = gudangAsalId;
+
+        if (!warehouseId) {
+          setWarehouseStock([]);
+          setStockLoading(false);
+          setStockError(null);
+          return;
+        }
+
+        setStockLoading(true);
+        setStockError(null);
+
+        try {
+          const layoutResp = await get(`${apiBase}/api/warehouses/${warehouseId}/layout`);
+          const layoutJson = await layoutResp.json();
+
+          if (!layoutResp.ok) {
+            throw new Error(layoutJson?.message || "Gagal mengambil data gudang.");
+          }
+
+          const zonas = Array.isArray(layoutJson?.data?.zonas) ? layoutJson.data.zonas : [];
+
+          if (!Array.isArray(zonas) || zonas.length === 0) {
+            setWarehouseStock([]);
+            setStockLoading(false);
+            return;
+          }
+
+          const stockPromises = zonas.map((zone: any) =>
+            get(`${apiBase}/api/warehouses/${warehouseId}/zona/${zone.zona_id}/stock-snapshot`)
+              .then(async (res) => {
+                const json = await res.json();
+                if (!res.ok) {
+                  throw new Error(json?.message || `Gagal mengambil stok zona ${zone.nama_zona}`);
+                }
+                const rows = Array.isArray(json?.data?.data) ? json.data.data : Array.isArray(json?.data) ? json.data : [];
+                return rows;
+              })
+              .catch(() => [])
+          );
+
+          const results = await Promise.all(stockPromises);
+
+          if (!mounted) return;
+
+          const allStock: WarehouseStockItem[] = [];
+          results.forEach((rows) => {
+            if (Array.isArray(rows)) {
+              rows.forEach((item: any) => {
+                allStock.push({
+                  stok_id: item.stok_id ?? item.id ?? item.stokId,
+                  barang_id: item.barang_id ?? item.barangId ?? item.id_barang,
+                  kode_perangkat: item.kode_perangkat ?? item.barang?.kode_perangkat ?? item.kode_barang ?? item.sku ?? "-",
+                  nama_barang: item.nama_barang ?? item.barang?.nama_barang ?? item.nama_barang ?? "-",
+                  qty: Number(item.qty ?? item.jumlah ?? item.stok ?? 0),
+                  kondisi: item.kondisi ?? item.condition ?? "baik",
+                  zona_id: item.zona_id ?? item.zonaId ?? null,
+                  kode_zona: item.kode_zona ?? item.zona?.kode_zona ?? item.zona_kode ?? "-",
+                  nama_zona: item.nama_zona ?? item.zona?.nama_zona ?? item.nama_zona ?? "-",
+                  satuan: item.satuan ?? item.satuan?.kode_satuan ?? item.uom ?? "-",
+                });
+              });
+            }
+          });
+
+          setWarehouseStock(allStock);
+        } catch (err) {
+          if (!mounted) return;
+          const message = err instanceof Error ? err.message : "Gagal memuat data stok gudang.";
+          setStockError(message);
+          setWarehouseStock([]);
+        } finally {
+          if (mounted) setStockLoading(false);
+        }
+      };
+
+      loadWarehouseStock();
+      return () => {
+        mounted = false;
+      };
+    }, [get, apiBase, gudangAsalId]);
 
   const handleApprove = async () => {
     setActionLoading(true);
@@ -137,12 +332,40 @@ export default function SupervisorApprovalOutboundDetailPage() {
 
   const statusMeta = STATUS_META[request.status] ?? { label: request.status || "-", tone: "bg-slate-100 text-slate-700" };
 
+  const tujuanLabel =
+    request.tujuan_tipe === "lapangan"
+      ? request.titik_lapangan?.nama_lokasi || "-"
+      : request.tujuan_tipe === "gudang"
+        ? request.gudang_tujuan?.nama_gudang || "-"
+        : request.gudang_tujuan?.nama_gudang || "-";
+
+  const tujuanBadge =
+    request.tujuan_tipe === "lapangan" ? (
+      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Lapangan</span>
+    ) : request.tujuan_tipe === "gudang" ? (
+      <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Gudang</span>
+    ) : null;
+
+  const pengirimLabel =
+    request.tipe_pengirim === "internal"
+      ? request.gudang_asal?.nama_gudang || "-"
+      : request.tipe_pengirim === "external"
+        ? request.pengirim_eksternal_nama || "-"
+        : request.gudang_asal?.nama_gudang || "-";
+
+  const pengirimBadge =
+    request.tipe_pengirim === "internal" ? (
+      <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">Internal</span>
+    ) : request.tipe_pengirim === "external" ? (
+      <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">External</span>
+    ) : null;
+
   return (
     <div className="min-h-screen px-8 py-6">
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.24em] text-orange-500">
-            Detail Approval Outbound
+            Detail Form Persetujuan Outbound
           </p>
           <h1 className="mt-3 text-3xl font-bold text-slate-900">{request.nomor_surat_jalan}</h1>
           <p className="mt-2 text-sm text-slate-500">
@@ -174,194 +397,145 @@ export default function SupervisorApprovalOutboundDetailPage() {
         </div>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <p className="text-sm text-slate-500">Tujuan</p>
-              <p className="mt-1 text-base font-semibold text-slate-900">
-                {request.project?.nama_project || request.gudang_tujuan?.nama_gudang || "-"}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-500">Kendaraan</p>
-              <p className="mt-1 text-base font-semibold text-slate-900">
-                {request.kendaraan?.jenis_kendaraan || "-"}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-500">No. Polisi</p>
-              <p className="mt-1 text-base font-semibold text-slate-900">
-                {request.kendaraan?.no_polisi || "-"}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-500">Driver</p>
-              <p className="mt-1 text-base font-semibold text-slate-900">
-                {request.personil_pengantar?.nama || "-"}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-8 rounded-3xl bg-slate-50 p-5">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-              Detail BOQ / Tiket Rujukan
-            </p>
-            {request.boq_id ? (
-              <div className="mt-4 grid gap-3 text-sm text-slate-700">
-                <div className="grid grid-cols-[140px_1fr] gap-2">
-                  <span className="font-medium text-slate-600">BOQ</span>
-                  <span>
-                    <Link
-                      href="/dashboard/boq"
-                      className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-600 hover:bg-orange-100"
-                    >
-                      <ExternalLink size={12} />
-                      {request.boq?.boq_number || `BOQ #${request.boq_id}`}
-                    </Link>
-                  </span>
-                </div>
-                <div className="grid grid-cols-[140px_1fr] gap-2">
-                  <span className="font-medium text-slate-600">Nomor Tiket</span>
-                  <span>{request.boq?.tiket?.kode_tiket || "-"}</span>
-                </div>
-                <div className="grid grid-cols-[140px_1fr] gap-2">
-                  <span className="font-medium text-slate-600">Project</span>
-                  <span>{request.project?.nama_project || "-"}</span>
-                </div>
-                <div className="grid grid-cols-[140px_1fr] gap-2">
-                  <span className="font-medium text-slate-600">Area</span>
-                  <span>{request.project?.area || "-"}</span>
-                </div>
-              </div>
-            ) : (
-              <p className="mt-3 text-xs text-slate-400">Tidak terhubung ke BOQ/Tiket</p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start w-full">
+        {/* PANEL KIRI: DETAIL & ITEM SURAT JALAN OUTBOUND */}
+        <div className="w-full max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <DetailSuratJalanDocument
+            data={request}
+            variant="full"
+            hideTujuanBadge
+            renderItemAction={(item) => (
+              <button
+                type="button"
+                onClick={() => openDocModal(item)}
+                className="p-1 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+                title="Dokumentasi Barang"
+              >
+                <Eye size={16} />
+              </button>
             )}
-          </div>
-
-          <div className="mt-8">
-            <div className="mb-4 flex items-center justify-between">
-              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-                Daftar Barang
-              </p>
-              <span className="text-xs text-slate-500">{request.items?.length ?? 0} item</span>
-            </div>
-            <div className="overflow-hidden rounded-3xl border border-slate-200">
-              <table className="w-full text-left text-sm text-slate-700">
-                <thead className="bg-slate-50 text-xs uppercase tracking-[0.16em] text-slate-400">
-                  <tr>
-                    <th className="px-4 py-3">Nama Barang</th>
-                    <th className="px-4 py-3">Serial Number</th>
-                    <th className="px-4 py-3 text-center">Qty</th>
-                    <th className="px-4 py-3 text-center">Kondisi</th>
-                    <th className="px-4 py-3">Foto Bukti</th>
-                    <th className="px-4 py-3">Keterangan</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {request.items?.map((item: any) => (
-                    <tr key={item.item_id} className="border-t border-slate-200 last:border-b last:border-slate-200">
-                      <td className="px-4 py-4 font-medium text-slate-900">
-                        {item.barang?.nama_barang || item.barang_id}
-                      </td>
-                      <td className="px-4 py-4">{item.serial_number || "-"}</td>
-                      <td className="px-4 py-4 text-center">{item.qty}</td>
-                      <td className="px-4 py-4 text-center capitalize">{item.kondisi || "-"}</td>
-                      <td className="px-4 py-4">
-                        {item.foto_url ? (
-                          <img src={item.foto_url} alt="Bukti" className="h-16 w-16 rounded-xl object-cover" />
-                        ) : (
-                          <span className="text-slate-400">Tidak ada</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-4">{item.catatan || "-"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          />
         </div>
 
-        <aside className="space-y-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="rounded-3xl bg-slate-50 p-5">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Perbandingan Qty</p>
-            <div className="mt-4 space-y-3 text-sm text-slate-700">
-              <div className="grid grid-cols-[140px_1fr] gap-3">
-                <span className="font-medium text-slate-600">Qty Diminta</span>
-                <span>{request.items?.reduce((sum: number, item: any) => sum + Number(item.qty || 0), 0)}</span>
-              </div>
-              <div className="grid grid-cols-[140px_1fr] gap-3">
-                <span className="font-medium text-slate-600">Sisa Jatah BOQ</span>
-                <span>
-                  {request.boq?.items?.reduce((sum: number, item: any) => sum + Number(item.qty_rencana || 0), 0) ?? "-"}
-                </span>
-              </div>
+        {/* PANEL KANAN: CEK DATA STOK BARANG GUDANG */}
+        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 lg:sticky lg:top-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h2 className="text-base font-bold text-slate-800">Data Stok Barang di Gudang</h2>
+              <p className="text-xs text-slate-500">Gudang: {gudangAsalName}</p>
             </div>
           </div>
 
-          <div className="space-y-4 rounded-3xl border border-slate-200 bg-slate-50 p-5">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Aksi Supervisor</p>
-
-            {/* Opsi Aksi berdasarkan Status Outbound */}
-            {request.status === "draft_diajukan" ? (
-              !showRejectBox ? (
-                <div className="space-y-3">
-                  <Button
-                    onClick={handleApprove}
-                    disabled={actionLoading}
-                    className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
-                  >
-                    {actionLoading ? "Memproses..." : "Setujui (Reservasi Stok)"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowRejectBox(true)}
-                    className="w-full rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50 px-4 py-3 text-sm font-semibold"
-                  >
-                    Tolak / Minta Klarifikasi
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <textarea
-                    rows={3}
-                    value={rejectReason}
-                    onChange={(e) => setRejectReason(e.target.value)}
-                    placeholder="Tuliskan alasan penolakan/klarifikasi..."
-                    className="w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-800 focus:border-rose-500 focus:outline-none"
-                  />
-                  <Button
-                    onClick={handleReject}
-                    disabled={actionLoading}
-                    className="w-full rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
-                  >
-                    {actionLoading ? "Memproses..." : "Kirim Penolakan"}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => setShowRejectBox(false)}
-                    className="w-full rounded-xl text-sm font-semibold text-slate-600"
-                  >
-                    Batal
-                  </Button>
-                </div>
-              )
-            ) : request.status === "digenerate" ? (
-              <Button
-                onClick={handleConfirmDistributed}
-                disabled={actionLoading}
-                className="w-full rounded-xl bg-[#047857] px-4 py-3 text-sm font-semibold text-white hover:bg-[#065f46]"
-              >
-                {actionLoading ? "Memproses..." : "Tandai Diterima/Didistribusikan"}
-              </Button>
-            ) : (
-              <p className="text-xs text-slate-500">
-                Tidak ada aksi yang diperlukan untuk status saat ini ({request.status}).
-              </p>
-            )}
+          {/* Fitur Search Cepat Stok Gudang */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Cari nama barang / SKU / zona..."
+              value={stockSearch}
+              onChange={(e) => setStockSearch(e.target.value)}
+              className="w-full pl-9 pr-3.5 py-2 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:outline-none"
+            />
           </div>
-        </aside>
+
+          {/* Tabel / List Stok Barang Gudang */}
+          {stockLoading ? (
+            <div className="flex min-h-[220px] flex-col items-center justify-center">
+              <Loader2 size={26} className="animate-spin text-slate-400" />
+              <p className="mt-2 text-xs text-slate-500">Memuat data stok gudang...</p>
+            </div>
+          ) : stockError ? (
+            <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
+              <AlertCircle size={32} className="text-red-500 mb-2" />
+              <p className="text-xs text-slate-600">{stockError}</p>
+            </div>
+          ) : !gudangAsalId ? (
+            <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
+              <p className="text-xs text-slate-500">Pengajuan ini tidak memiliki gudang asal internal.</p>
+            </div>
+          ) : stockByBarang.length === 0 ? (
+            <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
+              <p className="text-xs text-slate-500">Tidak ada stok barang di gudang ini.</p>
+            </div>
+          ) : (
+            <div className="max-h-[500px] overflow-y-auto space-y-2 pr-1">
+              {stockByBarang.map((item) => (
+                <div key={item.barang_id} className="flex items-center justify-between rounded-xl border border-slate-200 p-3">
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">{item.nama_barang}</p>
+                    <p className="text-[10px] text-slate-500">SKU: {item.kode_perangkat} {item.kode_zona !== "-" ? `· Zona ${item.kode_zona}` : ""}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-bold text-slate-900">{Number(item.qty || 0).toLocaleString("id-ID")}</p>
+                    <p className="text-[10px] text-slate-500">{item.satuan}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Aksi Supervisor - moved below both panels */}
+      <div className="mt-6 space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Aksi Supervisor</p>
+
+        {request.status === "draft_diajukan" ? (
+          !showRejectBox ? (
+            <div className="space-y-3">
+              <Button
+                onClick={handleApprove}
+                disabled={actionLoading}
+                className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
+              >
+                {actionLoading ? "Memproses..." : "Setujui (Reservasi Stok)"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setShowRejectBox(true)}
+                className="w-full rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50 px-4 py-3 text-sm font-semibold"
+              >
+                Tolak / Minta Klarifikasi
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <textarea
+                rows={3}
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Tuliskan alasan penolakan/klarifikasi..."
+                className="w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-800 focus:border-rose-500 focus:outline-none"
+              />
+              <Button
+                onClick={handleReject}
+                disabled={actionLoading}
+                className="w-full rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+              >
+                {actionLoading ? "Memproses..." : "Kirim Penolakan"}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setShowRejectBox(false)}
+                className="w-full rounded-xl text-sm font-semibold text-slate-600"
+              >
+                Batal
+              </Button>
+            </div>
+          )
+        ) : request.status === "digenerate" ? (
+          <Button
+            onClick={handleConfirmDistributed}
+            disabled={actionLoading}
+            className="w-full rounded-xl bg-[#047857] px-4 py-3 text-sm font-semibold text-white hover:bg-[#065f46]"
+          >
+            {actionLoading ? "Memproses..." : "Tandai Diterima/Didistribusikan"}
+          </Button>
+        ) : (
+          <p className="text-xs text-slate-500">
+            Tidak ada aksi yang diperlukan untuk status saat ini ({request.status}).
+          </p>
+        )}
       </div>
     </div>
   );

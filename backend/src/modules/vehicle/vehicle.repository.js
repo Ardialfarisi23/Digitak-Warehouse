@@ -13,22 +13,44 @@ const ALLOWED_SORT_FIELDS = [
 ];
 
 const create = async (data) => {
+  const prismaData = {
+    jenis_kendaraan: data.jenis_kendaraan,
+    merk: data.merk,
+    no_polisi: data.no_polisi,
+    kapasitas_angkut: String(data.kapasitas_angkut || "0"),
+    keterangan: data.keterangan || "",
+    gudang_id: data.gudang_id || data.gudangId || data.warehouseId ? Number(data.gudang_id || data.gudangId || data.warehouseId) : null,
+    created_by: data.created_by,
+    updated_by: data.updated_by,
+  };
+
   return await prisma.kendaraan.create({
-    data,
+    data: prismaData,
+    include: {
+      gudang: true,
+    },
   });
 };
 
 const findByKendaraanId = async (kendaraan_id, options = {}) => {
+  if (!kendaraan_id || Number.isNaN(Number(kendaraan_id))) {
+    throw new Error("ID Kendaraan tidak valid atau tidak ditemukan");
+  }
+
+  const id = BigInt(kendaraan_id);
+
   if (options.includeInactive) {
     return await prisma.kendaraan.findUnique({
-      where: { kendaraan_id: Number(kendaraan_id) },
+      where: { kendaraan_id: id },
+      include: { gudang: true },
     });
   }
 
   return await prisma.kendaraan.findFirst({
     where: {
-      kendaraan_id: Number(kendaraan_id),
+      kendaraan_id: id,
     },
+    include: { gudang: true },
   });
 };
 
@@ -37,6 +59,7 @@ const findByNoPolisi = async (no_polisi, options = {}) => {
     where: {
       no_polisi,
     },
+    include: { gudang: true },
   });
 };
 
@@ -103,6 +126,7 @@ const findAll = async ({
     },
     skip: (sanitizedPage - 1) * sanitizedLimit,
     take: sanitizedLimit,
+    include: { gudang: true },
   });
 
   return {
@@ -117,9 +141,30 @@ const findAll = async ({
 };
 
 const update = async (kendaraan_id, data) => {
+  const prismaData = {
+    jenis_kendaraan: data.jenis_kendaraan,
+    merk: data.merk,
+    no_polisi: data.no_polisi,
+    kapasitas_angkut: data.kapasitas_angkut !== undefined ? String(data.kapasitas_angkut) : undefined,
+    keterangan: data.keterangan,
+    gudang_id: data.gudang_id || data.gudangId || data.warehouseId ? Number(data.gudang_id || data.gudangId || data.warehouseId) : undefined,
+    updated_by: data.updated_by,
+  };
+
   return await prisma.kendaraan.update({
-    where: { kendaraan_id: Number(kendaraan_id) },
-    data,
+    where: { kendaraan_id: BigInt(kendaraan_id) },
+    data: prismaData,
+  });
+};
+
+const remove = async (kendaraan_id) => {
+  const idNum = Number(kendaraan_id);
+  if (!idNum || Number.isNaN(idNum)) {
+    throw new Error("ID tidak valid");
+  }
+
+  return await prisma.kendaraan.delete({
+    where: { kendaraan_id: idNum },
   });
 };
 
@@ -129,4 +174,5 @@ module.exports = {
   findByNoPolisi,
   findAll,
   update,
+  remove,
 };

@@ -21,6 +21,7 @@ interface BoqPickerProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  tipe?: "inbound" | "outbound";
 }
 
 interface ApiBoq {
@@ -60,6 +61,7 @@ export default function BoqPicker({
   placeholder = "Pilih BOQ / Tiket",
   className,
   disabled,
+  tipe,
 }: BoqPickerProps) {
   const { get } = useApi();
   const [open, setOpen] = useState(false);
@@ -88,6 +90,7 @@ export default function BoqPicker({
     params.set("limit", "20");
     if (debounced) params.set("search", debounced);
     if (projectId) params.set("projectId", String(projectId));
+    if (tipe) params.set("tipe", tipe);
 
     get(`${API_BASE}/api/boqs?${params.toString()}`)
       .then(async (res) => {

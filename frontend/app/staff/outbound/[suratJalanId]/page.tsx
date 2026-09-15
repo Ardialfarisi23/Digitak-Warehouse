@@ -50,6 +50,10 @@ interface SuratJalan {
   } | null;
   pic_pemohon_nama?: string;
   boq_id?: number | null;
+  tujuan_tipe?: string | null;
+  titik_lapangan?: { nama_lokasi?: string } | null;
+  tipe_pengirim?: string | null;
+  pengirim_eksternal_nama?: string | null;
 }
 
 // Baris label:nilai yang selalu sejajar, berapa pun panjang labelnya.
@@ -123,6 +127,34 @@ export default function SuratJalanDetailPage() {
   }
 
   const tujuanText = suratJalan.gudang_tujuan?.nama_gudang || suratJalan.project?.nama_project || "-";
+
+  const tujuanLabel =
+    suratJalan.tujuan_tipe === "lapangan"
+      ? suratJalan.titik_lapangan?.nama_lokasi || "-"
+      : suratJalan.tujuan_tipe === "gudang"
+        ? suratJalan.gudang_tujuan?.nama_gudang || "-"
+        : suratJalan.gudang_tujuan?.nama_gudang || "-";
+
+  const tujuanBadge =
+    suratJalan.tujuan_tipe === "lapangan" ? (
+      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Lapangan</span>
+    ) : suratJalan.tujuan_tipe === "gudang" ? (
+      <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Gudang</span>
+    ) : null;
+
+  const pengirimLabel =
+    suratJalan.tipe_pengirim === "internal"
+      ? suratJalan.gudang_asal?.nama_gudang || "-"
+      : suratJalan.tipe_pengirim === "external"
+        ? suratJalan.pengirim_eksternal_nama || "-"
+        : suratJalan.gudang_asal?.nama_gudang || "-";
+
+  const pengirimBadge =
+    suratJalan.tipe_pengirim === "internal" ? (
+      <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">Internal</span>
+    ) : suratJalan.tipe_pengirim === "external" ? (
+      <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">External</span>
+    ) : null;
   const tanggal = new Date(suratJalan.created_at).toLocaleDateString("id-ID", {
     day: "2-digit",
     month: "long",
@@ -214,8 +246,16 @@ export default function SuratJalanDetailPage() {
             <div className="mt-6 w-full rounded-xl border border-gray-100 bg-gray-50 p-4 text-left text-sm">
               <p className="text-gray-500">Nomor Surat Jalan</p>
               <p className="font-semibold text-gray-900">{suratJalan.nomor_surat_jalan}</p>
+              <p className="mt-2 text-gray-500">Pengirim</p>
+              <p className="font-semibold text-gray-900">
+                {pengirimLabel}
+                {pengirimBadge}
+              </p>
               <p className="mt-2 text-gray-500">Tujuan</p>
-              <p className="font-semibold text-gray-900">{tujuanText}</p>
+              <p className="font-semibold text-gray-900">
+                {tujuanLabel}
+                {tujuanBadge}
+              </p>
               <p className="mt-2 text-gray-500">Project</p>
               <p className="font-semibold text-gray-900">{suratJalan.project?.nama_project || "-"}</p>
             </div>
@@ -265,7 +305,8 @@ export default function SuratJalanDetailPage() {
         <div className="mb-8 grid grid-cols-2 gap-x-12 gap-y-3 text-sm">
           <div className="min-w-0 space-y-3">
             <InfoRow label="No Surat Jalan" value={displaySJ.nomor} />
-            <InfoRow label="Tujuan" value={displaySJ.tujuan} />
+            <InfoRow label="Pengirim" value={<span>{pengirimLabel} {pengirimBadge}</span>} />
+            <InfoRow label="Tujuan" value={<span>{tujuanLabel} {tujuanBadge}</span>} />
             <InfoRow label="Project" value={displaySJ.projectName || "-"} />
           </div>
           <div className="min-w-0 space-y-3">

@@ -5,6 +5,62 @@ const { PrismaClientKnownRequestError } = require("@prisma/client");
 const notificationService = require("../notifications/notifications.service");
 const capacityService = require("../capacity/capacity.service");
 
+const getRelatedUserIdsByGudang = async (gudangIds, roles) => {
+  if (!Array.isArray(gudangIds) || gudangIds.length === 0 || !Array.isArray(roles) || roles.length === 0) {
+    return [];
+  }
+  const numericGudangIds = gudangIds.map(Number).filter((id) => !Number.isNaN(id));
+  if (numericGudangIds.length === 0) return [];
+
+  const personnel = await prisma.personil.findMany({
+    where: {
+      gudang_id: { in: numericGudangIds },
+      user: {
+        role: { in: roles },
+        is_aktif: true,
+      },
+    },
+    select: { user_id: true },
+  });
+
+  return personnel.map((p) => Number(p.user_id)).filter((id) => !Number.isNaN(id) && id > 0);
+};
+
+const getRelatedSupervisorIds = async (excludeUserId = null) => {
+  const supervisors = await prisma.user_account.findMany({
+    where: { role: "supervisor", is_aktif: true },
+    select: { user_id: true },
+  });
+  let ids = supervisors.map((s) => s.user_id).filter((id) => id != null);
+  if (excludeUserId != null) {
+    const numericExclude = Number(excludeUserId);
+    return ids.filter((id) => id !== numericExclude);
+  }
+  return ids;
+};
+
+const getRelatedStaffIds = async (gudangIds) => {
+  return await getRelatedUserIdsByGudang(gudangIds, ["staf_gudang"]);
+};
+
+const getAllAdminIds = async (excludeUserId = null) => {
+  const admins = await prisma.user_account.findMany({
+    where: { role: "admin_general", is_aktif: true },
+    select: { user_id: true },
+  });
+  let ids = admins.map((a) => Number(a.user_id)).filter((id) => !Number.isNaN(id) && id > 0);
+  if (excludeUserId != null) {
+    const numericExclude = Number(excludeUserId);
+    ids = ids.filter((id) => id !== numericExclude);
+  }
+  return ids;
+};
+
+const collectShipmentGudangIds = (shipment) => {
+  const ids = [shipment.gudang_asal_id, shipment.gudang_tujuan_id].filter(Boolean);
+  return [...new Set(ids)];
+};
+
 const create = async (data, actorId) => {
   if (!data.tipe || !["inbound", "outbound"].includes(data.tipe)) {
     throw new AppError("Tipe surat jalan harus inbound atau outbound.", 400);
@@ -17,6 +73,16 @@ const create = async (data, actorId) => {
   for (const item of data.items) {
     if (!item.barang_id || !item.satuan_id) {
       throw new AppError("Setiap item harus memiliki barang_id dan satuan_id.", 400);
+    }
+  }
+
+  if (data.boq_id) {
+    const boq = await prisma.boq.findUnique({
+      where: { boq_id: Number(data.boq_id) },
+      select: { boq_id: true, status: true, boq_number: true },
+    });
+    if (!boq || boq.status !== "aktif") {
+      throw new AppError("Tidak dapat membuat surat jalan — BOQ/Project terkait belum diaktifkan oleh Admin.", 400);
     }
   }
 
@@ -57,13 +123,58 @@ const create = async (data, actorId) => {
       });
 
       if (data.tipe === "outbound") {
-        await notificationService.create({
-          role: "supervisor",
-          type: "approval",
-          title: "Outbound Menunggu Approval",
-          message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
-          link: "/dashboard/supervisor/approval/outbound",
+        const actor = await prisma.user_account.findUnique({
+          where: { user_id: BigInt(actorId) },
+          select: { nama: true, role: true },
         });
+
+        const gudangIds = collectShipmentGudangIds(suratJalan);
+
+        if (actor?.role === "admin_general") {
+          const supervisorIds = await getRelatedSupervisorIds();
+          const staffIds = await getRelatedStaffIds(gudangIds);
+
+          if (supervisorIds.length > 0) {
+            await notificationService.create({
+              userId: supervisorIds,
+              type: "approval",
+              title: "Outbound Menunggu Approval",
+              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
+              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
+            });
+          }
+          if (staffIds.length > 0) {
+            await notificationService.create({
+              userId: staffIds,
+              type: "approval",
+              title: "Outbound Menunggu Approval",
+              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
+              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
+            });
+          }
+        } else if (actor?.role === "staf_gudang") {
+          const adminIds = await getAllAdminIds(actorId);
+          const supervisorIds = await getRelatedSupervisorIds();
+
+          if (adminIds.length > 0) {
+            await notificationService.create({
+              userId: adminIds,
+              type: "approval",
+              title: "Outbound Menunggu Approval",
+              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
+              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
+            });
+          }
+          if (supervisorIds.length > 0) {
+            await notificationService.create({
+              userId: supervisorIds,
+              type: "approval",
+              title: "Outbound Menunggu Approval",
+              message: `Pengajuan outbound ${suratJalan.nomor_surat_jalan} menunggu persetujuan.`,
+              link: `/dashboard/supervisor/approval/outbound/${suratJalan.surat_jalan_id}`,
+            });
+          }
+        }
       }
 
       return suratJalan;
@@ -96,13 +207,62 @@ const createStaffInbound = async (data, actorId) => {
 
   const result = await create(payload, actorId);
 
-  await notificationService.create({
-    role: "supervisor",
-    type: "approval",
-    title: "Inbound Menunggu Verifikasi",
-    message: `Pengajuan inbound ${result?.nomor_surat_jalan || ""} menunggu verifikasi supervisor.`,
-    link: "/dashboard/supervisor/approval/inbound",
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(actorId) },
+    select: { nama: true, role: true },
   });
+
+  const gudangIds = collectShipmentGudangIds(result);
+
+  try {
+    if (actor?.role === "admin_general") {
+      const supervisorIds = await getRelatedSupervisorIds();
+      const staffIds = await getRelatedStaffIds(gudangIds);
+
+      if (supervisorIds.length > 0) {
+        await notificationService.create({
+          userId: supervisorIds,
+          type: "approval",
+          title: "Inbound Menunggu Verifikasi",
+          message: `Pengajuan inbound ${result?.nomor_surat_jalan || ""} menunggu verifikasi supervisor.`,
+          link: "/dashboard/supervisor/approval/inbound",
+        });
+      }
+      if (staffIds.length > 0) {
+        await notificationService.create({
+          userId: staffIds,
+          type: "approval",
+          title: "Inbound Menunggu Verifikasi",
+          message: `Pengajuan inbound ${result?.nomor_surat_jalan || ""} menunggu verifikasi supervisor.`,
+          link: "/dashboard/supervisor/approval/inbound",
+        });
+      }
+    } else if (actor?.role === "staf_gudang") {
+      const adminIds = await getAllAdminIds(actorId);
+      const supervisorIds = await getRelatedSupervisorIds();
+
+      if (adminIds.length > 0) {
+        await notificationService.create({
+          userId: adminIds,
+          type: "approval",
+          title: "Inbound Menunggu Verifikasi",
+          message: `Pengajuan inbound ${result?.nomor_surat_jalan || ""} menunggu verifikasi supervisor.`,
+          link: "/dashboard",
+        });
+      }
+      if (supervisorIds.length > 0) {
+        await notificationService.create({
+          userId: supervisorIds,
+          type: "approval",
+          title: "Inbound Menunggu Verifikasi",
+          message: `Pengajuan inbound ${result?.nomor_surat_jalan || ""} menunggu verifikasi supervisor.`,
+          link: "/dashboard/supervisor/approval/inbound",
+        });
+      }
+    }
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi create staff inbound:", notifErr);
+  }
 
   return result;
 };
@@ -213,14 +373,38 @@ const findOutboundForDelivery = async (params = {}) => {
   return await suratJalanRepository.findOutboundForDelivery(params);
 };
 
-const findById = async (id) => {
+const findById = async (id, actor) => {
   const record = await suratJalanRepository.findById(id);
 
   if (!record) {
     throw new AppError("Surat Jalan tidak ditemukan.", 404);
   }
 
-  return record;
+  if (!actor || ["admin_general", "supervisor"].includes(actor.role)) {
+    return record;
+  }
+
+  if (actor.role === "staf_gudang") {
+    const personil = await prisma.personil.findUnique({
+      where: { user_id: BigInt(actor.id) },
+      select: { gudang_id: true },
+    });
+
+    const gudangId = personil?.gudang_id ? Number(personil.gudang_id) : null;
+    const actorId = Number(actor.id);
+
+    const isCreator = Number(record.created_by) === actorId;
+    const isAsal = record.gudang_asal_id !== null && Number(record.gudang_asal_id) === gudangId;
+    const isTujuan = record.gudang_tujuan_id !== null && Number(record.gudang_tujuan_id) === gudangId;
+
+    if (!isCreator && !isAsal && !isTujuan) {
+      throw new AppError("Anda tidak memiliki akses ke surat jalan ini.", 403);
+    }
+
+    return record;
+  }
+
+  throw new AppError("Anda tidak memiliki akses ke surat jalan ini.", 403);
 };
 
 const approveInbound = async (id, itemAdjustments = [], actorId) => {
@@ -236,6 +420,10 @@ const approveInbound = async (id, itemAdjustments = [], actorId) => {
 
   if (shipment.status === "ready_putaway" || shipment.status === "disetujui" || shipment.status === "diterima_didistribusikan") {
     return shipment;
+  }
+
+  if (shipment.boq_id && shipment.boq?.status !== "aktif") {
+    throw new AppError("Tidak dapat menyetujui inbound — BOQ/Project terkait belum diaktifkan oleh Admin.", 400);
   }
 
   if (Array.isArray(itemAdjustments) && itemAdjustments.length > 0) {
@@ -305,12 +493,16 @@ const approveOutbound = async (id, actorId) => {
     return shipment;
   }
 
+  if (shipment.boq_id && shipment.boq?.status !== "aktif") {
+    throw new AppError("Tidak dapat menyetujui outbound — BOQ/Project terkait belum diaktifkan oleh Admin.", 400);
+  }
+
   await prisma.$transaction(async (tx) => {
     await suratJalanRepository.deductOutboundStock(shipment, tx);
     await suratJalanRepository.reduceBoqAllocation(shipment, tx);
     await suratJalanRepository.updateStatus(id, "disetujui", tx);
 
-    if (shipment.boq_id && shipment.boq?.tiket_id) {
+    if (shipment.boq_id && shipment.boq?.tiket_id && shipment.tujuan_tipe !== "gudang") {
       const totalQty = shipment.items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
       if (totalQty > 0) {
         const tiket = await tx.tiket_material.findUnique({
@@ -340,14 +532,40 @@ const approveOutbound = async (id, actorId) => {
       });
     }
 
-    if (shipment.created_by) {
-      await notificationService.create({
-        userId: shipment.created_by,
-        type: "approval",
-        title: "Surat Jalan Disetujui",
-        message: `Surat Jalan ${shipment.nomor_surat_jalan} telah disetujui dan siap diproses.`,
-        link: `/staff/outbound/${shipment.surat_jalan_id}`,
-      });
+    const actor = await prisma.user_account.findUnique({
+      where: { user_id: BigInt(actorId) },
+      select: { nama: true, role: true },
+    });
+
+    const gudangIds = collectShipmentGudangIds(shipment);
+
+    const sendNotification = async (users, link) => {
+      if (!Array.isArray(users) || users.length === 0) return;
+      try {
+        await notificationService.create({
+          userId: users,
+          type: "approval",
+          title: "Surat Jalan Disetujui",
+          message: `Surat Jalan ${shipment.nomor_surat_jalan} telah disetujui dan siap diproses.`,
+          link,
+        });
+      } catch (notifErr) {
+        console.error("Gagal membuat notifikasi approve outbound:", notifErr);
+      }
+    };
+
+    if (shipment.created_by && Number(shipment.created_by) !== Number(actorId)) {
+      targets.add(Number(shipment.created_by));
+    }
+
+    if (actor?.role === "supervisor") {
+      const adminIds = await getAllAdminIds(Number(actorId));
+      const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
+      const staffIds = await getRelatedStaffIds(gudangIds);
+
+      await sendNotification(adminIds, `/dashboard`);
+      await sendNotification(supervisorIds, `/dashboard/supervisor/approval/outbound/${shipment.surat_jalan_id}`);
+      await sendNotification(staffIds, `/staff/outbound/${shipment.surat_jalan_id}`);
     }
   });
 
@@ -393,7 +611,45 @@ const confirmDistributed = async (id, actorId) => {
     }
   });
 
-  return await suratJalanRepository.findById(id);
+  const updatedShipment = await suratJalanRepository.findById(id);
+
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(actorId) },
+    select: { nama: true, role: true },
+  });
+
+  const gudangIds = collectShipmentGudangIds(updatedShipment);
+
+  const sendNotification = async (users, link) => {
+    if (!Array.isArray(users) || users.length === 0) return;
+    try {
+      await notificationService.create({
+        userId: users,
+        type: "success",
+        title: "Outbound Diterima",
+        message: `Surat Jalan ${updatedShipment.nomor_surat_jalan} telah diterima/didistribusikan oleh ${actor?.nama || "Supervisor"}.`,
+        link,
+      });
+    } catch (notifErr) {
+      console.error("Gagal membuat notifikasi confirm distributed:", notifErr);
+    }
+  };
+
+  if (updatedShipment.created_by && Number(updatedShipment.created_by) !== Number(actorId)) {
+    targets.add(Number(updatedShipment.created_by));
+  }
+
+  if (actor?.role === "supervisor") {
+    const adminIds = await getAllAdminIds(Number(actorId));
+    const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
+    const staffIds = await getRelatedStaffIds(gudangIds);
+
+    await sendNotification(adminIds, `/dashboard`);
+    await sendNotification(supervisorIds, `/dashboard/supervisor/approval/outbound/${updatedShipment.surat_jalan_id}`);
+    await sendNotification(staffIds, `/staff/outbound/${updatedShipment.surat_jalan_id}`);
+  }
+
+  return updatedShipment;
 };
 
 const rejectInbound = async (id, catatan = null, actorId) => {
@@ -425,7 +681,45 @@ const rejectInbound = async (id, catatan = null, actorId) => {
       }
     });
 
-    return await suratJalanRepository.findById(id);
+    const updatedShipment = await suratJalanRepository.findById(id);
+
+    const actor = await prisma.user_account.findUnique({
+      where: { user_id: BigInt(actorId) },
+      select: { nama: true, role: true },
+    });
+
+    const gudangIds = collectShipmentGudangIds(updatedShipment);
+
+    const sendNotification = async (users, link) => {
+      if (!Array.isArray(users) || users.length === 0) return;
+      try {
+        await notificationService.create({
+          userId: users,
+          type: "warning",
+          title: "Inbound Ditolak",
+          message: `Pengajuan inbound ${updatedShipment.nomor_surat_jalan} telah ditolak oleh ${actor?.nama || "Supervisor"}.${catatan ? ` Catatan: ${catatan}` : ""}`,
+          link,
+        });
+      } catch (notifErr) {
+        console.error("Gagal membuat notifikasi reject inbound:", notifErr);
+      }
+    };
+
+    if (updatedShipment.created_by && Number(updatedShipment.created_by) !== Number(actorId)) {
+      targets.add(Number(updatedShipment.created_by));
+    }
+
+    if (actor?.role === "supervisor") {
+      const adminIds = await getAllAdminIds(Number(actorId));
+      const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
+      const staffIds = await getRelatedStaffIds(gudangIds);
+
+      await sendNotification(adminIds, `/dashboard`);
+      await sendNotification(supervisorIds, `/dashboard/supervisor/approval/inbound/${updatedShipment.surat_jalan_id}`);
+      await sendNotification(staffIds, `/staff/inbound/${updatedShipment.surat_jalan_id}`);
+    }
+
+    return updatedShipment;
   };
 
   const rejectOutbound = async (id, catatan = null, actorId) => {
@@ -457,7 +751,45 @@ const rejectInbound = async (id, catatan = null, actorId) => {
       }
     });
 
-    return await suratJalanRepository.findById(id);
+    const updatedShipment = await suratJalanRepository.findById(id);
+
+    const actor = await prisma.user_account.findUnique({
+      where: { user_id: BigInt(actorId) },
+      select: { nama: true, role: true },
+    });
+
+    const gudangIds = collectShipmentGudangIds(updatedShipment);
+
+    const sendNotification = async (users, link) => {
+      if (!Array.isArray(users) || users.length === 0) return;
+      try {
+        await notificationService.create({
+          userId: users,
+          type: "warning",
+          title: "Outbound Ditolak",
+          message: `Pengajuan outbound ${updatedShipment.nomor_surat_jalan} telah ditolak oleh ${actor?.nama || "Supervisor"}.${catatan ? ` Catatan: ${catatan}` : ""}`,
+          link,
+        });
+      } catch (notifErr) {
+        console.error("Gagal membuat notifikasi reject outbound:", notifErr);
+      }
+    };
+
+    if (updatedShipment.created_by && Number(updatedShipment.created_by) !== Number(actorId)) {
+      targets.add(Number(updatedShipment.created_by));
+    }
+
+    if (actor?.role === "supervisor") {
+      const adminIds = await getAllAdminIds(Number(actorId));
+      const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
+      const staffIds = await getRelatedStaffIds(gudangIds);
+
+      await sendNotification(adminIds, `/dashboard`);
+      await sendNotification(supervisorIds, `/dashboard/supervisor/approval/outbound/${updatedShipment.surat_jalan_id}`);
+      await sendNotification(staffIds, `/staff/outbound/${updatedShipment.surat_jalan_id}`);
+    }
+
+    return updatedShipment;
   };
 
   const putaway = async (suratJalanId, items = [], actorId) => {
@@ -475,9 +807,16 @@ const rejectInbound = async (id, catatan = null, actorId) => {
       throw new AppError("Daftar item putaway kosong.", 400);
     }
 
-    await prisma.$transaction(async (tx) => {
-      const gudangTujuanId = Number(shipment.gudang_tujuan_id);
+    if (shipment.status === "diterima_didistribusikan") {
+      throw new AppError(
+        `Surat jalan ini sudah selesai diproses (status: ${shipment.status}), tidak bisa dilakukan putaway ulang.`,
+        400
+      );
+    }
 
+    const gudangTujuanId = Number(shipment.gudang_tujuan_id);
+
+    await prisma.$transaction(async (tx) => {
       for (const item of items) {
         const qty = Number(item.qty_ditempatkan || 0);
         const zonaId = item.zona_id ? Number(item.zona_id) : null;
@@ -572,16 +911,9 @@ const rejectInbound = async (id, catatan = null, actorId) => {
           },
         });
 
-        // Hook recalculateZonaStatus: putaway menambah stok ke zona spesifik.
         await capacityService.recalculateZonaStatus(tx, gudangTujuanId, zonaId);
       }
 
-      // FIX (bug #6 looping): sebelumnya di-set "disetujui" lagi di sini —
-      // sama persis kayak status yang di-set approveInbound(), jadi item
-      // yang UDAH selesai ditempatkan nggak bisa dibedain dari yang BARU
-      // di-ACC Supervisor. Sekarang pakai "diterima_didistribusikan"
-      // sebagai penanda akhir proses inbound (barang sudah diterima &
-      // ditempatkan tuntas).
       await suratJalanRepository.updateStatus(suratJalanId, "diterima_didistribusikan", tx);
 
       if (actorId) {
@@ -598,6 +930,35 @@ const rejectInbound = async (id, catatan = null, actorId) => {
         });
       }
     });
+
+    const actor = await prisma.user_account.findUnique({
+      where: { user_id: BigInt(actorId) },
+      select: { nama: true, role: true },
+    });
+
+    const gudangIds = [gudangTujuanId];
+    const targets = new Set();
+
+    const adminIds = await getAllAdminIds(Number(actorId));
+    adminIds.forEach((id) => targets.add(id));
+    const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
+    supervisorIds.forEach((id) => targets.add(id));
+    const staffIds = await getRelatedStaffIds(gudangIds);
+    staffIds.forEach((id) => targets.add(id));
+
+    try {
+      if (targets.size > 0) {
+        await notificationService.create({
+          userId: Array.from(targets),
+          type: "success",
+          title: "Putaway Selesai",
+          message: `Putaway untuk surat jalan ${shipment.nomor_surat_jalan} telah selesai diproses.`,
+          link: `/staff/inbound/${suratJalanId}`,
+        });
+      }
+    } catch (notifErr) {
+      console.error("Gagal membuat notifikasi putaway:", notifErr);
+    }
 
     return await suratJalanRepository.findById(suratJalanId);
   };
@@ -702,6 +1063,36 @@ const rejectInbound = async (id, catatan = null, actorId) => {
       }
     });
 
+    const actor = await prisma.user_account.findUnique({
+      where: { user_id: BigInt(actorId) },
+      select: { nama: true, role: true },
+    });
+
+    const gudangIds = [gudangAsalId];
+
+    const sendNotification = async (users, link) => {
+      if (!Array.isArray(users) || users.length === 0) return;
+      try {
+        await notificationService.create({
+          userId: users,
+          type: "success",
+          title: "Retrieval Selesai",
+          message: `Retrieval untuk surat jalan ${shipment.nomor_surat_jalan} telah selesai diproses.`,
+          link,
+        });
+      } catch (notifErr) {
+        console.error("Gagal membuat notifikasi retrieval:", notifErr);
+      }
+    };
+
+    const adminIds = await getAllAdminIds(Number(actorId));
+    const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
+    const staffIds = await getRelatedStaffIds(gudangIds);
+
+    await sendNotification(adminIds, `/dashboard`);
+    await sendNotification(supervisorIds, `/dashboard/supervisor/approval/outbound/${suratJalanId}`);
+    await sendNotification(staffIds, `/staff/outbound/${suratJalanId}`);
+
     return await suratJalanRepository.findById(suratJalanId);
   };
 
@@ -738,6 +1129,38 @@ const rejectInbound = async (id, catatan = null, actorId) => {
 
     if (actorId) {
       await suratJalanRepository.createApprovalLog(id, actorId, "outbound_delivery", "disetujui", body.catatan_distribusi || null);
+    }
+
+    if (newStatus === "sedang_dikirim") {
+      const actor = await prisma.user_account.findUnique({
+        where: { user_id: BigInt(actorId) },
+        select: { nama: true, role: true },
+      });
+
+      const gudangIds = [shipment.gudang_asal_id, shipment.gudang_tujuan_id].filter(Boolean);
+
+      const sendNotification = async (users, link) => {
+        if (!Array.isArray(users) || users.length === 0) return;
+        try {
+          await notificationService.create({
+            userId: users,
+            type: "info",
+            title: "Outbound Dalam Pengiriman",
+            message: `Surat jalan ${shipment.nomor_surat_jalan} sedang dalam pengiriman.`,
+            link,
+          });
+        } catch (notifErr) {
+          console.error("Gagal membuat notifikasi delivery status:", notifErr);
+        }
+      };
+
+      const adminIds = await getAllAdminIds(Number(actorId));
+      const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
+      const staffIds = await getRelatedStaffIds(gudangIds);
+
+      await sendNotification(adminIds, `/dashboard`);
+      await sendNotification(supervisorIds, `/dashboard/supervisor/approval/outbound/${id}`);
+      await sendNotification(staffIds, `/staff/outbound/${id}`);
     }
 
     return await suratJalanRepository.findById(id);

@@ -94,6 +94,7 @@ const update = async (zona_id, data) => {
   return await prisma.zona_gudang.update({
     where: { zona_id: Number(zona_id) },
     data,
+    include: { gudang: true },
   });
 };
 

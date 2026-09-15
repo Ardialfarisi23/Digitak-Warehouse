@@ -3,32 +3,12 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import {
-  Search,
-  Plus,
-  ChevronLeft,
-  ChevronRight,
-  Users,
-  Package,
-  FolderKanban,
-  Truck,
-  Warehouse as WarehouseIcon,
-  Eye,
-  Pencil,
-  Trash2,
-  X,
-  Loader2,
-  AlertCircle,
-  ImageOff,
-} from "lucide-react";
+import { Search, Plus, ChevronLeft, ChevronRight, Users, Package, FolderKanban, Truck, Warehouse as WarehouseIcon, Eye, Pencil, Trash2, X, Loader2, AlertCircle, ImageOff } from "lucide-react";
 
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
-import {
-  PERSONNEL_PERMISSIONS,
-  canPerformPersonnelAction,
-} from "@/lib/permissions";
+import { PERSONNEL_PERMISSIONS, canPerformPersonnelAction } from "@/lib/permissions";
 import Image from "next/image";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -57,12 +37,7 @@ function normalizeRole(role: string | undefined | null): string {
 // Types
 // ---------------------------------------------------------------------------
 
-type MasterDataType =
-  | "items"
-  | "projects"
-  | "personnel"
-  | "vehicles"
-  | "warehouses";
+type MasterDataType = "items" | "projects" | "personnel" | "vehicles" | "warehouses";
 
 interface MasterDataTab {
   key: MasterDataType;
@@ -70,6 +45,8 @@ interface MasterDataTab {
   singularLabel: string;
   endpoint: string;
   icon: React.ElementType;
+  idField: string;
+  idFields?: string[];
 }
 
 interface PaginationMeta {
@@ -133,6 +110,8 @@ const MASTER_DATA_TABS: MasterDataTab[] = [
     singularLabel: "Barang",
     endpoint: "/api/items",
     icon: Package,
+    idField: "id",
+    idFields: ["id", "barang_id"],
   },
   {
     key: "projects",
@@ -140,6 +119,8 @@ const MASTER_DATA_TABS: MasterDataTab[] = [
     singularLabel: "Project",
     endpoint: "/api/projects",
     icon: FolderKanban,
+    idField: "project_id",
+    idFields: ["project_id", "id"],
   },
   {
     key: "personnel",
@@ -147,6 +128,8 @@ const MASTER_DATA_TABS: MasterDataTab[] = [
     singularLabel: "Personil",
     endpoint: "/api/personnels",
     icon: Users,
+    idField: "personil_id",
+    idFields: ["personil_id", "id"],
   },
   {
     key: "vehicles",
@@ -154,6 +137,8 @@ const MASTER_DATA_TABS: MasterDataTab[] = [
     singularLabel: "Kendaraan",
     endpoint: "/api/vehicles",
     icon: Truck,
+    idField: "kendaraan_id",
+    idFields: ["kendaraan_id", "id"],
   },
   {
     key: "warehouses",
@@ -161,23 +146,15 @@ const MASTER_DATA_TABS: MasterDataTab[] = [
     singularLabel: "Gudang",
     endpoint: "/api/warehouses",
     icon: WarehouseIcon,
+    idField: "gudang_id",
+    idFields: ["gudang_id", "id"],
   },
 ];
 
 // Kategori barang sesuai PRD 7.1
-const ITEM_CATEGORIES = [
-  "Server",
-  "Networking",
-  "Endpoint/Laptop",
-  "Storage",
-  "Power/UPS",
-  "Kabel & Aksesoris",
-];
+const ITEM_CATEGORIES = ["Server", "Networking", "Endpoint/Laptop", "Storage", "Power/UPS", "Kabel & Aksesoris"];
 
-const TAB_PERMISSIONS: Record<
-  MasterDataType,
-  { create: string[]; edit: string[]; delete: string[] }
-> = {
+const TAB_PERMISSIONS: Record<MasterDataType, { create: string[]; edit: string[]; delete: string[] }> = {
   items: {
     create: [ROLE.ADMIN],
     edit: [ROLE.ADMIN],
@@ -191,7 +168,7 @@ const TAB_PERMISSIONS: Record<
   projects: {
     create: [ROLE.ADMIN, ROLE.SUPERVISOR],
     edit: [ROLE.ADMIN, ROLE.SUPERVISOR],
-    delete: [ROLE.ADMIN],
+    delete: [ROLE.ADMIN, ROLE.SUPERVISOR],
   },
   personnel: {
     create: PERSONNEL_PERMISSIONS.create,
@@ -201,7 +178,7 @@ const TAB_PERMISSIONS: Record<
   vehicles: {
     create: [ROLE.ADMIN, ROLE.SUPERVISOR],
     edit: [ROLE.ADMIN, ROLE.SUPERVISOR],
-    delete: [ROLE.ADMIN],
+    delete: [ROLE.ADMIN, ROLE.SUPERVISOR],
   },
 };
 
@@ -332,18 +309,7 @@ function getRecordTitle(tab: MasterDataType, record: GenericRecord | null) {
   return String(record.id ?? "");
 }
 
-const PHOTO_FIELD_NAMES = [
-  "photo",
-  "photoUrl",
-  "image",
-  "imageUrl",
-  "picture",
-  "pictureUrl",
-  "foto",
-  "fotoUrl",
-  "gambar",
-  "gambarUrl",
-];
+const PHOTO_FIELD_NAMES = ["photo", "photoUrl", "image", "imageUrl", "picture", "pictureUrl", "foto", "fotoUrl", "gambar", "gambarUrl"];
 
 function getPhotoUrl(record: GenericRecord | null): string | null {
   if (!record) return null;
@@ -382,15 +348,7 @@ function getAdditionalPhotos(record: GenericRecord | null): { label: string; url
 // Pagination
 // ---------------------------------------------------------------------------
 
-function Pagination({
-  page,
-  totalPages,
-  onPageChange,
-}: {
-  page: number;
-  totalPages: number;
-  onPageChange: (p: number) => void;
-}) {
+function Pagination({ page, totalPages, onPageChange }: { page: number; totalPages: number; onPageChange: (p: number) => void }) {
   if (totalPages <= 1) return null;
 
   const pages: (number | "...")[] = [];
@@ -422,11 +380,7 @@ function Pagination({
 
   return (
     <div className="flex items-center gap-1">
-      <button
-        onClick={() => onPageChange(page - 1)}
-        disabled={page === 1}
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 disabled:opacity-30"
-      >
+      <button onClick={() => onPageChange(page - 1)} disabled={page === 1} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 disabled:opacity-30">
         <ChevronLeft size={15} />
       </button>
 
@@ -439,23 +393,14 @@ function Pagination({
           <button
             key={p}
             onClick={() => onPageChange(Number(p))}
-            className={[
-              "flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition-colors",
-              page === p
-                ? "bg-slate-900 text-white"
-                : "text-slate-600 hover:bg-slate-100",
-            ].join(" ")}
+            className={["flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition-colors", page === p ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"].join(" ")}
           >
             {p}
           </button>
-        )
+        ),
       )}
 
-      <button
-        onClick={() => onPageChange(page + 1)}
-        disabled={page === totalPages}
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 disabled:opacity-30"
-      >
+      <button onClick={() => onPageChange(page + 1)} disabled={page === totalPages} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 disabled:opacity-30">
         <ChevronRight size={15} />
       </button>
     </div>
@@ -466,21 +411,7 @@ function Pagination({
 // Generic Modal shell
 // ---------------------------------------------------------------------------
 
-function Modal({
-  open,
-  onClose,
-  title,
-  subtitle,
-  widthClass = "max-w-lg",
-  children,
-}: {
-  open: boolean;
-  onClose: () => void;
-  title: string;
-  subtitle?: string;
-  widthClass?: string;
-  children: React.ReactNode;
-}) {
+function Modal({ open, onClose, title, subtitle, widthClass = "max-w-lg", children }: { open: boolean; onClose: () => void; title: string; subtitle?: string; widthClass?: string; children: React.ReactNode }) {
   useEffect(() => {
     if (!open) return;
 
@@ -495,26 +426,15 @@ function Modal({
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-      onClick={onClose}
-    >
-      <div
-        className={`w-full ${widthClass} max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl`}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
+      <div className={`w-full ${widthClass} max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl`} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
           <div>
             <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-            {subtitle && (
-              <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>
-            )}
+            {subtitle && <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>}
           </div>
 
-          <button
-            onClick={onClose}
-            className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-          >
+          <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
             <X size={16} />
           </button>
         </div>
@@ -529,19 +449,7 @@ function Modal({
 // Detail Modal (read-only)
 // ---------------------------------------------------------------------------
 
-function DetailModal({
-  open,
-  onClose,
-  tab,
-  tabLabel,
-  record,
-}: {
-  open: boolean;
-  onClose: () => void;
-  tab: MasterDataType;
-  tabLabel: string;
-  record: GenericRecord | null;
-}) {
+function DetailModal({ open, onClose, tab, tabLabel, record }: { open: boolean; onClose: () => void; tab: MasterDataType; tabLabel: string; record: GenericRecord | null }) {
   if (!record) return null;
 
   const fields = TAB_FIELDS[tab];
@@ -551,19 +459,10 @@ function DetailModal({
   const additionalPhotos = showPhoto ? getAdditionalPhotos(record) : [];
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={`Detail ${tabLabel}`}
-      subtitle={getRecordTitle(tab, record)}
-    >
+    <Modal open={open} onClose={onClose} title={`Detail ${tabLabel}`} subtitle={getRecordTitle(tab, record)}>
       {primaryPhoto && (
         <div className="mb-5 flex justify-center">
-          <img
-            src={primaryPhoto}
-            alt={tabLabel}
-            className="max-h-56 max-w-full rounded-2xl border border-slate-100 object-contain"
-          />
+          <img src={primaryPhoto} alt={tabLabel} className="max-h-56 max-w-full rounded-2xl border border-slate-100 object-contain" />
         </div>
       )}
 
@@ -575,40 +474,26 @@ function DetailModal({
             return (
               <div key={field.key} className="flex items-start justify-between gap-4 py-2.5">
                 <dt className="text-xs font-medium text-slate-400">{field.label}</dt>
-                <dd className="text-right text-sm font-medium text-slate-800">
-                  {photoUrl ? (
-                    <span className="text-slate-700">Ada foto</span>
-                  ) : (
-                    <span className="text-slate-400">Tidak ada foto</span>
-                  )}
-                </dd>
+                <dd className="text-right text-sm font-medium text-slate-800">{photoUrl ? <span className="text-slate-700">Ada foto</span> : <span className="text-slate-400">Tidak ada foto</span>}</dd>
               </div>
             );
-                           }
+          }
 
-                             if (field.key === "kategori_id" || field.key === "satuan_default_id") {
-                               const label = field.key === "kategori_id"
-                                 ? (record as any)?.kategori?.nama_kategori
-                                 : (record as any)?.satuan_default?.kode_satuan;
+          if (field.key === "kategori_id" || field.key === "satuan_default_id") {
+            const label = field.key === "kategori_id" ? (record as any)?.kategori?.nama_kategori : (record as any)?.satuan_default?.kode_satuan;
 
-                               return (
-                                 <div key={field.key} className="flex items-start justify-between gap-4 py-2.5">
-                                   <dt className="text-xs font-medium text-slate-400">{field.label}</dt>
-                                   <dd className="text-right text-sm font-medium text-slate-800">
-                                     {label || "-"}
-                                   </dd>
-                                 </div>
-                               );
-                             }
+            return (
+              <div key={field.key} className="flex items-start justify-between gap-4 py-2.5">
+                <dt className="text-xs font-medium text-slate-400">{field.label}</dt>
+                <dd className="text-right text-sm font-medium text-slate-800">{label || "-"}</dd>
+              </div>
+            );
+          }
 
-                           return (
+          return (
             <div key={field.key} className="flex items-start justify-between gap-4 py-2.5">
               <dt className="text-xs font-medium text-slate-400">{field.label}</dt>
-              <dd className="text-right text-sm font-medium text-slate-800">
-                 {field.type === "checkbox"
-                   ? formatCheckboxValue(field.key, record[field.key])
-                   : formatValue(record[field.key])}
-              </dd>
+              <dd className="text-right text-sm font-medium text-slate-800">{field.type === "checkbox" ? formatCheckboxValue(field.key, record[field.key]) : formatValue(record[field.key])}</dd>
             </div>
           );
         })}
@@ -616,20 +501,11 @@ function DetailModal({
 
       {additionalPhotos.length > 1 && (
         <div className="mt-5">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-            Foto Tambahan
-          </p>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Foto Tambahan</p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {additionalPhotos.slice(1).map((photo, idx) => (
-              <div
-                key={idx}
-                className="overflow-hidden rounded-xl border border-slate-100"
-              >
-                <img
-                  src={photo.url}
-                  alt={photo.label}
-                  className="h-32 w-full object-cover"
-                />
+              <div key={idx} className="overflow-hidden rounded-xl border border-slate-100">
+                <img src={photo.url} alt={photo.label} className="h-32 w-full object-cover" />
               </div>
             ))}
           </div>
@@ -638,9 +514,7 @@ function DetailModal({
 
       {hasAudit && (
         <div className="mt-5 rounded-xl bg-slate-50 px-4 py-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-            Riwayat Perubahan
-          </p>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Riwayat Perubahan</p>
           <div className="space-y-1 text-xs text-slate-500">
             <p>
               Dibuat: {formatDateTime((record as any)?.created_at ?? record.createdAt)}
@@ -655,10 +529,7 @@ function DetailModal({
       )}
 
       <div className="mt-5 flex justify-end">
-        <button
-          onClick={onClose}
-          className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-        >
+        <button onClick={onClose} className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
           Tutup
         </button>
       </div>
@@ -706,12 +577,16 @@ function FormModal({
         } else {
           initial[field.key] = "";
         }
+      } else if (field.key === "gudang_id" && tab === "personnel") {
+        const direct = (record as any)?.gudang_id;
+        const nested = (record as any)?.gudang?.gudang_id;
+        initial[field.key] = direct ?? nested ?? "";
       } else {
         initial[field.key] = record?.[field.key] ?? "";
       }
     });
     return initial;
-  }, [fields, record, mode]);
+  }, [fields, record, mode, tab]);
 
   const [form, setForm] = useState<Record<string, unknown>>(buildInitialForm);
   const [submitting, setSubmitting] = useState(false);
@@ -733,7 +608,9 @@ function FormModal({
             const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
             setCategoryOptions(list.map((cat: any) => ({ value: Number(cat.kategori_id), label: cat.nama_kategori })));
           })
-          .catch(() => { if (!cancelled) setCategoryOptions([]); }),
+          .catch(() => {
+            if (!cancelled) setCategoryOptions([]);
+          }),
         get(`${baseUrl}/api/units`)
           .then((res) => res.json())
           .then((result) => {
@@ -741,10 +618,14 @@ function FormModal({
             const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
             setUnitOptions(list.map((u: any) => ({ value: Number(u.satuan_id), label: u.kode_satuan })));
           })
-          .catch(() => { if (!cancelled) setUnitOptions([]); }),
+          .catch(() => {
+            if (!cancelled) setUnitOptions([]);
+          }),
       ]);
 
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true;
+      };
     }
 
     if (open && tab === "personnel") {
@@ -758,9 +639,13 @@ function FormModal({
           const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
           setWarehouseOptions(list.map((w: any) => ({ value: Number(w.gudang_id), label: w.nama_gudang })));
         })
-        .catch(() => { if (!cancelled) setWarehouseOptions([]); });
+        .catch(() => {
+          if (!cancelled) setWarehouseOptions([]);
+        });
 
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true;
+      };
     }
   }, [open, tab, get]);
 
@@ -813,9 +698,7 @@ function FormModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    const missing = fields.find(
-      (f) => f.required && !String(form[f.key] ?? "").trim()
-    );
+    const missing = fields.find((f) => f.required && !String(form[f.key] ?? "").trim());
 
     if (missing) {
       setError(`${missing.label} wajib diisi.`);
@@ -826,8 +709,7 @@ function FormModal({
     setError(null);
 
     try {
-      const baseUrl =
-        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
       const submitData: Record<string, unknown> = { ...form };
 
@@ -838,16 +720,24 @@ function FormModal({
           if (currentValue instanceof File) {
             const photoUrl = await uploadFile(currentValue);
             submitData[field.key] = photoUrl;
-          } else if (mode === "edit" && !currentValue) {
-            const originalUrl = record?.[field.key];
-            if (typeof originalUrl === "string" && originalUrl) {
-              submitData[field.key] = originalUrl;
-            }
+          } else {
+            delete submitData[field.key];
           }
+        } else if (field.type === "checkbox") {
+          submitData[field.key] = Boolean(submitData[field.key]);
         } else if (field.type === "select" && submitData[field.key] !== undefined && submitData[field.key] !== "") {
           const numericValue = Number(submitData[field.key]);
           if (!Number.isNaN(numericValue)) {
             submitData[field.key] = numericValue;
+          }
+        } else if (field.key === "kapasitas_angkut" && submitData[field.key] !== undefined && submitData[field.key] !== "") {
+          submitData[field.key] = String(submitData[field.key]).trim();
+        } else if (field.key === "gudang_id" && submitData[field.key] !== undefined && submitData[field.key] !== "") {
+          const numVal = Number(submitData[field.key]);
+          if (!Number.isNaN(numVal) && numVal > 0) {
+            submitData[field.key] = numVal;
+          } else {
+            delete submitData[field.key];
           }
         }
       }
@@ -855,57 +745,62 @@ function FormModal({
       let url: string;
       if (tab === "items") {
         const itemCode = (record as Item | null)?.kode_perangkat;
-        url =
-          mode === "create"
-            ? new URL(endpoint, baseUrl).toString()
-            : new URL(`${endpoint}/${encodeURIComponent(String(itemCode))}`, baseUrl).toString();
+        url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(itemCode))}`, baseUrl).toString();
       } else if (tab === "personnel") {
         const personnelId = (record as { personil_id?: string | number } | null)?.personil_id;
-        url =
-          mode === "create"
-            ? new URL(endpoint, baseUrl).toString()
-            : new URL(`${endpoint}/${encodeURIComponent(String(personnelId))}`, baseUrl).toString();
+        url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(personnelId))}`, baseUrl).toString();
       } else if (tab === "vehicles") {
         const vehicleNoPolisi = (record as { no_polisi?: string } | null)?.no_polisi;
-        url =
-          mode === "create"
-            ? new URL(endpoint, baseUrl).toString()
-            : new URL(`${endpoint}/${encodeURIComponent(String(vehicleNoPolisi))}`, baseUrl).toString();
+        url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(vehicleNoPolisi))}`, baseUrl).toString();
       } else if (tab === "projects") {
         const projectId = (record as { project_id?: string | number } | null)?.project_id;
-        url =
-          mode === "create"
-            ? new URL(endpoint, baseUrl).toString()
-            : new URL(`${endpoint}/${encodeURIComponent(String(projectId))}`, baseUrl).toString();
+        url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(projectId))}`, baseUrl).toString();
       } else if (tab === "warehouses") {
         const warehouseName = (record as { nama_gudang?: string } | null)?.nama_gudang;
-        url =
-          mode === "create"
-            ? new URL(endpoint, baseUrl).toString()
-            : new URL(`${endpoint}/${encodeURIComponent(String(warehouseName))}`, baseUrl).toString();
+        url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(warehouseName))}`, baseUrl).toString();
       } else {
-        url =
-          mode === "create"
-            ? new URL(endpoint, baseUrl).toString()
-            : new URL(`${endpoint}/${encodeURIComponent(String(record?.id))}`, baseUrl).toString();
+        url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(record?.id))}`, baseUrl).toString();
       }
 
-      const response =
-        mode === "create" ? await post(url, submitData) : await put(url, submitData);
+      const response = mode === "create" ? await post(url, submitData) : await put(url, submitData);
 
       if (!response.ok) {
-        const result = await response.json().catch(() => null);
-        throw new Error(
-          result?.message ||
-            `Gagal ${mode === "create" ? "menambah" : "menyimpan"} ${tabLabel.toLowerCase()}.`
-        );
+        let result: unknown = null;
+        try {
+          result = await response.json();
+        } catch {
+          result = null;
+        }
+
+        const resultObj = result && typeof result === "object" ? result : null;
+        const message =
+          (resultObj as any)?.message || `Gagal ${mode === "create" ? "menambah" : "menyimpan"} ${tabLabel.toLowerCase()}.`;
+
+        const validationDetails =
+          (resultObj as any)?.errors || (resultObj as any)?.details || null;
+
+        const fullMessage = validationDetails
+          ? `${message} Detail: ${JSON.stringify(validationDetails)}`
+          : message;
+
+        console.error(`[FormModal] ${tabLabel} ${mode} failed:`, {
+          status: response.status,
+          body: resultObj,
+          url,
+          payload: submitData,
+        });
+
+        if (tab === "personnel" && mode === "edit") {
+          console.error("[Edit Master Data Validation Error - Personil]:", resultObj);
+        } else if (tab === "vehicles" && mode === "edit") {
+          console.error("[Edit Master Data Validation Error - Kendaraan]:", resultObj);
+        }
+
+        throw new Error(fullMessage);
       }
 
       onSuccess();
-      onShowToast(
-        `${tabLabel} berhasil ${mode === "create" ? "ditambahkan" : "diperbarui"}.`,
-        "success"
-      );
+      onShowToast(`${tabLabel} berhasil ${mode === "create" ? "ditambahkan" : "diperbarui"}.`, "success");
       onClose();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
@@ -917,40 +812,24 @@ function FormModal({
   }
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={mode === "create" ? `Tambah ${tabLabel}` : `Edit ${tabLabel}`}
-      subtitle={mode === "edit" ? getRecordTitle(tab, record) : undefined}
-    >
+    <Modal open={open} onClose={onClose} title={mode === "create" ? `Tambah ${tabLabel}` : `Edit ${tabLabel}`} subtitle={mode === "edit" ? getRecordTitle(tab, record) : undefined}>
       <form onSubmit={handleSubmit} className="space-y-4">
         {formFields.map((field) => (
           <div key={field.key}>
             {field.type === "checkbox" ? (
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={Boolean(form[field.key])}
-                  onChange={(e) => handleChange(field.key, e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500"
-                />
+                <input type="checkbox" checked={Boolean(form[field.key])} onChange={(e) => handleChange(field.key, e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500" />
                 {field.label}
               </label>
             ) : field.type === "file" ? (
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-slate-500">
-                  {field.label}
-                </label>
+                <label className="mb-1.5 block text-xs font-medium text-slate-500">{field.label}</label>
 
                 {mode === "edit" && typeof form[field.key] === "string" && form[field.key] ? (
                   <div className="space-y-3">
                     <div className="flex items-center gap-4">
                       <div className="relative h-16 w-16 overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
-                        <img
-                          src={String(form[field.key])}
-                          alt="Preview"
-                          className="h-full w-full object-contain"
-                        />
+                        <img src={String(form[field.key])} alt="Preview" className="h-full w-full object-contain" />
                       </div>
                       <div className="text-xs text-slate-500">
                         <p className="font-medium text-slate-700">Foto saat ini</p>
@@ -958,19 +837,11 @@ function FormModal({
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleChange(field.key, null)}
-                      className="rounded-full border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                    >
+                    <button type="button" onClick={() => handleChange(field.key, null)} className="rounded-full border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">
                       Ganti Foto
                     </button>
 
-                    {form[field.key] instanceof File && (
-                      <p className="text-[11px] text-slate-400">
-                        File terpilih: {(form[field.key] as File).name}
-                      </p>
-                    )}
+                    {form[field.key] instanceof File && <p className="text-[11px] text-slate-400">File terpilih: {(form[field.key] as File).name}</p>}
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -985,11 +856,7 @@ function FormModal({
                       }}
                       className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400 file:mr-4 file:rounded-lg file:border-0 file:bg-orange-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-orange-600 hover:file:bg-orange-100"
                     />
-                    {form[field.key] instanceof File && (
-                      <p className="text-[11px] text-slate-400">
-                        File terpilih: {(form[field.key] as File).name}
-                      </p>
-                    )}
+                    {form[field.key] instanceof File && <p className="text-[11px] text-slate-400">File terpilih: {(form[field.key] as File).name}</p>}
                   </div>
                 )}
               </div>
@@ -1000,23 +867,23 @@ function FormModal({
                   {field.required && <span className="text-rose-500"> *</span>}
                 </label>
 
-                 {field.type === "select" ? (
-                   <select
-                     value={String(form[field.key] ?? "")}
-                     onChange={(e) => handleChange(field.key, e.target.value)}
-                     className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
-                   >
-                     <option value="">Pilih {field.label.toLowerCase()}</option>
-                     {(field.options || []).map((opt) => {
-                       const optValue = typeof opt === "string" ? opt : String((opt as any).value);
-                       const optLabel = typeof opt === "string" ? opt : (opt as any).label;
-                       return (
-                         <option key={optValue} value={optValue}>
-                           {optLabel}
-                         </option>
-                       );
-                     })}
-                   </select>
+                {field.type === "select" ? (
+                  <select
+                    value={String(form[field.key] ?? "")}
+                    onChange={(e) => handleChange(field.key, e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                  >
+                    <option value="">Pilih {field.label.toLowerCase()}</option>
+                    {(field.options || []).map((opt) => {
+                      const optValue = typeof opt === "string" ? opt : String((opt as any).value);
+                      const optLabel = typeof opt === "string" ? opt : (opt as any).label;
+                      return (
+                        <option key={optValue} value={optValue}>
+                          {optLabel}
+                        </option>
+                      );
+                    })}
+                  </select>
                 ) : field.type === "textarea" ? (
                   <textarea
                     value={String(form[field.key] ?? "")}
@@ -1047,19 +914,11 @@ function FormModal({
         )}
 
         <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-          >
+          <button type="button" onClick={onClose} className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
             Batal
           </button>
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="flex items-center gap-2 rounded-full bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:opacity-60"
-          >
+          <button type="submit" disabled={submitting} className="flex items-center gap-2 rounded-full bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:opacity-60">
             {submitting && <Loader2 size={14} className="animate-spin" />}
             {mode === "create" ? "Simpan" : "Simpan Perubahan"}
           </button>
@@ -1079,6 +938,8 @@ function DeleteConfirmModal({
   tabLabel,
   endpoint,
   record,
+  idField,
+  idFields,
   onSuccess,
   onShowToast,
 }: {
@@ -1087,6 +948,8 @@ function DeleteConfirmModal({
   tabLabel: string;
   endpoint: string;
   record: GenericRecord | null;
+  idField?: string;
+  idFields?: string[];
   onSuccess: () => void;
   onShowToast: (message: string, type: "success" | "error") => void;
 }) {
@@ -1094,25 +957,40 @@ function DeleteConfirmModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isPersonnel = tabLabel.toLowerCase() === "personil";
+  const isActivePersonnel = isPersonnel && Boolean((record as any)?.is_aktif ?? (record as any)?.status_aktif ?? true);
+
   async function handleDelete() {
     if (!record) return;
+
+    if (isActivePersonnel) {
+      onShowToast("Gagal menghapus! Personil harus dinonaktifkan terlebih dahulu di Halaman Operasional.", "error");
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
 
     try {
-      const baseUrl =
-        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-      const url = new URL(`${endpoint}/${record.id}`, baseUrl).toString();
+      const candidates = idFields && idFields.length > 0 ? idFields : [idField || "id"];
+      const rawId = candidates.map((field) => record?.[field]).find((value) => value !== undefined && value !== null && value !== "");
+      const validId = rawId !== undefined && rawId !== null && rawId !== "" ? String(rawId) : null;
+
+      console.log(`[DeleteConfirmModal] tab=${tabLabel} endpoint=${endpoint} record keys=${Object.keys(record || {})} candidates=${candidates.join(",")} rawId=${rawId} validId=${validId}`);
+
+      if (!validId) {
+        throw new Error(`ID tidak valid untuk ${tabLabel.toLowerCase()}.`);
+      }
+
+      const url = new URL(`${endpoint}/${encodeURIComponent(validId)}`, baseUrl).toString();
 
       const response = await del(url);
 
       if (!response.ok) {
         const result = await response.json().catch(() => null);
-        throw new Error(
-          result?.message || `Gagal menghapus ${tabLabel.toLowerCase()}.`
-        );
+        throw new Error(result?.message || `Gagal menghapus ${tabLabel.toLowerCase()}.`);
       }
 
       onSuccess();
@@ -1129,12 +1007,88 @@ function DeleteConfirmModal({
 
   return (
     <Modal open={open} onClose={onClose} title={`Hapus ${tabLabel}`} widthClass="max-w-sm">
+      {isActivePersonnel ? (
+        <div className="rounded-xl bg-amber-50 px-3 py-2.5 text-xs text-amber-700">Personil masih aktif! Harap nonaktifkan terlebih dahulu di Halaman Operasional sebelum menghapus.</div>
+      ) : (
+        <p className="text-sm text-slate-600">Yakin ingin menghapus ? Tindakan ini tidak dapat dibatalkan.</p>
+      )}
+
+      {error && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-600">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      <div className="mt-5 flex justify-end gap-2">
+        <button onClick={onClose} className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+          Batal
+        </button>
+
+        <button onClick={handleDelete} disabled={submitting || isActivePersonnel} className="flex items-center gap-2 rounded-full bg-rose-600 px-5 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60">
+          {submitting && <Loader2 size={14} className="animate-spin" />}
+          Hapus
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Nonaktif Confirm Modal
+// ---------------------------------------------------------------------------
+
+function NonaktifConfirmModal({
+  open,
+  onClose,
+  record,
+  onSuccess,
+  onShowToast,
+}: {
+  open: boolean;
+  onClose: () => void;
+  record: GenericRecord | null;
+  onSuccess: () => void;
+  onShowToast: (message: string, type: "success" | "error") => void;
+}) {
+  const { put } = useApi();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleConfirm() {
+    if (!record) return;
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const personilId = record.personil_id ?? record.id;
+      const url = new URL(`/api/personnels/${personilId}`, baseUrl).toString();
+
+      const response = await put(url, { is_aktif: false });
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.message || "Gagal menonaktifkan personil.");
+      }
+
+      onSuccess();
+      onShowToast("Personil berhasil dinonaktifkan.", "success");
+      onClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
+      setError(msg);
+      onShowToast(msg, "error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Nonaktifkan Personil" widthClass="max-w-sm">
       <p className="text-sm text-slate-600">
-        Yakin ingin menghapus{" "}
-        <span className="font-semibold text-slate-800">
-          {record ? getRecordTitle("items", record) : ""}
-        </span>
-        ? Tindakan ini tidak dapat dibatalkan.
+        Nonaktifkan personil <span className="font-semibold text-slate-800">{record ? String(record.nama || record.id) : ""}</span>?
       </p>
 
       {error && (
@@ -1145,20 +1099,79 @@ function DeleteConfirmModal({
       )}
 
       <div className="mt-5 flex justify-end gap-2">
-        <button
-          onClick={onClose}
-          className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-        >
+        <button onClick={onClose} className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
           Batal
         </button>
 
-        <button
-          onClick={handleDelete}
-          disabled={submitting}
-          className="flex items-center gap-2 rounded-full bg-rose-600 px-5 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
-        >
+        <button onClick={handleConfirm} disabled={submitting} className="flex items-center gap-2 rounded-full bg-amber-600 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60">
           {submitting && <Loader2 size={14} className="animate-spin" />}
-          Hapus
+          Nonaktifkan
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Aktif Confirm Modal
+// ---------------------------------------------------------------------------
+
+function AktifConfirmModal({ open, onClose, record, onSuccess, onShowToast }: { open: boolean; onClose: () => void; record: GenericRecord | null; onSuccess: () => void; onShowToast: (message: string, type: "success" | "error") => void }) {
+  const { put } = useApi();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleConfirm() {
+    if (!record) return;
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const personilId = record.personil_id ?? record.id;
+      const url = new URL(`/api/personnels/${personilId}`, baseUrl).toString();
+
+      const response = await put(url, { is_aktif: true });
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.message || "Gagal mengaktifkan kembali personil.");
+      }
+
+      onSuccess();
+      onShowToast("Personil berhasil diaktifkan kembali.", "success");
+      onClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
+      setError(msg);
+      onShowToast(msg, "error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Aktifkan Kembali Personil" widthClass="max-w-sm">
+      <p className="text-sm text-slate-600">
+        Aktifkan kembali personil <span className="font-semibold text-slate-800">{record ? String(record.nama || record.id) : ""}</span>?
+      </p>
+
+      {error && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-600">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      <div className="mt-5 flex justify-end gap-2">
+        <button onClick={onClose} className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+          Batal
+        </button>
+
+        <button onClick={handleConfirm} disabled={submitting} className="flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+          {submitting && <Loader2 size={14} className="animate-spin" />}
+          Aktifkan
         </button>
       </div>
     </Modal>
@@ -1203,6 +1216,8 @@ function MasterDataPageContent() {
   } | null>(null);
   const [detailRecord, setDetailRecord] = useState<GenericRecord | null>(null);
   const [deleteRecord, setDeleteRecord] = useState<GenericRecord | null>(null);
+  const [nonaktifRecord, setNonaktifRecord] = useState<GenericRecord | null>(null);
+  const [aktifRecord, setAktifRecord] = useState<GenericRecord | null>(null);
 
   // -------------------------------------------------------------------------
   // Toast state
@@ -1235,7 +1250,8 @@ function MasterDataPageContent() {
       case "projects":
         return ["project_id", "title", "nama_project", "kecamatan", "desa_kelurahan", "status_aktif"];
       case "personnel":
-        return ["personil_id", "nama", "email", "nik", "posisi", "no_hp", "bisa_menyetir", "gudang", "foto"];
+        return ["personil_id", "nama", "email", "nik", "posisi", "no_hp", "bisa_menyetir", "is_aktif", "foto"];
+
       case "vehicles":
         return ["kendaraan_id", "jenis_kendaraan", "merk", "no_polisi", "foto"];
       case "warehouses":
@@ -1295,8 +1311,7 @@ function MasterDataPageContent() {
     setError(null);
 
     try {
-      const baseUrl =
-        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
       const url = new URL(config.endpoint, baseUrl);
 
@@ -1316,13 +1331,7 @@ function MasterDataPageContent() {
         const message = result?.message || `Gagal mengambil data ${config.label}.`;
         const lowerMessage = String(message).toLowerCase();
 
-        if (
-          lowerMessage.includes("jwt") ||
-          lowerMessage.includes("expired") ||
-          lowerMessage.includes("unauthorized") ||
-          lowerMessage.includes("token") ||
-          lowerMessage.includes("session")
-        ) {
+        if (lowerMessage.includes("jwt") || lowerMessage.includes("expired") || lowerMessage.includes("unauthorized") || lowerMessage.includes("token") || lowerMessage.includes("session")) {
           logout();
           router.replace("/");
           throw new Error("Sesi berakhir. Silakan login kembali.");
@@ -1341,28 +1350,22 @@ function MasterDataPageContent() {
         dataArr = payload.data;
       }
 
-      const metaObj: PaginationMeta =
-        payload?.meta || {
-          total: dataArr.length,
-          page,
-          limit: ITEMS_PER_PAGE,
-          totalPages: Math.max(1, Math.ceil(dataArr.length / ITEMS_PER_PAGE)),
-        };
+      const metaObj: PaginationMeta = payload?.meta || {
+        total: dataArr.length,
+        page,
+        limit: ITEMS_PER_PAGE,
+        totalPages: Math.max(1, Math.ceil(dataArr.length / ITEMS_PER_PAGE)),
+      };
 
       setData(dataArr);
       setMeta({
         total: Number(metaObj.total ?? dataArr.length),
         page: Number(metaObj.page ?? page),
         limit: Number(metaObj.limit ?? ITEMS_PER_PAGE),
-        totalPages: Number(
-          metaObj.totalPages ??
-            Math.max(1, Math.ceil(dataArr.length / ITEMS_PER_PAGE))
-        ),
+        totalPages: Number(metaObj.totalPages ?? Math.max(1, Math.ceil(dataArr.length / ITEMS_PER_PAGE))),
       });
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Terjadi kesalahan saat mengambil data."
-      );
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan saat mengambil data.");
 
       setData([]);
 
@@ -1424,15 +1427,10 @@ function MasterDataPageContent() {
         <header className="mb-6 flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Master Data</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Kelola dan pantau seluruh data utama dalam sistem warehouse.
-            </p>
+            <p className="mt-1 text-sm text-slate-500">Kelola dan pantau seluruh data utama dalam sistem warehouse.</p>
           </div>
 
-          <form
-            onSubmit={handleSearchSubmit}
-            className="flex w-80 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm"
-          >
+          <form onSubmit={handleSearchSubmit} className="flex w-80 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
             <Search size={16} className="shrink-0 text-slate-400" />
 
             <input
@@ -1456,12 +1454,7 @@ function MasterDataPageContent() {
                 key={tab.key}
                 type="button"
                 onClick={() => handleTabChange(tab.key)}
-                className={[
-                  "flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all",
-                  active
-                    ? "bg-slate-900 text-white shadow-sm"
-                    : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
-                ].join(" ")}
+                className={["flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all", active ? "bg-slate-900 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"].join(" ")}
               >
                 <Icon size={16} />
                 {tab.label}
@@ -1474,13 +1467,11 @@ function MasterDataPageContent() {
 
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-base font-semibold text-slate-800">
-              {activeConfig?.label}
-            </h2>
+            <h2 className="text-base font-semibold text-slate-800">{activeConfig?.label}</h2>
             <p className="mt-0.5 text-xs text-slate-400">{meta.total} data</p>
           </div>
 
-          {canCreate && (
+          {canCreate && activeTab !== "personnel" && activeTab !== "vehicles" && (
             <button
               type="button"
               onClick={() => setFormModal({ mode: "create", record: null })}
@@ -1496,21 +1487,16 @@ function MasterDataPageContent() {
 
         <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
+            <table className="w-full text-left border-collapse table-auto text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
                   {columns.map((column) => (
-                    <th
-                      key={column}
-                      className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400"
-                    >
+                    <th key={column} className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                       {getColumnLabel(column)}
                     </th>
                   ))}
 
-                  <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Aksi
-                  </th>
+                  <th className="px-2 py-2 whitespace-nowrap text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
                 </tr>
               </thead>
 
@@ -1519,7 +1505,7 @@ function MasterDataPageContent() {
                   Array.from({ length: 7 }).map((_, rowIndex) => (
                     <tr key={rowIndex}>
                       {Array.from({ length: columns.length + 1 }).map((_, colIndex) => (
-                        <td key={colIndex} className="px-6 py-4">
+                        <td key={colIndex} className="px-3 py-3">
                           <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                         </td>
                       ))}
@@ -1527,13 +1513,13 @@ function MasterDataPageContent() {
                   ))
                 ) : error ? (
                   <tr>
-                    <td colSpan={columns.length + 1} className="px-6 py-16 text-center text-sm text-rose-500">
+                    <td colSpan={columns.length + 1} className="px-3 py-16 text-center text-sm text-rose-500">
                       {error}
                     </td>
                   </tr>
                 ) : data.length === 0 ? (
                   <tr>
-                    <td colSpan={columns.length + 1} className="px-6 py-16 text-center text-sm text-slate-400">
+                    <td colSpan={columns.length + 1} className="px-3 py-16 text-center text-sm text-slate-400">
                       Tidak ada data {activeConfig?.label.toLowerCase()}.
                     </td>
                   </tr>
@@ -1545,21 +1531,17 @@ function MasterDataPageContent() {
                       activeTab === "projects"
                         ? (record as any)?.project_id
                         : activeTab === "personnel"
-                        ? (record as any)?.personil_id
-                        : activeTab === "vehicles"
-                        ? (record as any)?.kendaraan_id
-                        : activeTab === "warehouses"
-                        ? (record as any)?.gudang_id
-                        : activeTab === "items"
-                        ? (record as any)?.barang_id
-                        : record.id;
+                          ? (record as any)?.personil_id
+                          : activeTab === "vehicles"
+                            ? (record as any)?.kendaraan_id
+                            : activeTab === "warehouses"
+                              ? (record as any)?.gudang_id
+                              : activeTab === "items"
+                                ? (record as any)?.barang_id
+                                : record.id;
 
                     return (
-                      <tr
-                        key={String(primaryKey ?? record.id ?? Math.random())}
-                        onClick={() => setDetailRecord(record)}
-                        className="group cursor-pointer transition-colors hover:bg-slate-50"
-                      >
+                      <tr key={String(primaryKey ?? record.id ?? Math.random())} onClick={() => setDetailRecord(record)} className="group cursor-pointer transition-colors hover:bg-slate-50">
                         {columns.map((column) => {
                           let value = record[column];
 
@@ -1567,17 +1549,8 @@ function MasterDataPageContent() {
                             const active = Boolean(value);
 
                             return (
-                              <td key={column} className="px-6 py-4">
-                                <span
-                                  className={[
-                                    "inline-flex rounded-full px-3 py-1 text-xs font-semibold",
-                                    active
-                                      ? "bg-emerald-50 text-emerald-600"
-                                      : "bg-slate-100 text-slate-500",
-                                  ].join(" ")}
-                                >
-                                  {active ? "Aktif" : "Tidak Aktif"}
-                                </span>
+                              <td key={column} className="px-3 py-3">
+                                <span className={["inline-flex rounded-full px-3 py-1 text-xs font-semibold", active ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-500"].join(" ")}>{active ? "Aktif" : "Tidak Aktif"}</span>
                               </td>
                             );
                           }
@@ -1586,7 +1559,7 @@ function MasterDataPageContent() {
                             const photoUrl = String(value || "");
 
                             return (
-                              <td key={column} className="px-6 py-4">
+                              <td key={column} className="px-3 py-3">
                                 {photoUrl ? (
                                   <div className="relative h-10 w-10 overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
                                     <img
@@ -1606,51 +1579,46 @@ function MasterDataPageContent() {
                                   <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-slate-300">
                                     <ImageOff size={16} />
                                   </div>
-                                 )}
-                               </td>
-                              );
-                            }
+                                )}
+                              </td>
+                            );
+                          }
 
-                            if (column === "bisa_menyetir") {
-                              return (
-                                <td key={column} className="px-6 py-4 text-sm text-slate-600">
-                                  {value === true ? "Bisa" : "Tidak"}
-                                </td>
-                              );
-                            }
+                          if (column === "bisa_menyetir") {
+                            return (
+                              <td key={column} className="px-3 py-3 text-sm text-slate-600">
+                                {value === true ? "Bisa" : "Tidak"}
+                              </td>
+                            );
+                          }
 
-                            if (column === "gudang") {
-                              const gudangNama = (record as any)?.gudang?.nama_gudang;
-                              return (
-                                <td key={column} className="px-6 py-4 text-sm text-slate-600">
-                                  {gudangNama || "-"}
-                                </td>
-                              );
-                            }
+                          if (column === "gudang") {
+                            const gudangNama = (record as any)?.gudang?.nama_gudang;
+                            return (
+                              <td key={column} className="px-6 py-4 text-sm text-slate-600">
+                                {gudangNama || "-"}
+                              </td>
+                            );
+                          }
 
-                            if (column === "kategori" || column === "satuan_default") {
-                             const label = column === "kategori"
-                               ? item.kategori?.nama_kategori
-                               : item.satuan_default?.kode_satuan;
+                          if (column === "kategori" || column === "satuan_default") {
+                            const label = column === "kategori" ? item.kategori?.nama_kategori : item.satuan_default?.kode_satuan;
 
-                             return (
-                               <td key={column} className="px-6 py-4 text-sm text-slate-600">
-                                 {label || "-"}
-                               </td>
-                             );
-                           }
+                            return (
+                              <td key={column} className="px-3 py-3 text-sm text-slate-600">
+                                {label || "-"}
+                              </td>
+                            );
+                          }
 
-                           return (
+                          return (
                             <td
                               key={column}
                               className={[
-                                "px-6 py-4",
-                                column === "kode_perangkat" || column === "project_id" || column === "personil_id" || column === "kendaraan_id"
-                                  ? "font-semibold text-orange-500"
-                                  : "text-slate-500",
-                                column === "nama_barang" || column === "nama_project" || column === "nama" || column === "jenis_kendaraan" || column === "nama_gudang"
-                                  ? "font-medium text-slate-800"
-                                  : "",
+                                "px-3 py-3",
+                                column === "kode_perangkat" || column === "project_id" || column === "personil_id" || column === "kendaraan_id" ? "font-semibold text-orange-500" : "text-slate-500",
+                                column === "nama_barang" || column === "nama_project" || column === "nama" || column === "jenis_kendaraan" || column === "nama_gudang" ? "font-medium text-slate-800" : "",
+                                column === "email" || column === "nik" ? "truncate max-w-[150px]" : "",
                               ].join(" ")}
                             >
                               {formatValue(value)}
@@ -1659,7 +1627,7 @@ function MasterDataPageContent() {
                         })}
 
                         {/* Aksi */}
-                        <td className="px-4 py-4">
+                        <td className="px-2 py-2 whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1">
                             <button
                               type="button"
@@ -1687,7 +1655,30 @@ function MasterDataPageContent() {
                               </button>
                             )}
 
-                            {canDelete && (
+                            {activeTab === "personnel" &&
+                              (() => {
+                                const rawStatus = (record as any).status || "";
+                                const isActive = (record as any).is_active === true || (record as any).is_aktif === true || rawStatus.toLowerCase() === "aktif";
+
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (!isActive) {
+                                        setDeleteRecord(record);
+                                      }
+                                    }}
+                                    title={isActive ? "Nonaktifkan personil di Halaman Operasional sebelum menghapus" : "Hapus permanen"}
+                                    disabled={isActive}
+                                    className={`rounded-lg p-1.5 transition-colors ${isActive ? "text-slate-300 opacity-30 cursor-not-allowed" : "text-red-500 cursor-pointer hover:bg-rose-50 hover:text-red-700"}`}
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                );
+                              })()}
+
+                            {activeTab !== "personnel" && canDelete && (
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -1717,11 +1708,9 @@ function MasterDataPageContent() {
               <p className="text-sm text-slate-400">
                 Menampilkan{" "}
                 <span className="font-medium text-slate-700">
-                  {meta.total === 0 ? 0 : (meta.page - 1) * meta.limit + 1}
-                  –{Math.min(meta.page * meta.limit, meta.total)}
+                  {meta.total === 0 ? 0 : (meta.page - 1) * meta.limit + 1}–{Math.min(meta.page * meta.limit, meta.total)}
                 </span>{" "}
-                dari <span className="font-medium text-slate-700">{meta.total}</span>{" "}
-                {activeConfig?.label.toLowerCase()}
+                dari <span className="font-medium text-slate-700">{meta.total}</span> {activeConfig?.label.toLowerCase()}
               </p>
 
               <Pagination
@@ -1741,13 +1730,7 @@ function MasterDataPageContent() {
 
       {activeConfig && (
         <>
-          <DetailModal
-            open={!!detailRecord}
-            onClose={() => setDetailRecord(null)}
-            tab={activeTab}
-            tabLabel={activeConfig.singularLabel}
-            record={detailRecord}
-          />
+          <DetailModal open={!!detailRecord} onClose={() => setDetailRecord(null)} tab={activeTab} tabLabel={activeConfig.singularLabel} record={detailRecord} />
 
           <FormModal
             open={!!formModal}
@@ -1767,9 +1750,15 @@ function MasterDataPageContent() {
             tabLabel={activeConfig.singularLabel}
             endpoint={activeConfig.endpoint}
             record={deleteRecord}
+            idField={activeConfig.idField}
+            idFields={activeConfig.idFields}
             onSuccess={fetchMasterData}
             onShowToast={showToast}
           />
+
+          <NonaktifConfirmModal open={!!nonaktifRecord} onClose={() => setNonaktifRecord(null)} record={nonaktifRecord} onSuccess={fetchMasterData} onShowToast={showToast} />
+
+          <AktifConfirmModal open={!!aktifRecord} onClose={() => setAktifRecord(null)} record={aktifRecord} onSuccess={fetchMasterData} onShowToast={showToast} />
         </>
       )}
 
@@ -1778,17 +1767,10 @@ function MasterDataPageContent() {
         <div
           className={[
             "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
-            toast.type === "success"
-              ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
-              : "border-rose-200/80 bg-rose-50/95 text-rose-800",
+            toast.type === "success" ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800" : "border-rose-200/80 bg-rose-50/95 text-rose-800",
           ].join(" ")}
         >
-          <div
-            className={[
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-              toast.type === "success" ? "bg-emerald-100" : "bg-rose-100",
-            ].join(" ")}
-          >
+          <div className={["flex h-8 w-8 shrink-0 items-center justify-center rounded-full", toast.type === "success" ? "bg-emerald-100" : "bg-rose-100"].join(" ")}>
             {toast.type === "success" ? (
               <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -1803,12 +1785,7 @@ function MasterDataPageContent() {
           <button
             type="button"
             onClick={() => setToast(null)}
-            className={[
-              "ml-2 shrink-0 rounded-full p-1 transition-colors",
-              toast.type === "success"
-                ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
-                : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
-            ].join(" ")}
+            className={["ml-2 shrink-0 rounded-full p-1 transition-colors", toast.type === "success" ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600" : "text-rose-400 hover:bg-rose-100 hover:text-rose-600"].join(" ")}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

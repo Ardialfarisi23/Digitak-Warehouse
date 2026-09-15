@@ -19,7 +19,11 @@ const create = async (data) => {
   return await prisma.boq.create({
     data,
     include: {
-      tiket: true,
+      tiket: {
+        include: {
+          project: true,
+        },
+      },
       items: {
         include: {
           barang: true,
@@ -57,7 +61,7 @@ const findById = async (boq_id) => {
 
 const ALLOWED_STATUS = new Set(["draft", "aktif", "selesai", "ditolak"]);
 
-const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sortBy = "created_at", sortOrder = "desc", status, projectId, area, warehouseId }) => {
+const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sortBy = "created_at", sortOrder = "desc", status, projectId, area, warehouseId, tipe }) => {
   const sanitizedPage = Math.max(parseInt(page, 10) || DEFAULT_PAGE, DEFAULT_PAGE);
   const sanitizedLimit = Math.max(parseInt(limit, 10) || DEFAULT_LIMIT, 1);
   const orderField = ALLOWED_SORT_FIELDS.includes(sortBy) ? sortBy : "created_at";
@@ -78,6 +82,15 @@ const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sor
 
   if (warehouseId) {
     where.items = { some: { gudang_tujuan_id: Number(warehouseId) } };
+  }
+
+  if (tipe && ["inbound", "outbound"].includes(tipe)) {
+    where.surat_jalans = {
+      some: {
+        tipe: tipe,
+        status: { not: "ditolak" },
+      },
+    };
   }
 
   if (search) {
@@ -323,6 +336,7 @@ const getAreas = async () => {
 const findItemsByProject = async (projectId) => {
   const boqs = await prisma.boq.findMany({
     where: {
+      status: "aktif",
       tiket: {
         project_id: Number(projectId),
       },
@@ -420,6 +434,7 @@ const getExportMatrixData = async () => {
           tipe: true,
           project_id: true,
           boq_id: true,
+          tujuan_tipe: true,
         },
       },
     },
@@ -449,7 +464,7 @@ const getExportMatrixData = async () => {
       }
     }
 
-    if (item.surat_jalan?.tipe === "outbound") {
+    if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
       outboundByProjectBarang.set(
         key,
         (outboundByProjectBarang.get(key) || 0) + qty

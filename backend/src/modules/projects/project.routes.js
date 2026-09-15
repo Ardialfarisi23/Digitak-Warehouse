@@ -26,9 +26,16 @@ router.get("/:project_id", authenticate, projectController.findByProjectId);
 router.put(
   "/:project_id",
   authenticate,
-  authorize("ADMIN"),
+  authorize("ADMIN", "SUPERVISOR"),
   validate(updateProjectSchema),
   projectController.update
+);
+
+router.delete(
+  "/:project_id",
+  authenticate,
+  authorize("ADMIN", "SUPERVISOR"),
+  projectController.remove
 );
 
 module.exports = router;

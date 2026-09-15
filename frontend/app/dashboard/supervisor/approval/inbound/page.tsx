@@ -21,6 +21,7 @@ interface InboundRequest {
   total_unit?: number;
   ada_fisik_rusak?: boolean;
   selisih_po?: boolean;
+  surat_jalan_url?: string;
 }
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -103,6 +104,15 @@ export default function SupervisorApprovalPage() {
     setConfirmTarget(req);
   };
 
+  const handleViewPdf = (req: InboundRequest) => {
+    const url = req.surat_jalan_url;
+    if (url && String(url).trim()) {
+      window.open(String(url).trim(), "_blank");
+    } else {
+      setToast({ message: "File PDF Surat Jalan tidak ditemukan.", type: "error" });
+    }
+  };
+
   const cancelApproveConfirm = () => {
     setConfirmTarget(null);
   };
@@ -167,7 +177,7 @@ export default function SupervisorApprovalPage() {
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6 bg-[#FAFAFA] min-h-screen text-slate-800">
       <div className="flex items-center gap-4">
-        <button onClick={() => router.back()} className="p-2.5 bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-colors shadow-sm text-slate-600 cursor-pointer" title="Kembali ke halaman sebelumnya">
+        <button onClick={() => router.push('/dashboard/supervisor/approval')} className="p-2.5 bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-colors shadow-sm text-slate-600 cursor-pointer" title="Kembali ke halaman sebelumnya">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
@@ -176,7 +186,7 @@ export default function SupervisorApprovalPage() {
             <span className="text-slate-300">•</span>
             <span className="text-slate-400 font-normal capitalize">Validasi Penerimaan</span>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Approval Penerimaan Barang (Inbound)</h1>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Form Persetujuan Penerimaan Barang (Inbound)</h1>
         </div>
       </div>
 
@@ -287,6 +297,13 @@ export default function SupervisorApprovalPage() {
               </div>
 
               <div className="flex items-center gap-3 self-end md:self-center">
+                <button
+                  onClick={() => handleViewPdf(req)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-medium transition-colors cursor-pointer"
+                >
+                  <FileText size={15} />
+                  Lihat PDF
+                </button>
                 <button
                   onClick={() => router.push(`/dashboard/supervisor/approval/inbound/${req.id}`)}
                   className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200/80 rounded-xl text-xs font-semibold transition-colors"

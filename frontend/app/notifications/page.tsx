@@ -25,7 +25,7 @@ type FilterKey = (typeof FILTER_TABS)[number]["key"];
 
 const TYPE_BADGE: Record<string, { label: string; bg: string; text: string }> = {
   info: { label: "Info", bg: "bg-sky-50", text: "text-sky-700" },
-  approval: { label: "Approval", bg: "bg-amber-50", text: "text-amber-700" },
+  approval: { label: "Persetujuan", bg: "bg-amber-50", text: "text-amber-700" },
   warning: { label: "Peringatan", bg: "bg-orange-50", text: "text-orange-700" },
   success: { label: "Sukses", bg: "bg-emerald-50", text: "text-emerald-700" },
   error: { label: "Error", bg: "bg-rose-50", text: "text-rose-700" },
@@ -91,7 +91,7 @@ function NotificationsPageContent() {
         const qs = new URLSearchParams();
         qs.set("page", String(page));
         qs.set("limit", String(limit));
-        if (filter === "unread") qs.set("is_read", "true");
+        if (filter === "unread") qs.set("is_read", "false");
 
         const res = await get(`${API_BASE}/api/notifications?${qs.toString()}`);
 
