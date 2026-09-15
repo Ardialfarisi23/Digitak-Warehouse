@@ -252,8 +252,8 @@ const create = async (data, userId) => {
 
   try {
     if (actor?.role === "admin_general") {
-      const supervisorIds = await getRelatedSupervisorIds();
-      const staffIds = await getRelatedStaffIds(gudangIds);
+      const supervisorIds = await getAllSupervisorIds(Number(userId));
+      const staffIds = await getAllStaffIds(Number(userId));
 
       if (supervisorIds.length > 0) {
         await notificationService.create({
@@ -274,9 +274,9 @@ const create = async (data, userId) => {
         });
       }
     } else if (actor?.role === "supervisor") {
-      const adminIds = await getAllAdminIds(userId);
-      const supervisorIds = await getRelatedSupervisorIds(Number(userId));
-      const staffIds = await getRelatedStaffIds(gudangIds);
+      const adminIds = await getAllAdminIds(Number(userId));
+      const supervisorIds = await getAllSupervisorIds(Number(userId));
+      const staffIds = await getAllStaffIds(Number(userId));
 
       if (adminIds.length > 0) {
         await notificationService.create({
