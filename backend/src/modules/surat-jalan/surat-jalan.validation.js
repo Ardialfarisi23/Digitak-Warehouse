@@ -18,6 +18,7 @@ const createSuratJalanSchema = z.object({
   titik_lapangan_id: z.string().optional().nullable(),
   tipe_pengirim: z.enum(["internal", "external"]).optional().nullable(),
   pengirim_eksternal_nama: z.string().optional().nullable(),
+  supplier_id: z.string().optional().nullable(),
   items: z
     .array(
       z.object({
@@ -54,13 +55,13 @@ const createSuratJalanSchema = z.object({
     }
   }
 
-  if (data.tipe === "outbound") {
+  if (data.tipe === "outbound" || data.tipe === "inbound") {
     if (data.tipe_pengirim === "external") {
-      if (!data.pengirim_eksternal_nama || data.pengirim_eksternal_nama.trim() === "") {
+      if (!data.supplier_id && (!data.pengirim_eksternal_nama || data.pengirim_eksternal_nama.trim() === "")) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "pengirim_eksternal_nama wajib diisi jika tipe_pengirim adalah external.",
-          path: ["pengirim_eksternal_nama"],
+          message: "Pilih supplier atau isi nama vendor eksternal jika tipe pengirim adalah external.",
+          path: ["supplier_id"],
         });
       }
     }

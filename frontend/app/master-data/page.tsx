@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import { Search, Plus, ChevronLeft, ChevronRight, Users, Package, FolderKanban, Truck, Warehouse as WarehouseIcon, Eye, Pencil, Trash2, X, Loader2, AlertCircle, ImageOff } from "lucide-react";
+import { Search, Plus, ChevronLeft, ChevronRight, Users, Package, FolderKanban, Truck, Warehouse as WarehouseIcon, Eye, Pencil, Trash2, X, Loader2, AlertCircle, ImageOff, Building2, Ban, RotateCcw } from "lucide-react";
 
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -37,7 +37,7 @@ function normalizeRole(role: string | undefined | null): string {
 // Types
 // ---------------------------------------------------------------------------
 
-type MasterDataType = "items" | "projects" | "personnel" | "vehicles" | "warehouses";
+type MasterDataType = "items" | "projects" | "personnel" | "vehicles" | "warehouses" | "suppliers";
 
 interface MasterDataTab {
   key: MasterDataType;
@@ -150,6 +150,15 @@ const MASTER_DATA_TABS: MasterDataTab[] = [
     idField: "gudang_id",
     idFields: ["gudang_id", "id"],
   },
+  {
+    key: "suppliers",
+    label: "Supplier",
+    singularLabel: "Supplier",
+    endpoint: "/api/suppliers",
+    icon: Building2,
+    idField: "kode",
+    idFields: ["kode"],
+  },
 ];
 
 // Kategori barang sesuai PRD 7.1
@@ -180,6 +189,11 @@ const TAB_PERMISSIONS: Record<MasterDataType, { create: string[]; edit: string[]
     create: [ROLE.ADMIN],
     edit: [ROLE.ADMIN, ROLE.SUPERVISOR],
     delete: [ROLE.ADMIN, ROLE.SUPERVISOR],
+  },
+  suppliers: {
+    create: [ROLE.ADMIN],
+    edit: [ROLE.ADMIN],
+    delete: [ROLE.ADMIN],
   },
 };
 
@@ -238,6 +252,11 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
     { key: "longitude", label: "Longitude", type: "text" },
     { key: "keterangan", label: "Keterangan", type: "textarea" },
     { key: "is_aktif", label: "Status Aktif", type: "checkbox" },
+  ],
+  suppliers: [
+    { key: "kode", label: "Kode", type: "text", required: true },
+    { key: "nama", label: "Nama", type: "text", required: true },
+    { key: "deskripsi", label: "Deskripsi", type: "textarea" },
   ],
 };
 
@@ -307,6 +326,7 @@ function getRecordTitle(tab: MasterDataType, record: GenericRecord | null) {
     personnel: ["nama", "posisi"],
     vehicles: ["no_polisi", "jenis_kendaraan"],
     warehouses: ["nama_gudang", "tipe"],
+    suppliers: ["kode", "nama"],
   };
   for (const key of candidates[tab]) {
     if (record[key]) return String(record[key]);
@@ -835,6 +855,9 @@ function FormModal({
       } else if (tab === "warehouses") {
         const warehouseName = (record as { nama_gudang?: string } | null)?.nama_gudang;
         url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(warehouseName))}`, baseUrl).toString();
+      } else if (tab === "suppliers") {
+        const supplierKode = (record as { kode?: string } | null)?.kode;
+        url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(supplierKode))}`, baseUrl).toString();
       } else {
         url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(record?.id))}`, baseUrl).toString();
       }
@@ -1272,6 +1295,162 @@ function AktifConfirmModal({ open, onClose, record, onSuccess, onShowToast }: { 
         </button>
       </div>
     </Modal>
+   );
+}
+
+// ---------------------------------------------------------------------------
+// Supplier Nonaktif Confirm Modal
+// ---------------------------------------------------------------------------
+
+function SupplierNonaktifModal({
+  open,
+  onClose,
+  record,
+  onSuccess,
+  onShowToast,
+}: {
+  open: boolean;
+  onClose: () => void;
+  record: GenericRecord | null;
+  onSuccess: () => void;
+  onShowToast: (message: string, type: "success" | "error") => void;
+}) {
+  const { put } = useApi();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleConfirm() {
+    if (!record) return;
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const supplierKode = record.kode ?? record.id;
+      const url = new URL(`/api/suppliers/${supplierKode}`, baseUrl).toString();
+
+      const response = await put(url, { is_aktif: false });
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.message || "Gagal menonaktifkan supplier.");
+      }
+
+      onSuccess();
+      onShowToast("Supplier berhasil dinonaktifkan.", "success");
+      onClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
+      setError(msg);
+      onShowToast(msg, "error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Nonaktifkan Supplier" widthClass="max-w-sm">
+      <p className="text-sm text-slate-600">
+        Nonaktifkan supplier <span className="font-semibold text-slate-800">{record ? String(record.nama || record.id) : ""}</span>?
+      </p>
+
+      {error && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-600">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      <div className="mt-5 flex justify-end gap-2">
+        <button onClick={onClose} className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+          Batal
+        </button>
+
+        <button onClick={handleConfirm} disabled={submitting} className="flex items-center gap-2 rounded-full bg-amber-600 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60">
+          {submitting && <Loader2 size={14} className="animate-spin" />}
+          Nonaktifkan
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Supplier Aktif Confirm Modal
+// ---------------------------------------------------------------------------
+
+function SupplierAktifModal({
+  open,
+  onClose,
+  record,
+  onSuccess,
+  onShowToast,
+}: {
+  open: boolean;
+  onClose: () => void;
+  record: GenericRecord | null;
+  onSuccess: () => void;
+  onShowToast: (message: string, type: "success" | "error") => void;
+}) {
+  const { put } = useApi();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleConfirm() {
+    if (!record) return;
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const supplierKode = record.kode ?? record.id;
+      const url = new URL(`/api/suppliers/${supplierKode}`, baseUrl).toString();
+
+      const response = await put(url, { is_aktif: true });
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.message || "Gagal mengaktifkan kembali supplier.");
+      }
+
+      onSuccess();
+      onShowToast("Supplier berhasil diaktifkan kembali.", "success");
+      onClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
+      setError(msg);
+      onShowToast(msg, "error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Aktifkan Kembali Supplier" widthClass="max-w-sm">
+      <p className="text-sm text-slate-600">
+        Aktifkan kembali supplier <span className="font-semibold text-slate-800">{record ? String(record.nama || record.id) : ""}</span>?
+      </p>
+
+      {error && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-600">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      <div className="mt-5 flex justify-end gap-2">
+        <button onClick={onClose} className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+          Batal
+        </button>
+
+        <button onClick={handleConfirm} disabled={submitting} className="flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+          {submitting && <Loader2 size={14} className="animate-spin" />}
+          Aktifkan
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -1315,6 +1494,8 @@ function MasterDataPageContent() {
   const [deleteRecord, setDeleteRecord] = useState<GenericRecord | null>(null);
   const [nonaktifRecord, setNonaktifRecord] = useState<GenericRecord | null>(null);
   const [aktifRecord, setAktifRecord] = useState<GenericRecord | null>(null);
+  const [supplierNonaktifRecord, setSupplierNonaktifRecord] = useState<GenericRecord | null>(null);
+  const [supplierAktifRecord, setSupplierAktifRecord] = useState<GenericRecord | null>(null);
 
   // -------------------------------------------------------------------------
   // Toast state
@@ -1348,11 +1529,12 @@ function MasterDataPageContent() {
         return ["project_id", "title", "nama_project", "kecamatan", "desa_kelurahan", "status_aktif"];
       case "personnel":
         return ["personil_id", "nama", "email", "nik", "posisi", "no_hp", "bisa_menyetir", "is_aktif", "foto"];
-
       case "vehicles":
         return ["kendaraan_id", "jenis_kendaraan", "merk", "no_polisi", "foto"];
       case "warehouses":
         return ["nama_gudang", "alamat", "tipe", "is_aktif"];
+      case "suppliers":
+        return ["kode", "nama", "deskripsi", "is_aktif"];
       default:
         return ["id"];
     }
@@ -1387,6 +1569,8 @@ function MasterDataPageContent() {
       tipe: "Tipe",
       is_aktif: "Status",
       foto: "Foto",
+      kode: "Kode",
+      deskripsi: "Deskripsi",
     };
 
     return labels[column] || column;
@@ -1718,19 +1902,19 @@ function MasterDataPageContent() {
                             );
                           }
 
-                          return (
-                            <td
-                              key={column}
-                              className={[
-                                "px-3 py-3",
-                                column === "kode_perangkat" || column === "project_id" || column === "personil_id" || column === "kendaraan_id" ? "font-semibold text-orange-500" : "text-slate-500",
-                                column === "nama_barang" || column === "nama_project" || column === "nama" || column === "jenis_kendaraan" || column === "nama_gudang" ? "font-medium text-slate-800" : "",
-                                column === "email" || column === "nik" ? "truncate max-w-[150px]" : "",
-                              ].join(" ")}
-                            >
-                              {formatValue(value)}
-                            </td>
-                          );
+                            return (
+                              <td
+                                key={column}
+                                className={[
+                                  "px-3 py-3",
+                                  column === "kode_perangkat" || column === "kode" || column === "project_id" || column === "personil_id" || column === "kendaraan_id" ? "font-semibold text-orange-500" : "text-slate-500",
+                                  column === "nama_barang" || column === "nama" || column === "nama_project" || column === "jenis_kendaraan" || column === "nama_gudang" ? "font-medium text-slate-800" : "",
+                                  column === "email" || column === "nik" ? "truncate max-w-[150px]" : "",
+                                ].join(" ")}
+                              >
+                                {formatValue(value)}
+                              </td>
+                            );
                         })}
 
                         {/* Aksi */}
@@ -1785,7 +1969,7 @@ function MasterDataPageContent() {
                                 );
                               })()}
 
-                            {activeTab !== "personnel" && canDelete && (
+                            {activeTab !== "personnel" && activeTab !== "suppliers" && canDelete && (
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -1798,6 +1982,41 @@ function MasterDataPageContent() {
                                 <Trash2 size={15} />
                               </button>
                             )}
+
+                            {activeTab === "suppliers" && canDelete && (() => {
+                              const isActive = Boolean((record as any).is_aktif ?? true);
+
+                              return (
+                                <>
+                                  {isActive && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSupplierNonaktifRecord(record);
+                                      }}
+                                      title="Nonaktifkan"
+                                      className="rounded-lg p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600"
+                                    >
+                                      <Ban size={15} />
+                                    </button>
+                                  )}
+                                  {!isActive && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSupplierAktifRecord(record);
+                                      }}
+                                      title="Aktifkan"
+                                      className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                                    >
+                                      <RotateCcw size={15} />
+                                    </button>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                         </td>
                       </tr>
@@ -1866,6 +2085,10 @@ function MasterDataPageContent() {
           <NonaktifConfirmModal open={!!nonaktifRecord} onClose={() => setNonaktifRecord(null)} record={nonaktifRecord} onSuccess={fetchMasterData} onShowToast={showToast} />
 
           <AktifConfirmModal open={!!aktifRecord} onClose={() => setAktifRecord(null)} record={aktifRecord} onSuccess={fetchMasterData} onShowToast={showToast} />
+
+          <SupplierNonaktifModal open={!!supplierNonaktifRecord} onClose={() => setSupplierNonaktifRecord(null)} record={supplierNonaktifRecord} onSuccess={fetchMasterData} onShowToast={showToast} />
+
+          <SupplierAktifModal open={!!supplierAktifRecord} onClose={() => setSupplierAktifRecord(null)} record={supplierAktifRecord} onSuccess={fetchMasterData} onShowToast={showToast} />
         </>
       )}
 
