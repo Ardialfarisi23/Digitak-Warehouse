@@ -241,6 +241,17 @@ model satuan {
   surat_jalan_items surat_jalan_item[]
 }
 
+model supplier {
+  supplier_id  BigInt    @id @default(autoincrement())
+  kode         String    @unique @db.Text
+  nama         String    @db.Text
+  deskripsi    String?   @db.Text
+  is_aktif     Boolean   @default(true)
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  surat_jalans surat_jalan[]
+}
+
 model barang {
   barang_id         BigInt             @id @default(autoincrement())
   kode_perangkat    String             @unique
@@ -376,7 +387,9 @@ model surat_jalan {
   tujuan_tipe           tujuan_tipe_enum?
   tipe_pengirim         tipe_pengirim_enum?
   pengirim_eksternal_nama String?
-  created_at            DateTime           @default(now())
+  supplier_id           BigInt?
+  supplier              supplier?            @relation(fields: [supplier_id], references: [supplier_id])
+  created_at            DateTime             @default(now())
   updated_at            DateTime           @default(now())
   created_by            BigInt
   updated_by            BigInt
