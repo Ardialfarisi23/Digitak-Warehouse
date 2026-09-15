@@ -1,6 +1,7 @@
 const profileRepository = require("./profile.repository");
 const AppError = require("../../shared/errors");
 const passwordHelper = require("../../shared/password");
+const prisma = require("../../config/prisma");
 
 const toProfileResponse = (userAccount) => {
   const personil = userAccount?.personils ?? null;
@@ -53,7 +54,25 @@ const updateProfile = async (id, data) => {
     data.password = await passwordHelper.hash(data.password);
   }
 
-  return await profileRepository.updateProfile(personilId, data);
+  const { nama, ...rest } = data;
+
+  if (nama !== undefined) {
+    await prisma.user_account.update({
+      where: { user_id: BigInt(id) },
+      data: { nama },
+    });
+  }
+
+  const personilData = { ...rest };
+  if (nama !== undefined) {
+    personilData.nama = nama;
+  }
+
+  if (Object.keys(personilData).length > 0) {
+    await profileRepository.updateProfile(personilId, personilData);
+  }
+
+  return await profileRepository.findById(id);
 };
 
 module.exports = {

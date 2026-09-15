@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Camera, Upload, X, CheckCircle2, AlertCircle, Trash2, Mail, Phone, Briefcase, Building2, CalendarDays } from "lucide-react";
+import { Camera, Upload, X, CheckCircle2, AlertCircle, Trash2, Mail, Phone, Briefcase, Building2, CalendarDays, Lock, Pencil, Eye, EyeOff } from "lucide-react";
 
 import { ProtectedRoute } from "@/lib/protected-route";
 import { useAuth } from "@/lib/auth-context";
@@ -16,6 +16,7 @@ import { PhotoCropModal } from "@/components/profile/PhotoCropModal";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 interface ProfileDetails {
+  nama?: string | null;
   no_hp?: string | null;
   posisi?: string | null;
   gudang_nama?: string | null;
@@ -46,6 +47,19 @@ function ProfilePageContent() {
   const [cropModalOpen, setCropModalOpen] = useState(false);
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
 
+  const [editingField, setEditingField] = useState<"nama" | "no_hp" | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewUrlRef = useRef<string | null>(null);
   const cropImageSrcRef = useRef<string | null>(null);
@@ -64,6 +78,7 @@ function ProfilePageContent() {
               avatar_url: json.data.foto || json.data.avatar_url,
             });
             setProfileDetails({
+              nama: json.data.nama || null,
               no_hp: json.data.no_hp || json.data.no_telepon || null,
               posisi: json.data.posisi || null,
               gudang_nama: json.data.gudang_nama || json.data.gudang?.nama_gudang || null,
@@ -182,7 +197,7 @@ function ProfilePageContent() {
 
       const newAvatarUrl = json?.data?.foto || null;
       updateUser({ avatar_url: newAvatarUrl });
-      
+
       if (previewUrl && previewUrl.startsWith("blob:")) {
         URL.revokeObjectURL(previewUrl);
       }
@@ -243,6 +258,110 @@ function ProfilePageContent() {
       showToast(message, "error");
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const startEditing = (field: "nama" | "no_hp") => {
+    setEditingField(field);
+    setEditValue(field === "nama" ? (profileDetails.nama || user?.name || "") : (profileDetails.no_hp || ""));
+  };
+
+  const cancelEditing = () => {
+    setEditingField(null);
+    setEditValue("");
+  };
+
+  const saveField = async () => {
+    if (!editingField) return;
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const payload: Record<string, unknown> = {};
+      if (editingField === "nama") {
+        payload.nama = editValue.trim();
+      } else if (editingField === "no_hp") {
+        payload.no_hp = editValue.trim();
+      }
+
+      const res = await request(`${API_BASE}/api/profile`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json?.message || "Gagal memperbarui profil.");
+      }
+
+      setProfileDetails({
+        ...profileDetails,
+        ...(editingField === "nama" ? { nama: editValue.trim() } : {}),
+        ...(editingField === "no_hp" ? { no_hp: editValue.trim() } : {}),
+      });
+
+      if (editingField === "nama") {
+        updateUser({ name: editValue.trim() });
+      }
+
+      setEditingField(null);
+      setEditValue("");
+      showToast("Profil berhasil diperbarui.", "success");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Gagal memperbarui profil.";
+      setError(message);
+      showToast(message, "error");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordError(null);
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordError("Semua field password wajib diisi.");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setPasswordError("Password baru minimal 6 karakter.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError("Konfirmasi password baru tidak cocok.");
+      return;
+    }
+
+    setIsSavingPassword(true);
+
+    try {
+      const res = await request(`${API_BASE}/api/auth/change-password`, {
+        method: "PUT",
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+        }),
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json?.message || "Gagal mengganti password.");
+      }
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setIsPasswordModalOpen(false);
+      showToast("Password berhasil diperbarui.", "success");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Gagal mengganti password.";
+      setPasswordError(message);
+      showToast(message, "error");
+    } finally {
+      setIsSavingPassword(false);
     }
   };
 
@@ -348,10 +467,10 @@ function ProfilePageContent() {
                     )}
                   </div>
 
-                  {error && (
+                  {(error || passwordError) && (
                     <div className="mt-4 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
                       <AlertCircle size={16} className="shrink-0" />
-                      <p>{error}</p>
+                      <p>{error || passwordError}</p>
                     </div>
                   )}
 
@@ -365,24 +484,75 @@ function ProfilePageContent() {
             </div>
 
             {/* Kolom kanan: Informasi Akun */}
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-2 space-y-6">
               <div className="rounded-3xl border border-slate-100 bg-white shadow-xs p-6">
                 <h2 className="text-sm font-bold text-slate-900 mb-5">Informasi Akun</h2>
                 <div className="divide-y divide-slate-50">
-                  <DetailRow icon={Mail} label="Email" value={user?.email ?? "-"} />
-                  <DetailRow icon={Phone} label="No. HP" value={profileDetails.no_hp ?? "-"} />
-                  <DetailRow
+                  <EditableRow
+                    icon={Briefcase}
+                    label="Nama"
+                    value={editingField === "nama" ? editValue : profileDetails.nama || user?.name || "-"}
+                    isEditing={editingField === "nama"}
+                    onStartEdit={() => startEditing("nama")}
+                    onCancel={cancelEditing}
+                    onSave={saveField}
+                    editValue={editValue}
+                    onEditChange={setEditValue}
+                    placeholder="Nama lengkap"
+                    inputMode="text"
+                  />
+
+                  <EditableRow
+                    icon={Phone}
+                    label="No. HP"
+                    value={editingField === "no_hp" ? editValue : profileDetails.no_hp || "-"}
+                    isEditing={editingField === "no_hp"}
+                    onStartEdit={() => startEditing("no_hp")}
+                    onCancel={cancelEditing}
+                    onSave={saveField}
+                    editValue={editValue}
+                    onEditChange={setEditValue}
+                    placeholder="Contoh: 08123456789"
+                    inputMode="tel"
+                  />
+
+                  <ReadOnlyRow icon={Mail} label="Email" value={user?.email ?? "-"} />
+                  <ReadOnlyRow
                     icon={Briefcase}
                     label="Posisi / Jabatan"
                     value={profileDetails.posisi ?? (user?.role ? formatRole(user.role) : "-")}
                   />
-                  <DetailRow icon={Building2} label="Gudang" value={profileDetails.gudang_nama ?? "-"} />
-                  <DetailRow
+                  <ReadOnlyRow icon={Building2} label="Gudang" value={profileDetails.gudang_nama ?? "-"} />
+                  <ReadOnlyRow
                     icon={CalendarDays}
                     label="Tanggal Bergabung"
                     value={formatDate(profileDetails.created_at)}
                   />
                 </div>
+              </div>
+
+              <div className="rounded-3xl border border-slate-100 bg-white shadow-xs p-6">
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-sm font-bold text-slate-900">Keamanan</h2>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setCurrentPassword("");
+                      setNewPassword("");
+                      setConfirmPassword("");
+                      setPasswordError(null);
+                      setIsPasswordModalOpen(true);
+                    }}
+                    className="rounded-xl border-stone-200 text-slate-700 hover:bg-slate-50"
+                  >
+                    <Lock size={14} />
+                    <span className="ml-1.5">Ubah Password</span>
+                  </Button>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Gunakan kata sandi yang kuat untuk melindungi akun Anda.
+                </p>
               </div>
             </div>
           </div>
@@ -433,6 +603,118 @@ function ProfilePageContent() {
         onCancel={handleCropCancel}
       />
 
+      {isPasswordModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-base font-bold text-slate-900">Ubah Password</h3>
+              <button
+                type="button"
+                onClick={() => setIsPasswordModalOpen(false)}
+                disabled={isSavingPassword}
+                className="rounded-lg p-1 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-[11px] font-medium text-slate-400">Password Lama</label>
+                <div className="relative mt-1">
+                  <input
+                    type={showCurrentPassword ? "text" : "password"}
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="w-full rounded-xl border border-stone-200 px-3 py-2 pr-10 text-sm text-slate-900 outline-none focus:border-slate-400"
+                    placeholder="Masukkan password lama"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPassword((prev) => !prev)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-slate-400">Password Baru</label>
+                <div className="relative mt-1">
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full rounded-xl border border-stone-200 px-3 py-2 pr-10 text-sm text-slate-900 outline-none focus:border-slate-400"
+                    placeholder="Masukkan password baru"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword((prev) => !prev)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-slate-400">Konfirmasi Password Baru</label>
+                <div className="relative mt-1">
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full rounded-xl border border-stone-200 px-3 py-2 pr-10 text-sm text-slate-900 outline-none focus:border-slate-400"
+                    placeholder="Ulangi password baru"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              {passwordError && (
+                <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
+                  <AlertCircle size={16} className="shrink-0" />
+                  <p>{passwordError}</p>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsPasswordModalOpen(false)}
+                  disabled={isSavingPassword}
+                  className="rounded-xl border-stone-200 text-slate-700 hover:bg-slate-50"
+                >
+                  Batal
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleChangePassword}
+                  disabled={isSavingPassword}
+                  className="rounded-xl bg-slate-900 text-white hover:bg-slate-800"
+                >
+                  {isSavingPassword ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      <span className="ml-1.5">Menyimpan...</span>
+                    </>
+                  ) : (
+                    "Simpan Password"
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast notification */}
       {toast && (
         <div
@@ -469,7 +751,7 @@ function ProfilePageContent() {
   );
 }
 
-function DetailRow({
+function ReadOnlyRow({
   icon: Icon,
   label,
   value,
@@ -486,6 +768,81 @@ function DetailRow({
       <div className="flex-1 min-w-0">
         <p className="text-[11px] font-medium text-slate-400">{label}</p>
         <p className="mt-0.5 text-sm text-slate-900 break-words">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function EditableRow({
+  icon: Icon,
+  label,
+  value,
+  isEditing,
+  onStartEdit,
+  onCancel,
+  onSave,
+  editValue,
+  onEditChange,
+  placeholder,
+  inputMode,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  value: string;
+  isEditing: boolean;
+  onStartEdit: () => void;
+  onCancel: () => void;
+  onSave: () => void;
+  editValue: string;
+  onEditChange: (value: string) => void;
+  placeholder: string;
+  inputMode?: "text" | "tel";
+}) {
+  return (
+    <div className="flex items-center gap-4 py-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-500">
+        <Icon size={18} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[11px] font-medium text-slate-400">{label}</p>
+        {isEditing ? (
+          <div className="mt-0.5 flex items-center gap-2">
+            <input
+              type="text"
+              value={editValue}
+              onChange={(e) => onEditChange(e.target.value)}
+              className="flex-1 rounded-xl border border-stone-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400"
+              placeholder={placeholder}
+              inputMode={inputMode}
+            />
+            <Button
+              size="sm"
+              onClick={onSave}
+              className="shrink-0 rounded-xl bg-slate-900 text-white hover:bg-slate-800"
+            >
+              <CheckCircle2 size={14} />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onCancel}
+              className="shrink-0 rounded-xl border-stone-200 text-slate-700 hover:bg-slate-50"
+            >
+              <X size={14} />
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-0.5 flex items-center justify-between gap-2">
+            <p className="text-sm text-slate-900 break-words">{value}</p>
+            <button
+              type="button"
+              onClick={onStartEdit}
+              className="shrink-0 rounded-lg p-1 text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              <Pencil size={14} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
