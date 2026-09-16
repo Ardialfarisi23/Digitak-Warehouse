@@ -21,6 +21,7 @@ interface BoqPickerProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  tipe?: "inbound" | "outbound";
   statusFilter?: string;
 }
 
@@ -54,15 +55,7 @@ function normalize(raw: ApiBoq): BoqPickerItem {
   };
 }
 
-export default function BoqPicker({
-  projectId,
-  value,
-  onSelect,
-  placeholder = "Pilih BOQ / Tiket",
-  className,
-  disabled,
-  statusFilter = "aktif",
-}: BoqPickerProps) {
+export default function BoqPicker({ projectId, value, onSelect, placeholder = "Pilih BOQ / Tiket", className, disabled, tipe, statusFilter = "aktif" }: BoqPickerProps) {
   const { get } = useApi();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -90,17 +83,14 @@ export default function BoqPicker({
     params.set("limit", "20");
     if (debounced) params.set("search", debounced);
     if (projectId) params.set("projectId", String(projectId));
+    if (tipe) params.set("tipe", tipe);
     if (statusFilter) params.set("status", statusFilter);
 
     get(`${API_BASE}/api/boqs?${params.toString()}`)
       .then(async (res) => {
         if (!res.ok) throw new Error("Gagal memuat data BOQ.");
         const json = await res.json();
-        const rawList: ApiBoq[] = Array.isArray(json?.data)
-          ? json.data
-          : Array.isArray(json?.data?.data)
-            ? json.data.data
-            : [];
+        const rawList: ApiBoq[] = Array.isArray(json?.data) ? json.data : Array.isArray(json?.data?.data) ? json.data.data : [];
         if (!cancelled) {
           setResults(rawList.map(normalize));
         }
@@ -118,7 +108,7 @@ export default function BoqPicker({
     return () => {
       cancelled = true;
     };
-  }, [debounced, open, get, projectId]);
+  }, [debounced, open, get, projectId, tipe, statusFilter]);
 
   useEffect(() => {
     if (!open) return;
@@ -157,12 +147,7 @@ export default function BoqPicker({
     setSearch("");
   }
 
-  const displayValue = value
-    ? results.find((r) => r.boq_id === value)?.project_name ||
-      results.find((r) => r.boq_id === value)?.boq_number ||
-      results.find((r) => r.boq_id === value)?.kode_tiket ||
-      value
-    : "";
+  const displayValue = value ? results.find((r) => r.boq_id === value)?.project_name || results.find((r) => r.boq_id === value)?.boq_number || results.find((r) => r.boq_id === value)?.kode_tiket || value : "";
 
   return (
     <div ref={containerRef} className={`relative ${className ?? ""}`}>
@@ -211,10 +196,7 @@ export default function BoqPicker({
         <div className="absolute left-0 top-full z-[60] mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
           <div className="p-1">
             <div className="relative">
-              <Search
-                size={12}
-                className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400"
-              />
+              <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 ref={searchInputRef}
                 type="text"
@@ -235,9 +217,7 @@ export default function BoqPicker({
             ) : fetchError ? (
               <div className="px-2 py-3 text-xs text-rose-500">{fetchError}</div>
             ) : results.length === 0 ? (
-              <div className="px-2 py-3 text-xs text-slate-400">
-                {debounced ? "Tidak ada hasil." : "Pilih project untuk melihat BOQ."}
-              </div>
+              <div className="px-2 py-3 text-xs text-slate-400">{debounced ? "Tidak ada hasil." : "Pilih project untuk melihat BOQ."}</div>
             ) : (
               results.map((it) => (
                 <button
@@ -250,12 +230,8 @@ export default function BoqPicker({
                   onClick={() => handlePick(it)}
                   className="flex w-full items-center justify-between px-2 py-1.5 text-left text-xs hover:bg-slate-50"
                 >
-                  <span className="font-medium text-slate-700">
-                    {it.project_name || it.boq_number}
-                  </span>
-                  <span className="truncate text-slate-500">
-                    {it.kode_tiket ? `Tiket: ${it.kode_tiket}` : "-"}
-                  </span>
+                  <span className="font-medium text-slate-700">{it.project_name || it.boq_number}</span>
+                  <span className="truncate text-slate-500">{it.kode_tiket ? `Tiket: ${it.kode_tiket}` : "-"}</span>
                 </button>
               ))
             )}

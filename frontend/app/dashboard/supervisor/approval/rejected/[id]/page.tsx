@@ -114,7 +114,7 @@ export default function SupervisorRejectedDetailPage() {
 
   const tujuanLabel =
     detail?.tujuan_tipe === "lapangan"
-      ? detail?.titik_lapangan?.nama_lokasi || "-"
+      ? detail?.alamat_lapangan || "-"
       : detail?.tujuan_tipe === "gudang"
         ? detail?.gudang_tujuan?.nama_gudang || "-"
         : detail?.gudang_tujuan?.nama_gudang || "-";

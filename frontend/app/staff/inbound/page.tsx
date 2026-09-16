@@ -405,7 +405,7 @@ export default function InboundListPage() {
         pengirim_eksternal_nama: selectedAsalTipe === "external" && isVendorManual ? pengirimEksternalNama.trim() || null : null,
         kendaraan_id: selectedKendaraanId || null,
         personil_pengantar_id: selectedDriverId || null,
-        pic_pemohon_nama: picPemohon.trim() || null,
+pic_pemohon_nama: picPemohon.trim() || null,
         boq_id: selectedBoqId ? String(selectedBoqId) : null,
         notes: null,
         kategori_approval: "manual_override",
@@ -566,6 +566,13 @@ export default function InboundListPage() {
                     <td className="px-6 py-4 text-right">
                       {sj.status === "diterima_didistribusikan" ? (
                         <span className="text-sm font-semibold text-gray-400">Selesai</span>
+                      ) : sj.status === "ready_putaway" ? (
+                        <Link
+                          href={`/staff/putaway/${sj.surat_jalan_id}`}
+                          className="text-sm font-semibold text-[#E8632C] hover:underline"
+                        >
+                          Putaway
+                        </Link>
                       ) : (
                         <Link
                           href={`/staff/inbound/${sj.surat_jalan_id}`}
@@ -607,6 +614,7 @@ export default function InboundListPage() {
                 }
               }}
               placeholder="Pilih BOQ / Tiket"
+              tipe="inbound"
             />
           </div>
           <div>

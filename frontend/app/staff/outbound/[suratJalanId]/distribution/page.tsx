@@ -27,6 +27,7 @@ type ApiSuratJalan = {
   items: ApiSuratJalanItem[];
   tujuan_tipe?: string | null;
   titik_lapangan?: { nama_lokasi?: string } | null;
+  alamat_lapangan?: string | null;
 };
 
 export default function DistributionDetailPage() {
@@ -136,7 +137,7 @@ export default function DistributionDetailPage() {
 
   const tujuanLabel =
     data.tujuan_tipe === "lapangan"
-      ? data.titik_lapangan?.nama_lokasi || "-"
+      ? data.alamat_lapangan || "-"
       : data.tujuan_tipe === "gudang"
         ? data.gudang_tujuan?.nama_gudang || "-"
         : data.gudang_tujuan?.nama_gudang || "-";

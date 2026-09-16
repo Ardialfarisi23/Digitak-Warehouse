@@ -6,6 +6,14 @@ const baseInclude = {
   items: {
     include: {
       fotos: true,
+      zona: {
+        select: {
+          zona_id: true,
+          kode_zona: true,
+          nama_zona: true,
+          tipe_zona: true,
+        },
+      },
       barang: {
         include: {
           satuan_default: true,
@@ -126,6 +134,7 @@ const create = async (data, actorId, tx = prisma) => {
       updated_by: Number(actorId),
       titik_lapangan_id: data.titik_lapangan_id ? Number(data.titik_lapangan_id) : null,
       tujuan_tipe: data.tujuan_tipe || null,
+      alamat_lapangan: data.alamat_lapangan || null,
       tipe_pengirim: data.tipe_pengirim || null,
       pengirim_eksternal_nama: data.pengirim_eksternal_nama || null,
       supplier_id: data.supplier_id ? Number(data.supplier_id) : null,
@@ -155,8 +164,6 @@ const findOutboundQueue = async (filters = {}) => {
 
   if (status && status !== "all") {
     where.status = status;
-  } else {
-    where.status = { in: ["draft_diajukan", "disetujui", "digenerate"] };
   }
 
   const andConditions = [];

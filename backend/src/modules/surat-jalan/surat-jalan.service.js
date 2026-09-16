@@ -714,8 +714,15 @@ const rejectInbound = async (id, catatan = null, actorId) => {
       throw new AppError("Hanya inbound yang dapat diproses putaway.", 400);
     }
 
-    if (!Array.isArray(items) || items.length === 0) {
+if (!Array.isArray(items) || items.length === 0) {
       throw new AppError("Daftar item putaway kosong.", 400);
+    }
+
+    if (shipment.status === "diterima_didistribusikan") {
+      throw new AppError(
+        `Surat jalan ini sudah selesai diproses (status: ${shipment.status}), tidak bisa dilakukan putaway ulang.`,
+        400
+      );
     }
 
     const gudangTujuanId = Number(shipment.gudang_tujuan_id);
@@ -815,16 +822,9 @@ const rejectInbound = async (id, catatan = null, actorId) => {
           },
         });
 
-        // Hook recalculateZonaStatus: putaway menambah stok ke zona spesifik.
         await capacityService.recalculateZonaStatus(tx, gudangTujuanId, zonaId);
       }
 
-      // FIX (bug #6 looping): sebelumnya di-set "disetujui" lagi di sini —
-      // sama persis kayak status yang di-set approveInbound(), jadi item
-      // yang UDAH selesai ditempatkan nggak bisa dibedain dari yang BARU
-      // di-ACC Supervisor. Sekarang pakai "diterima_didistribusikan"
-      // sebagai penanda akhir proses inbound (barang sudah diterima &
-      // ditempatkan tuntas).
       await suratJalanRepository.updateStatus(suratJalanId, "diterima_didistribusikan", tx);
 
       if (actorId) {
@@ -1036,18 +1036,10 @@ const rejectInbound = async (id, catatan = null, actorId) => {
       status: newStatus,
     };
 
-    if (body.estimasi_tiba) {
-      updateData.estimasi_tiba = new Date(body.estimasi_tiba);
-    }
-
-    if (body.catatan_distribusi !== undefined) {
-      updateData.catatan_distribusi = body.catatan_distribusi || null;
-    }
-
     await suratJalanRepository.updateDeliveryStatus(id, updateData);
 
     if (actorId) {
-      await suratJalanRepository.createApprovalLog(id, actorId, "outbound_delivery", newStatus === "sedang_dikirim" ? "sedang_dikirim" : "diterima_didistribusikan", body.catatan_distribusi || null);
+      await suratJalanRepository.createApprovalLog(id, actorId, "outbound_delivery", "disetujui", body.catatan_distribusi || null);
     }
 
     if (newStatus === "sedang_dikirim") {
