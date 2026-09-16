@@ -9,7 +9,9 @@ interface InboundForApproval {
   surat_jalan_id: number;
   nomor_surat_jalan: string;
   tanggal: string;
-  pengirim_or_vendor?: string;
+  tipe_pengirim?: "internal" | "external";
+  supplier?: { nama: string; kode: string };
+  gudang_asal?: { nama_gudang: string };
   items: { qty: number }[];
 }
 
@@ -93,7 +95,13 @@ export default function ApprovalList() {
               records.map((record) => (
                 <tr key={record.surat_jalan_id} className="border-t border-gray-100">
                   <td className="px-6 py-4 font-semibold text-gray-800">{record.nomor_surat_jalan}</td>
-                  <td className="px-6 py-4 text-gray-600">{record.pengirim_or_vendor || "-"}</td>
+                  <td className="px-6 py-4 text-gray-600">
+                    {record.tipe_pengirim === "external"
+                      ? `${record.supplier?.kode ?? ""} - ${record.supplier?.nama ?? "-"}`
+                      : record.tipe_pengirim === "internal"
+                      ? record.gudang_asal?.nama_gudang || "-"
+                      : "-"}
+                  </td>
                   <td className="px-6 py-4 text-gray-600">{new Date(record.tanggal).toLocaleDateString("id-ID")}</td>
                   <td className="px-6 py-4 text-right">
                     <button

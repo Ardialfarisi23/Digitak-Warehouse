@@ -48,7 +48,9 @@ interface InboundSuratJalan {
   status: InboundStatus;
   created_at: string;
   items: InboundItem[];
-  pengirim_or_vendor?: string;
+  tipe_pengirim?: "internal" | "external";
+  supplier?: { nama: string; kode: string };
+  gudang_asal?: { nama_gudang: string };
   gudang_tujuan?: { nama_gudang: string };
 }
 
@@ -64,6 +66,12 @@ interface WarehouseOption {
   gudang_id: string | number;
   nama_gudang: string;
   tipe?: string;
+}
+
+interface SupplierOption {
+  supplier_id: string | number;
+  nama: string;
+  kode: string;
 }
 
 interface ModalItemRow {
@@ -142,6 +150,7 @@ export default function InboundListPage() {
   const [warehouseOptions, setWarehouseOptions] = useState<WarehouseOption[]>([]);
   const [vehicleOptions, setVehicleOptions] = useState<VehicleOption[]>([]);
   const [personnelOptions, setPersonnelOptions] = useState<PersonnelOption[]>([]);
+  const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
 
   const [selectedBoqId, setSelectedBoqId] = useState("");
@@ -149,9 +158,13 @@ export default function InboundListPage() {
   const [nomorSuratJalan, setNomorSuratJalan] = useState("");
   const [selectedGudangTujuanId, setSelectedGudangTujuanId] = useState("");
   const [tanggalMasuk, setTanggalMasuk] = useState("");
-  const [asalPengiriman, setAsalPengiriman] = useState("");
   const [selectedKendaraanId, setSelectedKendaraanId] = useState("");
   const [selectedDriverId, setSelectedDriverId] = useState("");
+  const [selectedAsalTipe, setSelectedAsalTipe] = useState<"internal" | "external" | "">("");
+  const [selectedSupplierId, setSelectedSupplierId] = useState("");
+  const [selectedGudangAsalId, setSelectedGudangAsalId] = useState("");
+  const [isVendorManual, setIsVendorManual] = useState(false);
+  const [pengirimEksternalNama, setPengirimEksternalNama] = useState("");
   const [picPemohon, setPicPemohon] = useState("");
   const [modalItems, setModalItems] = useState<ModalItemRow[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
@@ -188,22 +201,25 @@ export default function InboundListPage() {
     setLoadingOptions(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const [itemRes, warehouseRes, vehicleRes, personnelRes] = await Promise.all([
+      const [itemRes, warehouseRes, vehicleRes, personnelRes, supplierRes] = await Promise.all([
         get(`${baseUrl}/api/items?limit=200`),
         get(`${baseUrl}/api/warehouses`),
         get(`${baseUrl}/api/vehicles`),
         get(`${baseUrl}/api/personnels`),
+        get(`${baseUrl}/api/suppliers`),
       ]);
       if (!itemRes.ok) throw new Error("Gagal mengambil daftar barang.");
       if (!warehouseRes.ok) throw new Error("Gagal mengambil daftar gudang.");
       if (!vehicleRes.ok) throw new Error("Gagal mengambil daftar kendaraan.");
       if (!personnelRes.ok) throw new Error("Gagal mengambil daftar personil.");
+      if (!supplierRes.ok) throw new Error("Gagal mengambil daftar supplier.");
 
-      const [itemJson, warehouseJson, vehicleJson, personnelJson] = await Promise.all([
+      const [itemJson, warehouseJson, vehicleJson, personnelJson, supplierJson] = await Promise.all([
         itemRes.json(),
         warehouseRes.json(),
         vehicleRes.json(),
         personnelRes.json(),
+        supplierRes.json(),
       ]);
 
       const unwrap = (json: any) => Array.isArray(json?.data) ? json.data : json?.data?.data || [];
@@ -211,6 +227,7 @@ export default function InboundListPage() {
       setWarehouseOptions(unwrap(warehouseJson));
       setVehicleOptions(unwrap(vehicleJson));
       setPersonnelOptions(unwrap(personnelJson));
+      setSupplierOptions(unwrap(supplierJson));
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Gagal memuat data master.");
     } finally {
@@ -224,9 +241,13 @@ export default function InboundListPage() {
     setNomorSuratJalan("");
     setSelectedGudangTujuanId("");
     setTanggalMasuk("");
-    setAsalPengiriman("");
     setSelectedKendaraanId("");
     setSelectedDriverId("");
+    setSelectedAsalTipe("");
+    setSelectedSupplierId("");
+    setSelectedGudangAsalId("");
+    setIsVendorManual(false);
+    setPengirimEksternalNama("");
     setPicPemohon("");
     setModalItems([]);
     setFormError(null);
@@ -340,6 +361,8 @@ export default function InboundListPage() {
     tanggalMasuk &&
     selectedProjectId &&
     selectedBoqId &&
+    selectedAsalTipe &&
+    (selectedAsalTipe === "internal" || selectedSupplierId || pengirimEksternalNama.trim()) &&
     modalItems.length > 0 &&
     modalItems.every((row) => row.barang_id && row.qty > 0 && row.satuan_id);
 
@@ -376,7 +399,10 @@ export default function InboundListPage() {
         tanggal: tanggalMasuk,
         project_id: selectedProjectId || null,
         tujuan_tipe: "gudang",
-        pengirim_or_vendor: asalPengiriman.trim() || null,
+        tipe_pengirim: selectedAsalTipe || null,
+        supplier_id: selectedAsalTipe === "external" && !isVendorManual ? selectedSupplierId || null : null,
+        gudang_asal_id: selectedAsalTipe === "internal" ? selectedGudangAsalId || null : null,
+        pengirim_eksternal_nama: selectedAsalTipe === "external" && isVendorManual ? pengirimEksternalNama.trim() || null : null,
         kendaraan_id: selectedKendaraanId || null,
         personil_pengantar_id: selectedDriverId || null,
 pic_pemohon_nama: picPemohon.trim() || null,
@@ -522,7 +548,13 @@ pic_pemohon_nama: picPemohon.trim() || null,
                         {sj.nomor_surat_jalan}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-gray-600">{sj.pengirim_or_vendor || "-"}</td>
+                    <td className="px-6 py-4 text-gray-600">
+                      {sj.tipe_pengirim === "external"
+                        ? `${sj.supplier?.kode ?? ""} - ${sj.supplier?.nama ?? "-"}`
+                        : sj.tipe_pengirim === "internal"
+                        ? sj.gudang_asal?.nama_gudang || "-"
+                        : "-"}
+                    </td>
                     <td className="px-6 py-4 text-gray-600">{tujuanText}</td>
                     <td className="px-6 py-4 text-gray-500">{tanggal}</td>
                     <td className="px-6 py-4 text-gray-600">{totalUnit} unit</td>
@@ -618,14 +650,87 @@ pic_pemohon_nama: picPemohon.trim() || null,
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Asal Gudang / Pengirim</label>
-            <input
-              type="text"
-              value={asalPengiriman}
-              onChange={(e) => setAsalPengiriman(e.target.value)}
-              placeholder="Contoh: Gudang Pusat / Nama Vendor"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
-            />
+            <label className="mb-1 block text-xs font-medium text-gray-600">Asal Pengiriman</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedAsalTipe("internal")}
+                className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                  selectedAsalTipe === "internal"
+                    ? "border-[#E8632C] bg-[#E8632C] text-white"
+                    : "border-gray-200 bg-white text-gray-700 hover:border-[#E8632C]"
+                }`}
+              >
+                Internal
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedAsalTipe("external")}
+                className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                  selectedAsalTipe === "external"
+                    ? "border-[#E8632C] bg-[#E8632C] text-white"
+                    : "border-gray-200 bg-white text-gray-700 hover:border-[#E8632C]"
+                }`}
+              >
+                External
+              </button>
+            </div>
+            {selectedAsalTipe === "internal" && (
+              <select
+                value={selectedGudangAsalId}
+                onChange={(e) => setSelectedGudangAsalId(e.target.value)}
+                className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+              >
+                <option value="">Pilih gudang asal</option>
+                {warehouseOptions.map((w) => (
+                  <option key={w.gudang_id} value={w.gudang_id}>
+                    {w.nama_gudang}
+                  </option>
+                ))}
+              </select>
+            )}
+            {selectedAsalTipe === "external" && (
+              <>
+                {!isVendorManual ? (
+                  <select
+                    value={selectedSupplierId}
+                    onChange={(e) => setSelectedSupplierId(e.target.value)}
+                    className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+                  >
+                    <option value="">Pilih supplier</option>
+                    {supplierOptions.map((s) => (
+                      <option key={s.supplier_id} value={s.supplier_id}>
+                        {s.kode} - {s.nama}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={pengirimEksternalNama}
+                    onChange={(e) => setPengirimEksternalNama(e.target.value)}
+                    placeholder="Nama vendor / pengirim eksternal"
+                    className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+                  />
+                )}
+                <label className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+                  <input
+                    type="checkbox"
+                    checked={isVendorManual}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setIsVendorManual(checked);
+                      if (checked) {
+                        setSelectedSupplierId("");
+                      } else {
+                        setPengirimEksternalNama("");
+                      }
+                    }}
+                  />
+                  Vendor belum terdaftar? Ketik manual
+                </label>
+              </>
+            )}
           </div>
 
           <div>

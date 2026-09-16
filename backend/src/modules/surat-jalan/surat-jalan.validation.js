@@ -19,6 +19,7 @@ const createSuratJalanSchema = z
     titik_lapangan_id: z.string().optional().nullable(),
     tipe_pengirim: z.enum(["internal", "external"]).optional().nullable(),
     pengirim_eksternal_nama: z.string().optional().nullable(),
+    supplier_id: z.string().optional().nullable(),
     items: z
       .array(
         z.object({
@@ -56,13 +57,13 @@ const createSuratJalanSchema = z
       }
     }
 
-    if (data.tipe === "outbound") {
+    if (data.tipe === "outbound" || data.tipe === "inbound") {
       if (data.tipe_pengirim === "external") {
-        if (!data.pengirim_eksternal_nama || data.pengirim_eksternal_nama.trim() === "") {
+        if (!data.supplier_id && (!data.pengirim_eksternal_nama || data.pengirim_eksternal_nama.trim() === "")) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "pengirim_eksternal_nama wajib diisi jika tipe_pengirim adalah external.",
-            path: ["pengirim_eksternal_nama"],
+            message: "Pilih supplier atau isi nama vendor eksternal jika tipe pengirim adalah external.",
+            path: ["supplier_id"],
           });
         }
       }
@@ -80,18 +81,19 @@ const createSuratJalanSchema = z
   });
 
 const receiveInboundSchema = z.object({
-  items: z
-    .array(
-      z.object({
-        item_id: z.coerce.number(),
-        qty: z.coerce.number().nonnegative("Qty tidak boleh negatif.").optional(),
-        kondisi: z.string().optional().nullable(),
-        serial_number: z.string().optional().nullable(),
-        catatan: z.string().max(500).optional().nullable(),
-        zona_id: z.preprocess((val) => (val === null || val === undefined || val === "" || val === 0 ? null : Number(val)), z.number().positive().nullable().optional()),
-      }),
-    )
-    .min(1, "Minimal satu item harus diupdate."),
+  items: z.array(
+    z.object({
+      item_id: z.coerce.number(),
+      qty: z.coerce.number().nonnegative("Qty tidak boleh negatif.").optional(),
+      kondisi: z.string().optional().nullable(),
+      serial_number: z.string().optional().nullable(),
+      catatan: z.string().max(500).optional().nullable(),
+      zona_id: z.preprocess(
+        (val) => (val === null || val === undefined || val === "" || val === 0 ? null : Number(val)),
+        z.number().positive().nullable().optional()
+      ),
+    })
+  ).min(1, "Minimal satu item harus diupdate."),
 });
 
 const approveInboundSchema = z.object({

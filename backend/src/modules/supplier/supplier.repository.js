@@ -2,7 +2,7 @@ const prisma = require("../../config/prisma");
 
 const DEFAULT_LIMIT = 10;
 const DEFAULT_PAGE = 1;
-const ALLOWED_SORT_FIELDS = ["code", "name", "createdAt", "updatedAt"];
+const ALLOWED_SORT_FIELDS = ["kode", "nama", "created_at", "updated_at"];
 
 const create = async (data) => {
   return await prisma.supplier.create({
@@ -10,17 +10,17 @@ const create = async (data) => {
   });
 };
 
-const findByCode = async (code, options = {}) => {
+const findByCode = async (kode, options = {}) => {
   if (options.includeInactive) {
     return await prisma.supplier.findUnique({
-      where: { code },
+      where: { kode },
     });
   }
 
   return await prisma.supplier.findFirst({
     where: {
-      code,
-      isActive: true,
+      kode,
+      is_aktif: true,
     },
   });
 };
@@ -29,32 +29,32 @@ const findAll = async ({
   page = DEFAULT_PAGE,
   limit = DEFAULT_LIMIT,
   search,
-  sortBy = "createdAt",
+  sortBy = "created_at",
   sortOrder = "desc",
-  isActive,
+  is_aktif,
 } = {}) => {
   const sanitizedPage = Math.max(parseInt(page, 10) || DEFAULT_PAGE, DEFAULT_PAGE);
   const sanitizedLimit = Math.max(parseInt(limit, 10) || DEFAULT_LIMIT, 1);
-  const orderField = ALLOWED_SORT_FIELDS.includes(sortBy) ? sortBy : "createdAt";
+  const orderField = ALLOWED_SORT_FIELDS.includes(sortBy) ? sortBy : "created_at";
   const orderDirection = ["asc", "desc"].includes((sortOrder || "").toLowerCase())
     ? sortOrder.toLowerCase()
     : "desc";
 
   const where = {};
 
-  if (isActive === "true") {
-    where.isActive = true;
-  } else if (isActive === "false") {
-    where.isActive = false;
+  if (is_aktif === "true") {
+    where.is_aktif = true;
+  } else if (is_aktif === "false") {
+    where.is_aktif = false;
   } else {
-    where.isActive = true;
+    where.is_aktif = true;
   }
 
   if (search) {
     where.OR = [
-      { code: { contains: search, mode: "insensitive" } },
-      { name: { contains: search, mode: "insensitive" } },
-      { description: { contains: search, mode: "insensitive" } }
+      { kode: { contains: search, mode: "insensitive" } },
+      { nama: { contains: search, mode: "insensitive" } },
+      { deskripsi: { contains: search, mode: "insensitive" } }
     ];
   }
 
@@ -82,24 +82,24 @@ const findAll = async ({
   };
 };
 
-const update = async (code, data) => {
+const update = async (kode, data) => {
   return await prisma.supplier.update({
-    where: { code },
+    where: { kode },
     data,
   });
 };
 
-const softDelete = async (code) => {
+const softDelete = async (kode) => {
   return await prisma.supplier.update({
-    where: { code },
-    data: { isActive: false },
+    where: { kode },
+    data: { is_aktif: false },
   });
 };
 
-const restore = async (code) => {
+const restore = async (kode) => {
   return await prisma.supplier.update({
-    where: { code },
-    data: { isActive: true },
+    where: { kode },
+    data: { is_aktif: true },
   });
 };
 

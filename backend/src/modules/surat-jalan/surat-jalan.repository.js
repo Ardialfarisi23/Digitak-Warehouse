@@ -54,6 +54,7 @@ const baseInclude = {
   project: true,
   creator: true,
   titik_lapangan: true,
+  supplier: true,
 };
 
 const APPROVAL_STATUS = "draft_diajukan";
@@ -135,6 +136,7 @@ const create = async (data, actorId, tx = prisma) => {
       tujuan_tipe: data.tujuan_tipe || null,
       tipe_pengirim: data.tipe_pengirim || null,
       pengirim_eksternal_nama: data.pengirim_eksternal_nama || null,
+      supplier_id: data.supplier_id ? Number(data.supplier_id) : null,
       items: {
         create: data.items.map((item) => ({
           barang_id: Number(item.barang_id),

@@ -13,7 +13,9 @@ interface GudangTujuan {
 interface InboundRequest {
   id: string;
   nomor_surat_jalan: string;
-  pengirim_or_vendor: string;
+  tipe_pengirim?: "internal" | "external";
+  supplier?: { nama: string; kode: string };
+  gudang_asal?: { nama_gudang: string };
   gudang_tujuan?: GudangTujuan;
   kategori_approval?: string;
   status: string;
@@ -85,10 +87,17 @@ export default function SupervisorApprovalPage() {
     });
 
     return tabFiltered.filter((r) => {
+      const pengirimText =
+        r.tipe_pengirim === "external"
+          ? `${r.supplier?.kode ?? ""} ${r.supplier?.nama ?? ""}`
+          : r.tipe_pengirim === "internal"
+          ? r.gudang_asal?.nama_gudang || ""
+          : "";
+
       const matchSearch =
         !query.trim() ||
         (r.nomor_surat_jalan || "").toLowerCase().includes(query.toLowerCase()) ||
-        (r.pengirim_or_vendor || "").toLowerCase().includes(query.toLowerCase()) ||
+        pengirimText.toLowerCase().includes(query.toLowerCase()) ||
         (r.gudang_tujuan?.nama_gudang || "").toLowerCase().includes(query.toLowerCase());
 
       const matchCat = selectedCategory === "all" || (r.kategori_approval || "inbound_di_luar_po") === selectedCategory;
@@ -339,7 +348,14 @@ export default function SupervisorApprovalPage() {
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-bold text-slate-900 text-lg">{req.nomor_surat_jalan}</span>
-                  <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-semibold border border-emerald-100">Pengirim: {req.pengirim_or_vendor || "Vendor / Internal"}</span>
+                  <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-semibold border border-emerald-100">
+                    Pengirim:{" "}
+                    {req.tipe_pengirim === "external"
+                      ? `${req.supplier?.kode ?? ""} - ${req.supplier?.nama ?? "Vendor"}`
+                      : req.tipe_pengirim === "internal"
+                      ? req.gudang_asal?.nama_gudang || "Internal"
+                      : "Vendor / Internal"}
+                  </span>
                   <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-medium flex items-center gap-1.5">
                     <FileText className="w-3.5 h-3.5 text-slate-400" />
                     Di Luar PO / Unscheduled
