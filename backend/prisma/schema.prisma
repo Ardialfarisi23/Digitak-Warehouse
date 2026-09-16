@@ -416,6 +416,7 @@ model surat_jalan {
   personil_pengantar    personil?          @relation(fields: [personil_pengantar_id], references: [personil_id])
   project               project?           @relation(fields: [project_id], references: [project_id])
   titik_lapangan        titik_lapangan?    @relation(fields: [titik_lapangan_id], references: [titik_lapangan_id])
+  alamat_lapangan       String?
   updater               user_account       @relation("surat_jalan_updated_by", fields: [updated_by], references: [user_id])
   items                 surat_jalan_item[]
 

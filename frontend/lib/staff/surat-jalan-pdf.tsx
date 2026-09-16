@@ -39,6 +39,7 @@ export type SuratJalan = {
   projectName?: string;
   items: SuratJalanItem[];
   status: SuratJalanStatus;
+  alamatLapangan?: string;
 };
 
 const styles = StyleSheet.create({
@@ -157,6 +158,13 @@ export function SuratJalanPdfDocument({
               <Text style={styles.infoColon}>:</Text>
               <Text style={styles.infoValue}>{data.projectName || "-"}</Text>
             </View>
+            {data.alamatLapangan && (
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Alamat Lapangan</Text>
+                <Text style={styles.infoColon}>:</Text>
+                <Text style={styles.infoValue}>{data.alamatLapangan}</Text>
+              </View>
+            )}
           </View>
           <View style={styles.infoCol}>
             <View style={styles.infoRow}>

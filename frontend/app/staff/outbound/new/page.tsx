@@ -88,8 +88,7 @@ function ConfirmModal({
   selectedPersonil,
   fotoUrlsByItem,
   selectedTujuanKategori,
-  selectedTitikLapanganId,
-  titikLapangans,
+  alamatLapangan,
   selectedPengirimKategori,
   pengirimEksternalNama,
 }: {
@@ -106,8 +105,7 @@ function ConfirmModal({
   selectedPersonil: Personil | null;
   fotoUrlsByItem: Record<string, string>;
   selectedTujuanKategori: string;
-  selectedTitikLapanganId: string;
-  titikLapangans: { titik_lapangan_id: string | number; nama_lokasi: string }[];
+  alamatLapangan: string;
   selectedPengirimKategori: string;
   pengirimEksternalNama: string;
 }) {
@@ -173,7 +171,7 @@ function ConfirmModal({
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500">Tujuan</span>
                   <span className="font-medium text-slate-700">
-                    {selectedTujuanKategori === "lapangan" ? titikLapangans.find((tl) => String(tl.titik_lapangan_id) === selectedTitikLapanganId)?.nama_lokasi || "-" : selectedGudangTujuan?.nama_gudang || "-"}
+                    {selectedTujuanKategori === "lapangan" ? alamatLapangan || "-" : selectedGudangTujuan?.nama_gudang || "-"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -253,9 +251,8 @@ export default function AjukanSuratJalanPage() {
   const [selectedGudangTujuanId, setSelectedGudangTujuanId] = useState<string>("");
   const [selectedTujuanKategori, setSelectedTujuanKategori] = useState<string>("");
   const [selectedPengirimKategori, setSelectedPengirimKategori] = useState<string>("");
-  const [selectedTitikLapanganId, setSelectedTitikLapanganId] = useState<string>("");
   const [pengirimEksternalNama, setPengirimEksternalNama] = useState<string>("");
-  const [titikLapangans, setTitikLapangans] = useState<{ titik_lapangan_id: string | number; nama_lokasi: string }[]>([]);
+  const [alamatLapangan, setAlamatLapangan] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [boqItems, setBoqItems] = useState<ItemBarang[]>([]);
   const [boqItemsLoading, setBoqItemsLoading] = useState(false);
@@ -331,27 +328,24 @@ export default function AjukanSuratJalanPage() {
     const canDrive = personnel.filter((p) => p.bisa_menyetir);
     return canDrive.length > 0 ? canDrive : personnel;
   }, [personnel]);
-  async function handleSelectProject(projectId: string, boqId?: string) {
+async function handleSelectProject(projectId: string, boqId?: string) {
     setSelectedProjectId(projectId);
     setSelectedBoqId(boqId || "");
     setQtyByItem({});
     setBoqItems([]);
     setBoqs([]);
-    setSelectedBoqId("");
     setSelectedTujuanKategori("");
     setSelectedPengirimKategori("");
-    setSelectedTitikLapanganId("");
     setPengirimEksternalNama("");
-    setTitikLapangans([]);
+    setAlamatLapangan("");
 
     if (!projectId) return;
 
-const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
     setBoqItemsLoading(true);
     try {
-      const [itemsRes, titikLapanganRes, boqsRes] = await Promise.all([
+const [itemsRes, boqsRes] = await Promise.all([
         get(`${baseUrl}/api/boqs/items?projectId=${projectId}`),
-        get(`${baseUrl}/api/titik-lapangan?project_id=${projectId}`),
         get(`${baseUrl}/api/boqs?projectId=${projectId}&status=aktif`),
       ]);
 
@@ -368,19 +362,6 @@ const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
         qty_rencana: Number(it.qty_rencana || 0),
       }));
       setBoqItems(mapped);
-
-      if (titikLapanganRes.ok) {
-        const tlJson = await titikLapanganRes.json();
-        const rawTitikLapangan = Array.isArray(tlJson?.data?.data) ? tlJson.data.data : Array.isArray(tlJson?.data) ? tlJson.data : [];
-        setTitikLapangans(
-          rawTitikLapangan.map((tl: any) => ({
-            titik_lapangan_id: String(tl.titik_lapangan_id || tl.id || ""),
-            nama_lokasi: tl.nama_lokasi || "",
-          })),
-        );
-      } else {
-        setTitikLapangans([]);
-      }
 
       if (boqsRes.ok) {
         const boqsJson = await boqsRes.json();
@@ -401,7 +382,6 @@ const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
     } catch (err) {
       console.error(err);
       setBoqItems([]);
-      setTitikLapangans([]);
       setBoqs([]);
     } finally {
       setBoqItemsLoading(false);
@@ -432,7 +412,7 @@ const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
   );
 
   const totalQty = selectedItems.reduce((sum, i) => sum + i.qty, 0);
-  const tujuanValid = !selectedTujuanKategori ? false : selectedTujuanKategori === "lapangan" ? !!selectedTitikLapanganId : !!selectedGudangTujuanId;
+  const tujuanValid = !selectedTujuanKategori ? false : selectedTujuanKategori === "lapangan" ? !!alamatLapangan.trim() : !!selectedGudangTujuanId;
   const pengirimValid = !selectedPengirimKategori ? false : selectedPengirimKategori === "internal" ? !!selectedGudangAsalId : !!pengirimEksternalNama.trim();
   const canSubmit = !!selectedProject && selectedItems.length > 0 && !!selectedPersonil && Object.keys(fotoUrlsByItem).length > 0 && tujuanValid && pengirimValid;
 
@@ -504,8 +484,8 @@ const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
       showToast("Pilih kategori tujuan terlebih dahulu.", "error");
       return;
     }
-    if (selectedTujuanKategori === "lapangan" && !selectedTitikLapanganId) {
-      showToast("Pilih titik lapangan terlebih dahulu.", "error");
+    if (selectedTujuanKategori === "lapangan" && !alamatLapangan.trim()) {
+      showToast("Alamat lapangan wajib diisi.", "error");
       return;
     }
     if (selectedTujuanKategori === "gudang" && !selectedGudangTujuanId) {
@@ -540,7 +520,8 @@ const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
         project_id: selectedProjectId,
         boq_id: selectedBoqId || null,
         tujuan_tipe: selectedTujuanKategori || null,
-        titik_lapangan_id: selectedTujuanKategori === "lapangan" ? selectedTitikLapanganId : null,
+        titik_lapangan_id: null,
+        alamat_lapangan: selectedTujuanKategori === "lapangan" ? alamatLapangan.trim() : null,
         tipe_pengirim: selectedPengirimKategori || null,
         pengirim_eksternal_nama: selectedPengirimKategori === "external" ? pengirimEksternalNama.trim() : null,
         kategori_approval: "manual_override",
@@ -714,7 +695,7 @@ const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
                   onChange={(e) => {
                     setSelectedTujuanKategori(e.target.value);
                     setSelectedGudangTujuanId("");
-                    setSelectedTitikLapanganId("");
+                    setAlamatLapangan("");
                   }}
                   className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
                 >
@@ -749,28 +730,19 @@ const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
                 </div>
               )}
 
-              {selectedTujuanKategori === "lapangan" && (
+{selectedTujuanKategori === "lapangan" && (
                 <div>
                   <label className="mb-1 block text-xs font-medium text-gray-600">
-                    Titik Lapangan <span className="text-rose-500">*</span>
+                    Alamat Lapangan <span className="text-rose-500">*</span>
                   </label>
-                  <div className="relative">
-                    <select
-                      value={selectedTitikLapanganId}
-                      onChange={(e) => setSelectedTitikLapanganId(e.target.value)}
-                      className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
-                    >
-                      <option value="">Pilih Titik Lapangan...</option>
-                      {titikLapangans.map((tl) => (
-                        <option key={String(tl.titik_lapangan_id)} value={String(tl.titik_lapangan_id)}>
-                          {tl.nama_lokasi}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  </div>
-                  {titikLapangans.length === 0 && selectedProjectId && <p className="mt-2 text-xs text-gray-400">Project ini belum memiliki titik lapangan.</p>}
-                  {!selectedProjectId && <p className="mt-2 text-xs text-amber-600">Pilih project terlebih dahulu.</p>}
+                  <textarea
+                    value={alamatLapangan}
+                    onChange={(e) => setAlamatLapangan(e.target.value)}
+                    placeholder="Isi alamat detail / catatan lokasi lapangan (mis. blok, RT/RW, landmark)"
+                    rows={3}
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+                    required
+                  />
                 </div>
               )}
 
@@ -782,26 +754,6 @@ const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
           {selectedProject && (
             <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
               <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Pilih Barang & Kuantitas</p>
-
-              <div className="relative mb-4">
-                <label className="mb-1.5 block text-xs font-medium text-gray-500">BOQ <span className="text-rose-500">*</span></label>
-                <select
-                  value={selectedBoqId}
-                  onChange={(e) => setSelectedBoqId(e.target.value)}
-                  className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
-                >
-                  <option value="">Pilih BOQ...</option>
-                  {boqs.map((b) => (
-                    <option key={b.boq_id} value={b.boq_id}>
-                      {b.boq_number}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                {boqs.length === 0 && selectedProjectId && (
-                  <p className="mt-2 text-xs text-gray-400">Project ini belum memiliki BOQ aktif.</p>
-                )}
-              </div>
 
               {boqItemsLoading ? (
                 <div className="flex items-center justify-center py-8">
@@ -995,8 +947,7 @@ const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
           selectedPersonil={selectedPersonil}
           fotoUrlsByItem={fotoUrlsByItem}
           selectedTujuanKategori={selectedTujuanKategori}
-          selectedTitikLapanganId={selectedTitikLapanganId}
-          titikLapangans={titikLapangans}
+          alamatLapangan={alamatLapangan}
           selectedPengirimKategori={selectedPengirimKategori}
           pengirimEksternalNama={pengirimEksternalNama}
         />

@@ -59,6 +59,7 @@ type ApiSuratJalan = {
   personil_pengantar?: { nama: string } | null;
   project?: { nama_project: string } | null;
   creator?: { nama?: string; name?: string } | null;
+  boq_id?: number | string | null;
   boq?: {
     boq_id: number;
     boq_number?: string;
@@ -66,6 +67,8 @@ type ApiSuratJalan = {
   } | null;
   tujuan_tipe?: string | null;
   titik_lapangan?: { nama_lokasi?: string } | null;
+  tipe_pengirim?: string | null;
+  pengirim_eksternal_nama?: string | null;
 }
 
 // Baris yang staf edit di layar — qtyRencana disnapshot SEKALI pas fetch,
@@ -412,9 +415,9 @@ export default function InboundDetailPage() {
         id: String(data.surat_jalan_id),
         nomor: data.nomor_surat_jalan,
         namaProject: data.project?.nama_project || "-",
-        asalGudang: data.gudang_asal?.nama_gudang || "-",
+        asalGudang: pengirimLabel,
         tujuanGudang: data.gudang_tujuan?.nama_gudang || "-",
-        kendaraan: data.kendaraan ? `${data.kendaraan.jenis_kendaraan}${data.kendaraan.merk ? " " + data.kendaraan.merk : ""}` : "-",
+        kendaraan: kendaraanLabel,
         noPolisi: data.kendaraan?.no_polisi || "-",
         namaDriver: data.personil_pengantar?.nama || "-",
         namaPicPemohon: data.creator?.nama || data.creator?.name || "-",
@@ -444,6 +447,21 @@ export default function InboundDetailPage() {
 
   const excessNoteFilled = unresolvedExcessIndexes.every((idx) => (excessNotesDraft[idx] || "").trim().length > 0);
 
+  // Helper untuk menentukan label pengirim (internal: gudang_asal, external: pengirim_eksternal_nama)
+  const pengirimLabel =
+    data.tipe_pengirim === "internal"
+      ? data.gudang_asal?.nama_gudang || "-"
+      : data.tipe_pengirim === "external"
+        ? data.pengirim_eksternal_nama || "-"
+        : data.gudang_asal?.nama_gudang || "-";
+
+  // Helper untuk format kendaraan: "Merk - Tipe Kendaraan"
+  const kendaraanLabel = data.kendaraan
+    ? data.kendaraan.merk && data.kendaraan.merk.trim()
+      ? `${data.kendaraan.merk} - ${data.kendaraan.jenis_kendaraan}`
+      : data.kendaraan.jenis_kendaraan
+    : "-";
+
   return (
     <div className="px-8 py-6">
       <div className="mb-4 flex items-center justify-between">
@@ -463,7 +481,7 @@ export default function InboundDetailPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">{data.nomor_surat_jalan}</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Dari {data.gudang_asal?.nama_gudang || "-"} • Tujuan:{" "}
+            Dari {pengirimLabel} • Tujuan:{" "}
             <span>
               {tujuanLabel}
               {tujuanBadge}

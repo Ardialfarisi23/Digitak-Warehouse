@@ -27,7 +27,7 @@ export interface DetailSuratJalanData {
   gudang_asal?: { nama_gudang?: string };
   gudang_tujuan?: { nama_gudang?: string };
   personil_pengantar?: { nama?: string };
-  kendaraan?: { jenis_kendaraan?: string; no_polisi?: string };
+  kendaraan?: { jenis_kendaraan?: string; merk?: string; no_polisi?: string } | null;
   creator?: { nama?: string };
   boq_id?: number | string | null;
   boq?: {
@@ -38,6 +38,7 @@ export interface DetailSuratJalanData {
   items?: DetailSuratJalanItem[];
   tujuan_tipe?: string | null;
   titik_lapangan?: { nama_lokasi?: string } | null;
+  alamat_lapangan?: string | null;
   tipe_pengirim?: string | null;
   pengirim_eksternal_nama?: string | null;
   [key: string]: unknown;
@@ -113,13 +114,18 @@ export function DetailSuratJalanDocument({
   const namaGudangTujuan = tampilkan(data.gudang_tujuan?.nama_gudang);
   const namaProject = tampilkan(data.project?.nama_project);
   const jenisKendaraan = tampilkan(data.kendaraan?.jenis_kendaraan);
+  const merkKendaraan = tampilkan(data.kendaraan?.merk);
   const noPolisi = tampilkan(data.kendaraan?.no_polisi);
   const namaDriver = tampilkan(data.personil_pengantar?.nama);
   const namaMaterialHandler = tampilkan(data.creator?.nama);
 
+  const kendaraanLabel = merkKendaraan && merkKendaraan !== "-"
+    ? `${merkKendaraan} - ${jenisKendaraan}`
+    : jenisKendaraan;
+
   const tujuanLabel =
     data.tujuan_tipe === "lapangan"
-      ? data.titik_lapangan?.nama_lokasi || namaGudangTujuan
+      ? data.alamat_lapangan || namaGudangTujuan
       : namaGudangTujuan;
 
   const tujuanBadge =
@@ -215,7 +221,7 @@ export function DetailSuratJalanDocument({
               </span>
             }
           />
-          <InfoRow label="Kendaraan" value={jenisKendaraan} />
+          <InfoRow label="Kendaraan" value={kendaraanLabel} />
           <InfoRow label="No Polisi" value={noPolisi} />
           <InfoRow label="Driver" value={namaDriver} />
           <InfoRow label="BOQ / Tiket" value={boqValue} />

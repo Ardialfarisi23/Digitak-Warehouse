@@ -54,6 +54,7 @@ interface SuratJalan {
   titik_lapangan?: { nama_lokasi?: string } | null;
   tipe_pengirim?: string | null;
   pengirim_eksternal_nama?: string | null;
+  alamat_lapangan?: string | null;
 }
 
 // Baris label:nilai yang selalu sejajar, berapa pun panjang labelnya.
@@ -130,7 +131,7 @@ export default function SuratJalanDetailPage() {
 
   const tujuanLabel =
     suratJalan.tujuan_tipe === "lapangan"
-      ? suratJalan.titik_lapangan?.nama_lokasi || "-"
+      ? suratJalan.alamat_lapangan || "-"
       : suratJalan.tujuan_tipe === "gudang"
         ? suratJalan.gudang_tujuan?.nama_gudang || "-"
         : suratJalan.gudang_tujuan?.nama_gudang || "-";
@@ -181,6 +182,7 @@ export default function SuratJalanDetailPage() {
     noPolisi: suratJalan.kendaraan?.no_polisi || "-",
     namaDriver: suratJalan.personil_pengantar?.nama || "-",
     items: mappedItems,
+    alamatLapangan: suratJalan.alamat_lapangan || undefined,
   };
 
   return (
@@ -307,6 +309,9 @@ export default function SuratJalanDetailPage() {
             <InfoRow label="No Surat Jalan" value={displaySJ.nomor} />
             <InfoRow label="Pengirim" value={<span>{pengirimLabel} {pengirimBadge}</span>} />
             <InfoRow label="Tujuan" value={<span>{tujuanLabel} {tujuanBadge}</span>} />
+            {suratJalan.tujuan_tipe === "lapangan" && suratJalan.alamat_lapangan && (
+              <InfoRow label="Alamat Lapangan" value={suratJalan.alamat_lapangan} />
+            )}
             <InfoRow label="Project" value={displaySJ.projectName || "-"} />
           </div>
           <div className="min-w-0 space-y-3">

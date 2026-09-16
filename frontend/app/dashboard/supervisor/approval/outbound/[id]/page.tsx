@@ -42,6 +42,7 @@ interface OutboundRequest {
   gudang_tujuan?: { nama_gudang: string };
   tujuan_tipe: string;
   titik_lapangan?: { nama_lokasi: string };
+  alamat_lapangan?: string | null;
   kendaraan?: { jenis_kendaraan: string; no_polisi: string };
   personil_pengantar?: { nama: string };
   foto_bukti?: string;
@@ -334,7 +335,7 @@ export default function SupervisorApprovalOutboundDetailPage() {
 
   const tujuanLabel =
     request.tujuan_tipe === "lapangan"
-      ? request.titik_lapangan?.nama_lokasi || "-"
+      ? request.alamat_lapangan || "-"
       : request.tujuan_tipe === "gudang"
         ? request.gudang_tujuan?.nama_gudang || "-"
         : request.gudang_tujuan?.nama_gudang || "-";

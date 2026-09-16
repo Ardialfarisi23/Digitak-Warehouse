@@ -17,6 +17,7 @@ const createSuratJalanSchema = z
     surat_jalan_url: z.string().url("URL surat jalan tidak valid.").optional().nullable(),
     tujuan_tipe: z.enum(["lapangan", "gudang"]).optional().nullable(),
     titik_lapangan_id: z.string().optional().nullable(),
+    alamat_lapangan: z.string().optional().nullable(),
     tipe_pengirim: z.enum(["internal", "external"]).optional().nullable(),
     pengirim_eksternal_nama: z.string().optional().nullable(),
     supplier_id: z.string().optional().nullable(),
@@ -38,11 +39,11 @@ const createSuratJalanSchema = z
   })
   .superRefine((data, ctx) => {
     if (data.tujuan_tipe === "lapangan") {
-      if (!data.titik_lapangan_id || data.titik_lapangan_id === "" || data.titik_lapangan_id === "0") {
+      if (!data.alamat_lapangan || data.alamat_lapangan.trim() === "") {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "titik_lapangan_id wajib diisi jika tujuan_tipe adalah lapangan.",
-          path: ["titik_lapangan_id"],
+          message: "alamat_lapangan wajib diisi jika tujuan_tipe adalah lapangan.",
+          path: ["alamat_lapangan"],
         });
       }
     }
