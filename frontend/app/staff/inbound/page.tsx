@@ -566,6 +566,13 @@ pic_pemohon_nama: picPemohon.trim() || null,
                     <td className="px-6 py-4 text-right">
                       {sj.status === "diterima_didistribusikan" ? (
                         <span className="text-sm font-semibold text-gray-400">Selesai</span>
+                      ) : sj.status === "ready_putaway" ? (
+                        <Link
+                          href={`/staff/putaway/${sj.surat_jalan_id}`}
+                          className="text-sm font-semibold text-[#E8632C] hover:underline"
+                        >
+                          Putaway
+                        </Link>
                       ) : (
                         <Link
                           href={`/staff/inbound/${sj.surat_jalan_id}`}

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardList, ChevronDown, Loader2, AlertCircle, Truck, User, MapPin, X, Upload, Image as ImageIcon } from "lucide-react";
+import { ClipboardList, ChevronDown, ChevronRight, Loader2, AlertCircle, Truck, User, MapPin, X, Upload, Image as ImageIcon, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -50,6 +50,20 @@ type Warehouse = {
   tipe?: string;
   alamat?: string;
   is_internal?: boolean;
+};
+
+type WarehouseStockItem = {
+  stok_id: number;
+  barang_id: number;
+  kode_perangkat: string;
+  nama_barang: string;
+  kategori: string;
+  satuan: string;
+  kondisi: string;
+  qty: number;
+  zona_id: number | null;
+  kode_zona: string;
+  nama_zona: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -267,6 +281,14 @@ export default function AjukanSuratJalanPage() {
   const [uploadingFotoByItem, setUploadingFotoByItem] = useState<Record<string, boolean>>({});
   const [fotoErrorsByItem, setFotoErrorsByItem] = useState<Record<string, string | null>>({});
 
+  const [stockLoading, setStockLoading] = useState(false);
+  const [stockError, setStockError] = useState<string | null>(null);
+  const [warehouseStock, setWarehouseStock] = useState<WarehouseStockItem[]>([]);
+  const [stockSearch, setStockSearch] = useState("");
+  const [stockExpanded, setStockExpanded] = useState(false);
+
+  const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
+
   useEffect(() => {
     return () => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -328,7 +350,128 @@ export default function AjukanSuratJalanPage() {
     const canDrive = personnel.filter((p) => p.bisa_menyetir);
     return canDrive.length > 0 ? canDrive : personnel;
   }, [personnel]);
-async function handleSelectProject(projectId: string, boqId?: string) {
+
+  // Fetch warehouse stock when gudang asal is selected (internal category)
+  useEffect(() => {
+    let mounted = true;
+
+    const loadWarehouseStock = async () => {
+      const warehouseId = selectedGudangAsalId;
+
+      // Only fetch for internal category with a valid warehouse
+      if (selectedPengirimKategori !== "internal" || !warehouseId) {
+        setWarehouseStock([]);
+        setStockLoading(false);
+        setStockError(null);
+        return;
+      }
+
+      setStockLoading(true);
+      setStockError(null);
+
+      try {
+        // Fetch warehouse layout to get zonas
+        const layoutResp = await get(`${apiBase}/api/warehouses/${warehouseId}/layout`);
+        const layoutJson = await layoutResp.json();
+
+        if (!layoutResp.ok) {
+          throw new Error(layoutJson?.message || "Gagal mengambil data gudang.");
+        }
+
+        const zonas = Array.isArray(layoutJson?.data?.zonas) ? layoutJson.data.zonas : [];
+
+        if (!Array.isArray(zonas) || zonas.length === 0) {
+          if (mounted) {
+            setWarehouseStock([]);
+            setStockLoading(false);
+          }
+          return;
+        }
+
+        // Fetch stock snapshot for each zona
+        const stockPromises = zonas.map((zone: any) =>
+          get(`${apiBase}/api/warehouses/${warehouseId}/zona/${zone.zona_id}/stock-snapshot`)
+            .then(async (res) => {
+              const json = await res.json();
+              if (!res.ok) {
+                throw new Error(json?.message || `Gagal mengambil stok zona ${zone.nama_zona}`);
+              }
+              const rows = Array.isArray(json?.data?.data) ? json.data.data : Array.isArray(json?.data) ? json.data : [];
+              return rows;
+            })
+            .catch(() => [])
+        );
+
+        const results = await Promise.all(stockPromises);
+
+        if (!mounted) return;
+
+        const allStock: WarehouseStockItem[] = [];
+        results.forEach((rows) => {
+          if (Array.isArray(rows)) {
+            rows.forEach((item: any) => {
+              allStock.push({
+                stok_id: item.stok_id ?? item.id ?? item.stokId,
+                barang_id: item.barang_id ?? item.barangId ?? item.id_barang,
+                kode_perangkat: item.kode_perangkat ?? item.barang?.kode_perangkat ?? item.kode_barang ?? item.sku ?? "-",
+                nama_barang: item.nama_barang ?? item.barang?.nama_barang ?? item.nama_barang ?? "-",
+                qty: Number(item.qty ?? item.jumlah ?? item.stok ?? 0),
+                kondisi: item.kondisi ?? item.condition ?? "baik",
+                zona_id: item.zona_id ?? item.zonaId ?? null,
+                kode_zona: item.kode_zona ?? item.zona?.kode_zona ?? item.zona_kode ?? "-",
+                nama_zona: item.nama_zona ?? item.zona?.nama_zona ?? item.nama_zona ?? "-",
+                satuan: item.satuan ?? item.satuan?.kode_satuan ?? item.uom ?? "-",
+                kategori: item.kategori ?? item.category ?? "NORMAL",
+              });
+            });
+          }
+        });
+
+        if (mounted) setWarehouseStock(allStock);
+      } catch (err) {
+        if (!mounted) return;
+        const message = err instanceof Error ? err.message : "Gagal memuat data stok gudang.";
+        setStockError(message);
+        setWarehouseStock([]);
+      } finally {
+        if (mounted) setStockLoading(false);
+      }
+    };
+
+    loadWarehouseStock();
+    return () => {
+      mounted = false;
+    };
+  }, [get, apiBase, selectedGudangAsalId, selectedPengirimKategori]);
+
+  const filteredStock = useMemo(() => {
+    if (!stockSearch.trim()) return warehouseStock;
+    const query = stockSearch.toLowerCase();
+    return warehouseStock.filter((item) => {
+      const kode = (item.kode_perangkat || "").toLowerCase();
+      const nama = (item.nama_barang || "").toLowerCase();
+      const zona = (item.kode_zona || "").toLowerCase();
+      return kode.includes(query) || nama.includes(query) || zona.includes(query);
+    });
+  }, [warehouseStock, stockSearch]);
+
+  const stockByBarang = useMemo(() => {
+    const map = new Map<number, WarehouseStockItem & { totalQty: number }>();
+    filteredStock.forEach((item) => {
+      const existing = map.get(item.barang_id);
+      if (existing) {
+        existing.qty += item.qty;
+        existing.zona_id = existing.zona_id ?? item.zona_id;
+        existing.kode_zona = existing.kode_zona || item.kode_zona;
+        existing.nama_zona = existing.nama_zona || item.nama_zona;
+      } else {
+        map.set(item.barang_id, { ...item, totalQty: item.qty });
+      }
+    });
+    return Array.from(map.values());
+  }, [filteredStock]);
+
+  async function handleSelectProject(projectId: string, boqId?: string) {
     setSelectedProjectId(projectId);
     setSelectedBoqId(boqId || "");
     setQtyByItem({});
@@ -660,7 +803,76 @@ const [itemsRes, boqsRes] = await Promise.all([
                     <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   </div>
                   {warehouses.filter((w) => w.is_internal === true).length === 0 && <p className="mt-2 text-xs text-gray-400">Belum ada data Gudang Internal di master data.</p>}
-                </div>
+
+                {/* Cek Stok Gudang Panel */}
+                {selectedGudangAsalId && (
+                  <div className="mt-4 border-t border-gray-100 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setStockExpanded((prev) => !prev)}
+                      className="flex items-center gap-2 text-xs font-medium text-gray-600 hover:text-gray-800"
+                    >
+                      {stockExpanded ? (
+                        <ChevronRight size={14} className="rotate-90 text-[#E8632C]" />
+                      ) : (
+                        <ChevronRight size={14} className="text-gray-400" />
+                      )}
+                      <span>Cek Stok Gudang</span>
+                      {stockLoading && (
+                        <Loader2 size={12} className="ml-auto animate-spin text-[#E8632C]" />
+                      )}
+                    </button>
+
+                    {stockExpanded && (
+                      <div className="mt-3 space-y-3">
+                        {/* Search */}
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Cari nama barang / SKU / zona..."
+                            value={stockSearch}
+                            onChange={(e) => setStockSearch(e.target.value)}
+                            className="w-full pl-9 pr-3.5 py-2 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#E8632C] focus:outline-none"
+                          />
+                        </div>
+
+                        {/* Stock List */}
+                        {stockLoading ? (
+                          <div className="flex min-h-[150px] flex-col items-center justify-center">
+                            <Loader2 size={24} className="animate-spin text-gray-400" />
+                            <p className="mt-2 text-xs text-gray-500">Memuat data stok gudang...</p>
+                          </div>
+                        ) : stockError ? (
+                          <div className="flex min-h-[150px] flex-col items-center justify-center text-center">
+                            <AlertCircle size={28} className="text-red-500 mb-2" />
+                            <p className="text-xs text-gray-600">{stockError}</p>
+                          </div>
+                        ) : stockByBarang.length === 0 ? (
+                          <div className="flex min-h-[150px] flex-col items-center justify-center text-center">
+                            <p className="text-xs text-gray-500">Tidak ada stok barang di gudang ini.</p>
+                          </div>
+                        ) : (
+                          <div className="max-h-[350px] overflow-y-auto space-y-2 pr-1">
+                            {stockByBarang.map((item) => (
+                              <div key={item.barang_id} className="flex items-center justify-between rounded-xl border border-gray-200 p-3">
+                                <div>
+                                  <p className="text-xs font-bold text-gray-800">{item.nama_barang}</p>
+                                  <p className="text-[10px] text-gray-500">SKU: {item.kode_perangkat} {item.kode_zona !== "-" ? `· Zona {item.kode_zona}` : ""}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-xs font-bold text-gray-900">{Number(item.qty || 0).toLocaleString("id-ID")}</p>
+                                  <p className="text-[10px] text-gray-500">{item.satuan}</p>
+                                </div>
+                              </div>
+                            ))}
+</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
               )}
 
               {selectedPengirimKategori === "external" && (
