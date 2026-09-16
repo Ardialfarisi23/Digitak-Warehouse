@@ -1528,9 +1528,9 @@ function MasterDataPageContent() {
       case "projects":
         return ["project_id", "title", "nama_project", "kecamatan", "desa_kelurahan", "status_aktif"];
       case "personnel":
-        return ["personil_id", "nama", "email", "nik", "posisi", "no_hp", "bisa_menyetir", "is_aktif", "foto"];
+        return ["personil_id", "nama", "email", "nik", "posisi", "no_hp", "gudang", "bisa_menyetir", "is_aktif", "foto"];
       case "vehicles":
-        return ["kendaraan_id", "jenis_kendaraan", "merk", "no_polisi", "foto"];
+        return ["kendaraan_id", "jenis_kendaraan", "merk", "no_polisi", "gudang", "foto"];
       case "warehouses":
         return ["nama_gudang", "alamat", "tipe", "is_aktif"];
       case "suppliers":
@@ -1559,7 +1559,7 @@ function MasterDataPageContent() {
       email: "Email",
       nik: "NIK",
       bisa_menyetir: "Bisa Menyetir",
-      gudang: "Gudang",
+      gudang: "Gudang Asal",
       kendaraan_id: "ID Kendaraan",
       jenis_kendaraan: "Tipe",
       merk: "Merk",
