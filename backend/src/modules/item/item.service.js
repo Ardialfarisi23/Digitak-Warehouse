@@ -109,9 +109,27 @@ const update = async (kode_perangkat, data, userId) => {
   return result;
 };
 
+const remove = async (barang_id, userId) => {
+  const result = await itemRepository.remove(barang_id);
+
+  if (!result) {
+    throw new AppError("Item tidak ditemukan.", 404);
+  }
+
+  if (result.blocked) {
+    throw new AppError(
+      "Barang tidak dapat dihapus karena masih digunakan di transaksi lain.",
+      400
+    );
+  }
+
+  return result;
+};
+
 module.exports = {
   create,
   findAll,
   findByKode,
   update,
+  remove,
 };
