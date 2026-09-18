@@ -266,14 +266,21 @@ const storage = multer.diskStorage({
 });
 
 const excelFileFilter = (req, file, cb) => {
-  const allowedTypes = /xlsx|xls/;
-  const ext = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mime = allowedTypes.test(file.mimetype);
+  const allowedExtensions = /\.(xlsx|xls)$/i;
+  const allowedMimeTypes = [
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
+    "application/octet-stream",
+  ];
+  const ext = allowedExtensions.test(path.extname(file.originalname));
+  const mime = allowedMimeTypes.includes(file.mimetype);
+  const looseMime = !file.mimetype || file.mimetype === "application/octet-stream";
 
-  if (ext && mime) {
+  if (ext && (mime || looseMime)) {
     cb(null, true);
   } else {
-    cb(new Error("Only Excel files are allowed (xlsx, xls)."), false);
+    const received = `${path.extname(file.originalname) || "(tanpa ekstensi)"} / ${file.mimetype || "(tanpa mimetype)"}`;
+    cb(new Error(`File harus berformat .xlsx atau .xls (yang Anda upload: ${received}).`), false);
   }
 };
 
