@@ -9,6 +9,7 @@ export interface DetailSuratJalanItem {
     kode_perangkat?: string;
     nama_barang?: string;
     satuan_default?: { kode_satuan?: string };
+    kategori?: { is_kritis?: boolean };
   };
   qty?: number | string;
   satuan?: { kode_satuan?: string };
@@ -269,7 +270,16 @@ export function DetailSuratJalanDocument({
                   <tr key={item.item_id ?? i} className="even:bg-gray-50">
                     <td className="border p-1 text-center">{i + 1}</td>
                     <td className="border p-1 text-center">{tampilkan(item.barang?.kode_perangkat)}</td>
-                    <td className="border p-1 text-left truncate">{tampilkan(item.barang?.nama_barang)}</td>
+                    <td className="border p-1 text-left truncate">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate">{tampilkan(item.barang?.nama_barang)}</span>
+                        {item.barang?.kategori?.is_kritis && (
+                          <span className="shrink-0 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">
+                            Kritis
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="border p-1 text-center font-semibold">{Number(item.qty || 0)}</td>
                     <td className="border p-1 text-center">{tampilkan(item.satuan?.kode_satuan ?? item.barang?.satuan_default?.kode_satuan)}</td>
                     <td className="border p-1 text-center">{tampilkan(item.kondisi ?? item.catatan)}</td>

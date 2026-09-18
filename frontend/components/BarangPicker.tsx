@@ -21,6 +21,9 @@ interface BarangPickerProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  fetchEndpoint?: string;
+  queryParams?: Record<string, string | number | undefined | null>;
+  emptyMessage?: string;
 }
 
 interface ApiBarang {
@@ -49,6 +52,9 @@ export default function BarangPicker({
   placeholder = "Kode perangkat",
   className,
   disabled,
+  fetchEndpoint,
+  queryParams,
+  emptyMessage,
 }: BarangPickerProps) {
   const { get } = useApi();
   const [open, setOpen] = useState(false);
@@ -73,11 +79,20 @@ export default function BarangPicker({
     setLoading(true);
     setFetchError(null);
 
+    const endpoint = fetchEndpoint || "/api/items";
     const params = new URLSearchParams();
     params.set("limit", "20");
     if (debounced) params.set("search", debounced);
+    if (queryParams) {
+      Object.entries(queryParams).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          params.set(key, String(value));
+        }
+      });
+    }
 
-    get(`${API_BASE}/api/items?${params.toString()}`)
+    const separator = endpoint.includes("?") ? "&" : "?";
+    get(`${API_BASE}${endpoint}${separator}${params.toString()}`)
       .then(async (res) => {
         if (!res.ok) throw new Error("Gagal memuat master barang.");
         const json = await res.json();
@@ -103,7 +118,7 @@ export default function BarangPicker({
     return () => {
       cancelled = true;
     };
-  }, [debounced, open, get]);
+  }, [debounced, open, get, fetchEndpoint, queryParams]);
 
   useEffect(() => {
     if (!open) return;
@@ -215,7 +230,7 @@ export default function BarangPicker({
               <div className="px-2 py-3 text-xs text-rose-500">{fetchError}</div>
             ) : results.length === 0 ? (
               <div className="px-2 py-3 text-xs text-slate-400">
-                {debounced ? "Tidak ada hasil." : "Ketik untuk mencari..."}
+                {emptyMessage && !debounced ? emptyMessage : (debounced ? "Tidak ada hasil." : "Ketik untuk mencari...")}
               </div>
             ) : (
               results.map((it) => (
@@ -230,10 +245,10 @@ export default function BarangPicker({
                   className="flex w-full items-center justify-between px-2 py-1.5 text-left text-xs hover:bg-slate-50"
                 >
                   <span className="font-medium text-slate-700">
-                    {it.kode_perangkat}
+                    {it.nama_barang || it.kode_perangkat}
                   </span>
                   <span className="truncate text-slate-500">
-                    {it.nama_barang}
+                    {it.kode_perangkat}
                   </span>
                 </button>
               ))
