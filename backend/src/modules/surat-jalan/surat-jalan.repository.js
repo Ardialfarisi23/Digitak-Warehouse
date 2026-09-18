@@ -17,6 +17,13 @@ const baseInclude = {
       barang: {
         include: {
           satuan_default: true,
+          kategori: {
+            select: {
+              kategori_id: true,
+              nama_kategori: true,
+              is_kritis: true,
+            },
+          },
         },
       },
       satuan: {
@@ -35,6 +42,13 @@ const baseInclude = {
           barang: {
             include: {
               satuan_default: true,
+              kategori: {
+                select: {
+                  kategori_id: true,
+                  nama_kategori: true,
+                  is_kritis: true,
+                },
+              },
             },
           },
           satuan: {
