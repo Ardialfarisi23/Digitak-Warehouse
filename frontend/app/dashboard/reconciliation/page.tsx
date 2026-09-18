@@ -28,6 +28,7 @@ import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import BoqPicker, { type BoqPickerItem } from "@/components/BoqPicker";
+import BarangPicker, { type BarangPickerItem } from "@/components/BarangPicker";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -131,6 +132,8 @@ export default function ReconciliationInventoryPage() {
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedBoqId, setSelectedBoqId] = useState("");
   const [selectedKodeTiket, setSelectedKodeTiket] = useState("");
+
+  const boqItemsQueryParams = useMemo(() => ({ projectId: selectedProjectId }), [selectedProjectId]);
   const [exporting, setExporting] = useState(false);
   const [mitraReportMeta, setMitraReportMeta] = useState({ tanggal_laporan: new Date().toISOString().slice(0, 10), pic_mitra: "" });
 
@@ -322,7 +325,7 @@ export default function ReconciliationInventoryPage() {
       return;
     }
     if (!mitraPreview && !selectedProjectId) {
-      setMitraError("Project wajib dipilih.");
+      setMitraError("Pilih project terlebih dahulu.");
       return;
     }
     if (!mitraPreview && !selectedKodeTiket) {
@@ -366,6 +369,7 @@ export default function ReconciliationInventoryPage() {
       const payload = {
         filename: mitraPreview?.filename || "manual-input",
         preview,
+        failed: mitraPreview?.failed || [],
         actorId: user.id,
         tanggal_laporan: mitraReportMeta.tanggal_laporan,
         pic_mitra: mitraReportMeta.pic_mitra,
@@ -1295,12 +1299,14 @@ export default function ReconciliationInventoryPage() {
                             <div className="grid grid-cols-12 gap-2">
                               <div className="col-span-12 sm:col-span-4">
                                 <label className="mb-1 block text-[11px] font-medium text-slate-500">Nama Barang</label>
-                                <input
-                                  type="text"
+                                <BarangPicker
                                   value={row.nama_barang}
-                                  onChange={(e) => updateManualRow(row.id, "nama_barang", e.target.value)}
-                                  placeholder="Nama barang"
-                                  className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-400"
+                                  onSelect={(item) => updateManualRow(row.id, "nama_barang", item.nama_barang || item.kode_perangkat || "")}
+                                  placeholder="Pilih atau ketik nama barang"
+                                  disabled={!selectedProjectId}
+                                  fetchEndpoint="/api/boqs/items"
+                                  queryParams={boqItemsQueryParams}
+                                  emptyMessage="Belum ada BOQ aktif untuk project ini — Anda tetap bisa mengetik nama barang manual"
                                 />
                               </div>
                               <div className="col-span-6 sm:col-span-3">

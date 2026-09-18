@@ -357,13 +357,13 @@ const uploadReconciliationFile = async (req, res, next) => {
         const kondisi = row["Kondisi"] || row["kondisi"] || row["KONDISI"] || null;
 
         if (!kodeTiket) {
-          failed.push({ row: i + 2, reason: "Kode Tiket tidak ditemukan" });
+          failed.push({ row: i + 2, mos, used, usedTerpasang, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak ditemukan" });
           continue;
         }
 
         const tiket = tiketMap.get(String(kodeTiket).trim());
         if (!tiket) {
-          failed.push({ row: i + 2, kode_tiket: kodeTiket, reason: "Kode Tiket tidak terdaftar" });
+          failed.push({ row: i + 2, kode_tiket: kodeTiket, mos, used, usedTerpasang, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak terdaftar" });
           continue;
         }
 
@@ -404,6 +404,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
     const {
       filename,
       preview,
+      failed,
       actorId,
       tanggal_laporan,
       pic_mitra,
@@ -432,7 +433,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
         filename,
         file_url: `/uploads/reconciliation/${filename}`,
         uploaded_by: BigInt(actorId),
-        total_rows: preview.length,
+        total_rows: preview.length + failed.length,
         success_rows: 0,
         failed_rows: 0,
       },
@@ -524,7 +525,6 @@ const confirmReconciliationUpload = async (req, res, next) => {
               kode_tiket: tiket.kode_tiket,
               mos: Number(item.mos || 0),
               used: Number(item.used || 0),
-              used_terpasang: Number(item.used_terpasang || 0),
               status: "gagal",
               reason: `duplikat: Laporan untuk ${tiket.kode_tiket}, tanggal ${tanggal_laporan || new Date().toISOString().slice(0, 10)}, PIC ${pic_mitra || "-"} sudah pernah diinput sebelumnya (ID laporan: ${existingLaporan.laporan_id}).`,
             },
@@ -558,7 +558,6 @@ const confirmReconciliationUpload = async (req, res, next) => {
               kode_tiket: tiket.kode_tiket,
               mos: Number(item.mos || 0),
               used: Number(item.used || 0),
-              used_terpasang: Number(item.used_terpasang || 0),
               status: "berhasil",
               reason: null,
             },
@@ -579,7 +578,6 @@ const confirmReconciliationUpload = async (req, res, next) => {
               kode_tiket: tiket.kode_tiket,
               mos: Number(item.mos || 0),
               used: Number(item.used || 0),
-              used_terpasang: Number(item.used_terpasang || 0),
               status: "gagal",
               reason: insertErr.message || "Gagal menyimpan laporan mitra",
             },
@@ -603,6 +601,20 @@ const confirmReconciliationUpload = async (req, res, next) => {
             },
           },
         });
+      }
+
+      for (const item of failed) {
+        await tx.reconciliation_upload_detail.create({
+          data: {
+            upload_id: uploadLog.upload_id,
+            kode_tiket: item.kode_tiket || "-",
+            mos: Number(item.mos || 0),
+            used: Number(item.used || 0),
+            status: "gagal",
+            reason: item.reason || "Gagal memproses baris",
+          },
+        });
+        failedCount++;
       }
 
       for (const tiketId of affectedTiketIds) {
