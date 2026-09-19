@@ -82,19 +82,18 @@ const createSuratJalanSchema = z
   });
 
 const receiveInboundSchema = z.object({
-  items: z.array(
-    z.object({
-      item_id: z.coerce.number(),
-      qty: z.coerce.number().nonnegative("Qty tidak boleh negatif.").optional(),
-      kondisi: z.string().optional().nullable(),
-      serial_number: z.string().optional().nullable(),
-      catatan: z.string().max(500).optional().nullable(),
-      zona_id: z.preprocess(
-        (val) => (val === null || val === undefined || val === "" || val === 0 ? null : Number(val)),
-        z.number().positive().nullable().optional()
-      ),
-    })
-  ).min(1, "Minimal satu item harus diupdate."),
+  items: z
+    .array(
+      z.object({
+        item_id: z.coerce.number(),
+        qty: z.coerce.number().nonnegative("Qty tidak boleh negatif.").optional(),
+        kondisi: z.string().optional().nullable(),
+        serial_number: z.string().optional().nullable(),
+        catatan: z.string().max(500).optional().nullable(),
+        zona_id: z.preprocess((val) => (val === null || val === undefined || val === "" || val === 0 ? null : Number(val)), z.number().positive().nullable().optional()),
+      }),
+    )
+    .min(1, "Minimal satu item harus diupdate."),
 });
 
 const approveInboundSchema = z.object({
