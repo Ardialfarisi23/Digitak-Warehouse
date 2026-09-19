@@ -30,5 +30,11 @@ router.put(
   validate(updateItemSchema),
   itemController.update
 );
+router.delete(
+  "/:id",
+  authenticate,
+  authorize("ADMIN"),
+  itemController.remove
+);
 
 module.exports = router;

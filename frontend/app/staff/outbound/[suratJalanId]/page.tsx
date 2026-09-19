@@ -26,8 +26,8 @@ interface SuratJalanItem {
   barang_id: number;
   qty: number;
   satuan_id: number;
-  barang?: { nama_barang: string; kode_perangkat: string; satuan_default?: { kode_satuan: string } };
-  satuan?: { kode_satuan: string };
+  barang?: { nama_barang: string; kode_perangkat: string; satuan_default?: { kode_satuan?: string }; kategori?: { is_kritis?: boolean } };
+  satuan?: { kode_satuan?: string };
 }
 
 interface SuratJalan {
@@ -168,7 +168,7 @@ export default function SuratJalanDetailPage() {
     qty: item.qty,
     uom: item.satuan?.kode_satuan || item.barang?.satuan_default?.kode_satuan || "Unit",
     keterangan: null,
-    kategori: "NORMAL" as const,
+    isKritis: item.barang?.kategori?.is_kritis === true,
   }));
 
   const displaySJ = {
@@ -364,7 +364,14 @@ export default function SuratJalanDetailPage() {
               <tr key={item.kodeBarang} className="even:bg-gray-50">
                 <td className="border border-gray-200 px-3 py-2.5">{i + 1}</td>
                 <td className="border border-gray-200 px-3 py-2.5 font-medium">{item.kodeBarang}</td>
-                <td className="border border-gray-200 px-3 py-2.5">{item.namaBarang}</td>
+                <td className="border border-gray-200 px-3 py-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <span>{item.namaBarang}</span>
+                    {item.isKritis && (
+                      <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">Kritis</span>
+                    )}
+                  </div>
+                </td>
                 <td className="border border-gray-200 px-3 py-2.5 text-center font-semibold">{item.qty}</td>
                 <td className="border border-gray-200 px-3 py-2.5 text-center">{item.uom}</td>
                 <td className="border border-gray-200 px-3 py-2.5 text-gray-500">{item.keterangan || "-"}</td>

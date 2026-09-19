@@ -60,7 +60,22 @@ const getApprovalQueue = async (actor) => {
       pic_pemohon_nama: true,
       project: { select: { nama_project: true, area: true } },
       gudang_tujuan: { select: { nama_gudang: true } },
-      items: { select: { qty: true } },
+      items: {
+        select: {
+          qty: true,
+          barang: {
+            include: {
+              kategori: {
+                select: {
+                  kategori_id: true,
+                  nama_kategori: true,
+                  is_kritis: true,
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
 
@@ -77,7 +92,22 @@ const getApprovalQueue = async (actor) => {
       pic_pemohon_nama: true,
       project: { select: { nama_project: true, area: true } },
       gudang_tujuan: { select: { nama_gudang: true } },
-      items: { select: { qty: true } },
+      items: {
+        select: {
+          qty: true,
+          barang: {
+            include: {
+              kategori: {
+                select: {
+                  kategori_id: true,
+                  nama_kategori: true,
+                  is_kritis: true,
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
 
@@ -94,13 +124,29 @@ const getApprovalQueue = async (actor) => {
       pic_pemohon_nama: true,
       project: { select: { nama_project: true, area: true } },
       gudang_tujuan: { select: { nama_gudang: true } },
-      items: { select: { qty: true } },
+      items: {
+        select: {
+          qty: true,
+          barang: {
+            include: {
+              kategori: {
+                select: {
+                  kategori_id: true,
+                  nama_kategori: true,
+                  is_kritis: true,
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
 
   const formatApproval = (records, type) =>
     records.map((r) => {
       const totalQty = r.items.reduce((sum, it) => sum + Number(it.qty || 0), 0);
+      const isKritis = r.items.some((it) => it.barang?.kategori?.is_kritis === true);
       return {
         id: String(r.surat_jalan_id),
         nomorSuratJalan: r.nomor_surat_jalan,
@@ -112,6 +158,7 @@ const getApprovalQueue = async (actor) => {
         area: r.project?.area || "-",
         warehouse: r.gudang_tujuan?.nama_gudang || "-",
         totalQty,
+        isKritis,
         createdAt: r.created_at,
       };
     });

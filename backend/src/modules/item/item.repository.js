@@ -141,9 +141,63 @@ const update = async (barang_id, data) => {
   });
 };
 
+const remove = async (barang_id) => {
+  const existing = await prisma.barang.findUnique({
+    where: { barang_id: Number(barang_id) },
+    select: { barang_id: true },
+  });
+
+  if (!existing) {
+    return null;
+  }
+
+  const relations = await Promise.all([
+    prisma.boq_item.count({ where: { barang_id: Number(barang_id) } }),
+    prisma.surat_jalan_item.count({ where: { barang_id: Number(barang_id) } }),
+    prisma.stok_gudang.count({ where: { barang_id: Number(barang_id) } }),
+    prisma.stok_ledger.count({ where: { barang_id: Number(barang_id) } }),
+    prisma.permintaan_boq.count({ where: { barang_id: Number(barang_id) } }),
+  ]);
+
+  const [
+    boqItemCount,
+    suratJalanItemCount,
+    stokGudangCount,
+    stokLedgerCount,
+    permintaanBoqCount,
+  ] = relations;
+
+  const hasRelation =
+    boqItemCount > 0 ||
+    suratJalanItemCount > 0 ||
+    stokGudangCount > 0 ||
+    stokLedgerCount > 0 ||
+    permintaanBoqCount > 0;
+
+  if (hasRelation) {
+    return {
+      blocked: true,
+      counts: {
+        boq_item: boqItemCount,
+        surat_jalan_item: suratJalanItemCount,
+        stok_gudang: stokGudangCount,
+        stok_ledger: stokLedgerCount,
+        permintaan_boq: permintaanBoqCount,
+      },
+    };
+  }
+
+  await prisma.barang.delete({
+    where: { barang_id: Number(barang_id) },
+  });
+
+  return { blocked: false, deleted: true };
+};
+
 module.exports = {
   create,
   findByKode,
   findAll,
   update,
+  remove,
 };

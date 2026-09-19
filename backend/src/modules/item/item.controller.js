@@ -37,9 +37,19 @@ const update = async (req, res, next) => {
   }
 };
 
+const remove = async (req, res, next) => {
+  try {
+    await itemService.remove(req.params.id, req.user.id);
+    return response.success(res, "Barang berhasil dihapus.", null, 200);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   create,
   findAll,
   findByKode,
   update,
+  remove,
 };
