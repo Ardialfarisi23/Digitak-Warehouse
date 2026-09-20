@@ -1455,6 +1455,162 @@ function SupplierAktifModal({
 }
 
 // ---------------------------------------------------------------------------
+// Project Nonaktif Confirm Modal
+// ---------------------------------------------------------------------------
+
+function ProjectNonaktifModal({
+  open,
+  onClose,
+  record,
+  onSuccess,
+  onShowToast,
+}: {
+  open: boolean;
+  onClose: () => void;
+  record: GenericRecord | null;
+  onSuccess: () => void;
+  onShowToast: (message: string, type: "success" | "error") => void;
+}) {
+  const { put } = useApi();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleConfirm() {
+    if (!record) return;
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const projectId = record.project_id ?? record.id;
+      const url = new URL(`/api/projects/${projectId}/nonaktifkan`, baseUrl).toString();
+
+      const response = await put(url, {});
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.message || "Gagal menonaktifkan project.");
+      }
+
+      onSuccess();
+      onShowToast("Project berhasil dinonaktifkan.", "success");
+      onClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
+      setError(msg);
+      onShowToast(msg, "error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Nonaktifkan Project" widthClass="max-w-sm">
+      <p className="text-sm text-slate-600">
+        Nonaktifkan project <span className="font-semibold text-slate-800">{record ? String(record.nama_project || record.title || record.id) : ""}</span>?
+      </p>
+
+      {error && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-600">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      <div className="mt-5 flex justify-end gap-2">
+        <button onClick={onClose} className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+          Batal
+        </button>
+
+        <button onClick={handleConfirm} disabled={submitting} className="flex items-center gap-2 rounded-full bg-amber-600 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60">
+          {submitting && <Loader2 size={14} className="animate-spin" />}
+          Nonaktifkan
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Project Aktif Confirm Modal
+// ---------------------------------------------------------------------------
+
+function ProjectAktifModal({
+  open,
+  onClose,
+  record,
+  onSuccess,
+  onShowToast,
+}: {
+  open: boolean;
+  onClose: () => void;
+  record: GenericRecord | null;
+  onSuccess: () => void;
+  onShowToast: (message: string, type: "success" | "error") => void;
+}) {
+  const { put } = useApi();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleConfirm() {
+    if (!record) return;
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const projectId = record.project_id ?? record.id;
+      const url = new URL(`/api/projects/${projectId}/restore`, baseUrl).toString();
+
+      const response = await put(url, {});
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.message || "Gagal mengaktifkan kembali project.");
+      }
+
+      onSuccess();
+      onShowToast("Project berhasil diaktifkan kembali.", "success");
+      onClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
+      setError(msg);
+      onShowToast(msg, "error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Aktifkan Kembali Project" widthClass="max-w-sm">
+      <p className="text-sm text-slate-600">
+        Aktifkan kembali project <span className="font-semibold text-slate-800">{record ? String(record.nama_project || record.title || record.id) : ""}</span>?
+      </p>
+
+      {error && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-600">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      <div className="mt-5 flex justify-end gap-2">
+        <button onClick={onClose} className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+          Batal
+        </button>
+
+        <button onClick={handleConfirm} disabled={submitting} className="flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+          {submitting && <Loader2 size={14} className="animate-spin" />}
+          Aktifkan
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Content
 // ---------------------------------------------------------------------------
 
@@ -1496,6 +1652,8 @@ function MasterDataPageContent() {
   const [aktifRecord, setAktifRecord] = useState<GenericRecord | null>(null);
   const [supplierNonaktifRecord, setSupplierNonaktifRecord] = useState<GenericRecord | null>(null);
   const [supplierAktifRecord, setSupplierAktifRecord] = useState<GenericRecord | null>(null);
+  const [projectNonaktifRecord, setProjectNonaktifRecord] = useState<GenericRecord | null>(null);
+  const [projectAktifRecord, setProjectAktifRecord] = useState<GenericRecord | null>(null);
 
   // -------------------------------------------------------------------------
   // Toast state
@@ -2017,6 +2175,41 @@ function MasterDataPageContent() {
                                 </>
                               );
                             })()}
+
+                            {activeTab === "projects" && canDelete && (() => {
+                              const isActive = Boolean((record as any).status_aktif ?? true);
+
+                              return (
+                                <>
+                                  {isActive && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setProjectNonaktifRecord(record);
+                                      }}
+                                      title="Nonaktifkan"
+                                      className="rounded-lg p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600"
+                                    >
+                                      <Ban size={15} />
+                                    </button>
+                                  )}
+                                  {!isActive && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setProjectAktifRecord(record);
+                                      }}
+                                      title="Aktifkan"
+                                      className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                                    >
+                                      <RotateCcw size={15} />
+                                    </button>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                         </td>
                       </tr>
@@ -2089,6 +2282,10 @@ function MasterDataPageContent() {
           <SupplierNonaktifModal open={!!supplierNonaktifRecord} onClose={() => setSupplierNonaktifRecord(null)} record={supplierNonaktifRecord} onSuccess={fetchMasterData} onShowToast={showToast} />
 
           <SupplierAktifModal open={!!supplierAktifRecord} onClose={() => setSupplierAktifRecord(null)} record={supplierAktifRecord} onSuccess={fetchMasterData} onShowToast={showToast} />
+
+          <ProjectNonaktifModal open={!!projectNonaktifRecord} onClose={() => setProjectNonaktifRecord(null)} record={projectNonaktifRecord} onSuccess={fetchMasterData} onShowToast={showToast} />
+
+          <ProjectAktifModal open={!!projectAktifRecord} onClose={() => setProjectAktifRecord(null)} record={projectAktifRecord} onSuccess={fetchMasterData} onShowToast={showToast} />
         </>
       )}
 

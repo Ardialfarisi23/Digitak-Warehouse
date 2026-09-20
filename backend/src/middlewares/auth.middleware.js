@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 const AppError = require("../shared/errors");
 
 const { JWT_SECRET } = require("../config/env");
+const requirePasswordChange = require("./require-password-change.middleware");
 
 const authenticate = (req, res, next) => {
 
@@ -36,7 +37,7 @@ const authenticate = (req, res, next) => {
 
         req.user = decoded;
 
-        next();
+        requirePasswordChange(req, res, next);
 
     } catch (err) {
 

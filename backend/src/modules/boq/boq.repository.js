@@ -326,6 +326,7 @@ const getStats = async () => {
 
 const getAreas = async () => {
   const areas = await prisma.project.findMany({
+    where: { status_aktif: true },
     select: { area: true },
     distinct: ["area"],
     orderBy: { area: "asc" },

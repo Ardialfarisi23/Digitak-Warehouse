@@ -1,4 +1,5 @@
 ﻿const AppError = require("../shared/errors");
+const prisma = require("../config/prisma");
 
 const ROLE_ALIASES = {
   admin_general: "ADMIN",
@@ -17,14 +18,29 @@ const authorize = (...roles) => {
 
       const userRole = normalizeRole(req.user.role);
 
-      // DEBUG SEMENTARA — hapus setelah masalah 403 ketemu akar masalahnya
-      console.log("[DEBUG authorize]", req.method, req.originalUrl);
-      console.log("[DEBUG authorize] req.user lengkap =", JSON.stringify(req.user));
-      console.log("[DEBUG authorize] req.user.role mentah =", JSON.stringify(req.user.role));
-      console.log("[DEBUG authorize] userRole setelah normalize =", JSON.stringify(userRole));
-      console.log("[DEBUG authorize] roles yang diizinkan route ini =", roles);
-
       if (!roles.includes(userRole)) {
+        const actorId = req.user.id || req.user.user_id;
+        if (actorId) {
+          prisma.audit_log
+            .create({
+              data: {
+                entity_type: "access_attempt",
+                entity_id: BigInt(actorId),
+                aksi: "update",
+                actor_id: BigInt(actorId),
+                data_sebelum: null,
+                data_sesudah: {
+                  method: req.method,
+                  url: req.originalUrl,
+                  user_role: req.user.role,
+                  required_roles: roles,
+                  reason: "role_mismatch",
+                },
+              },
+            })
+            .catch(() => {});
+        }
+
         throw new AppError("Anda tidak memiliki hak akses.", 403);
       }
 

@@ -22,6 +22,7 @@ import {
   Eye,
   FileClock,
   Download,
+  AlertCircle,
 } from "lucide-react";
 
 import { useApi } from "@/lib/api";
@@ -148,12 +149,25 @@ export default function ReconciliationInventoryPage() {
   const [historyActor, setHistoryActor] = useState("");
   const [historyStartDate, setHistoryStartDate] = useState("");
   const [historyEndDate, setHistoryEndDate] = useState("");
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
     if (!user) return;
+
     const currentRole = mapRole(user.role);
+
     if (currentRole !== "admin") {
-      window.location.href = "/";
+      setToast({ message: "Anda tidak memiliki akses ke halaman ini.", type: "error" });
+
+      setTimeout(() => {
+        if (currentRole === "supervisor") {
+          window.location.href = "/dashboard/supervisor";
+        } else if (currentRole === "staff") {
+          window.location.href = "/staff/dashboard";
+        } else {
+          window.location.href = "/dashboard";
+        }
+      }, 800);
     }
   }, [user]);
 
@@ -1658,11 +1672,24 @@ export default function ReconciliationInventoryPage() {
              </div>
            </div>
          </div>
-       )}
-     </div>
-   </div>
-   );
-}
+        )}
+      </div>
+
+      {toast && (
+        <div
+          className={`fixed right-6 top-6 z-[130] flex items-center gap-3 rounded-xl border px-4 py-3 shadow-lg transition-all ${
+            toast.type === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border-rose-200 bg-rose-50 text-rose-800"
+          }`}
+        >
+          <AlertCircle size={17} className="shrink-0" />
+          <span className="text-[13px] font-semibold">{toast.message}</span>
+        </div>
+      )}
+    </div>
+    );
+  }
 
 function KpiCard({ title, value, description, icon: Icon, tone = "slate" }: { title: string; value: string; description: string; icon: any; tone?: "slate" | "rose" }) {
   return (
