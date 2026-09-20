@@ -55,7 +55,7 @@ function normalize(raw: ApiBoq): BoqPickerItem {
   };
 }
 
-export default function BoqPicker({ projectId, value, onSelect, placeholder = "Pilih BOQ / Tiket", className, disabled, tipe, statusFilter = "aktif" }: BoqPickerProps) {
+export default function BoqPicker({ projectId, value, onSelect, placeholder = "Pilih BOQ / Tiket", className, disabled, tipe, statusFilter }: BoqPickerProps) {
   const { get } = useApi();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
