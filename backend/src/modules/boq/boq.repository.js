@@ -66,7 +66,7 @@ const findById = async (boq_id) => {
 
 const ALLOWED_STATUS = new Set(["draft", "aktif", "selesai", "ditolak"]);
 
-const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sortBy = "created_at", sortOrder = "desc", status, projectId, area, warehouseId, tipe }) => {
+const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sortBy = "created_at", sortOrder = "desc", status, projectId, area, warehouseId }) => {
   const sanitizedPage = Math.max(parseInt(page, 10) || DEFAULT_PAGE, DEFAULT_PAGE);
   const sanitizedLimit = Math.max(parseInt(limit, 10) || DEFAULT_LIMIT, 1);
   const orderField = ALLOWED_SORT_FIELDS.includes(sortBy) ? sortBy : "created_at";
@@ -89,16 +89,7 @@ const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sor
     where.items = { some: { gudang_tujuan_id: Number(warehouseId) } };
   }
 
-  if (tipe && ["inbound", "outbound"].includes(tipe)) {
-    where.surat_jalans = {
-      some: {
-        tipe: tipe,
-        status: { not: "ditolak" },
-      },
-    };
-  }
-
-  if (search) {
+if (search) {
     where.OR = [{ tiket: { kode_tiket: { contains: search, mode: "insensitive" } } }, { tiket: { area: { contains: search, mode: "insensitive" } } }];
   }
 
