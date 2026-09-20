@@ -2,6 +2,23 @@ const prisma = require("../../config/prisma");
 const AppError = require("../../shared/errors");
 const reconciliationService = require("../reconciliation/reconciliation.service");
 
+const AUDIT_AKSI_VALUES = [
+  "create",
+  "update",
+  "delete",
+  "approve",
+  "receive_inbound",
+  "approve_inbound",
+  "approve_outbound",
+  "confirm_distributed",
+  "reject_inbound",
+  "reject_outbound",
+  "putaway",
+  "retrieve",
+  "create_inbound",
+  "create_outbound",
+];
+
 /**
  * Mengubah filter ID dari query string menjadi BigInt secara aman.
  * Mengembalikan null bila filter tidak dipakai ("all"/kosong/undefined),
@@ -514,9 +531,14 @@ const getAuditLogs = async (filters = {}) => {
   const where = {};
 
   if (search.trim()) {
+    const s = search.trim();
+    const matchedAksi = AUDIT_AKSI_VALUES.filter((aksi) =>
+      aksi.toLowerCase().includes(s.toLowerCase())
+    );
     where.OR = [
-      { entity_type: { contains: search, mode: "insensitive" } },
-      { actor: { nama: { contains: search, mode: "insensitive" } } },
+      { entity_type: { contains: s, mode: "insensitive" } },
+      { actor: { nama: { contains: s, mode: "insensitive" } } },
+      ...(matchedAksi.length > 0 ? [{ aksi: { in: matchedAksi } }] : []),
     ];
   }
 
@@ -629,9 +651,14 @@ const getAuditLogForExport = async (filters = {}) => {
   const where = {};
 
   if (search.trim()) {
+    const s = search.trim();
+    const matchedAksi = AUDIT_AKSI_VALUES.filter((aksi) =>
+      aksi.toLowerCase().includes(s.toLowerCase())
+    );
     where.OR = [
-      { entity_type: { contains: search, mode: "insensitive" } },
-      { actor: { nama: { contains: search, mode: "insensitive" } } },
+      { entity_type: { contains: s, mode: "insensitive" } },
+      { actor: { nama: { contains: s, mode: "insensitive" } } },
+      ...(matchedAksi.length > 0 ? [{ aksi: { in: matchedAksi } }] : []),
     ];
   }
 
@@ -1390,9 +1417,14 @@ const getReconciliationUploadLogs = async (filters = {}) => {
   const where = {};
 
   if (search.trim()) {
+    const s = search.trim();
+    const matchedAksi = AUDIT_AKSI_VALUES.filter((aksi) =>
+      aksi.toLowerCase().includes(s.toLowerCase())
+    );
     where.OR = [
-      { filename: { contains: search.trim(), mode: "insensitive" } },
-      { actor: { nama: { contains: search.trim(), mode: "insensitive" } } },
+      { entity_type: { contains: s, mode: "insensitive" } },
+      { actor: { nama: { contains: s, mode: "insensitive" } } },
+      ...(matchedAksi.length > 0 ? [{ aksi: { in: matchedAksi } }] : []),
     ];
   }
 

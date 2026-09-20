@@ -151,7 +151,6 @@ function TabAuditLog({ get }) {
     try {
       const params = new URLSearchParams();
       if (q.trim()) params.set("search", q.trim());
-      if (q.trim()) params.set("kodeTiket", q.trim());
       if (actorRole) params.set("actorRole", actorRole);
       if (aksi) params.set("action", aksi);
       if (startDate) params.set("startDate", startDate);
@@ -188,7 +187,6 @@ function TabAuditLog({ get }) {
     try {
       const params = new URLSearchParams();
       if (q.trim()) params.set("search", q.trim());
-      if (q.trim()) params.set("kodeTiket", q.trim());
       if (actorRole) params.set("actorRole", actorRole);
       if (aksi) params.set("action", aksi);
       if (startDate) params.set("startDate", startDate);
