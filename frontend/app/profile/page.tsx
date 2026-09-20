@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Camera, Upload, X, CheckCircle2, AlertCircle, Trash2, Mail, Phone, Briefcase, Building2, CalendarDays, Lock, Pencil, Eye, EyeOff } from "lucide-react";
+import { Camera, Upload, X, CheckCircle2, AlertCircle, Trash2, Mail, Phone, Briefcase, Building2, CalendarDays, Lock, Pencil } from "lucide-react";
 
 import { ProtectedRoute } from "@/lib/protected-route";
 import { useAuth } from "@/lib/auth-context";
@@ -12,6 +12,7 @@ import { useApi } from "@/lib/api";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { PhotoCropModal } from "@/components/profile/PhotoCropModal";
+import ChangePasswordForm from "@/components/auth/ChangePasswordForm";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -51,14 +52,7 @@ function ProfilePageContent() {
   const [editValue, setEditValue] = useState("");
 
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [isSavingPassword, setIsSavingPassword] = useState(false);
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordModalKey, setPasswordModalKey] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewUrlRef = useRef<string | null>(null);
@@ -317,54 +311,6 @@ function ProfilePageContent() {
     }
   };
 
-  const handleChangePassword = async () => {
-    setPasswordError(null);
-
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setPasswordError("Semua field password wajib diisi.");
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      setPasswordError("Password baru minimal 6 karakter.");
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setPasswordError("Konfirmasi password baru tidak cocok.");
-      return;
-    }
-
-    setIsSavingPassword(true);
-
-    try {
-      const res = await request(`${API_BASE}/api/auth/change-password`, {
-        method: "PUT",
-        body: JSON.stringify({
-          currentPassword,
-          newPassword,
-        }),
-      });
-      const json = await res.json();
-
-      if (!res.ok) {
-        throw new Error(json?.message || "Gagal mengganti password.");
-      }
-
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setIsPasswordModalOpen(false);
-      showToast("Password berhasil diperbarui.", "success");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Gagal mengganti password.";
-      setPasswordError(message);
-      showToast(message, "error");
-    } finally {
-      setIsSavingPassword(false);
-    }
-  };
-
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#FAF8F5]">
@@ -467,10 +413,10 @@ function ProfilePageContent() {
                     )}
                   </div>
 
-                  {(error || passwordError) && (
+                  {error && (
                     <div className="mt-4 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
                       <AlertCircle size={16} className="shrink-0" />
-                      <p>{error || passwordError}</p>
+                      <p>{error}</p>
                     </div>
                   )}
 
@@ -538,10 +484,7 @@ function ProfilePageContent() {
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      setCurrentPassword("");
-                      setNewPassword("");
-                      setConfirmPassword("");
-                      setPasswordError(null);
+                      setPasswordModalKey((prev) => prev + 1);
                       setIsPasswordModalOpen(true);
                     }}
                     className="rounded-xl border-stone-200 text-slate-700 hover:bg-slate-50"
@@ -611,106 +554,21 @@ function ProfilePageContent() {
               <button
                 type="button"
                 onClick={() => setIsPasswordModalOpen(false)}
-                disabled={isSavingPassword}
                 className="rounded-lg p-1 text-slate-400 hover:text-slate-600 transition-colors"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="text-[11px] font-medium text-slate-400">Password Lama</label>
-                <div className="relative mt-1">
-                  <input
-                    type={showCurrentPassword ? "text" : "password"}
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="w-full rounded-xl border border-stone-200 px-3 py-2 pr-10 text-sm text-slate-900 outline-none focus:border-slate-400"
-                    placeholder="Masukkan password lama"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowCurrentPassword((prev) => !prev)}
-                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition-colors"
-                  >
-                    {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label className="text-[11px] font-medium text-slate-400">Password Baru</label>
-                <div className="relative mt-1">
-                  <input
-                    type={showNewPassword ? "text" : "password"}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full rounded-xl border border-stone-200 px-3 py-2 pr-10 text-sm text-slate-900 outline-none focus:border-slate-400"
-                    placeholder="Masukkan password baru"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPassword((prev) => !prev)}
-                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition-colors"
-                  >
-                    {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label className="text-[11px] font-medium text-slate-400">Konfirmasi Password Baru</label>
-                <div className="relative mt-1">
-                  <input
-                    type={showConfirmPassword ? "text" : "password"}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full rounded-xl border border-stone-200 px-3 py-2 pr-10 text-sm text-slate-900 outline-none focus:border-slate-400"
-                    placeholder="Ulangi password baru"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword((prev) => !prev)}
-                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition-colors"
-                  >
-                    {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-              </div>
-
-              {passwordError && (
-                <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
-                  <AlertCircle size={16} className="shrink-0" />
-                  <p>{passwordError}</p>
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsPasswordModalOpen(false)}
-                  disabled={isSavingPassword}
-                  className="rounded-xl border-stone-200 text-slate-700 hover:bg-slate-50"
-                >
-                  Batal
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleChangePassword}
-                  disabled={isSavingPassword}
-                  className="rounded-xl bg-slate-900 text-white hover:bg-slate-800"
-                >
-                  {isSavingPassword ? (
-                    <>
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                      <span className="ml-1.5">Menyimpan...</span>
-                    </>
-                  ) : (
-                    "Simpan Password"
-                  )}
-                </Button>
-              </div>
-            </div>
+            <ChangePasswordForm
+              key={passwordModalKey}
+              mode="voluntary"
+              onSuccess={() => {
+                setIsPasswordModalOpen(false);
+                showToast("Password berhasil diperbarui.", "success");
+              }}
+              onCancel={() => setIsPasswordModalOpen(false)}
+            />
           </div>
         </div>
       )}

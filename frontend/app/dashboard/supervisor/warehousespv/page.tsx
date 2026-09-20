@@ -68,6 +68,7 @@ export default function SpvWarehouseLayoutPage() {
   const [statusFormValue, setStatusFormValue] = useState<string>("CUKUP");
   const [statusSaving, setStatusSaving] = useState(false);
   const [kapasitasMaksimumInput, setKapasitasMaksimumInput] = useState<string>("");
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   /* =========================================================
      AUTH CHECK (Supervisor & Admin)
@@ -77,8 +78,17 @@ export default function SpvWarehouseLayoutPage() {
     if (!user) return;
 
     const userRole = mapRole(user.role);
+
     if (userRole !== "supervisor" && userRole !== "admin") {
-      router.replace("/");
+      setToast({ message: "Anda tidak memiliki akses ke halaman ini.", type: "error" });
+
+      setTimeout(() => {
+        if (userRole === "staff") {
+          router.replace("/staff/dashboard");
+        } else {
+          router.replace("/dashboard");
+        }
+      }, 800);
     }
   }, [router, user]);
 
@@ -820,6 +830,19 @@ export default function SpvWarehouseLayoutPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+  
+      {toast && (
+        <div
+          className={`fixed right-6 top-6 z-[130] flex items-center gap-3 rounded-xl border px-4 py-3 shadow-lg transition-all ${
+            toast.type === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border-rose-200 bg-rose-50 text-rose-800"
+          }`}
+        >
+          <AlertCircle size={17} className="shrink-0" />
+          <span className="text-[13px] font-semibold">{toast.message}</span>
         </div>
       )}
     </div>

@@ -103,8 +103,20 @@ export default function WarehouseLayoutPage() {
   useEffect(() => {
     if (!user) return;
 
-    if (mapRole(user.role) !== "admin") {
-      router.replace("/");
+    const role = mapRole(user.role);
+
+    if (role !== "admin") {
+      setToast({ message: "Anda tidak memiliki akses ke halaman ini.", type: "error" });
+
+      setTimeout(() => {
+        if (role === "supervisor") {
+          router.replace("/dashboard/supervisor");
+        } else if (role === "staff") {
+          router.replace("/staff/dashboard");
+        } else {
+          router.replace("/dashboard");
+        }
+      }, 800);
     }
   }, [router, user]);
 

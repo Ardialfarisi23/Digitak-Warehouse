@@ -6,6 +6,7 @@ const authRepository = require("./auth.repository");
 const { toUserResponse } = require("./auth.mapper");
 const AppError = require("../../shared/errors");
 const { JWT_SECRET, JWT_REFRESH_SECRET, JWT_REFRESH_EXPIRES } = require("../../config/env");
+const prisma = require("../../config/prisma");
 
 const refreshTokenStore = new Map();
 
@@ -84,12 +85,23 @@ const changePassword = async (userId, currentPassword, newPassword) => {
     );
 
     if (!validPassword) {
-        throw new AppError("Password saat ini tidak sesuai.", 401);
+        throw new AppError("Password saat ini tidak sesuai.", 400);
     }
 
     const hashedNewPassword = await passwordHelper.hash(newPassword);
 
     await authRepository.updatePassword(user.user_id, hashedNewPassword);
+
+    await prisma.audit_log.create({
+        data: {
+            entity_type: "user_account",
+            entity_id: BigInt(user.user_id),
+            aksi: "update",
+            actor_id: BigInt(user.user_id),
+            data_sebelum: { must_change_password: true },
+            data_sesudah: { must_change_password: false },
+        },
+    });
 
     return {
         message: "Password berhasil diperbarui.",

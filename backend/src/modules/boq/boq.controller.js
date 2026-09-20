@@ -15,6 +15,7 @@ const transformBoq = (boq) => {
       projectId: String(boq.tiket.project.project_id),
       projectName: boq.tiket.project.nama_project,
       title: boq.tiket.project.title,
+      status_aktif: boq.tiket.project.status_aktif,
     } : null,
     area: boq.tiket?.area || "",
     status: boq.status,

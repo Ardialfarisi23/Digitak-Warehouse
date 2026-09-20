@@ -46,10 +46,30 @@ const remove = async (req, res, next) => {
   }
 };
 
+const nonaktifkan = async (req, res, next) => {
+  try {
+    const result = await projectService.nonaktifkan(req.params.project_id, req.user.id);
+    return response.success(res, "Project berhasil dinonaktifkan.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const restore = async (req, res, next) => {
+  try {
+    const result = await projectService.restore(req.params.project_id, req.user.id);
+    return response.success(res, "Project berhasil diaktifkan kembali.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   create,
   findAll,
   findByProjectId,
   update,
   remove,
+  nonaktifkan,
+  restore,
 };

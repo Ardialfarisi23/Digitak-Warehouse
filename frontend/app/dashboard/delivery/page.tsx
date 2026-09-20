@@ -29,6 +29,7 @@ interface SuratJalanRecord {
   project?: {
     nama_project: string;
     area?: string;
+    status_aktif?: boolean;
   };
   gudang_asal?: {
     nama_gudang: string;
@@ -92,12 +93,25 @@ export default function AdminDeliveryPage() {
   const [endDate, setEndDate] = useState("");
   const [warehouses, setWarehouses] = useState<{ gudang_id: number; nama_gudang: string; tipe?: string }[]>([]);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
     if (!user) return;
+
     const currentRole = mapRole(user.role);
+
     if (currentRole !== "admin") {
-      window.location.href = "/";
+      setToast({ message: "Anda tidak memiliki akses ke halaman ini.", type: "error" });
+
+      setTimeout(() => {
+        if (currentRole === "supervisor") {
+          window.location.href = "/dashboard/supervisor";
+        } else if (currentRole === "staff") {
+          window.location.href = "/staff/dashboard";
+        } else {
+          window.location.href = "/dashboard";
+        }
+      }, 800);
     }
   }, [user]);
 
@@ -425,7 +439,15 @@ export default function AdminDeliveryPage() {
                         </td>
 
                         <td className="px-6 py-4">
-                          <p className="font-medium text-slate-800">{record.project?.nama_project || "-"}</p>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-slate-800">{record.project?.nama_project || "-"}</span>
+                            {record.project?.status_aktif === false && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
+                                <AlertCircle size={10} />
+                                Project Nonaktif
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-slate-400">
                             {[record.project?.area, record.gudang_asal?.nama_gudang || record.gudang_tujuan?.nama_gudang].filter(Boolean).join(" • ") || "-"}
                           </p>
@@ -599,7 +621,20 @@ export default function AdminDeliveryPage() {
             display: none !important;
           }
         }
-      `}</style>
-    </div>
-  );
+       `}</style>
+
+    {toast && (
+      <div
+        className={`fixed right-6 top-6 z-[130] flex items-center gap-3 rounded-xl border px-4 py-3 shadow-lg transition-all ${
+          toast.type === "success"
+            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+            : "border-rose-200 bg-rose-50 text-rose-800"
+        }`}
+      >
+        <AlertCircle size={17} className="shrink-0" />
+        <span className="text-[13px] font-semibold">{toast.message}</span>
+      </div>
+    )}
+  </div>
+);
 }

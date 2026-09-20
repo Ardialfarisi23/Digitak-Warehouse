@@ -41,6 +41,7 @@ import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import BarangPicker, { type BarangPickerItem } from "@/components/BarangPicker";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import Image from "next/image";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -69,6 +70,7 @@ interface Project {
   desa_kelurahan?: string;
   kota_kabupaten?: string;
   provinsi?: string;
+  status_aktif?: boolean;
 }
 
 interface Warehouse {
@@ -272,6 +274,8 @@ export default function BoqPage() {
   const [exporting, setExporting] = useState(false);
 
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [confirmReopenOpen, setConfirmReopenOpen] = useState(false);
+  const [boqToReopen, setBoqToReopen] = useState<Boq | null>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -455,10 +459,16 @@ export default function BoqPage() {
     setConfirmSelesaiBoq(null);
   }
 
-  async function handleReopenBoq(boq: Boq) {
-    if (!window.confirm("Yakin ingin membuka kembali BOQ ini ke status Aktif?")) {
-      return;
-    }
+  function openReopenConfirm(boq: Boq) {
+    setBoqToReopen(boq);
+    setConfirmReopenOpen(true);
+  }
+
+  async function doReopenBoq() {
+    if (!boqToReopen) return;
+    const boq = boqToReopen;
+    setConfirmReopenOpen(false);
+    setBoqToReopen(null);
 
     try {
       const res = await put(`${API_BASE}/api/boqs/${boq.id}/status`, { status: "AKTIF" });
@@ -1059,7 +1069,15 @@ export default function BoqPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-slate-700">
-                          <div>{boq.project?.projectName || boq.project?.title || "-"}</div>
+                          <div className="flex items-center gap-2">
+                            <span>{boq.project?.projectName || boq.project?.title || "-"}</span>
+                            {boq.project?.status_aktif === false && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
+                                <AlertCircle size={10} />
+                                Project Nonaktif
+                              </span>
+                            )}
+                          </div>
                           <div className="text-xs text-slate-400">{boq.area}</div>
                         </td>
                         <td className="px-6 py-4">
@@ -1598,9 +1616,17 @@ export default function BoqPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs font-medium text-slate-400">Project</p>
-                    <p className="text-sm font-medium text-slate-800">
-                      {detailBoq.project?.projectName || detailBoq.project?.title || "-"}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-slate-800">
+                        {detailBoq.project?.projectName || detailBoq.project?.title || "-"}
+                      </span>
+                      {detailBoq.project?.status_aktif === false && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
+                          <AlertCircle size={10} />
+                          Project Nonaktif
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-slate-400">Area</p>
@@ -1880,16 +1906,16 @@ export default function BoqPage() {
                      </button>
                    )}
 
-                   {canManage && detailBoq.status === "selesai" && (
-                     <button
-                       type="button"
-                       onClick={() => handleReopenBoq(detailBoq)}
-                       className="flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-emerald-600"
-                     >
-                       <CheckCircle2 size={16} />
-                       Buka Kembali ke Aktif
-                     </button>
-                   )}
+                    {canManage && detailBoq.status === "selesai" && (
+                      <button
+                        type="button"
+                        onClick={() => openReopenConfirm(detailBoq)}
+                        className="flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-emerald-600"
+                      >
+                        <CheckCircle2 size={16} />
+                        Buka Kembali ke Aktif
+                      </button>
+                    )}
 
                    {canManage && detailBoq.status === "ditolak" && (
                     <button
@@ -2002,6 +2028,17 @@ export default function BoqPage() {
           </button>
         </div>
       )}
+      
+      <ConfirmModal
+        open={confirmReopenOpen}
+        onClose={() => setConfirmReopenOpen(false)}
+        onConfirm={doReopenBoq}
+        title="Buka Kembali ke Aktif"
+        description="Yakin ingin membuka kembali BOQ ini ke status Aktif?"
+        confirmText="Ya, Buka Kembali"
+        cancelText="Batal"
+        variant="default"
+      />
     </div>
   );
 }

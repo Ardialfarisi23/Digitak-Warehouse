@@ -38,4 +38,18 @@ router.delete(
   projectController.remove
 );
 
+router.patch(
+  "/:project_id/nonaktifkan",
+  authenticate,
+  authorize("ADMIN"),
+  projectController.nonaktifkan
+);
+
+router.patch(
+  "/:project_id/restore",
+  authenticate,
+  authorize("ADMIN"),
+  projectController.restore
+);
+
 module.exports = router;
