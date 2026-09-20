@@ -237,6 +237,7 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
     { key: "merk", label: "Merk", type: "text" },
     { key: "no_polisi", label: "No. Polisi", type: "text", required: true },
     { key: "kapasitas_angkut", label: "Kapasitas Angkut (kg)", type: "text" },
+    { key: "gudang_id", label: "Gudang Penempatan", type: "select", options: [] },
     { key: "keterangan", label: "Keterangan", type: "textarea" },
     { key: "foto", label: "Foto Kendaraan", type: "file" },
   ],
@@ -606,7 +607,7 @@ function FormModal({
         } else {
           initial[field.key] = "";
         }
-      } else if (field.key === "gudang_id" && tab === "personnel") {
+      } else if (field.key === "gudang_id" && (tab === "personnel" || tab === "vehicles")) {
         const direct = (record as any)?.gudang_id;
         const nested = (record as any)?.gudang?.gudang_id;
         initial[field.key] = direct ?? nested ?? "";
@@ -680,6 +681,26 @@ function FormModal({
       };
     }
 
+    if (open && tab === "vehicles") {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      let cancelled = false;
+
+      get(`${baseUrl}/api/warehouses?is_aktif=true`)
+        .then((res) => res.json())
+        .then((result) => {
+          if (cancelled) return;
+          const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+          setWarehouseOptions(list.map((w: any) => ({ value: Number(w.gudang_id), label: w.nama_gudang + (w.tipe === "dadakan" ? " (Dadakan)" : ""), tipe: w.tipe })));
+        })
+        .catch(() => {
+          if (!cancelled) setWarehouseOptions([]);
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
     if (open && tab === "warehouses") {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
       let cancelled = false;
@@ -711,6 +732,13 @@ function FormModal({
     }
 
     if (tab === "personnel") {
+      return fields.map((field) => {
+        if (field.key === "gudang_id") return { ...field, options: warehouseOptions };
+        return field;
+      });
+    }
+
+    if (tab === "vehicles") {
       return fields.map((field) => {
         if (field.key === "gudang_id") return { ...field, options: warehouseOptions };
         return field;
