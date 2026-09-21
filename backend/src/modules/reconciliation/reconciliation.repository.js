@@ -221,14 +221,6 @@ const getInventory = async (filters = {}, actor = null) => {
   return { data: rows };
 };
 
-const updateMosMitra = async (tiketId, mos) => {
-  return await prisma.tiket_material.update({
-    where: { tiket_id: BigInt(tiketId) },
-    data: { mos },
-  });
-};
-
 module.exports = {
   getInventory,
-  updateMosMitra,
 };
