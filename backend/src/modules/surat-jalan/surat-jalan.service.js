@@ -1036,6 +1036,14 @@ if (!Array.isArray(items) || items.length === 0) {
       status: newStatus,
     };
 
+    if (body.estimasi_tiba) {
+      updateData.estimasi_tiba = new Date(body.estimasi_tiba);
+    }
+
+    if (body.catatan_distribusi !== undefined) {
+      updateData.catatan_distribusi = body.catatan_distribusi || null;
+    }
+
     await suratJalanRepository.updateDeliveryStatus(id, updateData);
 
     if (actorId) {

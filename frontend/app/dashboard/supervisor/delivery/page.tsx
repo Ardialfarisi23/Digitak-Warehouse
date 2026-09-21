@@ -25,7 +25,7 @@ interface OutboundItem {
   serial_number?: string | null;
   kondisi?: string | null;
   catatan?: string | null;
-  barang?: { nama_barang?: string; kode_perangkat?: string; satuan_default?: { kode_satuan?: string } } | null;
+  barang?: { nama_barang?: string; kode_perangkat?: string; satuan_default?: { kode_satuan?: string }; kategori?: { is_kritis?: boolean } } | null;
   satuan?: { kode_satuan?: string } | null;
 }
 
@@ -422,6 +422,7 @@ export default function SupervisorApprovalOutboundPage() {
                   const kategori = r.kategori_approval || "manual_override";
                   const badgeClass = STATUS_BADGE[kategori] || STATUS_BADGE.manual_override;
                   const label = STATUS_LABEL[kategori] || "Manual Outbound";
+                  const isKritis = r.items?.some((item) => item.barang?.kategori?.is_kritis === true);
 
                   return (
                     <tr key={r.surat_jalan_id} className="hover:bg-slate-50/50 transition">
@@ -438,25 +439,32 @@ export default function SupervisorApprovalOutboundPage() {
                         {r.gudang_asal?.nama_gudang || "-"}
                       </td>
                       <td className="px-4 py-3">
-                        {activeTab === "history" ? (
-                          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-                            r.status === "disetujui"
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : r.status === "ditolak"
-                                ? "bg-rose-50 text-rose-700 border-rose-200"
-                                : badgeClass
-                          }`}>
-                            {r.status === "disetujui"
-                              ? "Disetujui"
-                              : r.status === "ditolak"
-                                ? "Ditolak"
-                                : label}
-                          </span>
-                        ) : (
-                          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badgeClass}`}>
-                            {label}
-                          </span>
-                        )}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {activeTab === "history" ? (
+                            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                              r.status === "disetujui"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : r.status === "ditolak"
+                                  ? "bg-rose-50 text-rose-700 border-rose-200"
+                                  : badgeClass
+                            }`}>
+                              {r.status === "disetujui"
+                                ? "Disetujui"
+                                : r.status === "ditolak"
+                                  ? "Ditolak"
+                                  : label}
+                            </span>
+                          ) : (
+                            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badgeClass}`}>
+                              {label}
+                            </span>
+                          )}
+                          {isKritis && (
+                            <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">
+                              Kritis
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-2">

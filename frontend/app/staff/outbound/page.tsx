@@ -33,6 +33,7 @@ interface SuratJalanItem {
   item_id: number;
   nama_barang?: string;
   qty: number;
+  barang?: { kategori?: { is_kritis?: boolean } };
 }
 
 interface SuratJalan {
@@ -162,6 +163,7 @@ export default function SuratJalanListPage() {
                   month: "long",
                   year: "numeric",
                 });
+                const isKritis = sj.items.some((item) => item.barang?.kategori?.is_kritis === true);
 
                 return (
                   <tr
@@ -172,6 +174,11 @@ export default function SuratJalanListPage() {
                       <span className="flex items-center gap-2">
                         <FileText size={16} className="text-[#E8632C]" />
                         {sj.nomor_surat_jalan}
+                        {isKritis && (
+                          <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">
+                            Kritis
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-gray-600">{tujuanText}</td>

@@ -395,6 +395,8 @@ model surat_jalan {
   tanggal_disetujui     DateTime?
   tanggal_digenerate    DateTime?
   tanggal_diterima      DateTime?
+  estimasi_tiba         DateTime?
+  catatan_distribusi    String?            @db.Text
   surat_jalan_url       String?
   catatan               String?
   project_id            BigInt?
