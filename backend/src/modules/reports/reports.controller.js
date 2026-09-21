@@ -352,18 +352,17 @@ const uploadReconciliationFile = async (req, res, next) => {
         const kodeTiket = row["Kode Tiket"] || row["kode_tiket"] || row["KODE_TIKET"];
         const mos = Number(row["MOS"] || row["mos"] || row["Material on Site"] || 0);
         const used = Number(row["Used"] || row["used"] || 0);
-        const usedTerpasang = Number(row["Used Terpasang"] || row["used_terpasang"] || row["Qty Terpasang"] || row["Terpasang"] || 0);
         const namaBarang = row["Nama Barang"] || row["nama_barang"] || row["Barang"] || null;
         const kondisi = row["Kondisi"] || row["kondisi"] || row["KONDISI"] || null;
 
         if (!kodeTiket) {
-          failed.push({ row: i + 2, mos, used, usedTerpasang, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak ditemukan" });
+          failed.push({ row: i + 2, mos, used, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak ditemukan" });
           continue;
         }
 
         const tiket = tiketMap.get(String(kodeTiket).trim());
         if (!tiket) {
-          failed.push({ row: i + 2, kode_tiket: kodeTiket, mos, used, usedTerpasang, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak terdaftar" });
+          failed.push({ row: i + 2, kode_tiket: kodeTiket, mos, used, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak terdaftar" });
           continue;
         }
 
@@ -376,7 +375,6 @@ const uploadReconciliationFile = async (req, res, next) => {
           nama_barang: namaBarang,
           mos,
           used,
-          used_terpasang: usedTerpasang,
           kondisi,
         });
       }
@@ -484,7 +482,6 @@ const confirmReconciliationUpload = async (req, res, next) => {
             project_id: true,
             mos: true,
             used: true,
-            used_terpasang: true,
           },
         });
 
@@ -506,7 +503,6 @@ const confirmReconciliationUpload = async (req, res, next) => {
         const dataSebelum = {
           mos: tiket.mos ? Number(tiket.mos) : null,
           used: tiket.used ? Number(tiket.used) : null,
-          used_terpasang: tiket.used_terpasang ? Number(tiket.used_terpasang) : null,
         };
 
         const existingLaporan = await tx.laporan_mitra.findFirst({
@@ -562,7 +558,6 @@ const confirmReconciliationUpload = async (req, res, next) => {
             kode_tiket: tiket.kode_tiket,
             mos: item.mos,
             used: item.used,
-            used_terpasang: item.used_terpasang,
           });
         } catch (insertErr) {
           await tx.reconciliation_upload_detail.create({
@@ -588,7 +583,6 @@ const confirmReconciliationUpload = async (req, res, next) => {
             data_sesudah: {
               mos: item.mos,
               used: item.used,
-              used_terpasang: item.used_terpasang,
               source_file: filename,
               jenis_laporan: jenisLaporan,
             },
