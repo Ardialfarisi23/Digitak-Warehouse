@@ -1073,6 +1073,7 @@ function TabRiwayatStok({ get }) {
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50">
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tanggal</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Jenis</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Jenis Transaksi</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
@@ -1089,18 +1090,18 @@ function TabRiwayatStok({ get }) {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4" colSpan={11}>
+                    <td className="px-6 py-4" colSpan={12}>
                       <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                     </td>
                   </tr>
                 ))
               ) : error ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={11}>{error}</td>
+                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={12}>{error}</td>
                 </tr>
               ) : data.length === 0 ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={11}>
+                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={12}>
                     Tidak ada pergerakan stok yang cocok dengan filter ini.
                   </td>
                 </tr>
@@ -1112,7 +1113,10 @@ function TabRiwayatStok({ get }) {
                     onClick={() => setDetailTiket(r)}
                   >
                     <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400">
-                      {new Date(r.waktu_mutasi).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}
+                      {new Date(r.waktu_mutasi).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "medium" })}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-xs font-medium text-slate-600">
+                      {r.jenis_mutasi === "in" ? "masuk" : r.jenis_mutasi === "out" ? "keluar" : r.jenis_mutasi || "-"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap font-mono font-semibold text-orange-500">
                       {r.kode_tiket || "-"}
