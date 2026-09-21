@@ -37,7 +37,7 @@ Setiap fitur/aturan diberi penanda agar jelas posisinya:
 
 | # | Area | Perubahan | Status |
 |---|---|---|---|
-| 1 | Audit Log | Semua aktivitas semua user tercatat (comprehensive logging); filter `kode_tiket` menelusuri seluruh entity; aksi `update_mos_mitra` tidak lagi ditulis oleh sistem, nilai enum dipertahankan sementara agar baris audit_log lama tetap valid | DITETAPKAN |
+| 1 | Audit Log | Semua aktivitas semua user tercatat (comprehensive logging); filter `kode_tiket` menelusuri seluruh entity; aksi `update_mos_mitra` tidak ada di enum audit_aksi di DB dan tidak lagi ditulis oleh sistem | DITETAPKAN |
 | 2 | Hak akses gudang | Konsep `gudang_ids` diganti aturan berbasis role + penugasan gudang | DITETAPKAN |
 | 3 | Keamanan akun | `must_change_password` menjadi fitur resmi | DITETAPKAN |
 | 4 | Status Surat Jalan | 8 status dipertahankan, wajib didokumentasikan state transition-nya | VALIDASI |
@@ -46,7 +46,7 @@ Setiap fitur/aturan diberi penanda agar jelas posisinya:
 | 7 | Used | Dari *automatic calculation* berbasis outbound menjadi *reported actual usage* dari laporan mitra | DITETAPKAN |
 | 8 | Laporan Mitra | Entity `laporan_mitra` baru, mekanisme *append* (bukan overwrite), enum `jenis_laporan`, format Excel 5 kolom, template Excel aktif, 1 laporan/hari | DITETAPKAN |
 | 9 | Notifikasi | Notifikasi outbound dan reject dipertahankan; trigger/penerima harus didokumentasikan | DITETAPKAN |
-| 10 | Field legacy | `used_terpasang` (tiket_material & reconciliation_upload_detail) dihapus dari desain aktif | DEPRECATED |
+| 10 | Field legacy | `tiket_material.used_terpasang` [DIPENSIUNKAN] dihapus dari desain aktif; `reconciliation_upload_detail` tidak memiliki kolom ini | DEPRECATED |
 | 11 | Selisih | `Selisih = MOS Sistem − MOS Mitra` dengan sumber nilai mengikuti arsitektur baru | DITETAPKAN |
 | 12 | Remains | Formula belum dikunci; wajib tracing | VALIDASI |
 | 13 | Gudang Dadakan | Disesuaikan dengan keputusan implementasi terbaru (lihat 6.7) | DITETAPKAN |
@@ -170,7 +170,7 @@ reconciliation_upload_log ── reconciliation_upload_detail
 | `used` | Decimal | Nilai Used hasil refresh dari `laporan_mitra` aktif |
 | `created_by` | BigInt FK | User pembuat |
 
-`mos` dan `used` adalah nilai turunan (cache) dan **bukan** tempat penulisan langsung. Field `used_terpasang` **[DEPRECATED]**.
+`mos` dan `used` adalah nilai turunan (cache) dan **bukan** tempat penulisan langsung. Field `used_terpasang` **[DIPENSIUNKAN, dihapus pada migrasi berikutnya]**.
 
 ## 4.3 `boq`
 
@@ -412,7 +412,7 @@ Aktivitas yang dicatat: login/logout; membuat, mengubah, menghapus/menonaktifkan
 Dapat ditelusuri berdasarkan: user/actor, waktu, aktivitas/aksi, entity terkait, dan informasi pendukung.
 
 - Filter Audit Log: rentang tanggal, `userId`, `entity_type`, `aksi`, dan **`kode_tiket` yang menelusuri seluruh entity terkait tiket** (BOQ, inbound, outbound, rekonsiliasi, laporan mitra), bukan hanya `entity_type = reconciliation`.
-- `update_mos_mitra` **[DIPENSIUNKAN]**: tidak lagi ditulis oleh sistem; nilai enum dipertahankan sementara agar baris audit_log lama tetap valid. Sisa kode/enum/service dibersihkan.
+- `update_mos_mitra` **[DIPENSIUNKAN]**: tidak ada di enum audit_aksi di DB dan tidak lagi ditulis oleh sistem. Sisa kode/enum/service dibersihkan.
 - Log tidak dapat diubah/dihapus oleh peran apa pun; koreksi lewat transaksi baru.
 
 ## 6.10 Manajemen Pengguna **[AKTUAL + DITETAPKAN]**
@@ -537,9 +537,8 @@ Bahasa UI: seluruhnya Bahasa Indonesia.
 
 | Item | Tindakan |
 |---|---|
-| Action `update_mos_mitra` (enum, service, referensi) | Dipensiunkan; tidak lagi ditulis oleh sistem. Nilai enum dipertahankan sementara agar baris audit_log lama tetap valid. |
-| Field `tiket_material.used_terpasang` | Legacy; bersihkan lewat migration setelah dipastikan tanpa dependency |
-| Field `reconciliation_upload_detail.used_terpasang` | Hapus; controller yang mencoba menulisnya dibersihkan (schema memang tidak memiliki field ini) |
+| Action `update_mos_mitra` (enum, service, referensi) | Dipensiunkan; tidak ada di enum audit_aksi di DB dan tidak lagi ditulis oleh sistem. |
+| Field `tiket_material.used_terpasang` | DIPENSIUNKAN, dihapus pada migrasi berikutnya |
 | Penambahan `used` otomatis di `approveOutbound()` | Hapus |
 | Penambahan `mos` otomatis saat approve inbound | Hapus dari alur rekonsiliasi |
 | Endpoint overwrite `PUT /api/reconciliation/:tiketId/mos-mitra` | Putuskan: pensiun atau arahkan ke `laporan_mitra` |
