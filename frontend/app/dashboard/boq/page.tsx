@@ -658,6 +658,11 @@ export default function BoqPage() {
       setModalOpen(false);
       fetchBoqs();
       fetchSummary();
+      if (modalMode === "create") {
+        setToast({ message: "BOQ berhasil disimpan sebagai Draft.", type: "success" });
+      } else {
+        setToast({ message: "Perubahan BOQ berhasil disimpan.", type: "success" });
+      }
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.");
     } finally {
