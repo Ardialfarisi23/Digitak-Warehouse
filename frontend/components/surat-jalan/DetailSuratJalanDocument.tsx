@@ -42,6 +42,7 @@ export interface DetailSuratJalanData {
   alamat_lapangan?: string | null;
   tipe_pengirim?: string | null;
   pengirim_eksternal_nama?: string | null;
+  supplier?: { kode?: string; nama?: string } | null;
   [key: string]: unknown;
 }
 
@@ -140,7 +141,10 @@ export function DetailSuratJalanDocument({
     data.tipe_pengirim === "internal"
       ? namaGudangAsal
       : data.tipe_pengirim === "external"
-        ? tampilkan(data.pengirim_eksternal_nama)
+        ? tampilkan(
+            data.pengirim_eksternal_nama ||
+              (data.supplier ? `${data.supplier.kode ?? ""} - ${data.supplier.nama ?? "-"}` : null)
+          )
         : namaGudangAsal;
 
   const pengirimBadge =
