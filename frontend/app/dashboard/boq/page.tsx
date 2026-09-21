@@ -828,11 +828,6 @@ export default function BoqPage() {
     return form.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
   }, [form.items]);
 
-  const warehouseCount = useMemo(() => {
-    const set = new Set(form.items.map((item) => item.destinationWarehouseId).filter(Boolean));
-    return set.size;
-  }, [form.items]);
-
   const filteredItems = useMemo(() => {
     if (!itemSearch.trim()) return items;
     const q = itemSearch.toLowerCase();
@@ -1549,7 +1544,6 @@ export default function BoqPage() {
                           {form.items.filter((i) => i.itemCode && i.itemName && i.quantity > 0).length}
                         </span>
                         <span>Total Qty: {totalQty}</span>
-                        <span>Gudang Tujuan: {warehouseCount}</span>
                       </div>
                     </div>
                   )}
