@@ -8,7 +8,7 @@ import { CheckCircle2, ArrowLeft, Printer, Eye, X, FileText } from "lucide-react
 import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
 import { Document, Page, pdfjs } from "react-pdf";
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.js", import.meta.url).toString();
 
 export default function SupervisorApprovalInboundDetailPage() {
   const params = useParams<{ id: string }>();
