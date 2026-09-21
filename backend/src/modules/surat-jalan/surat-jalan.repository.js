@@ -12,6 +12,11 @@ const baseInclude = {
           kode_zona: true,
           nama_zona: true,
           tipe_zona: true,
+          gudang: {
+            select: {
+              nama_gudang: true,
+            },
+          },
         },
       },
       barang: {
