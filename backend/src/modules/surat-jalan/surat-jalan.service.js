@@ -822,6 +822,11 @@ if (!Array.isArray(items) || items.length === 0) {
           },
         });
 
+        await tx.surat_jalan_item.update({
+          where: { item_id: suratItem.item_id },
+          data: { zona_id: zonaId },
+        });
+
         await capacityService.recalculateZonaStatus(tx, gudangTujuanId, zonaId);
       }
 
