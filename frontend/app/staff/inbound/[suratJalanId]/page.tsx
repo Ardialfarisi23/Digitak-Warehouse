@@ -582,18 +582,18 @@ export default function InboundDetailPage() {
                       ))}
                      </select>
                   </td>
-                  <td className="py-3 pr-4 text-xs text-gray-600">
-                    {item.zona ? (
-                      <span className="font-medium text-gray-800">
-                        {item.zona.nama_zona || item.zona.kode_zona}
-                        {item.zona.tipe_zona ? (
-                          <span className="ml-1 text-gray-400">— {item.zona.tipe_zona}</span>
-                        ) : null}
-                      </span>
-                    ) : (
-                      <span className="text-gray-300">—</span>
-                    )}
-                  </td>
+                   <td className="py-3 pr-4 text-xs text-gray-600">
+                     {item.zona ? (
+                       <span className="font-medium text-gray-800">
+                         {item.zona.gudang?.nama_gudang ?? "-"} / {item.zona.nama_zona || item.zona.kode_zona}
+                         {item.zona.tipe_zona ? (
+                           <span className="ml-1 text-gray-400">— {item.zona.tipe_zona}</span>
+                         ) : null}
+                       </span>
+                     ) : (
+                       <span className="text-gray-500">Belum ditempatkan</span>
+                     )}
+                   </td>
                   <td className="py-3">
                     {item.qtyDiterima === 0 ? (
                       <span className="text-xs text-gray-300">—</span>
