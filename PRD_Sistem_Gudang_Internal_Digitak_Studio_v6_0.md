@@ -37,7 +37,7 @@ Setiap fitur/aturan diberi penanda agar jelas posisinya:
 
 | # | Area | Perubahan | Status |
 |---|---|---|---|
-| 1 | Audit Log | Semua aktivitas semua user tercatat (comprehensive logging); filter `kode_tiket` menelusuri seluruh entity; `update_mos_mitra` dihapus | DITETAPKAN |
+| 1 | Audit Log | Semua aktivitas semua user tercatat (comprehensive logging); filter `kode_tiket` menelusuri seluruh entity; aksi `update_mos_mitra` tidak lagi ditulis oleh sistem, nilai enum dipertahankan sementara agar baris audit_log lama tetap valid | DITETAPKAN |
 | 2 | Hak akses gudang | Konsep `gudang_ids` diganti aturan berbasis role + penugasan gudang | DITETAPKAN |
 | 3 | Keamanan akun | `must_change_password` menjadi fitur resmi | DITETAPKAN |
 | 4 | Status Surat Jalan | 8 status dipertahankan, wajib didokumentasikan state transition-nya | VALIDASI |
@@ -370,7 +370,7 @@ Halaman Rekonsiliasi Inventory berdiri sendiri: kolom Project, Kode Tiket, Kode 
 - **Upload Excel:** template 5 kolom (5.6) → preview → cek duplikat (5.5) → konfirmasi → simpan ke `laporan_mitra` → refresh MOS & Used → catat di `reconciliation_upload_log/detail` dan `audit_log`.
 - **Riwayat laporan:** daftar `laporan_mitra` dengan filter tiket, PIC, tanggal, jenis laporan.
 
-Endpoint manual lama `PUT /api/reconciliation/:tiketId/mos-mitra` (overwrite langsung) bertentangan dengan mekanisme *append* dan perlu diputuskan: dipensiunkan atau diarahkan menulis ke `laporan_mitra` **[VALIDASI]**.
+Endpoint `PUT /api/reconciliation/:tiketId/mos-mitra` **DIPENSIUNKAN**. Update MOS kini hanya lewat `laporan_mitra` (upload Excel atau input manual). **[DITETAPKAN]**
 
 ## 6.7 Gudang Dadakan **[DITETAPKAN — menyesuaikan implementasi terbaru]**
 
@@ -412,7 +412,7 @@ Aktivitas yang dicatat: login/logout; membuat, mengubah, menghapus/menonaktifkan
 Dapat ditelusuri berdasarkan: user/actor, waktu, aktivitas/aksi, entity terkait, dan informasi pendukung.
 
 - Filter Audit Log: rentang tanggal, `userId`, `entity_type`, `aksi`, dan **`kode_tiket` yang menelusuri seluruh entity terkait tiket** (BOQ, inbound, outbound, rekonsiliasi, laporan mitra), bukan hanya `entity_type = reconciliation`.
-- `update_mos_mitra` **[DEPRECATED]**: tidak dimasukkan ke enum `audit_aksi`; sisa kode/enum/service dibersihkan.
+- `update_mos_mitra` **[DIPENSIUNKAN]**: tidak lagi ditulis oleh sistem; nilai enum dipertahankan sementara agar baris audit_log lama tetap valid. Sisa kode/enum/service dibersihkan.
 - Log tidak dapat diubah/dihapus oleh peran apa pun; koreksi lewat transaksi baru.
 
 ## 6.10 Manajemen Pengguna **[AKTUAL + DITETAPKAN]**
@@ -537,7 +537,7 @@ Bahasa UI: seluruhnya Bahasa Indonesia.
 
 | Item | Tindakan |
 |---|---|
-| Action `update_mos_mitra` (enum, service, referensi) | Hapus; jangan masuk enum `audit_aksi` |
+| Action `update_mos_mitra` (enum, service, referensi) | Dipensiunkan; tidak lagi ditulis oleh sistem. Nilai enum dipertahankan sementara agar baris audit_log lama tetap valid. |
 | Field `tiket_material.used_terpasang` | Legacy; bersihkan lewat migration setelah dipastikan tanpa dependency |
 | Field `reconciliation_upload_detail.used_terpasang` | Hapus; controller yang mencoba menulisnya dibersihkan (schema memang tidak memiliki field ini) |
 | Penambahan `used` otomatis di `approveOutbound()` | Hapus |
@@ -554,7 +554,7 @@ Bahasa UI: seluruhnya Bahasa Indonesia.
 | 2 | Definisi teknis MOS Sistem | Sumber transaksi dan formula final dari kode |
 | 3 | 8 status Surat Jalan | Validasi pemakaian, pelaku, dan state transition; khususnya `digenerate` dan `draft_diajukan` |
 | 4 | Agregasi `laporan_mitra` | Akumulasi seluruh laporan aktif vs nilai terbaru per barang |
-| 5 | Endpoint `mos-mitra` manual | Pensiun atau alihkan |
+| 5 | Endpoint `mos-mitra` manual | DIPENSIUNKAN; update MOS kini hanya lewat `laporan_mitra` |
 | 6 | Penerima notifikasi reject | Verifikasi per jenis transaksi |
 | 7 | Pembatasan akses saat password awal belum diganti | Terapkan di middleware atau tidak |
 | 8 | Peran input Laporan Mitra | Admin saja atau juga Supervisor |
@@ -569,7 +569,7 @@ Bahasa UI: seluruhnya Bahasa Indonesia.
 
 **Prioritas Tinggi — Penyelarasan implementasi**
 
-1. Hapus `update_mos_mitra`, `used_terpasang`, dan auto-increment `used`/`mos` legacy.
+1. Endpoint `PUT /api/reconciliation/:tiketId/mos-mitra` sudah dipensiunkan; update MOS kini hanya lewat `laporan_mitra`. Aksi `update_mos_mitra` tidak lagi ditulis oleh sistem, nilai enum dipertahankan sementara.
 2. Implementasi `laporan_mitra` (ERD, schema, service, UI manual/Excel, template, deteksi duplikat).
 3. Aturan akses gudang berbasis role dan `must_change_password`.
 4. Perluasan filter `kode_tiket` di Audit Log dan pencatatan aktivitas seluruh user.
