@@ -362,7 +362,9 @@ export default function InboundListPage() {
     selectedProjectId &&
     selectedBoqId &&
     selectedAsalTipe &&
-    (selectedAsalTipe === "internal" || selectedSupplierId || pengirimEksternalNama.trim()) &&
+    (selectedAsalTipe === "internal"
+      ? selectedGudangAsalId
+      : selectedSupplierId || pengirimEksternalNama.trim()) &&
     modalItems.length > 0 &&
     modalItems.every((row) => row.barang_id && row.qty > 0 && row.satuan_id);
 
@@ -690,7 +692,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
               >
                 <option value="">Pilih gudang asal</option>
                 {warehouseOptions.map((w) => (
-                  <option key={w.gudang_id} value={w.gudang_id}>
+                  <option key={w.gudang_id} value={String(w.gudang_id)}>
                     {w.nama_gudang}
                   </option>
                 ))}
