@@ -441,7 +441,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
 
     let successCount = 0;
     let failedCount = 0;
-    let duplicateCount = 0;
+    let replacedCount = 0;
     const updatedTikets = [];
     const affectedTiketIds = new Set();
 
@@ -519,18 +519,11 @@ const confirmReconciliationUpload = async (req, res, next) => {
         });
 
         if (existingLaporan) {
-          await tx.reconciliation_upload_detail.create({
-            data: {
-              upload_id: uploadLog.upload_id,
-              kode_tiket: tiket.kode_tiket,
-              mos: Number(item.mos || 0),
-              used: Number(item.used || 0),
-              status: "gagal",
-              reason: `duplikat: Laporan untuk ${tiket.kode_tiket}, tanggal ${tanggal_laporan || new Date().toISOString().slice(0, 10)}, PIC ${pic_mitra || "-"} sudah pernah diinput sebelumnya (ID laporan: ${existingLaporan.laporan_id}).`,
-            },
+          await tx.laporan_mitra.update({
+            where: { laporan_id: existingLaporan.laporan_id },
+            data: { is_aktif: false },
           });
-          duplicateCount++;
-          continue;
+          replacedCount++;
         }
 
         try {
@@ -632,7 +625,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
 
     return response.success(res, "Rekonsiliasi berhasil disimpan.", {
       updatedCount: updatedTikets.length,
-      duplicateCount,
+      replacedCount,
       updatedTikets,
       uploadedBy: actor.nama,
       filename,
