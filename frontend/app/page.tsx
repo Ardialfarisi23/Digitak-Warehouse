@@ -1,9 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import {
   Eye,
@@ -22,12 +22,6 @@ import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
-import { Plus_Jakarta_Sans } from "next/font/google";
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
 // ============================================================
 // LOGIN VALIDATION
@@ -164,7 +158,7 @@ export default function Home() {
 
   return (
     <div
-      className={`min-h-screen w-full bg-[#FAF8F5] flex flex-col justify-between p-6 lg:p-12 text-slate-800 ${plusJakartaSans.className}`}
+      className={`min-h-screen w-full bg-[#FAF8F5] flex flex-col justify-between p-6 lg:p-12 text-slate-800`}
     >
       <div className="mx-auto flex w-full max-w-7xl flex-col justify-center gap-12 lg:flex-row lg:items-center my-auto">
 

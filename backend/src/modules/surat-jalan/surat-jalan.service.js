@@ -526,6 +526,10 @@ const confirmDistributed = async (id, actorId) => {
     throw new AppError("Surat Jalan outbound harus disetujui terlebih dahulu.", 400);
   }
 
+  if (shipment.picking_selesai === false) {
+    throw new AppError("Picking belum selesai. Selesaikan proses picking terlebih dahulu sebelum melakukan distribusi.", 400);
+  }
+
   await prisma.$transaction(async (tx) => {
     await suratJalanRepository.updateStatus(id, "diterima_didistribusikan", tx);
 
@@ -822,6 +826,11 @@ if (!Array.isArray(items) || items.length === 0) {
           },
         });
 
+        await tx.surat_jalan_item.update({
+          where: { item_id: suratItem.item_id },
+          data: { zona_id: zonaId },
+        });
+
         await capacityService.recalculateZonaStatus(tx, gudangTujuanId, zonaId);
       }
 
@@ -889,9 +898,12 @@ if (!Array.isArray(items) || items.length === 0) {
       throw new AppError("Daftar item retrieval kosong.", 400);
     }
 
-    await prisma.$transaction(async (tx) => {
-      const gudangAsalId = Number(shipment.gudang_asal_id);
+    const gudangAsalId = Number(shipment.gudang_asal_id);
+    if (!shipment.gudang_asal_id || Number.isNaN(gudangAsalId) || gudangAsalId <= 0) {
+      throw new AppError("Gudang asal tidak valid pada surat jalan ini. Silakan hubungi admin.", 400);
+    }
 
+    await prisma.$transaction(async (tx) => {
       for (const item of items) {
         const qty = Number(item.qty || 0);
         const zonaId = item.zona_id ? Number(item.zona_id) : null;
@@ -953,11 +965,10 @@ if (!Array.isArray(items) || items.length === 0) {
           },
         });
 
-        // Hook recalculateZonaStatus: retrieve mengurangi stok di zona spesifik.
         await capacityService.recalculateZonaStatus(tx, gudangAsalId, zonaId);
       }
 
-      await suratJalanRepository.updateStatus(suratJalanId, "disetujui", tx);
+      await suratJalanRepository.updateStatus(suratJalanId, "disetujui", { picking_selesai: true }, tx);
 
       if (actorId) {
         await suratJalanRepository.createApprovalLog(suratJalanId, actorId, "outbound_approval", "disetujui", null, tx);
@@ -974,35 +985,39 @@ if (!Array.isArray(items) || items.length === 0) {
       }
     });
 
-    const actor = await prisma.user_account.findUnique({
-      where: { user_id: BigInt(actorId) },
-      select: { nama: true, role: true },
-    });
+    try {
+      const actor = await prisma.user_account.findUnique({
+        where: { user_id: BigInt(actorId) },
+        select: { nama: true, role: true },
+      });
 
-    const gudangIds = [gudangAsalId];
+      const gudangIds = [gudangAsalId];
 
-    const sendNotification = async (users, link) => {
-      if (!Array.isArray(users) || users.length === 0) return;
-      try {
-        await notificationService.create({
-          userId: users,
-          type: "success",
-          title: "Retrieval Selesai",
-          message: `Retrieval untuk surat jalan ${shipment.nomor_surat_jalan} telah selesai diproses.`,
-          link,
-        });
-      } catch (notifErr) {
-        console.error("Gagal membuat notifikasi retrieval:", notifErr);
-      }
-    };
+      const sendNotification = async (users, link) => {
+        if (!Array.isArray(users) || users.length === 0) return;
+        try {
+          await notificationService.create({
+            userId: users,
+            type: "success",
+            title: "Retrieval Selesai",
+            message: `Retrieval untuk surat jalan ${shipment.nomor_surat_jalan} telah selesai diproses.`,
+            link,
+          });
+        } catch (notifErr) {
+          console.error("Gagal membuat notifikasi retrieval:", notifErr);
+        }
+      };
 
-    const adminIds = await getAllAdminIds(Number(actorId));
-    const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
-    const staffIds = await getRelatedStaffIds(gudangIds);
+      const adminIds = await getAllAdminIds(Number(actorId));
+      const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
+      const staffIds = await getRelatedStaffIds(gudangIds);
 
-    await sendNotification(adminIds, `/dashboard`);
-    await sendNotification(supervisorIds, `/dashboard/supervisor/approval/outbound/${suratJalanId}`);
-    await sendNotification(staffIds, `/staff/outbound/${suratJalanId}`);
+      await sendNotification(adminIds, `/dashboard`);
+      await sendNotification(supervisorIds, `/dashboard/supervisor/approval/outbound/${suratJalanId}`);
+      await sendNotification(staffIds, `/staff/outbound/${suratJalanId}`);
+    } catch (notifErr) {
+      console.error("Gagal memproses notifikasi retrieval:", notifErr);
+    }
 
     return await suratJalanRepository.findById(suratJalanId);
   };
@@ -1023,6 +1038,14 @@ if (!Array.isArray(items) || items.length === 0) {
       throw new AppError(`Status surat jalan saat ini (${shipment.status}) tidak dapat diubah ke status distribusi.`, 400);
     }
 
+    if (shipment.status === "disetujui" && shipment.picking_selesai === false) {
+      throw new AppError("Picking belum selesai. Selesaikan proses picking terlebih dahulu sebelum melakukan distribusi.", 400);
+    }
+
+    if (!actorId) {
+      throw new AppError("Actor tidak valid untuk melakukan perubahan status distribusi.", 400);
+    }
+
     const newStatus = body.status;
     if (!["sedang_dikirim", "diterima_didistribusikan"].includes(newStatus)) {
       throw new AppError("Status distribusi tidak valid.", 400);
@@ -1036,11 +1059,28 @@ if (!Array.isArray(items) || items.length === 0) {
       status: newStatus,
     };
 
-    await suratJalanRepository.updateDeliveryStatus(id, updateData);
-
-    if (actorId) {
-      await suratJalanRepository.createApprovalLog(id, actorId, "outbound_delivery", "disetujui", body.catatan_distribusi || null);
+    if (body.estimasi_tiba) {
+      updateData.estimasi_tiba = new Date(body.estimasi_tiba);
     }
+
+    if (body.catatan_distribusi !== undefined) {
+      updateData.catatan_distribusi = body.catatan_distribusi || null;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await suratJalanRepository.updateDeliveryStatus(id, updateData, tx);
+      await suratJalanRepository.createApprovalLog(id, actorId, "outbound_delivery", "disetujui", body.catatan_distribusi || null, tx);
+      await tx.audit_log.create({
+        data: {
+          entity_type: "surat_jalan",
+          entity_id: BigInt(id),
+          aksi: newStatus === "sedang_dikirim" ? "start_delivery" : "confirm_distributed",
+          actor_id: BigInt(actorId),
+          data_sebelum: { status: shipment.status },
+          data_sesudah: { status: newStatus, surat_jalan_id: id },
+        },
+      });
+    });
 
     if (newStatus === "sedang_dikirim") {
       const actor = await prisma.user_account.findUnique({
@@ -1069,9 +1109,13 @@ if (!Array.isArray(items) || items.length === 0) {
       const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
       const staffIds = await getRelatedStaffIds(gudangIds);
 
-      await sendNotification(adminIds, `/dashboard`);
-      await sendNotification(supervisorIds, `/dashboard/supervisor/approval/outbound/${id}`);
-      await sendNotification(staffIds, `/staff/outbound/${id}`);
+      try {
+        await sendNotification(adminIds, `/dashboard`);
+        await sendNotification(supervisorIds, `/dashboard/supervisor/approval/outbound/${id}`);
+        await sendNotification(staffIds, `/staff/outbound/${id}`);
+      } catch (notifErr) {
+        console.error("Gagal memproses notifikasi delivery status:", notifErr);
+      }
     }
 
     return await suratJalanRepository.findById(id);

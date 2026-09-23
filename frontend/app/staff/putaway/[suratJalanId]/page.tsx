@@ -16,6 +16,13 @@ type ApiSuratJalanItem = {
   kondisi?: string | null;
   is_kelebihan?: boolean;
   barang?: { kode_perangkat?: string; nama_barang?: string };
+  zona?: {
+    zona_id: number;
+    kode_zona: string;
+    nama_zona?: string | null;
+    tipe_zona?: string | null;
+    gudang?: { nama_gudang?: string } | null;
+  } | null;
 };
 
 type ApiSuratJalan = {
@@ -178,7 +185,7 @@ export default function PutawayDetailPage() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successModalMessage, setSuccessModalMessage] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
@@ -241,6 +248,7 @@ export default function PutawayDetailPage() {
   }, [data, zonasForGudang]);
 
   useEffect(() => {
+    if (!data) return;
     if (isDadakanSingleZone) {
       const onlyZoneId = String(zonasForGudang[0].zona_id);
       setZonaByItem((prev) => {
@@ -255,14 +263,6 @@ export default function PutawayDetailPage() {
     }
   }, [isDadakanSingleZone, zonasForGudang, data]);
 
-  if (data === undefined && !loadError) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#E8632C]" />
-      </div>
-    );
-  }
-
   if (loadError) {
     return (
       <div className="px-8 py-6">
@@ -272,7 +272,14 @@ export default function PutawayDetailPage() {
         </div>
       </div>
     );
-    
+  }
+
+  if (!data) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-[#E8632C]" />
+      </div>
+    );
   }
 
   if (data === null) {
@@ -392,7 +399,7 @@ export default function PutawayDetailPage() {
               <th className="pb-3 pr-4 font-semibold">Barang</th>
               <th className="pb-3 pr-4 font-semibold">Kondisi</th>
               <th className="pb-3 pr-4 font-semibold text-right">Qty</th>
-              {!isSelesai && <th className="pb-3 font-semibold">Zona</th>}
+              <th className="pb-3 font-semibold">Zona</th>
             </tr>
           </thead>
           <tbody>
@@ -410,32 +417,37 @@ export default function PutawayDetailPage() {
                 </td>
                 <td className="py-3 pr-4 text-gray-600">{item.kondisi || "-"}</td>
                 <td className="py-3 pr-4 text-right text-gray-600">{item.qty}</td>
-
-                {!isSelesai && (
-                  <td className="py-3">
-                    {isDadakanSingleZone ? (
-                      <div className="flex items-center gap-2 rounded-md bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600">
-                        <MapPin size={14} className="text-[#E8632C]" />
-                        {zonaLabel(zonasForGudang[0])} <span className="text-[10px] text-slate-400">(otomatis)</span>
-                      </div>
+                <td className="py-3">
+                  {isSelesai ? (
+                    item.zona ? (
+                      <span className="text-sm text-gray-700">
+                        {item.zona.gudang?.nama_gudang ?? "-"} / {item.zona.nama_zona || item.zona.kode_zona}
+                      </span>
                     ) : (
-                      <select
-                        value={zonaByItem[item.item_id] || ""}
-                        onChange={(e) =>
-                          setZonaByItem((prev) => ({ ...prev, [item.item_id]: e.target.value }))
-                        }
-                        className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
-                      >
-                        <option value="">Pilih zona...</option>
-                        {zonasForGudang.map((z) => (
-                          <option key={z.zona_id} value={String(z.zona_id)}>
-                            {zonaLabel(z)}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </td>
-                )}
+                      <span className="text-sm text-gray-400">Belum ditempatkan</span>
+                    )
+                  ) : isDadakanSingleZone ? (
+                    <div className="flex items-center gap-2 rounded-md bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600">
+                      <MapPin size={14} className="text-[#E8632C]" />
+                      {zonaLabel(zonasForGudang[0])} <span className="text-[10px] text-slate-400">(otomatis)</span>
+                    </div>
+                  ) : (
+                    <select
+                      value={zonaByItem[item.item_id] || ""}
+                      onChange={(e) =>
+                        setZonaByItem((prev) => ({ ...prev, [item.item_id]: e.target.value }))
+                      }
+                      className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
+                    >
+                      <option value="">Pilih zona...</option>
+                      {zonasForGudang.map((z) => (
+                        <option key={z.zona_id} value={String(z.zona_id)}>
+                          {zonaLabel(z)}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

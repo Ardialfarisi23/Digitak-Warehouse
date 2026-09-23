@@ -18,8 +18,7 @@ interface InboundForApproval {
 const fetcher = async ([url, get]: [string, Function]) => {
   const response = await get(url);
   if (!response.ok) {
-    const error = new Error("An error occurred while fetching the data.");
-    // Attach extra info to the error object.
+    const error = new Error("An error occurred while fetching the data.") as Error & { info: unknown; status: number };
     error.info = await response.json();
     error.status = response.status;
     throw error;

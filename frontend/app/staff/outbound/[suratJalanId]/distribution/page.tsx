@@ -41,7 +41,7 @@ export default function DistributionDetailPage() {
   const [estimasiTiba, setEstimasiTiba] = useState("");
   const [catatan, setCatatan] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
@@ -115,16 +115,10 @@ export default function DistributionDetailPage() {
     );
   }
 
-  if (data === null) {
+  if (!data) {
     return (
       <div className="px-8 py-6">
-        <p className="text-gray-500">Surat Jalan tidak ditemukan.</p>
-        <button
-          onClick={() => router.push("/staff/outbound")}
-          className="mt-3 text-sm font-semibold text-[#E8632C] hover:underline"
-        >
-          Kembali ke daftar Surat Jalan
-        </button>
+        <p className="text-gray-500">Memuat data Surat Jalan...</p>
       </div>
     );
   }

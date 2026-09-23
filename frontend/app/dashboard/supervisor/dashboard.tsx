@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -33,13 +32,6 @@ import { useAuth } from "@/lib/auth-context";
 import { mapRole, formatRole } from "@/lib/navigation";
 import { useSupervisorDashboard } from "@/hooks/use-supervisor-dashboard";
 import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity } from "@/lib/capacity";
-
-// Konfigurasi Font Plus Jakarta Sans
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-plus-jakarta",
-});
 
 const summaryCards = [
   {
@@ -205,7 +197,7 @@ export default function SupervisorDashboard() {
 
   if (isLoading || !user) {
     return (
-      <div className={`flex min-h-screen items-center justify-center bg-[#F8F6F0] ${plusJakartaSans.className}`}>
+      <div className={`flex min-h-screen items-center justify-center bg-[#F8F6F0]`}>
         <div className="text-center">
           <div className="inline-block h-12 w-12 animate-spin rounded-full border-b-2 border-orange-500" />
           <p className="mt-4 text-slate-600 font-medium">Memuat dashboard...</p>
@@ -217,7 +209,7 @@ export default function SupervisorDashboard() {
   const { kapasitasPerGudang } = useSupervisorDashboard();
 
   return (
-    <div className={`flex min-h-screen bg-[#F8F6F0] text-slate-800 ${plusJakartaSans.className}`}>
+    <div className={`flex min-h-screen bg-[#F8F6F0] text-slate-800`}>
       {/* SIDEBAR */}
       <aside className="fixed inset-y-0 left-0 z-30 flex w-20 flex-col items-center justify-between border-r border-stone-200/60 bg-[#FAF8F3] py-6 shadow-sm">
         <div className="flex flex-col items-center gap-8 w-full">

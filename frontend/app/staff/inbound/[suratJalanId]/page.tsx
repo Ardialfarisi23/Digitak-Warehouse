@@ -7,7 +7,6 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { downloadInboundPdf } from "@/lib/staff/inbound-pdf";
 import type { InboundSuratJalan as InboundPdfShape } from "@/lib/staff/inbound-pdf";
 
 // ---------------------------------------------------------------------------
@@ -84,6 +83,13 @@ type EditableItem = {
   serialNumber: string;
   isKelebihan: boolean;
   catatanKelebihan: string;
+  zona?: {
+    zona_id: number;
+    kode_zona?: string;
+    nama_zona?: string;
+    tipe_zona?: string;
+    gudang?: { nama_gudang?: string } | null;
+  } | null;
   fotos: Array<{
     foto_id: number;
     url: string;
@@ -337,7 +343,7 @@ export default function InboundDetailPage() {
     ) : null;
 
   function handleSubmitClick() {
-    if (!canSubmit) return;
+    if (!canSubmit || !data) return;
 
     if (hasUnresolvedExcess) {
       const defaults: Record<number, string> = {};
@@ -407,6 +413,7 @@ export default function InboundDetailPage() {
     if (!data) return;
     setDownloadingPdf(true);
     try {
+      const { downloadInboundPdf } = await import("@/lib/staff/inbound-pdf");
       // Adaptasi bentuk data API -> tipe yang dipakai InboundPdfDocument
       // (masih sama dari versi localStorage). ASUMSI: "creator" (pembuat
       // record) dipakai sebagai PIC Pemohon — skema baru nggak punya field
@@ -448,19 +455,30 @@ export default function InboundDetailPage() {
   const excessNoteFilled = unresolvedExcessIndexes.every((idx) => (excessNotesDraft[idx] || "").trim().length > 0);
 
   // Helper untuk menentukan label pengirim (internal: gudang_asal, external: pengirim_eksternal_nama)
-  const pengirimLabel =
-    data.tipe_pengirim === "internal"
+  const pengirimLabel = data
+    ? data.tipe_pengirim === "internal"
       ? data.gudang_asal?.nama_gudang || "-"
       : data.tipe_pengirim === "external"
         ? data.pengirim_eksternal_nama || "-"
-        : data.gudang_asal?.nama_gudang || "-";
+        : data.gudang_asal?.nama_gudang || "-"
+    : "-";
 
   // Helper untuk format kendaraan: "Merk - Tipe Kendaraan"
-  const kendaraanLabel = data.kendaraan
-    ? data.kendaraan.merk && data.kendaraan.merk.trim()
-      ? `${data.kendaraan.merk} - ${data.kendaraan.jenis_kendaraan}`
-      : data.kendaraan.jenis_kendaraan
+  const kendaraanLabel = data
+    ? data.kendaraan
+      ? data.kendaraan.merk && data.kendaraan.merk.trim()
+        ? `${data.kendaraan.merk} - ${data.kendaraan.jenis_kendaraan}`
+        : data.kendaraan.jenis_kendaraan
+      : "-"
     : "-";
+
+  if (!data) {
+    return (
+      <div className="px-8 py-6 text-gray-500">
+        Memuat data Surat Jalan...
+      </div>
+    );
+  }
 
   return (
     <div className="px-8 py-6">
@@ -582,18 +600,18 @@ export default function InboundDetailPage() {
                       ))}
                      </select>
                   </td>
-                  <td className="py-3 pr-4 text-xs text-gray-600">
-                    {item.zona ? (
-                      <span className="font-medium text-gray-800">
-                        {item.zona.nama_zona || item.zona.kode_zona}
-                        {item.zona.tipe_zona ? (
-                          <span className="ml-1 text-gray-400">— {item.zona.tipe_zona}</span>
-                        ) : null}
-                      </span>
-                    ) : (
-                      <span className="text-gray-300">—</span>
-                    )}
-                  </td>
+                   <td className="py-3 pr-4 text-xs text-gray-600">
+                     {item.zona ? (
+                       <span className="font-medium text-gray-800">
+                         {item.zona.gudang?.nama_gudang ?? "-"} / {item.zona.nama_zona || item.zona.kode_zona}
+                         {item.zona.tipe_zona ? (
+                           <span className="ml-1 text-gray-400">— {item.zona.tipe_zona}</span>
+                         ) : null}
+                       </span>
+                     ) : (
+                       <span className="text-gray-500">Belum ditempatkan</span>
+                     )}
+                   </td>
                   <td className="py-3">
                     {item.qtyDiterima === 0 ? (
                       <span className="text-xs text-gray-300">—</span>

@@ -1,20 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import { Search, Eye, X, ArrowUpRight, ArrowDownLeft, CheckCircle2, Clock, FileText, Loader2, AlertCircle, PackageCheck, Truck, ChevronDown } from "lucide-react";
-
-import { downloadInboundPdf } from "@/lib/staff/inbound-pdf";
 
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import { DetailSuratJalanDocument, DetailSuratJalanData } from "@/components/surat-jalan/DetailSuratJalanDocument";
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -238,6 +230,7 @@ export default function AdminDeliveryPage() {
     if (!selectedRecord || isGeneratingPdf) return;
     setIsGeneratingPdf(true);
     try {
+      const { downloadInboundPdf } = await import("@/lib/staff/inbound-pdf");
       const data = {
         id: String(selectedRecord.surat_jalan_id),
         nomor: selectedRecord.nomor_surat_jalan,
@@ -275,7 +268,7 @@ export default function AdminDeliveryPage() {
   };
 
   return (
-    <div className={`${plusJakartaSans.className}`}>
+      <div>
       <div className="flex flex-1 flex-col p-6">
         {/* Header */}
         <header className="mb-6 flex items-start justify-between gap-4">

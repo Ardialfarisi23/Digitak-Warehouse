@@ -11,21 +11,6 @@ const getInventory = async (req, res, next) => {
   }
 };
 
-const updateMosMitra = async (req, res, next) => {
-  try {
-    const { tiketId } = req.params;
-    const { mos } = req.body;
-    const result = await reconciliationService.updateMosMitra(tiketId, mos, req.user.id);
-    return response.success(res, "MOS Laporan Mitra berhasil diperbarui.", {
-      tiketId: String(result.tiket_id),
-      mos: Number(result.mos),
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
 module.exports = {
   getInventory,
-  updateMosMitra,
 };

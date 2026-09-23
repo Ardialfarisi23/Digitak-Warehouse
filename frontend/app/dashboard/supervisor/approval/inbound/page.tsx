@@ -343,8 +343,15 @@ export default function SupervisorApprovalPage() {
         <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400 font-medium">Memuat data antrean...</div>
       ) : filteredRequests.length > 0 ? (
         <div className="space-y-4">
-          {filteredRequests.map((req) => (
-            <div key={req.id} className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col md:flex-row justify-between md:items-center gap-4">
+          {filteredRequests.map((req) => {
+            const items = (req as any).items || [];
+            const totalUnit = items.reduce((sum: number, item: any) => sum + (Number(item.qty) || 0), 0);
+            const totalTipe = new Set(
+              items.map((item: any) => item.barang_id).filter((id: any) => id != null)
+            ).size;
+
+            return (
+             <div key={req.id} className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col md:flex-row justify-between md:items-center gap-4">
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-bold text-slate-900 text-lg">{req.nomor_surat_jalan}</span>
@@ -355,12 +362,8 @@ export default function SupervisorApprovalPage() {
                       : req.tipe_pengirim === "internal"
                       ? req.gudang_asal?.nama_gudang || "Internal"
                       : "Vendor / Internal"}
-                  </span>
-                  <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-medium flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5 text-slate-400" />
-                    Di Luar PO / Unscheduled
-                  </span>
-                </div>
+                   </span>
+                 </div>
 
                 <div className="flex items-center gap-1.5 text-slate-700 text-sm font-medium">
                   <ArrowDownLeft className="w-4 h-4 text-emerald-600" />
@@ -370,7 +373,7 @@ export default function SupervisorApprovalPage() {
                 </div>
 
                 <p className="text-xs text-slate-400">
-                  Total Masuk ({req.total_tipe || 1} tipe): <span className="text-slate-600 font-medium">Perangkat ({req.total_unit || 8} unit)</span>
+                  Total Masuk ({totalTipe} tipe): <span className="text-slate-600 font-medium">Perangkat ({totalUnit} unit)</span>
                 </p>
               </div>
 
@@ -420,7 +423,8 @@ export default function SupervisorApprovalPage() {
                 )}
               </div>
             </div>
-          ))}
+          );
+          })}
         </div>
       ) : (
         <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400 font-medium shadow-sm">

@@ -20,12 +20,13 @@ import {
   Upload,
   Download,
   Loader2,
+  RotateCcw,
 } from "lucide-react";
 import { useApi } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-const statusColor = {
+const statusColor: Record<string, { fg: string; bg: string }> = {
   draft_diajukan: { fg: "#6B7280", bg: "#F3F4F6" },
   menunggu_verifikasi: { fg: "#92400E", bg: "#FEF3C7" },
   ready_putaway: { fg: "#1E40AF", bg: "#DBEAFE" },
@@ -73,6 +74,15 @@ const aksiMap: Record<string, { label: string; icon: React.ComponentType<{ size?
   confirm_distributed: { label: "Dikonfirmasi", icon: PackageCheck, variant: "purple" },
   reject_inbound: { label: "Tolak Inbound", icon: XCircle, variant: "red" },
   reject_outbound: { label: "Tolak Outbound", icon: XCircle, variant: "red" },
+  putaway: { label: "Penyimpanan", icon: PackageCheck, variant: "purple" },
+  retrieve: { label: "Pengambilan Stok", icon: PackageSearch, variant: "blue" },
+  create_inbound: { label: "Buat Inbound", icon: Plus, variant: "green" },
+  create_outbound: { label: "Buat Outbound", icon: Plus, variant: "green" },
+  nonaktifkan_project: { label: "Project Dinonaktifkan", icon: XCircle, variant: "red" },
+  aktifkan_project: { label: "Project Diaktifkan", icon: CheckCircle, variant: "green" },
+  soft_delete: { label: "Dihapus (Soft)", icon: Trash2, variant: "red" },
+  restore: { label: "Dipulihkan", icon: RotateCcw, variant: "green" },
+  start_delivery: { label: "Mulai Pengiriman", icon: ArrowDownToLine, variant: "purple" },
 };
 
 const roleMap: Record<string, { label: string; variant: BadgeVariant }> = {
@@ -81,9 +91,83 @@ const roleMap: Record<string, { label: string; variant: BadgeVariant }> = {
   staf_gudang: { label: "Staf Gudang", variant: "outline-gray" },
 };
 
-function Modal({ open, onClose, title, children }) {
+interface AuditLogEntry {
+  audit_id: number | string;
+  created_at: string;
+  actor_nama: string;
+  actor_role: string;
+  aksi: string;
+  entity_type?: string;
+  entity_id?: string | number;
+  entity_name?: string | null;
+  entity_refs_resolved?: Record<string, string | null>;
+  data_sebelum?: Record<string, unknown>;
+  data_sesudah?: Record<string, unknown>;
+  details?: Array<{
+    detail_id: number | string;
+    kode_tiket: string;
+    mos: number | string;
+    used: number | string;
+    status: string;
+    reason?: string | null;
+    [key: string]: unknown;
+  }>;
+  [key: string]: unknown;
+}
+
+interface StockHistoryEntry {
+  ledger_id: number | string;
+  waktu_mutasi: string;
+  jenis_mutasi: string;
+  kode_tiket: string;
+  tipe_surat_jalan: string;
+  status_surat_jalan: string;
+  diproses_oleh: string;
+  diproses_oleh_role?: string;
+  kode_perangkat: string;
+  nama_barang: string;
+  qty: number;
+  satuan: string;
+  zona_kode: string;
+  zona_gudang: string;
+  gudang_asal: string;
+  gudang_tujuan: string;
+  nomor_surat_jalan?: string;
+  kondisi?: string;
+  is_kelebihan?: boolean;
+  saldo_setelah?: number;
+  project_nama?: string;
+  area?: string;
+  zona_nama?: string;
+  zona_tipe?: string;
+  [key: string]: unknown;
+}
+
+interface ReconciliationUploadLogEntry {
+  upload_id: number | string;
+  uploaded_at: string;
+  filename: string;
+  uploaded_by_nama: string;
+  uploaded_by_role: string;
+  total_rows: number;
+  success_rows: number;
+  failed_rows: number;
+  details?: Array<{
+    detail_id: number | string;
+    kode_tiket?: string;
+    mos?: string;
+    used?: string;
+    status?: string;
+    alasan_gagal?: string;
+    reason?: string;
+    [key: string]: unknown;
+  }>;
+  [key: string]: unknown;
+}
+
+function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
   useEffect(() => {
-    const handleKey = (e) => {
+    const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     if (open) {
@@ -121,10 +205,10 @@ function Modal({ open, onClose, title, children }) {
   );
 }
 
-function TabAuditLog({ get }) {
-  const [data, setData] = useState([]);
+function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
+  const [data, setData] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [actorRole, setActorRole] = useState("");
   const [aksi, setAksi] = useState("");
@@ -133,7 +217,7 @@ function TabAuditLog({ get }) {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [detailRow, setDetailRow] = useState(null);
+  const [detailRow, setDetailRow] = useState<AuditLogEntry | null>(null);
   const [exporting, setExporting] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "warning" } | null>(null);
   const limit = 20;
@@ -223,9 +307,9 @@ function TabAuditLog({ get }) {
     }
   };
 
-  const aksiList = ["create", "update", "delete", "approve", "receive_inbound", "approve_inbound", "approve_outbound", "confirm_distributed", "reject_inbound", "reject_outbound"];
+  const aksiList = ["create", "update", "delete", "approve", "receive_inbound", "approve_inbound", "approve_outbound", "confirm_distributed", "reject_inbound", "reject_outbound", "putaway", "retrieve", "create_inbound", "create_outbound", "nonaktifkan_project", "aktifkan_project", "soft_delete", "restore", "start_delivery"];
 
-  const formatDateTime = (iso) => {
+  const formatDateTime = (iso: string) => {
     const d = new Date(iso);
     const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
     const day = d.getDate();
@@ -235,31 +319,54 @@ function TabAuditLog({ get }) {
     return `${day} ${mon}, ${hh}:${mm}`;
   };
 
-  const getEntityLabel = (row) => {
+  const getEntityLabel = (row: AuditLogEntry): string => {
     const kode = row.data_sesudah?.kode_tiket || row.data_sebelum?.kode_tiket;
-    if (kode) return kode;
-    if (row.entity_type && row.entity_id && row.entity_id !== "0") {
-      return `${row.entity_type} #${row.entity_id}`;
+    if (kode) return String(kode);
+
+    const entityTypeLabels: Record<string, string> = {
+      boq: "BOQ",
+      surat_jalan: "Surat Jalan",
+      project: "Project",
+      titik_lapangan: "Titik Lapangan",
+      user_account: "User",
+    };
+
+    if (row.entity_name) {
+      const label = entityTypeLabels[row.entity_type || ""] || row.entity_type || "Entitas";
+      return `${label}: ${row.entity_name}`;
     }
+
+    if (row.entity_type === "reconciliation") {
+      return "Reconciliation";
+    }
+
+    if (row.entity_type && row.entity_id && row.entity_id !== "0") {
+      return `${row.entity_type} #${row.entity_id} (data mungkin telah dihapus)`;
+    }
+
     return row.entity_type || "-";
   };
 
-  const getExtraRef = (row) => {
+  const getExtraRef = (row: AuditLogEntry) => {
     const ds = row.data_sesudah || {};
-    const parts = [];
-    if (ds.source_file || ds.filename || ds.nama_file) {
-      parts.push(ds.source_file || ds.filename || ds.nama_file);
+    const parts: string[] = [];
+    const getString = (obj: Record<string, unknown>, key: string): string | undefined =>
+      typeof obj[key] === "string" ? (obj[key] as string) : undefined;
+
+    if (getString(ds, "source_file") || getString(ds, "filename") || getString(ds, "nama_file")) {
+      parts.push(getString(ds, "source_file") || getString(ds, "filename") || getString(ds, "nama_file") || "");
     }
-    if (ds.username_target || ds.target_user || ds.user_target) {
-      parts.push(`user: ${ds.username_target || ds.target_user || ds.user_target}`);
+    if (getString(ds, "username_target") || getString(ds, "target_user") || getString(ds, "user_target")) {
+      parts.push(`user: ${getString(ds, "username_target") || getString(ds, "target_user") || getString(ds, "user_target") || ""}`);
     }
-    if (ds.catatan) {
-      parts.push(ds.catatan);
+    const catatan = getString(ds, "catatan");
+    if (catatan) {
+      parts.push(catatan);
     }
     return parts.length > 0 ? parts.join(" | ") : "—";
   };
 
-  const renderStructuredData = (label, data) => {
+  const renderStructuredData = (label: string, data: Record<string, unknown>, resolvedRefs: Record<string, string | null> = {}) => {
     if (!data || typeof data !== "object") {
       return <p className="text-sm text-slate-500">-</p>;
     }
@@ -269,7 +376,7 @@ function TabAuditLog({ get }) {
       return <p className="text-sm text-slate-500">-</p>;
     }
 
-    const labelMap = {
+    const labelMap: Record<string, string> = {
       mos: "MOS",
       used: "Used",
       source_file: "File Sumber",
@@ -283,13 +390,40 @@ function TabAuditLog({ get }) {
       username_target: "Username Target",
       target_user: "Username Target",
       user_target: "Username Target",
+      tiket_id: "Tiket",
+      surat_jalan_id: "Surat Jalan",
+      gudang_asal_id: "Gudang Asal",
+      gudang_tujuan_id: "Gudang Tujuan",
+      project_id: "Project",
+      boq_id: "BOQ",
     };
+
+    const idRefKeys = new Set([
+      "tiket_id",
+      "surat_jalan_id",
+      "gudang_asal_id",
+      "gudang_tujuan_id",
+      "project_id",
+      "boq_id",
+    ]);
 
     return (
       <div className="space-y-2">
         {entries.map(([key, value]) => {
           const displayKey = labelMap[key] || key;
-          const displayValue = typeof value === "object" ? JSON.stringify(value) : String(value);
+          let displayValue: string;
+          if (idRefKeys.has(key)) {
+            const resolved = resolvedRefs[key];
+            if (resolved === null) {
+              displayValue = "(data telah dihapus)";
+            } else if (resolved === undefined) {
+              displayValue = typeof value === "object" ? JSON.stringify(value) : String(value);
+            } else {
+              displayValue = resolved;
+            }
+          } else {
+            displayValue = typeof value === "object" ? JSON.stringify(value) : String(value);
+          }
           return (
             <div key={key} className="flex items-start justify-between gap-4 rounded-lg bg-slate-50 px-3 py-2">
               <span className="text-xs font-medium text-slate-500">{displayKey}</span>
@@ -584,7 +718,9 @@ function TabAuditLog({ get }) {
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-400">Aksi</p>
-                <p className="text-sm text-slate-800">{detailRow.aksi}</p>
+                <p className="text-sm text-slate-800">
+                  {aksiMap[detailRow.aksi] ? aksiMap[detailRow.aksi].label : detailRow.aksi}
+                </p>
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-400">Entitas Terkait</p>
@@ -602,13 +738,13 @@ function TabAuditLog({ get }) {
                   {detailRow.data_sebelum && (
                     <div>
                       <p className="text-xs font-medium text-slate-400 mb-2">Data Sebelum</p>
-                      {renderStructuredData("Sebelum", detailRow.data_sebelum)}
+                      {renderStructuredData("Sebelum", detailRow.data_sebelum, detailRow.entity_refs_resolved)}
                     </div>
                   )}
                   {detailRow.data_sesudah && (
                     <div>
                       <p className="text-xs font-medium text-slate-400 mb-2">Data Sesudah</p>
-                      {renderStructuredData("Sesudah", detailRow.data_sesudah)}
+                      {renderStructuredData("Sesudah", detailRow.data_sesudah, detailRow.entity_refs_resolved)}
                     </div>
                   )}
                 </div>
@@ -623,10 +759,10 @@ function TabAuditLog({ get }) {
   );
 }
 
-function TabRiwayatStok({ get }) {
-  const [data, setData] = useState([]);
+function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
+  const [data, setData] = useState<StockHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [gudang, setGudang] = useState("");
   const [zona, setZona] = useState("");
   const [project, setProject] = useState("");
@@ -640,7 +776,7 @@ function TabRiwayatStok({ get }) {
   const [zonas, setZonas] = useState<{ id: string; gudangId: string; label: string }[]>([]);
   const [projects, setProjects] = useState<{ id: string; label: string }[]>([]);
   const [kategoris, setKategoris] = useState<{ id: string; nama: string }[]>([]);
-  const [detailTiket, setDetailTiket] = useState(null);
+  const [detailTiket, setDetailTiket] = useState<StockHistoryEntry | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -660,11 +796,11 @@ function TabRiwayatStok({ get }) {
   useEffect(() => {
     let cancelled = false;
 
-    const readList = (json) =>
-      Array.isArray(json?.data?.data)
-        ? json.data.data
-        : Array.isArray(json?.data)
-        ? json.data
+    const readList = (json: unknown): Record<string, unknown>[] =>
+      Array.isArray((json as { data?: { data?: unknown[] } })?.data?.data)
+        ? ((json as { data: { data: unknown[] } }).data.data as Record<string, unknown>[])
+        : Array.isArray((json as { data?: unknown[] })?.data)
+        ? ((json as { data: unknown[] }).data as Record<string, unknown>[])
         : [];
 
     (async () => {
@@ -687,7 +823,7 @@ function TabRiwayatStok({ get }) {
 
         if (whRes.ok) {
           setWarehouses(
-            readList(whJson).map((w) => ({ id: String(w.gudang_id), nama: w.nama_gudang + (w.tipe === "dadakan" ? " (Dadakan)" : ""), tipe: w.tipe }))
+            readList(whJson).map((w: Record<string, unknown>) => ({ id: String(w.gudang_id), nama: (w.nama_gudang as string) + (w.tipe === "dadakan" ? " (Dadakan)" : ""), tipe: w.tipe as string }))
           );
         }
 
@@ -697,10 +833,10 @@ function TabRiwayatStok({ get }) {
           // Value tetap zona_id (PK) supaya filter tidak pernah ambigu.
           setZonas(
             readList(zonaJson)
-              .map((z) => ({
+              .map((z: Record<string, unknown>) => ({
                 id: String(z.zona_id),
-                gudangId: String(z.gudang_id ?? z.gudang?.gudang_id ?? ""),
-                label: `${z.gudang?.nama_gudang || "Gudang ?"} — ${z.nama_zona || `Zona ${z.kode_zona}`}`,
+                gudangId: String((z.gudang_id ?? (z.gudang as Record<string, unknown>)?.gudang_id) ?? ""),
+                label: `${(z.gudang as Record<string, unknown>)?.nama_gudang || "Gudang ?"} — ${z.nama_zona || `Zona ${z.kode_zona}`}`,
               }))
               .sort((a, b) => a.label.localeCompare(b.label))
           );
@@ -712,7 +848,7 @@ function TabRiwayatStok({ get }) {
           const seen = new Set();
           const list = [];
           for (const p of readList(projJson).sort(
-            (a, b) => Number(a.project_id) - Number(b.project_id)
+            (a: Record<string, unknown>, b: Record<string, unknown>) => Number(a.project_id) - Number(b.project_id)
           )) {
             const cluster = p.cluster_id || "";
             const key = `${p.nama_project}||${cluster}`;
@@ -720,7 +856,7 @@ function TabRiwayatStok({ get }) {
             seen.add(key);
             list.push({
               id: String(p.project_id),
-              label: cluster ? `${p.nama_project} (${cluster})` : p.nama_project,
+              label: cluster ? `${String(p.nama_project)} (${cluster})` : String(p.nama_project),
             });
           }
           setProjects(list);
@@ -728,9 +864,9 @@ function TabRiwayatStok({ get }) {
 
         if (katRes.ok) {
           setKategoris(
-            readList(katJson).map((k) => ({
+            readList(katJson).map((k: Record<string, unknown>) => ({
               id: String(k.kategori_id),
-              nama: k.nama_kategori,
+              nama: k.nama_kategori as string,
             }))
           );
         }
@@ -861,12 +997,12 @@ function TabRiwayatStok({ get }) {
     }
   };
 
-  const jenisLabel = {
+  const jenisLabel: Record<string, string> = {
     inbound: "Inbound",
     outbound: "Outbound",
   };
 
-  const statusLabel = {
+  const statusLabel: Record<string, string> = {
     draft_diajukan: "Draft",
     menunggu_verifikasi: "Menunggu Verifikasi",
     ready_putaway: "Siap Putaway",
@@ -1073,6 +1209,7 @@ function TabRiwayatStok({ get }) {
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50">
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tanggal</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Arah Mutasi</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Jenis Transaksi</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
@@ -1089,18 +1226,18 @@ function TabRiwayatStok({ get }) {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4" colSpan={11}>
+                    <td className="px-6 py-4" colSpan={12}>
                       <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                     </td>
                   </tr>
                 ))
               ) : error ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={11}>{error}</td>
+                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={12}>{error}</td>
                 </tr>
               ) : data.length === 0 ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={11}>
+                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={12}>
                     Tidak ada pergerakan stok yang cocok dengan filter ini.
                   </td>
                 </tr>
@@ -1112,7 +1249,10 @@ function TabRiwayatStok({ get }) {
                     onClick={() => setDetailTiket(r)}
                   >
                     <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400">
-                      {new Date(r.waktu_mutasi).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}
+                      {new Date(r.waktu_mutasi).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "medium" })}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-xs font-medium text-slate-600">
+                      {r.jenis_mutasi === "in" ? "masuk" : r.jenis_mutasi === "out" ? "keluar" : r.jenis_mutasi || "-"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap font-mono font-semibold text-orange-500">
                       {r.kode_tiket || "-"}
@@ -1326,10 +1466,10 @@ function TabRiwayatStok({ get }) {
 // Dihilangkan - tab Utilisasi dipindah/dihapus sesuai PRD 7.12
 // function TabUtilisasi({ get }) { ... } // seluruh komponen tab Utilisasi dihapus dari UI
 
-function TabRiwayatInputMitra({ get }) {
-  const [data, setData] = useState([]);
+function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response> }) {
+  const [data, setData] = useState<ReconciliationUploadLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [actorId, setActorId] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -1337,8 +1477,8 @@ function TabRiwayatInputMitra({ get }) {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [detailRow, setDetailRow] = useState(null);
-  const [actors, setActors] = useState([]);
+  const [detailRow, setDetailRow] = useState<ReconciliationUploadLogEntry | null>(null);
+  const [actors, setActors] = useState<{ user_id: number | string; nama: string }[]>([]);
   const limit = 20;
 
   useEffect(() => {
@@ -1394,7 +1534,7 @@ function TabRiwayatInputMitra({ get }) {
     fetchData();
   }, [fetchData]);
 
-  const formatDateTime = (iso) => {
+  const formatDateTime = (iso: string) => {
     const d = new Date(iso);
     const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
     const day = d.getDate();
@@ -1404,7 +1544,7 @@ function TabRiwayatInputMitra({ get }) {
     return `${day} ${mon}, ${hh}:${mm}`;
   };
 
-  const statusBadge = (status) => {
+  const statusBadge = (status: string) => {
     if (status === "berhasil") return <Badge label="Berhasil" variant="green" />;
     if (status === "gagal") return <Badge label="Gagal" variant="red" />;
     return <Badge label={status} variant="gray" />;
@@ -1618,7 +1758,7 @@ function TabRiwayatInputMitra({ get }) {
                           <td className="px-3 py-2 font-mono font-semibold text-slate-700">{d.kode_tiket}</td>
                           <td className="px-3 py-2 text-right font-mono text-slate-600">{d.mos}</td>
                           <td className="px-3 py-2 text-right font-mono text-slate-600">{d.used}</td>
-                          <td className="px-3 py-2">{statusBadge(d.status)}</td>
+                           <td className="px-3 py-2">{statusBadge(d.status || "-")}</td>
                           <td className="px-3 py-2 text-slate-500">{d.reason || "-"}</td>
                         </tr>
                       ))}

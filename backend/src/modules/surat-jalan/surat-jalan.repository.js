@@ -12,6 +12,11 @@ const baseInclude = {
           kode_zona: true,
           nama_zona: true,
           tipe_zona: true,
+          gudang: {
+            select: {
+              nama_gudang: true,
+            },
+          },
         },
       },
       barang: {
@@ -381,6 +386,10 @@ const updateStatus = async (id, status, options = {}, tx = prisma) => {
     data.catatan = options.catatan || null;
   }
 
+  if (options && options.picking_selesai !== undefined) {
+    data.picking_selesai = options.picking_selesai;
+  }
+
   return await tx.surat_jalan.update({
     where: {
       surat_jalan_id: Number(id),
@@ -626,8 +635,8 @@ const reduceBoqAllocation = async (suratJalan, tx = prisma) => {
   }
 };
 
-const updateDeliveryStatus = async (id, updateData) => {
-  return await prisma.surat_jalan.update({
+const updateDeliveryStatus = async (id, updateData, tx = prisma) => {
+  return await tx.surat_jalan.update({
     where: { surat_jalan_id: Number(id) },
     data: updateData,
   });

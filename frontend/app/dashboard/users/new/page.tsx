@@ -13,6 +13,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
 export default function AddUserPage() {
   const router = useRouter();
   const { post } = useApi();
+  const { user, token } = useAuth();
 
   const [nama, setNama] = useState("");
   const [email, setEmail] = useState("");

@@ -2,20 +2,14 @@
 
 import { useAuth } from "@/lib/auth-context";
 import { ShieldAlert } from "lucide-react";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import Image from "next/image";
 import ChangePasswordForm from "@/components/auth/ChangePasswordForm";
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
 export default function ChangePasswordPage() {
   const { updateUser } = useAuth();
 
   return (
-    <div className={`min-h-screen w-full bg-[#FAF8F5] ${plusJakartaSans.className}`}>
+      <div className="min-h-screen w-full bg-[#FAF8F5]">
       <div className="mx-auto flex w-full max-w-7xl flex-col justify-center gap-12 lg:flex-row lg:items-center my-auto">
         <div className="flex-1 space-y-8 max-w-xl">
           <div className="relative h-12 w-52">

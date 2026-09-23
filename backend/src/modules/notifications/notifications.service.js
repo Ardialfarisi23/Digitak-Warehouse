@@ -143,7 +143,16 @@ const create = async ({ userId, role, type, title, message, link }) => {
 
   if (Array.isArray(userId)) {
     if (userId.length === 0) return [];
-    return Promise.all(userId.map((id) => createOne(id, role)));
+    return prisma.notification.createMany({
+      data: userId.map((id) => ({
+        user_id: id !== undefined && id !== null ? BigInt(id) : null,
+        role: role || null,
+        type: type || "info",
+        title,
+        message,
+        link: link || null,
+      })),
+    });
   }
 
   return createOne(userId, role);

@@ -113,6 +113,8 @@ interface ReconciliationSummary {
   hardwareOnSite: number;
   used: number;
   remains: number;
+  additional?: number;
+  mosSistem?: number;
 }
 
 interface Boq {
@@ -658,6 +660,11 @@ export default function BoqPage() {
       setModalOpen(false);
       fetchBoqs();
       fetchSummary();
+      if (modalMode === "create") {
+        setToast({ message: "BOQ berhasil disimpan sebagai Draft.", type: "success" });
+      } else {
+        setToast({ message: "Perubahan BOQ berhasil disimpan.", type: "success" });
+      }
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.");
     } finally {
@@ -828,11 +835,6 @@ export default function BoqPage() {
     return form.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
   }, [form.items]);
 
-  const warehouseCount = useMemo(() => {
-    const set = new Set(form.items.map((item) => item.destinationWarehouseId).filter(Boolean));
-    return set.size;
-  }, [form.items]);
-
   const filteredItems = useMemo(() => {
     if (!itemSearch.trim()) return items;
     const q = itemSearch.toLowerCase();
@@ -903,7 +905,7 @@ export default function BoqPage() {
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs font-medium text-slate-400 flex items-center gap-1">
               Proyek Berjalan
-              <Info size={12} className="text-slate-400" title="Jumlah project unik dengan BOQ aktif" />
+              <Info size={12} className="text-slate-400" />
             </p>
             <p className="mt-1 text-2xl font-bold text-slate-900">{summary.proyekBerjalan}</p>
           </div>
@@ -1549,7 +1551,6 @@ export default function BoqPage() {
                           {form.items.filter((i) => i.itemCode && i.itemName && i.quantity > 0).length}
                         </span>
                         <span>Total Qty: {totalQty}</span>
-                        <span>Gudang Tujuan: {warehouseCount}</span>
                       </div>
                     </div>
                   )}
