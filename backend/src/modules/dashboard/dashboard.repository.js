@@ -93,7 +93,8 @@ const getStats = async (actor = null) => {
   // requirement). Supervisor setara admin — return data untuk semua gudang.
   // Parameter `actor` disimpan untuk konsistensi signature & kebutuhan masa depan.
   void actor;
-  const [totalItems, activeBoq, pendingShipments, pendingApprovals, activeProjects] =
+
+  const [totalItems, activeBoq, pendingShipments, pendingApprovals, activeProjects, allGudangRows] =
     await Promise.all([
       safeCount("barang"),
       prisma.boq.count({ where: { status: "aktif" } }),
@@ -106,30 +107,42 @@ const getStats = async (actor = null) => {
       }),
       prisma.approval_log.count({ where: { status: "menunggu" } }),
       prisma.project.count({ where: { status_aktif: true } }),
+      prisma.gudang.findMany({ where: { is_aktif: true }, select: { gudang_id: true } }),
     ]);
 
-  const allGudangIds = (await prisma.gudang.findMany({ where: { is_aktif: true }, select: { gudang_id: true } }))
-    .map((x) => Number(x.gudang_id));
+  const allGudangIds = allGudangRows.map((x) => Number(x.gudang_id));
 
   // Hitung on-the-fly (TIDAK tulis ke kolom status_kecukupan_gudang).
   const kapasitasPerGudang = await getCapacityPerGudang(allGudangIds);
 
+  const [personnels, aisles, categories, customers, suppliers, units, vehicles, zones] =
+    await Promise.all([
+      safeCount("personil"),
+      safeCount("zona_gudang"),
+      safeCount("kategori_barang"),
+      safeCount("customer"),
+      safeCount("supplier"),
+      safeCount("satuan"),
+      safeCount("kendaraan"),
+      safeCount("zona_gudang"),
+    ]);
+
   return {
     warehouses: allGudangIds.length,
-    personnels: await safeCount("personil"),
-    aisles: await safeCount("zona_gudang"),
-    categories: await safeCount("kategori_barang"),
-    customers: await safeCount("customer"),
+    personnels,
+    aisles,
+    categories,
+    customers,
     items: totalItems,
     totalItems,
     projects: activeProjects,
     activeBoq,
     pendingShipments,
     pendingApprovals,
-    suppliers: await safeCount("supplier"),
-    units: await safeCount("satuan"),
-    vehicles: await safeCount("kendaraan"),
-    zones: await safeCount("zona_gudang"),
+    suppliers,
+    units,
+    vehicles,
+    zones,
     kapasitas_per_gudang: kapasitasPerGudang,
   };
 };
