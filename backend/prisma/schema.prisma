@@ -355,6 +355,7 @@ model boq_item {
   @@index([boq_id])
   @@index([barang_id])
   @@index([satuan_id])
+  @@index([gudang_tujuan_id])
 }
 
 model permintaan_boq {
@@ -399,6 +400,7 @@ model surat_jalan {
   catatan_distribusi    String?            @db.Text
   surat_jalan_url       String?
   catatan               String?
+  picking_selesai       Boolean             @default(false)
   project_id            BigInt?
   titik_lapangan_id     BigInt?
   tujuan_tipe           tujuan_tipe_enum?
@@ -424,6 +426,8 @@ model surat_jalan {
 
   @@index([status])
   @@index([project_id])
+  @@index([tipe])
+  @@index([created_at])
 }
 
 model surat_jalan_item {
@@ -450,6 +454,7 @@ model surat_jalan_item {
   fotos               surat_jalan_item_foto[]
 
   @@index([surat_jalan_id])
+  @@index([barang_id])
 }
 
 model surat_jalan_item_foto {
@@ -482,6 +487,7 @@ model stok_gudang {
   @@unique([gudang_id, zona_id, barang_id, project_id, kondisi])
   @@index([gudang_id, barang_id])
   @@index([project_id])
+  @@index([zona_id])
 }
 
 model stok_ledger {
