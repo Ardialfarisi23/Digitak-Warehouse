@@ -19,13 +19,6 @@ import {
   Clock,
   Calendar,
 } from "lucide-react";
-import { Plus_Jakarta_Sans } from "next/font/google";
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
-
 export default function ForgotPasswordPage() {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
@@ -112,7 +105,7 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className={`min-h-screen w-full bg-[#FAF8F5] flex flex-col justify-center items-center p-4 md:p-8 ${plusJakartaSans.className}`}>
+      <div className="min-h-screen w-full bg-[#FAF8F5] flex flex-col justify-center items-center p-4 md:p-8">
       <div className="w-full max-w-lg rounded-3xl bg-white p-6 md:p-10 shadow-xl shadow-slate-200/50 border border-slate-100">
 
         {/* STEP 1: REQUEST RESET LINK */}

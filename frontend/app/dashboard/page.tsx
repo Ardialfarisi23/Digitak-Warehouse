@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
@@ -25,11 +24,6 @@ import {
   Wallet,
   FileCheck2,
 } from "lucide-react";
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
 // ---------------------------------------------------------------------------
 // DATA DUMMY — sesuai istilah & metrik pada PRD (BOQ, Surat Jalan, Kecukupan
@@ -680,7 +674,7 @@ function DashboardPageContent() {
   };
 
   return (
-    <div className={`flex gap-6 text-slate-800 ${plusJakartaSans.className}`}>
+    <div className={`flex gap-6 text-slate-800`}>
       {/* KONTEN UTAMA (KIRI) */}
       <div className="flex-1 space-y-6">
         <header>

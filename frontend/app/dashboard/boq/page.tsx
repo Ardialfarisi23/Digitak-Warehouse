@@ -113,6 +113,8 @@ interface ReconciliationSummary {
   hardwareOnSite: number;
   used: number;
   remains: number;
+  additional?: number;
+  mosSistem?: number;
 }
 
 interface Boq {
@@ -903,7 +905,7 @@ export default function BoqPage() {
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs font-medium text-slate-400 flex items-center gap-1">
               Proyek Berjalan
-              <Info size={12} className="text-slate-400" title="Jumlah project unik dengan BOQ aktif" />
+              <Info size={12} className="text-slate-400" />
             </p>
             <p className="mt-1 text-2xl font-bold text-slate-900">{summary.proyekBerjalan}</p>
           </div>

@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import { Search, Plus, ChevronLeft, ChevronRight, Users, Package, FolderKanban, Truck, Warehouse as WarehouseIcon, Eye, Pencil, Trash2, X, Loader2, AlertCircle, ImageOff, Building2, Ban, RotateCcw } from "lucide-react";
 
 import { useApi } from "@/lib/api";
@@ -10,11 +9,6 @@ import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import { PERSONNEL_PERMISSIONS, canPerformPersonnelAction } from "@/lib/permissions";
 import Image from "next/image";
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
 // ---------------------------------------------------------------------------
 // Roles & Permissions (PRD Bagian 5 & 8.3)
@@ -94,7 +88,7 @@ interface FieldConfig {
   type: FieldType;
   required?: boolean;
   placeholder?: string;
-  options?: string[];
+  options?: Array<string | { value: string; label: string }>;
   helperText?: string;
 }
 
@@ -1887,7 +1881,7 @@ function MasterDataPageContent() {
   // -------------------------------------------------------------------------
 
   return (
-    <div className={`${plusJakartaSans.className}`}>
+    <div>
       <div className="flex flex-1 flex-col p-6">
         {/* Header */}
 
@@ -1994,7 +1988,7 @@ function MasterDataPageContent() {
                    data.map((record, index) => {
                      const item = record as Item;
 
-                     const idFields = activeConfig.idFields || [activeConfig.idField || "id"];
+                      const idFields = activeConfig?.idFields || [activeConfig?.idField || "id"];
                      const rawId = idFields.map((field) => (record as any)?.[field]).find((value) => value !== undefined && value !== null && value !== "");
                      const basePrimaryKey = rawId !== undefined && rawId !== null && rawId !== "" ? String(rawId) : String((record as any)?.id ?? `record-${index}`);
                      const primaryKey = `${basePrimaryKey}-${index}`;

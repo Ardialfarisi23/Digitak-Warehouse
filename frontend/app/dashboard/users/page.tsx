@@ -640,8 +640,8 @@ export default function UsersPage() {
 
                     const userId = record.user_id ?? record.id;
 
-                    const isSelf =
-                      user?.id &&
+                    const isSelf: boolean =
+                      !!user?.id &&
                       String(userId) ===
                         String(user.id);
 
