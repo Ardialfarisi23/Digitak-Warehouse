@@ -858,7 +858,7 @@ const [itemsRes, boqsRes] = await Promise.all([
                               <div key={item.barang_id} className="flex items-center justify-between rounded-xl border border-gray-200 p-3">
                                 <div>
                                   <p className="text-xs font-bold text-gray-800">{item.nama_barang}</p>
-                                  <p className="text-[10px] text-gray-500">SKU: {item.kode_perangkat} {item.kode_zona !== "-" ? `· Zona {item.kode_zona}` : ""}</p>
+                                  <p className="text-[10px] text-gray-500">SKU: {item.kode_perangkat} {item.nama_zona !== "-" ? `· ${item.nama_zona}` : ""}</p>
                                 </div>
                                 <div className="text-right">
                                   <p className="text-xs font-bold text-gray-900">{Number(item.qty || 0).toLocaleString("id-ID")}</p>

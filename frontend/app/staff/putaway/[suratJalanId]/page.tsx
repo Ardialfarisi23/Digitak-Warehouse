@@ -185,7 +185,7 @@ export default function PutawayDetailPage() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successModalMessage, setSuccessModalMessage] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
@@ -248,6 +248,7 @@ export default function PutawayDetailPage() {
   }, [data, zonasForGudang]);
 
   useEffect(() => {
+    if (!data) return;
     if (isDadakanSingleZone) {
       const onlyZoneId = String(zonasForGudang[0].zona_id);
       setZonaByItem((prev) => {
@@ -262,14 +263,6 @@ export default function PutawayDetailPage() {
     }
   }, [isDadakanSingleZone, zonasForGudang, data]);
 
-  if (data === undefined && !loadError) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#E8632C]" />
-      </div>
-    );
-  }
-
   if (loadError) {
     return (
       <div className="px-8 py-6">
@@ -279,7 +272,14 @@ export default function PutawayDetailPage() {
         </div>
       </div>
     );
-    
+  }
+
+  if (!data) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-[#E8632C]" />
+      </div>
+    );
   }
 
   if (data === null) {

@@ -8,7 +8,6 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { downloadSuratJalanPdf } from "@/lib/staff/surat-jalan-pdf";
 
 const STATUS_META: Record<string, { label: string; tone: string }> = {
   draft_diajukan: { label: "Menunggu Persetujuan Supervisor", tone: "bg-amber-50 text-amber-700" },
@@ -55,6 +54,7 @@ interface SuratJalan {
   tipe_pengirim?: string | null;
   pengirim_eksternal_nama?: string | null;
   alamat_lapangan?: string | null;
+  picking_selesai?: boolean;
 }
 
 // Baris label:nilai yang selalu sejajar, berapa pun panjang labelnya.
@@ -208,12 +208,35 @@ export default function SuratJalanDetailPage() {
             </Link>
           )}
           {(suratJalan.status === "disetujui" || suratJalan.status === "sedang_dikirim") && (
-            <Link
-              href={`/staff/outbound/${suratJalan.surat_jalan_id}/distribution`}
-              className="rounded-xl border border-[#F3D9C7] bg-white px-4 py-2.5 text-sm font-semibold text-[#E8632C] hover:bg-[#FDECE1]"
-            >
-              Distribusi
-            </Link>
+            <div>
+              {(suratJalan.status === "disetujui" && suratJalan.picking_selesai === true) ? (
+                <Link
+                  href={`/staff/outbound/${suratJalan.surat_jalan_id}/distribution`}
+                  className="rounded-xl border border-[#F3D9C7] bg-white px-4 py-2.5 text-sm font-semibold text-[#E8632C] hover:bg-[#FDECE1]"
+                >
+                  Distribusi
+                </Link>
+              ) : suratJalan.status === "sedang_dikirim" ? (
+                <Link
+                  href={`/staff/outbound/${suratJalan.surat_jalan_id}/distribution`}
+                  className="rounded-xl border border-[#F3D9C7] bg-white px-4 py-2.5 text-sm font-semibold text-[#E8632C] hover:bg-[#FDECE1]"
+                >
+                  Distribusi
+                </Link>
+              ) : (
+                <button
+                  disabled
+                  className="cursor-not-allowed rounded-xl border border-[#F3D9C7] bg-white px-4 py-2.5 text-sm font-semibold text-gray-400 opacity-70"
+                >
+                  Distribusi
+                </button>
+              )}
+              {suratJalan.status === "disetujui" && suratJalan.picking_selesai === false && (
+                <p className="mt-1 text-xs text-gray-500">
+                  Selesaikan picking terlebih dahulu
+                </p>
+              )}
+            </div>
           )}
           {suratJalan.status !== "draft_diajukan" && suratJalan.status !== "ditolak" && (
             <Button
@@ -221,6 +244,7 @@ export default function SuratJalanDetailPage() {
               onClick={async () => {
                 setGeneratingPdf(true);
                 try {
+                  const { downloadSuratJalanPdf } = await import("@/lib/staff/surat-jalan-pdf");
                   await downloadSuratJalanPdf(displaySJ as any, user?.name || user?.username || "-");
                 } finally {
                   setGeneratingPdf(false);
