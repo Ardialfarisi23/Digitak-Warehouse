@@ -6,9 +6,12 @@ import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { CheckCircle2, ArrowLeft, Printer, Eye, X, FileText } from "lucide-react";
 import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
-import { Document, Page, pdfjs } from "react-pdf";
+import dynamic from "next/dynamic";
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.js", import.meta.url).toString();
+const PdfViewerComponent = dynamic(() => import("@/components/PdfViewerComponent"), {
+  ssr: false,
+  loading: () => <div className="p-4 text-xs text-slate-500">Memuat PDF...</div>,
+});
 
 export default function SupervisorApprovalInboundDetailPage() {
   const params = useParams<{ id: string }>();
@@ -191,20 +194,7 @@ export default function SupervisorApprovalInboundDetailPage() {
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm h-[850px] flex flex-col overflow-hidden">
             <h3 className="text-sm font-semibold text-slate-700 mb-4">Dokumen Lampiran Staf (PDF)</h3>
             {detail?.surat_jalan_url ? (
-              <div className="flex-1 w-full h-full bg-white rounded-xl overflow-hidden border border-slate-100 flex justify-center items-start">
-                <Document
-                  file={detail.surat_jalan_url}
-                  onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-                  onLoadError={(err) => setPdfError(err.message)}
-                  loading={<div className="p-4 text-xs text-slate-500">Memuat PDF...</div>}
-                  error={<div className="p-4 text-xs text-red-500">Gagal memuat PDF.</div>}
-                  className="flex justify-center w-full"
-                >
-                  {Array.from(new Array(numPages), (_el, index) => (
-                    <Page key={`page_${index + 1}`} pageNumber={index + 1} width={680} renderAnnotationLayer={false} renderTextLayer={false} className="mb-4 bg-white max-w-full" />
-                  ))}
-                </Document>
-              </div>
+              <PdfViewerComponent url={detail.surat_jalan_url} />
             ) : (
               <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50">
                 <div className="text-center">
