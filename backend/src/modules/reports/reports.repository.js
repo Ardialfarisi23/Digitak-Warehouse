@@ -19,6 +19,203 @@ const AUDIT_AKSI_VALUES = [
   "create_outbound",
 ];
 
+const enrichAuditEntityNames = async (logs) => {
+  if (!Array.isArray(logs) || logs.length === 0) {
+    return logs.map((log) => ({ ...log, entity_name: null, entity_refs_resolved: {} }));
+  }
+
+  const groupedEntity = new Map();
+  const refGroups = {
+    tiket_id: new Set(),
+    surat_jalan_id: new Set(),
+    gudang_asal_id: new Set(),
+    gudang_tujuan_id: new Set(),
+    project_id: new Set(),
+    boq_id: new Set(),
+  };
+
+  for (const log of logs) {
+    const type = log.entity_type;
+    if (!groupedEntity.has(type)) {
+      groupedEntity.set(type, new Set());
+    }
+    groupedEntity.get(type).add(Number(log.entity_id));
+
+    for (const payload of [log.data_sebelum, log.data_sesudah]) {
+      if (!payload || typeof payload !== "object") continue;
+      for (const key of Object.keys(payload)) {
+        if (key in refGroups) {
+          const value = Number(payload[key]);
+          if (Number.isFinite(value) && value > 0) {
+            refGroups[key].add(value);
+          }
+        }
+      }
+    }
+  }
+
+  const nameMap = new Map();
+  const refMaps = {
+    tiket_id: new Map(),
+    surat_jalan_id: new Map(),
+    gudang_asal_id: new Map(),
+    gudang_tujuan_id: new Map(),
+    project_id: new Map(),
+    boq_id: new Map(),
+  };
+
+  for (const [entityType, idSet] of groupedEntity) {
+    const ids = Array.from(idSet).filter((id) => Number.isFinite(id) && id > 0);
+    if (!ids.length) continue;
+
+    switch (entityType) {
+      case "boq": {
+        const rows = await prisma.boq.findMany({
+          where: { boq_id: { in: ids } },
+          select: { boq_id: true, boq_number: true },
+        });
+        for (const row of rows) {
+          nameMap.set(`boq:${row.boq_id}`, row.boq_number);
+        }
+        break;
+      }
+      case "surat_jalan": {
+        const rows = await prisma.surat_jalan.findMany({
+          where: { surat_jalan_id: { in: ids } },
+          select: { surat_jalan_id: true, nomor_surat_jalan: true },
+        });
+        for (const row of rows) {
+          nameMap.set(`surat_jalan:${row.surat_jalan_id}`, row.nomor_surat_jalan);
+        }
+        break;
+      }
+      case "project": {
+        const rows = await prisma.project.findMany({
+          where: { project_id: { in: ids } },
+          select: { project_id: true, nama_project: true },
+        });
+        for (const row of rows) {
+          nameMap.set(`project:${row.project_id}`, row.nama_project);
+        }
+        break;
+      }
+      case "titik_lapangan": {
+        const rows = await prisma.titik_lapangan.findMany({
+          where: { titik_lapangan_id: { in: ids } },
+          select: { titik_lapangan_id: true, nama_lokasi: true },
+        });
+        for (const row of rows) {
+          nameMap.set(`titik_lapangan:${row.titik_lapangan_id}`, row.nama_lokasi);
+        }
+        break;
+      }
+      case "user_account": {
+        const rows = await prisma.user_account.findMany({
+          where: { user_id: { in: ids } },
+          select: { user_id: true, nama: true },
+        });
+        for (const row of rows) {
+          nameMap.set(`user_account:${row.user_id}`, row.nama);
+        }
+        break;
+      }
+      case "reconciliation": {
+        // Tidak ada tabel reconciliation tersendiri; entity_id di sini
+        // adalah tiket_id yang merujuk ke tiket_material. Dikecualikan
+        // sesuai permintaan investigasi.
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  if (refGroups.tiket_id.size) {
+    const ids = Array.from(refGroups.tiket_id);
+    const rows = await prisma.tiket_material.findMany({
+      where: { tiket_id: { in: ids } },
+      select: { tiket_id: true, kode_tiket: true },
+    });
+    for (const row of rows) {
+      refMaps.tiket_id.set(Number(row.tiket_id), row.kode_tiket);
+    }
+  }
+
+  if (refGroups.surat_jalan_id.size) {
+    const ids = Array.from(refGroups.surat_jalan_id);
+    const rows = await prisma.surat_jalan.findMany({
+      where: { surat_jalan_id: { in: ids } },
+      select: { surat_jalan_id: true, nomor_surat_jalan: true },
+    });
+    for (const row of rows) {
+      refMaps.surat_jalan_id.set(Number(row.surat_jalan_id), row.nomor_surat_jalan);
+    }
+  }
+
+  if (refGroups.gudang_asal_id.size) {
+    const ids = Array.from(refGroups.gudang_asal_id);
+    const rows = await prisma.gudang.findMany({
+      where: { gudang_id: { in: ids } },
+      select: { gudang_id: true, nama_gudang: true },
+    });
+    for (const row of rows) {
+      refMaps.gudang_asal_id.set(Number(row.gudang_id), row.nama_gudang);
+    }
+  }
+
+  if (refGroups.gudang_tujuan_id.size) {
+    const ids = Array.from(refGroups.gudang_tujuan_id);
+    const rows = await prisma.gudang.findMany({
+      where: { gudang_id: { in: ids } },
+      select: { gudang_id: true, nama_gudang: true },
+    });
+    for (const row of rows) {
+      refMaps.gudang_tujuan_id.set(Number(row.gudang_id), row.nama_gudang);
+    }
+  }
+
+  if (refGroups.project_id.size) {
+    const ids = Array.from(refGroups.project_id);
+    const rows = await prisma.project.findMany({
+      where: { project_id: { in: ids } },
+      select: { project_id: true, nama_project: true },
+    });
+    for (const row of rows) {
+      refMaps.project_id.set(Number(row.project_id), row.nama_project);
+    }
+  }
+
+  if (refGroups.boq_id.size) {
+    const ids = Array.from(refGroups.boq_id);
+    const rows = await prisma.boq.findMany({
+      where: { boq_id: { in: ids } },
+      select: { boq_id: true, boq_number: true },
+    });
+    for (const row of rows) {
+      refMaps.boq_id.set(Number(row.boq_id), row.boq_number);
+    }
+  }
+
+  return logs.map((log) => {
+    const entity_refs_resolved = {};
+    for (const key of Object.keys(refGroups)) {
+      const value = log.data_sebelum?.[key] ?? log.data_sesudah?.[key];
+      const numeric = Number(value);
+      if (Number.isFinite(numeric) && numeric > 0 && refMaps[key].has(numeric)) {
+        entity_refs_resolved[key] = refMaps[key].get(numeric);
+      } else {
+        entity_refs_resolved[key] = null;
+      }
+    }
+
+    return {
+      ...log,
+      entity_name: nameMap.get(`${log.entity_type}:${String(log.entity_id)}`) ?? null,
+      entity_refs_resolved,
+    };
+  });
+};
+
 /**
  * Mengubah filter ID dari query string menjadi BigInt secara aman.
  * Mengembalikan null bila filter tidak dipakai ("all"/kosong/undefined),
@@ -610,7 +807,9 @@ const getAuditLogs = async (filters = {}) => {
     prisma.audit_log.count({ where }),
   ]);
 
-  const rows = data.map((log) => ({
+  const enrichedData = await enrichAuditEntityNames(data);
+
+  const rows = enrichedData.map((log) => ({
     audit_id: String(log.audit_id),
     created_at: log.created_at,
     aksi: log.aksi,
@@ -622,6 +821,8 @@ const getAuditLogs = async (filters = {}) => {
     actor_role: log.actor?.role || "-",
     data_sebelum: log.data_sebelum,
     data_sesudah: log.data_sesudah,
+    entity_name: log.entity_name ?? null,
+    entity_refs_resolved: log.entity_refs_resolved ?? {},
   }));
 
   return {
@@ -729,7 +930,9 @@ const getAuditLogForExport = async (filters = {}) => {
     prisma.audit_log.count({ where }),
   ]);
 
-  const rows = data.map((log) => ({
+  const enrichedData = await enrichAuditEntityNames(data);
+
+  const rows = enrichedData.map((log) => ({
     audit_id: String(log.audit_id),
     created_at: log.created_at,
     aksi: log.aksi,
@@ -741,6 +944,8 @@ const getAuditLogForExport = async (filters = {}) => {
     actor_role: log.actor?.role || "-",
     data_sebelum: log.data_sebelum,
     data_sesudah: log.data_sesudah,
+    entity_name: log.entity_name ?? null,
+    entity_refs_resolved: log.entity_refs_resolved ?? {},
   }));
 
   return {

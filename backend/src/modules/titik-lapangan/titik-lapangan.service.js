@@ -117,16 +117,20 @@ const softDelete = async (titik_lapangan_id, userId) => {
 
   const result = await titikLapanganRepository.softDelete(titik_lapangan_id);
 
-  await prisma.audit_log.create({
-    data: {
-      entity_type: "titik_lapangan",
-      entity_id: BigInt(titik_lapangan_id),
-      aksi: "soft_delete",
-      actor_id: BigInt(userId),
-      data_sebelum: { is_aktif: record.is_aktif },
-      data_sesudah: { is_aktif: false },
-    },
-  });
+  try {
+    await prisma.audit_log.create({
+      data: {
+        entity_type: "titik_lapangan",
+        entity_id: BigInt(titik_lapangan_id),
+        aksi: "soft_delete",
+        actor_id: BigInt(userId),
+        data_sebelum: { is_aktif: record.is_aktif },
+        data_sesudah: { is_aktif: false },
+      },
+    });
+  } catch (auditErr) {
+    console.error("Gagal membuat audit log soft_delete titik lapangan:", auditErr);
+  }
 
   return result;
 };
@@ -140,16 +144,20 @@ const restore = async (titik_lapangan_id, userId) => {
 
   const result = await titikLapanganRepository.restore(titik_lapangan_id);
 
-  await prisma.audit_log.create({
-    data: {
-      entity_type: "titik_lapangan",
-      entity_id: BigInt(titik_lapangan_id),
-      aksi: "restore",
-      actor_id: BigInt(userId),
-      data_sebelum: { is_aktif: record.is_aktif },
-      data_sesudah: { is_aktif: true },
-    },
-  });
+  try {
+    await prisma.audit_log.create({
+      data: {
+        entity_type: "titik_lapangan",
+        entity_id: BigInt(titik_lapangan_id),
+        aksi: "restore",
+        actor_id: BigInt(userId),
+        data_sebelum: { is_aktif: record.is_aktif },
+        data_sesudah: { is_aktif: true },
+      },
+    });
+  } catch (auditErr) {
+    console.error("Gagal membuat audit log restore titik lapangan:", auditErr);
+  }
 
   return result;
 };
