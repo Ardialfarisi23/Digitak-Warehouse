@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import {
   Search,
   PackageCheck,
@@ -30,11 +29,6 @@ import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import BoqPicker, { type BoqPickerItem } from "@/components/BoqPicker";
 import BarangPicker, { type BarangPickerItem } from "@/components/BarangPicker";
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -612,7 +606,7 @@ export default function ReconciliationInventoryPage() {
   );
 
   return (
-    <div className={`${plusJakartaSans.className}`}>
+      <div>
       <div className="flex flex-1 flex-col p-6">
         {/* Header */}
         <header className="mb-6 flex items-start justify-between gap-4">

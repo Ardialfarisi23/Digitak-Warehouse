@@ -437,8 +437,9 @@ export default function WarehouseLayoutPage() {
       const json = await res.json();
 
       if (!res.ok) {
-        const fieldError = json?.errors
-          ? Object.values(json.errors)[0]?.[0]
+        const errorsObj = json?.errors as Record<string, string[]> | undefined;
+        const fieldError = errorsObj
+          ? Object.values(errorsObj)[0]?.[0]
           : json?.message;
         throw new Error(fieldError || "Gagal menyimpan zona.");
       }
@@ -1291,7 +1292,7 @@ export default function WarehouseLayoutPage() {
                 </thead>
                 <tbody className="divide-y divide-[#f2f4f7]">
                   {filteredPanelStock.map((item) => (
-                    <tr key={item.stok_id} className="transition hover:bg-[#fafbfc]">
+                    <tr key={item.snapshot_id} className="transition hover:bg-[#fafbfc]">
                       <td className="px-4 py-3">
                         <p className="text-[13px] font-semibold text-[#111827]">{item.nama_barang}</p>
                         <p className="text-[11px] text-[#98a2b3]">{item.kode_perangkat}</p>

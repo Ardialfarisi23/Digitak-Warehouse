@@ -19,6 +19,8 @@ type Personnel = {
   gudang_id?: number | string | null;
   gudang?: { gudang_id?: number | string; nama_gudang?: string } | null;
   is_aktif?: boolean;
+  bisa_menyetir?: boolean;
+  is_material_handler?: boolean;
 };
 
 type Vehicle = {
@@ -345,16 +347,18 @@ export default function SupervisorOperasionalPage() {
     return rec.gudang?.nama_gudang || null;
   };
 
-  const resolveGudangName = (rec: { gudang_id?: number | string | null; gudang?: { gudang_id?: number | string; nama_gudang?: string; name?: string } | null; warehouse?: { nama_gudang?: string; name?: string } | null; gudangName?: string; gudang?: string | number | null; [key: string]: any }): string | null => {
+  const resolveGudangName = (rec: { gudang_id?: number | string | null; gudang?: { gudang_id?: number | string; nama_gudang?: string; name?: string } | string | number | null; warehouse?: { nama_gudang?: string; name?: string } | null; gudangName?: string; [key: string]: any }): string | null => {
+    const gudangObj = typeof rec.gudang === "object" && rec.gudang !== null ? rec.gudang : null;
+    const warehouseObj = typeof rec.warehouse === "object" && rec.warehouse !== null ? rec.warehouse : null;
     const fromRelation =
-      rec.gudang?.nama_gudang ||
-      rec.gudang?.name ||
-      rec.warehouse?.nama_gudang ||
-      rec.warehouse?.name ||
+      gudangObj?.nama_gudang ||
+      gudangObj?.name ||
+      warehouseObj?.nama_gudang ||
+      warehouseObj?.name ||
       rec.gudangName ||
       (typeof rec.gudang === "string" ? rec.gudang : null);
     if (fromRelation) return fromRelation;
-    const gid = getItemGudangId(rec);
+    const gid = getItemGudangId(rec as { gudang_id?: number | string | null; gudang?: { gudang_id?: number | string } | null });
     if (gid === null) return null;
     return warehouses.find((w) => String(w.gudang_id) === String(gid))?.nama_gudang || null;
   };
@@ -478,7 +482,7 @@ export default function SupervisorOperasionalPage() {
         if (validationDetails && typeof validationDetails === "object") {
           const fieldErrors = Object.entries(validationDetails)
             .filter(([, messages]) => Array.isArray(messages) && messages.length > 0)
-            .map(([field, messages]) => `${field}: ${messages.join(", ")}`)
+            .map(([field, messages]) => `${field}: ${(messages as unknown[]).join(", ")}`)
             .join("; ");
 
           if (fieldErrors) {
