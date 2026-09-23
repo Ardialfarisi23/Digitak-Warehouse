@@ -431,55 +431,67 @@ const getZoneStockSnapshot = async (gudang_id, zona_id, query = {}) => {
     ...(barangIdFilter && { barang_id: { in: barangIdFilter } }),
   };
 
-  const [data, total] = await Promise.all([
-    prisma.stok_gudang.findMany({
-      where: stockWhere,
-      skip,
-      take: limit,
-      orderBy: { barang: { kode_perangkat: "asc" } },
-      include: {
-        barang: {
-          select: {
-            barang_id: true,
-            kode_perangkat: true,
-            nama_barang: true,
-            kategori: {
-              select: {
-                nama_kategori: true,
-              },
-            },
-            satuan_default: {
-              select: {
-                kode_satuan: true,
-              },
-            },
-          },
-        },
-        zona: {
-          select: {
-            zona_id: true,
-            kode_zona: true,
-            nama_zona: true,
-          },
-        },
+  const grouped = await prisma.stok_gudang.groupBy({
+    by: ["barang_id", "zona_id", "kondisi"],
+    where: stockWhere,
+    _sum: { qty: true },
+  });
+
+  const barangIds = [...new Set(grouped.map((g) => g.barang_id))];
+  const zonaIds = [...new Set(grouped.map((g) => g.zona_id).filter(Boolean))];
+
+  const [barangs, zonas] = await Promise.all([
+    prisma.barang.findMany({
+      where: { barang_id: { in: barangIds } },
+      select: {
+        barang_id: true,
+        kode_perangkat: true,
+        nama_barang: true,
+        kategori: { select: { nama_kategori: true } },
+        satuan_default: { select: { kode_satuan: true } },
       },
     }),
-    prisma.stok_gudang.count({ where: stockWhere }),
+    prisma.zona_gudang.findMany({
+      where: { zona_id: { in: zonaIds } },
+      select: {
+        zona_id: true,
+        kode_zona: true,
+        nama_zona: true,
+      },
+    }),
   ]);
 
-  const rows = data.map((item) => ({
-    stok_id: item.stok_id,
-    barang_id: item.barang_id,
-    kode_perangkat: item.barang?.kode_perangkat || "-",
-    nama_barang: item.barang?.nama_barang || "-",
-    kategori: item.barang?.kategori?.nama_kategori || "-",
-    satuan: item.barang?.satuan_default?.kode_satuan || "-",
-    kondisi: item.kondisi,
-    qty: Number(item.qty),
-    zona_id: item.zona_id || null,
-    kode_zona: item.zona?.kode_zona || "-",
-    nama_zona: item.zona?.nama_zona || "-",
-  }));
+  const barangMap = new Map(barangs.map((b) => [Number(b.barang_id), b]));
+  const zonaMap = new Map(zonas.map((z) => [Number(z.zona_id), z]));
+
+  const sorted = grouped.sort((a, b) => {
+    const aCode = barangMap.get(Number(a.barang_id))?.kode_perangkat || "";
+    const bCode = barangMap.get(Number(b.barang_id))?.kode_perangkat || "";
+    return aCode.localeCompare(bCode);
+  });
+
+  const total = sorted.length;
+  const totalPages = Math.ceil(total / limit) || 1;
+  const start = (page - 1) * limit;
+  const paged = sorted.slice(start, start + limit);
+
+  const rows = paged.map((item) => {
+    const barang = barangMap.get(Number(item.barang_id));
+    const zona = item.zona_id ? zonaMap.get(Number(item.zona_id)) : null;
+    return {
+      snapshot_id: `${item.barang_id}-${item.zona_id}-${item.kondisi}`,
+      barang_id: Number(item.barang_id),
+      kode_perangkat: barang?.kode_perangkat || "-",
+      nama_barang: barang?.nama_barang || "-",
+      kategori: barang?.kategori?.nama_kategori || "-",
+      satuan: barang?.satuan_default?.kode_satuan || "-",
+      kondisi: item.kondisi,
+      qty: Number(item._sum.qty || 0),
+      zona_id: item.zona_id ? Number(item.zona_id) : null,
+      kode_zona: zona?.kode_zona || "-",
+      nama_zona: zona?.nama_zona || "-",
+    };
+  });
 
   return {
     data: rows,
@@ -487,7 +499,7 @@ const getZoneStockSnapshot = async (gudang_id, zona_id, query = {}) => {
       total,
       page,
       limit,
-      totalPages: Math.ceil(total / limit) || 1,
+      totalPages,
     },
   };
 };

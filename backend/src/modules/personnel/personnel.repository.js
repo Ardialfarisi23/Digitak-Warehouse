@@ -83,16 +83,21 @@ const findAll = async ({
   search,
   sortBy = "updated_at",
   sortOrder = "desc",
+  bisa_menyetir,
 } = {}) => {
+  const isDriverFilter = bisa_menyetir === true || bisa_menyetir === "true";
+
   const sanitizedPage = Math.max(
     parseInt(page, 10) || DEFAULT_PAGE,
     DEFAULT_PAGE
   );
 
-  const sanitizedLimit = Math.max(
-    parseInt(limit, 10) || DEFAULT_LIMIT,
-    1
-  );
+  const sanitizedLimit = isDriverFilter
+    ? 1000
+    : Math.max(
+        parseInt(limit, 10) || DEFAULT_LIMIT,
+        1
+      );
 
   const orderField = ALLOWED_SORT_FIELDS.includes(sortBy)
     ? sortBy
@@ -105,6 +110,10 @@ const findAll = async ({
     : "desc";
 
   const where = {};
+
+  if (isDriverFilter) {
+    where.bisa_menyetir = true;
+  }
 
   if (search) {
     where.OR = [
