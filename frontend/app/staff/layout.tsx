@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Bell, Trash2 } from "lucide-react";
 import { useNotifications } from "@/hooks/use-notifications";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 function SidebarSkeleton() {
   const { width } = useSidebar();
@@ -40,7 +41,7 @@ export default function StaffLayout({
 
   const userRole = mapRole(user?.role);
 
-  const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification, deleteAllNotifications, refresh } = useNotifications();
+  const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification, deleteAllNotifications, refresh, showDeactivatedModal, handleReturnToLogin } = useNotifications();
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
 
@@ -189,6 +190,16 @@ export default function StaffLayout({
             </div>
           </div>
           {children}
+          <ConfirmModal
+            open={showDeactivatedModal}
+            onConfirm={handleReturnToLogin}
+            onClose={() => {}}
+            title="Akun Anda Dinonaktifkan"
+            description="Akun Anda telah dinonaktifkan oleh admin. Anda akan diarahkan ke halaman login."
+            confirmText="Kembali ke Login"
+            cancelText=""
+            dismissProof
+          />
         </main>
       </div>
     </ProtectedRoute>

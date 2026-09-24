@@ -29,6 +29,8 @@ import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import BoqPicker, { type BoqPickerItem } from "@/components/BoqPicker";
 import BarangPicker, { type BarangPickerItem } from "@/components/BarangPicker";
+import { ConfirmModal } from "@/components/ConfirmModal";
+import { useAccountStatusGuard } from "@/hooks/use-account-status-guard";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -95,6 +97,8 @@ function stripDuplicatePrefix(reason?: string | null) {
 export default function ReconciliationInventoryPage() {
   const { user } = useAuth();
   const { get, post } = useApi();
+
+  const { showDeactivatedModal, handleReturnToLogin } = useAccountStatusGuard();
 
   const [records, setRecords] = useState<ReconciliationRecord[]>([]);
   const [searchInput, setSearchInput] = useState("");
@@ -1681,6 +1685,17 @@ export default function ReconciliationInventoryPage() {
           <span className="text-[13px] font-semibold">{toast.message}</span>
         </div>
       )}
+
+      <ConfirmModal
+        open={showDeactivatedModal}
+        onConfirm={handleReturnToLogin}
+        onClose={() => {}}
+        title="Akun Anda Dinonaktifkan"
+        description="Akun Anda telah dinonaktifkan oleh admin. Anda akan diarahkan ke halaman login."
+        confirmText="Kembali ke Login"
+        cancelText=""
+        dismissProof
+      />
     </div>
     );
   }

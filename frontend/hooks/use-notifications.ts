@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useApi, API_BASE } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { useAccountStatusGuard } from "@/hooks/use-account-status-guard";
 
 interface NotificationItem {
   id: number;
@@ -26,11 +27,14 @@ interface UseNotificationsResult {
   deleteNotification: (id: number) => Promise<void>;
   deleteAllNotifications: () => Promise<void>;
   refresh: () => Promise<void>;
+  showDeactivatedModal: boolean;
+  handleReturnToLogin: () => void;
 }
 
 export function useNotifications(): UseNotificationsResult {
   const { get, request } = useApi();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { showDeactivatedModal, handleReturnToLogin } = useAccountStatusGuard();
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -178,5 +182,7 @@ export function useNotifications(): UseNotificationsResult {
     deleteNotification,
     deleteAllNotifications,
     refresh,
+    showDeactivatedModal,
+    handleReturnToLogin,
   };
 }

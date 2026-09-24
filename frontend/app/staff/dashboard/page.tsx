@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Bell, MapPin, ArrowRight, PackageCheck, Truck } from "lucide-react";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import {
   getStatusBadgeClass,
   getStatusLabel,
@@ -125,7 +126,7 @@ type MySubmissionRow = {
 
 export default function StaffDashboardPage() {
   const { get } = useApi();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const router = useRouter();
 
   const [activities, setActivities] = useState<ActivityRow[]>([]);
@@ -137,6 +138,8 @@ export default function StaffDashboardPage() {
   const [zonesError, setZonesError] = useState<string | null>(null);
   const [staffGudangId, setStaffGudangId] = useState<string | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
+  const [showDeactivatedModal, setShowDeactivatedModal] = useState(false);
+  const profilePollRef = useRef<number | null>(null);
 
   const [nextTask, setNextTask] = useState<NextTaskRow | null>(null);
   const [nextTaskLoading, setNextTaskLoading] = useState(true);
@@ -177,6 +180,41 @@ export default function StaffDashboardPage() {
 
     loadProfile();
   }, [get]);
+
+  useEffect(() => {
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+    profilePollRef.current = window.setInterval(async () => {
+      if (document.visibilityState !== "visible") return;
+
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+
+        const response = await fetch(`${baseUrl}/api/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (response.status === 401) {
+          const err = await response.json().catch(() => null);
+          if (err?.code === "ACCOUNT_DEACTIVATED") {
+            clearInterval(profilePollRef.current!);
+            profilePollRef.current = null;
+            setShowDeactivatedModal(true);
+          }
+        }
+      } catch {
+        // abaikan error polling
+      }
+    }, 15000);
+
+    return () => {
+      if (profilePollRef.current) {
+        clearInterval(profilePollRef.current);
+        profilePollRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     async function loadZones() {
@@ -764,6 +802,20 @@ export default function StaffDashboardPage() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        open={showDeactivatedModal}
+        onConfirm={() => {
+          logout();
+          router.push("/login");
+        }}
+        onClose={() => {}}
+        title="Akun Anda Dinonaktifkan"
+        description="Akun Anda telah dinonaktifkan oleh admin. Anda akan diarahkan ke halaman login."
+        confirmText="Kembali ke Login"
+        cancelText=""
+        dismissProof
+      />
     </div>
   );
 }

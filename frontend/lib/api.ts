@@ -43,6 +43,13 @@ export function useApi() {
 
       // 1. Sesi kadaluarsa / Token invalid -> Redirect ke login
       if (response.status === 401) {
+        const err = await response.clone().json().catch(() => null);
+
+        if (err?.code === "ACCOUNT_DEACTIVATED") {
+          window.dispatchEvent(new CustomEvent("app:account-deactivated"));
+          return response;
+        }
+
         logout();
         if (!isLoggingOutRef.current) {
           sessionStorage.setItem(

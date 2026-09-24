@@ -10,6 +10,7 @@ import { mapRole } from "@/lib/navigation";
 import { CompactSidebar } from "@/components/CompactSidebar";
 import { useSidebar } from "@/components/sidebar-context";
 import { useNotifications } from "@/hooks/use-notifications";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import { useApi } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -68,7 +69,7 @@ function NotificationsPageContent() {
   const { user } = useAuth();
   const router = useRouter();
   const { width } = useSidebar();
-  const { unreadCount, markAsRead, markAllAsRead, refresh } = useNotifications();
+  const { unreadCount, markAsRead, markAllAsRead, refresh, showDeactivatedModal, handleReturnToLogin } = useNotifications();
   const { get } = useApi();
 
   const [page, setPage] = useState(1);
@@ -304,6 +305,16 @@ function NotificationsPageContent() {
           )}
         </div>
       </main>
+      <ConfirmModal
+        open={showDeactivatedModal}
+        onConfirm={handleReturnToLogin}
+        onClose={() => {}}
+        title="Akun Anda Dinonaktifkan"
+        description="Akun Anda telah dinonaktifkan oleh admin. Anda akan diarahkan ke halaman login."
+        confirmText="Kembali ke Login"
+        cancelText=""
+        dismissProof
+      />
     </div>
   );
 }

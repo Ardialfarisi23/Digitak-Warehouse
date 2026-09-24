@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApi } from "@/lib/api";
+import { useAccountStatusGuard } from "@/hooks/use-account-status-guard";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -117,6 +118,8 @@ export type SupervisorDashboardReturn = {
   approveError: string | null;
   handleFilterChange: (type: "warehouse" | "project", value: string) => void;
   handleApprove: (compositeId: string) => Promise<void>;
+  showDeactivatedModal: boolean;
+  handleReturnToLogin: () => void;
 };
 
 const FALLBACK_METRICS: SupervisorMetrics = {
@@ -204,6 +207,7 @@ function normalizeResult(action: string): { label: "Sukses" | "Gagal" | "Menungg
 
 export function useSupervisorDashboard() {
   const { get, put } = useApi();
+  const { showDeactivatedModal, handleReturnToLogin } = useAccountStatusGuard(60000);
 
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>("all");
   const [selectedProject, setSelectedProject] = useState<string>("all");
@@ -743,5 +747,7 @@ export function useSupervisorDashboard() {
     approveError,
     handleFilterChange,
     handleApprove,
+    showDeactivatedModal,
+    handleReturnToLogin,
   };
 }

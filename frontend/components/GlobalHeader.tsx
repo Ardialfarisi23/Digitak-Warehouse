@@ -21,12 +21,13 @@ import {
 
 import { useNotifications } from "@/hooks/use-notifications";
 import { UserAvatar } from "@/components/UserAvatar";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 export function GlobalHeader() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const { width, isMobile, setMobileOpen } = useSidebar();
-  const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification, deleteAllNotifications } = useNotifications();
+  const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification, deleteAllNotifications, showDeactivatedModal, handleReturnToLogin } = useNotifications();
 
   const [notifOpen, setNotifOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -405,6 +406,16 @@ export function GlobalHeader() {
           </div>
         </div>
       )}
+      <ConfirmModal
+        open={showDeactivatedModal}
+        onConfirm={handleReturnToLogin}
+        onClose={() => {}}
+        title="Akun Anda Dinonaktifkan"
+        description="Akun Anda telah dinonaktifkan oleh admin. Anda akan diarahkan ke halaman login."
+        confirmText="Kembali ke Login"
+        cancelText=""
+        dismissProof
+      />
     </>
   );
 }

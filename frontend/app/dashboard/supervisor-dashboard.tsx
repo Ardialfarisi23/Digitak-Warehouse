@@ -4,6 +4,7 @@ import { ArrowDownLeft, ArrowUpRight, Box, CheckCircle2, Clock, FileText, Radio,
 import { useAuth } from "@/lib/auth-context";
 import { useSupervisorDashboard } from "@/hooks/use-supervisor-dashboard";
 import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity } from "@/lib/capacity";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -31,7 +32,7 @@ export function SupervisorDashboard() {
   const currentSupervisorName = user?.name || user?.email || "Supervisor";
   const router = useRouter();
 
-  const { selectedWarehouse, selectedProject, isLoading, approvalList, ticketReconciliation, metrics, queue, kapasitasPerGudang, currentTimeLabel, boqStats, activeBoqTickets, stagingSites, approveError } = useSupervisorDashboard();
+  const { selectedWarehouse, selectedProject, isLoading, approvalList, ticketReconciliation, metrics, queue, kapasitasPerGudang, currentTimeLabel, boqStats, activeBoqTickets, stagingSites, approveError, showDeactivatedModal, handleReturnToLogin } = useSupervisorDashboard();
 
   const [approvingId, setApprovingId] = useState<string | number | null>(null);
   const [activityLog, setActivityLog] = useState<any[]>([]);
@@ -408,6 +409,16 @@ export function SupervisorDashboard() {
           </div>
         </div>
       </main>
+      <ConfirmModal
+        open={showDeactivatedModal}
+        onConfirm={handleReturnToLogin}
+        onClose={() => {}}
+        title="Akun Anda Dinonaktifkan"
+        description="Akun Anda telah dinonaktifkan oleh admin. Anda akan diarahkan ke halaman login."
+        confirmText="Kembali ke Login"
+        cancelText=""
+        dismissProof
+      />
     </div>
   );
 }
