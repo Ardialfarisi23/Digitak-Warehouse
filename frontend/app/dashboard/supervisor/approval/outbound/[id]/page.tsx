@@ -293,7 +293,7 @@ export default function SupervisorApprovalOutboundDetailPage() {
     setActionLoading(true);
     try {
       const resp = await put(`${apiBase}/api/surat-jalan/${params.id}/reject-outbound`, {
-        alasan: rejectReason,
+        catatan: rejectReason,
       });
       if (!resp.ok) {
         const err = await resp.json().catch(() => null);

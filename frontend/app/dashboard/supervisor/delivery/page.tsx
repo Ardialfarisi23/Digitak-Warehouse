@@ -49,6 +49,19 @@ interface OutboundRow {
   pic_pemohon_nama?: string;
 }
 
+interface HistoryRow {
+  surat_jalan_id: number;
+  nomor_surat_jalan: string;
+  tanggal: string | null;
+  gudang_asal: { nama_gudang?: string } | null;
+  gudang_tujuan: { nama_gudang?: string } | null;
+  keputusan: string;
+  catatan: string | null;
+  penyetuju: string | null;
+  waktu_keputusan: string | null;
+  status_surat_jalan: string | null;
+}
+
 export default function SupervisorApprovalOutboundPage() {
   const router = useRouter();
   const { get, put } = useApi();
@@ -77,6 +90,13 @@ export default function SupervisorApprovalOutboundPage() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<"pending" | "history">("pending");
+
+  const [historyData, setHistoryData] = useState<HistoryRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
+  const [historyKeputusan, setHistoryKeputusan] = useState<string>("all");
 
   const openDocModal = (item: any) => {
     setSelectedDocItem(item);
@@ -117,9 +137,42 @@ export default function SupervisorApprovalOutboundPage() {
     }
   }, [get, currentPage, query, selectedCategory]);
 
+  const fetchHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const params = new URLSearchParams();
+      params.set("page", String(historyPage));
+      params.set("limit", "10");
+      if (query.trim()) params.set("search", query.trim());
+      if (historyKeputusan !== "all") params.set("keputusan", historyKeputusan);
+
+      const response = await get(`${baseUrl}/api/surat-jalan/outbound/riwayat-approval?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error("Gagal mengambil riwayat approval outbound.");
+      }
+      const json = await response.json();
+      const result = json?.data ?? json ?? {};
+      const list = Array.isArray(result.data) ? result.data : Array.isArray(result) ? result : [];
+      setHistoryData(list as HistoryRow[]);
+      setHistoryTotalPages((result?.meta?.totalPages as number) || 1);
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : "Terjadi kesalahan saat memuat riwayat.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [get, historyPage, query, historyKeputusan]);
+
   useEffect(() => {
     fetchApprovalQueue();
   }, [fetchApprovalQueue]);
+
+  useEffect(() => {
+    if (activeTab === "history") {
+      fetchHistory();
+    }
+  }, [activeTab, fetchHistory]);
 
   const filteredRequests = useMemo(() => {
     return requests.filter((r) => {
@@ -134,6 +187,26 @@ export default function SupervisorApprovalOutboundPage() {
       return matchCat;
     });
   }, [requests, selectedCategory, activeTab]);
+
+  const filteredHistory = useMemo(() => {
+    return historyData.filter((r) => {
+      if (historyKeputusan === "all") return true;
+      return r.keputusan === historyKeputusan;
+    });
+  }, [historyData, historyKeputusan]);
+
+  const formatDateTime = (value: string) => {
+    if (!value) return "-";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleString("id-ID", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
   const stats = useMemo(() => {
     const tabRequests = requests.filter((r) => {
@@ -354,6 +427,25 @@ export default function SupervisorApprovalOutboundPage() {
           </select>
           <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
         </div>
+
+        {activeTab === "history" && (
+          <div className="relative w-full sm:w-56">
+            <Filter className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <select
+              value={historyKeputusan}
+              onChange={(e) => {
+                setHistoryKeputusan(e.target.value);
+                setHistoryPage(1);
+              }}
+              className="w-full pl-10 pr-8 py-2.5 bg-slate-50/60 border-none rounded-xl text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer appearance-none font-medium"
+            >
+              <option value="all">Semua Keputusan</option>
+              <option value="disetujui">Disetujui</option>
+              <option value="ditolak">Ditolak</option>
+            </select>
+            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2">
@@ -388,36 +480,54 @@ export default function SupervisorApprovalOutboundPage() {
               <tr>
                 <th className="px-4 py-3 break-all">No. Surat Jalan</th>
                 <th className="px-4 py-3">Tanggal</th>
-                <th className="px-4 py-3">Project</th>
-                <th className="px-4 py-3">Gudang</th>
-                <th className="px-4 py-3">Status</th>
+                {activeTab === "history" ? (
+                  <>
+                    <th className="px-4 py-3">Asal / Tujuan</th>
+                    <th className="px-4 py-3">Keputusan</th>
+                    <th className="px-4 py-3">Catatan</th>
+                    <th className="px-4 py-3">Oleh</th>
+                    <th className="px-4 py-3">Waktu Keputusan</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-4 py-3">Project</th>
+                    <th className="px-4 py-3">Gudang</th>
+                    <th className="px-4 py-3">Status</th>
+                  </>
+                )}
                 <th className="px-4 py-3 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {isLoading ? (
+              {isLoading && activeTab === "pending" ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
                     <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
                     <p className="mt-2 text-sm">Memuat data outbound...</p>
                   </td>
                 </tr>
-              ) : filteredRequests.length === 0 ? (
+              ) : historyLoading && activeTab === "history" ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
-                    <p className="text-sm font-semibold text-slate-700">
-                      {activeTab === "pending"
-                        ? "Tidak ada pengajuan outbound yang menunggu persetujuan"
-                        : "Tidak ada riwayat persetujuan outbound"}
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      {activeTab === "pending"
-                        ? "Ganti kata kunci atau pilih filter lain."
-                        : "Setujui atau tolak pengajuan untuk melihat riwayat."}
-                    </p>
+                  <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                    <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
+                    <p className="mt-2 text-sm">Memuat riwayat...</p>
                   </td>
                 </tr>
-              ) : (
+              ) : activeTab === "pending" && filteredRequests.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                    <p className="text-sm font-semibold text-slate-700">Tidak ada pengajuan outbound yang menunggu persetujuan</p>
+                    <p className="text-xs text-slate-400">Ganti kata kunci atau pilih filter lain.</p>
+                  </td>
+                </tr>
+              ) : activeTab === "history" && filteredHistory.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                    <p className="text-sm font-semibold text-slate-700">Tidak ada riwayat persetujuan outbound</p>
+                    <p className="text-xs text-slate-400">Setujui atau tolak pengajuan untuk melihat riwayat.</p>
+                  </td>
+                </tr>
+              ) : activeTab === "pending" ? (
                 filteredRequests.map((r) => {
                   const kategori = r.kategori_approval || "manual_override";
                   const badgeClass = STATUS_BADGE[kategori] || STATUS_BADGE.manual_override;
@@ -439,32 +549,14 @@ export default function SupervisorApprovalOutboundPage() {
                         {r.gudang_asal?.nama_gudang || "-"}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {activeTab === "history" ? (
-                            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-                              r.status === "disetujui"
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                : r.status === "ditolak"
-                                  ? "bg-rose-50 text-rose-700 border-rose-200"
-                                  : badgeClass
-                            }`}>
-                              {r.status === "disetujui"
-                                ? "Disetujui"
-                                : r.status === "ditolak"
-                                  ? "Ditolak"
-                                  : label}
-                            </span>
-                          ) : (
-                            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badgeClass}`}>
-                              {label}
-                            </span>
-                          )}
-                          {isKritis && (
-                            <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">
-                              Kritis
-                            </span>
-                          )}
-                        </div>
+                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badgeClass}`}>
+                          {label}
+                        </span>
+                        {isKritis && (
+                          <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">
+                            Kritis
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-2">
@@ -477,30 +569,82 @@ export default function SupervisorApprovalOutboundPage() {
                             <Eye size={14} />
                             <span className="hidden sm:inline">Detail</span>
                           </button>
-                          {activeTab === "pending" && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => openConfirmDialog(r.surat_jalan_id)}
-                                disabled={actionLoading === String(r.surat_jalan_id)}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-100 disabled:opacity-50"
-                                title="Setujui"
-                              >
-                                <CheckSquare size={14} />
-                                <span className="hidden sm:inline">Setujui</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => openRejectDialog(r.surat_jalan_id)}
-                                disabled={actionLoading === String(r.surat_jalan_id)}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-100 disabled:opacity-50"
-                                title="Tolak"
-                              >
-                                <XCircle size={14} />
-                                <span className="hidden sm:inline">Tolak</span>
-                              </button>
-                            </>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => openConfirmDialog(r.surat_jalan_id)}
+                            disabled={actionLoading === String(r.surat_jalan_id)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-100 disabled:opacity-50"
+                            title="Setujui"
+                          >
+                            <CheckSquare size={14} />
+                            <span className="hidden sm:inline">Setujui</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openRejectDialog(r.surat_jalan_id)}
+                            disabled={actionLoading === String(r.surat_jalan_id)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-100 disabled:opacity-50"
+                            title="Tolak"
+                          >
+                            <XCircle size={14} />
+                            <span className="hidden sm:inline">Tolak</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                filteredHistory.map((r) => {
+                  const keputusanBadge =
+                    r.keputusan === "disetujui"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : r.keputusan === "ditolak"
+                        ? "bg-rose-50 text-rose-700 border-rose-200"
+                        : "bg-slate-100 text-slate-700 border-slate-200";
+                  const keputusanLabel =
+                    r.keputusan === "disetujui"
+                      ? "Disetujui"
+                      : r.keputusan === "ditolak"
+                        ? "Ditolak"
+                        : r.keputusan || "-";
+
+                  return (
+                    <tr key={`${r.surat_jalan_id}-${r.waktu_keputusan}`} className="hover:bg-slate-50/50 transition">
+                      <td className="px-4 py-3 font-mono font-bold text-slate-900 break-all">
+                        {r.nomor_surat_jalan || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {formatDate((r.tanggal || r.waktu_keputusan || "") as string)}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {(r.gudang_asal?.nama_gudang || "-") + " / " + (r.gudang_tujuan?.nama_gudang || "-")}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${keputusanBadge}`}>
+                          {keputusanLabel}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {r.catatan || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {r.penyetuju || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {formatDateTime((r.waktu_keputusan || "") as string)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/dashboard/supervisor/approval/outbound/${r.surat_jalan_id}`)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
+                            title="Detail"
+                          >
+                            <Eye size={14} />
+                            <span className="hidden sm:inline">Detail</span>
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -512,7 +656,7 @@ export default function SupervisorApprovalOutboundPage() {
         </div>
       </div>
 
-      {totalPages > 1 && (
+      {activeTab === "pending" && totalPages > 1 && (
         <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
           <button
             onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
@@ -527,6 +671,28 @@ export default function SupervisorApprovalOutboundPage() {
           <button
             onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
             disabled={currentPage === totalPages}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+          >
+            Selanjutnya
+          </button>
+        </div>
+      )}
+
+      {activeTab === "history" && historyTotalPages > 1 && (
+        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <button
+            onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+            disabled={historyPage === 1}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+          >
+            Sebelumnya
+          </button>
+          <span className="text-xs text-slate-500">
+            Halaman {historyPage} dari {historyTotalPages}
+          </span>
+          <button
+            onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}
+            disabled={historyPage === historyTotalPages}
             className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
           >
             Selanjutnya
