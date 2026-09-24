@@ -76,6 +76,21 @@ const baseInclude = {
   supplier: true,
 };
 
+const findByIdInclude = {
+  ...baseInclude,
+  items: {
+    ...baseInclude.items,
+    include: {
+      ...baseInclude.items.include,
+      diperiksa_oleh_user: {
+        select: {
+          nama: true,
+        },
+      },
+    },
+  },
+};
+
 const APPROVAL_STATUS = "draft_diajukan";
 const DELIVERY_STATUSES = ["disetujui", "digenerate", "diterima_didistribusikan"];
 
@@ -365,7 +380,7 @@ const findById = async (id) => {
     where: {
       surat_jalan_id: Number(id),
     },
-    include: baseInclude,
+    include: findByIdInclude,
   });
 };
 
