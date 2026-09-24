@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import ConfirmModal from "@/components/ConfirmModal";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 export function AccountDeactivatedListener() {
   const router = useRouter();

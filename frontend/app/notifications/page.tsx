@@ -97,6 +97,10 @@ function NotificationsPageContent() {
         const res = await get(`${API_BASE}/api/notifications?${qs.toString()}`);
 
         if (res.status === 401) {
+          const err = await res.json().catch(() => null);
+          if (err?.code === "ACCOUNT_DEACTIVATED") {
+            return;
+          }
           router.replace("/");
           return;
         }
