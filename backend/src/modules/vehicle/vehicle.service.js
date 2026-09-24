@@ -7,7 +7,7 @@ const create = async (data, userId) => {
   const existing = await vehicleRepository.findByNoPolisi(data.no_polisi, { includeInactive: true });
 
   if (existing) {
-    throw new AppError("Kode vehicle sudah digunakan.", 400);
+    throw new AppError(`Nomor polisi ${existing.no_polisi} sudah digunakan oleh kendaraan ${[existing.merk, existing.jenis_kendaraan].filter(Boolean).join(" ") || "lain"}.`, 409);
   }
 
   const selectedGudangId = data.gudang_id || data.gudangId || data.warehouseId || null;
@@ -67,8 +67,8 @@ const update = async (no_polisi, data, userId) => {
 
   if (data.no_polisi && data.no_polisi !== no_polisi) {
     const existing = await vehicleRepository.findByNoPolisi(data.no_polisi, { includeInactive: true });
-    if (existing) {
-      throw new AppError("Kode vehicle sudah digunakan.", 400);
+    if (existing && existing.kendaraan_id !== record.kendaraan_id) {
+      throw new AppError(`Nomor polisi ${existing.no_polisi} sudah digunakan oleh kendaraan ${[existing.merk, existing.jenis_kendaraan].filter(Boolean).join(" ") || "lain"}.`, 409);
     }
   }
 
