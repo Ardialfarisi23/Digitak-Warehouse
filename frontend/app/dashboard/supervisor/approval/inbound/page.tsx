@@ -83,7 +83,7 @@ export default function SupervisorApprovalPage() {
       if (activeTab === "pending") {
         return r.status === "menunggu_verifikasi";
       }
-      return ["disetujui", "ditolak", "diterima_didistribusikan"].includes(r.status);
+      return ["ready_putaway", "disetujui", "ditolak", "diterima_didistribusikan"].includes(r.status);
     });
 
     return tabFiltered.filter((r) => {
@@ -111,7 +111,7 @@ export default function SupervisorApprovalPage() {
       if (activeTab === "pending") {
         return r.status === "menunggu_verifikasi";
       }
-      return ["disetujui", "ditolak", "diterima_didistribusikan"].includes(r.status);
+      return ["ready_putaway", "disetujui", "ditolak", "diterima_didistribusikan"].includes(r.status);
     });
 
     const totalAntrean = tabRequests.length;
@@ -177,6 +177,7 @@ export default function SupervisorApprovalPage() {
       });
       if (res.ok) {
         setRequests((prev) => (Array.isArray(prev) ? prev.map((item) => item.id === target.id ? { ...item, status: "ditolak" } : item) : []));
+        await fetchInboundList();
         setToast({ message: "Inbound berhasil ditolak.", type: "success" });
       } else {
         const err = await res.json().catch(() => null);
@@ -199,7 +200,8 @@ export default function SupervisorApprovalPage() {
     try {
       const res = await put(`${API_BASE_URL}/api/surat-jalan/${target.id}/approve-inbound`, {});
       if (res.ok) {
-        setRequests((prev) => (Array.isArray(prev) ? prev.map((item) => item.id === target.id ? { ...item, status: "disetujui" } : item) : []));
+        setRequests((prev) => (Array.isArray(prev) ? prev.map((item) => item.id === target.id ? { ...item, status: "ready_putaway" } : item) : []));
+        await fetchInboundList();
         setToast({ message: "Inbound berhasil disetujui.", type: "success" });
       } else {
         const err = await res.json().catch(() => null);
@@ -394,15 +396,29 @@ export default function SupervisorApprovalPage() {
                   </>
                 ) : (
                   <span className={`px-3 py-2 rounded-xl text-xs font-semibold border ${
-                    req.status === "disetujui"
-                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                      : req.status === "ditolak"
-                        ? "bg-rose-50 text-rose-700 border-rose-200"
-                        : req.status === "diterima_didistribusikan"
-                          ? "bg-blue-50 text-blue-700 border-blue-200"
-                          : "bg-slate-100 text-slate-600 border-slate-200"
+                    req.status === "ready_putaway"
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : req.status === "disetujui"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : req.status === "digenerate"
+                          ? "bg-slate-100 text-slate-600 border-slate-200"
+                          : req.status === "ditolak"
+                            ? "bg-rose-50 text-rose-700 border-rose-200"
+                            : req.status === "diterima_didistribusikan"
+                              ? "bg-blue-50 text-blue-700 border-blue-200"
+                              : "bg-slate-100 text-slate-600 border-slate-200"
                   }`}>
-                    {req.status === "disetujui" ? "Disetujui" : req.status === "ditolak" ? "Ditolak" : req.status === "diterima_didistribusikan" ? "Diterima & Didistribusikan" : req.status}
+                    {req.status === "ready_putaway"
+                      ? "Siap Putaway"
+                      : req.status === "disetujui"
+                        ? "Disetujui"
+                        : req.status === "digenerate"
+                          ? "Digenerate"
+                          : req.status === "ditolak"
+                            ? "Ditolak"
+                            : req.status === "diterima_didistribusikan"
+                              ? "Diterima & Didistribusikan"
+                              : req.status}
                   </span>
                 )}
               </div>
