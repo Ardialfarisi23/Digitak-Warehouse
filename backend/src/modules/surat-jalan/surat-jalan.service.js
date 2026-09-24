@@ -403,6 +403,10 @@ const findStaffHistory = async (userId, query = {}) => {
   return await suratJalanRepository.findStaffHistory(userId, query);
 };
 
+const findOutboundApprovalHistory = async (query = {}) => {
+  return await suratJalanRepository.findOutboundApprovalHistory(query);
+};
+
 const findRejectedList = async (query = {}) => {
   return await suratJalanRepository.findRejectedList(query);
 };
@@ -1301,6 +1305,7 @@ if (!Array.isArray(items) || items.length === 0) {
     updateDeliveryStatus,
     addItemFoto,
     deleteItemFoto,
-findStaffHistory,
-  findRejectedList,
-};
+    findOutboundApprovalHistory,
+    findStaffHistory,
+    findRejectedList,
+  };

@@ -24,6 +24,7 @@ router.post(
 router.get("/outbound/queue", authenticate, suratJalanController.findOutboundQueue);
 router.get("/outbound/approval", authenticate, authorize("SUPERVISOR"), suratJalanController.findOutboundForApproval);
 router.get("/outbound/delivery", authenticate, suratJalanController.findOutboundForDelivery);
+router.get("/outbound/riwayat-approval", authenticate, authorize("SUPERVISOR"), suratJalanController.findOutboundApprovalHistory);
 router.get("/inbound", authenticate, suratJalanController.findInboundList);
 router.get("/verification/queue", authenticate, suratJalanController.findVerificationQueue);
 router.get("/staff/history", authenticate, suratJalanController.findStaffHistory);

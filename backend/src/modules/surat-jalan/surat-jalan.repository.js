@@ -181,6 +181,7 @@ const create = async (data, actorId, tx = prisma) => {
           serial_number: item.serial_number || null,
           foto_url: item.foto_url || null,
           is_kelebihan: Boolean(item.is_kelebihan),
+          is_di_luar_boq: Boolean(item.is_di_luar_boq),
           catatan: item.catatan || null,
           zona_id: item.zona_id ? Number(item.zona_id) : null,
         })),
@@ -716,6 +717,106 @@ const findInboundItemsBySerial = async (serials, { barangId, excludeItemIds = []
   });
 };
 
+const findOutboundApprovalHistory = async ({ search = "", keputusan, page = 1, limit = 10, startDate, endDate } = {}) => {
+  const approvalWhere = {
+    entity_type: "surat_jalan",
+    tahap: "outbound_approval",
+    status: { in: ["disetujui", "ditolak"] },
+  };
+
+  if (keputusan && ["disetujui", "ditolak"].includes(keputusan)) {
+    approvalWhere.status = keputusan;
+  }
+
+  if (startDate || endDate) {
+    const dateCondition = {};
+    if (startDate) dateCondition.gte = new Date(startDate);
+    if (endDate) dateCondition.lte = new Date(endDate + "T23:59:59");
+    approvalWhere.created_at = dateCondition;
+  }
+
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 50);
+  const sanitizedPage = Math.max(parseInt(page, 10) || 1, 1);
+
+  let sjIdFilter = null;
+  if (search && search.trim()) {
+    const s = search.trim();
+    const matchingSjs = await prisma.surat_jalan.findMany({
+      where: {
+        tipe: "outbound",
+        OR: [
+          { nomor_surat_jalan: { contains: s, mode: "insensitive" } },
+          { project: { nama_project: { contains: s, mode: "insensitive" } } },
+          { gudang_asal: { nama_gudang: { contains: s, mode: "insensitive" } } },
+          { gudang_tujuan: { nama_gudang: { contains: s, mode: "insensitive" } } },
+        ],
+      },
+      select: { surat_jalan_id: true },
+    });
+    sjIdFilter = matchingSjs.map((sj) => Number(sj.surat_jalan_id));
+    if (sjIdFilter.length === 0) {
+      return { data: [], meta: buildListMeta(0, { page: sanitizedPage, limit: safeLimit }) };
+    }
+    approvalWhere.entity_id = { in: sjIdFilter };
+  }
+
+  const [total, logs] = await Promise.all([
+    prisma.approval_log.count({ where: approvalWhere }),
+    prisma.approval_log.findMany({
+      where: approvalWhere,
+      orderBy: { created_at: "desc" },
+      skip: (sanitizedPage - 1) * safeLimit,
+      take: safeLimit,
+      include: {
+        approver: { select: { nama: true } },
+      },
+    }),
+  ]);
+
+  if (logs.length === 0) {
+    return { data: [], meta: buildListMeta(total, { page: sanitizedPage, limit: safeLimit }) };
+  }
+
+  const sjIds = logs.map((l) => Number(l.entity_id));
+  const suratJalans = await prisma.surat_jalan.findMany({
+    where: { surat_jalan_id: { in: sjIds } },
+    select: {
+      surat_jalan_id: true,
+      nomor_surat_jalan: true,
+      tipe: true,
+      status: true,
+      tanggal: true,
+      updated_at: true,
+      catatan: true,
+      kategori_approval: true,
+      pic_pemohon_nama: true,
+      project: { select: { project_id: true, nama_project: true } },
+      gudang_asal: { select: { gudang_id: true, nama_gudang: true } },
+      gudang_tujuan: { select: { gudang_id: true, nama_gudang: true } },
+    },
+  });
+
+  const sjMap = new Map(suratJalans.map((sj) => [String(sj.surat_jalan_id), sj]));
+
+  const data = logs.map((log) => {
+    const sj = sjMap.get(String(Number(log.entity_id)));
+    return {
+      surat_jalan_id: Number(log.entity_id),
+      nomor_surat_jalan: sj?.nomor_surat_jalan ?? null,
+      tanggal: sj?.tanggal ?? null,
+      gudang_asal: sj?.gudang_asal ?? null,
+      gudang_tujuan: sj?.gudang_tujuan ?? null,
+      keputusan: log.status,
+      catatan: log.catatan ?? sj?.catatan ?? null,
+      penyetuju: log.approver?.nama ?? null,
+      waktu_keputusan: log.created_at,
+      status_surat_jalan: sj?.status ?? null,
+    };
+  });
+
+  return { data, meta: buildListMeta(total, { page: sanitizedPage, limit: safeLimit }) };
+};
+
 const findRejectedList = async ({ tipe = "all", search = "", startDate, endDate, page = 1, limit = 10 } = {}) => {
   const where = { status: "ditolak" };
 
@@ -896,6 +997,7 @@ module.exports = {
   addItemFoto,
   updateItemVerification,
   deleteItemFoto,
+  findOutboundApprovalHistory,
   findStaffHistory,
   findRejectedList,
 };

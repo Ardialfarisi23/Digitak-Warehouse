@@ -82,6 +82,15 @@ const findStaffHistory = async (req, res, next) => {
   }
 };
 
+const findOutboundApprovalHistory = async (req, res, next) => {
+  try {
+    const result = await suratJalanService.findOutboundApprovalHistory(req.query);
+    return response.success(res, "Daftar riwayat approval outbound berhasil diambil.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 const findRejectedList = async (req, res, next) => {
   try {
     const result = await suratJalanService.findRejectedList(req.query);
@@ -222,6 +231,7 @@ module.exports = {
   updateDeliveryStatus,
   addItemFoto,
   deleteItemFoto,
+  findOutboundApprovalHistory,
   findStaffHistory,
   findRejectedList,
 };

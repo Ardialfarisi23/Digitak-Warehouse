@@ -31,6 +31,7 @@ const createSuratJalanSchema = z
           serial_number: z.string().optional().nullable(),
           foto_url: z.string().optional().nullable(),
           is_kelebihan: z.boolean().optional().default(false),
+          is_di_luar_boq: z.boolean().optional().default(false),
           catatan: z.string().optional().nullable(),
           zona_id: z.coerce.number().positive().nullable().optional(),
         }),

@@ -391,6 +391,17 @@ export default function SupervisorApprovalInboundDetailPage() {
                   <p className="text-xs text-slate-500">Waktu Verifikasi</p>
                   <p className="font-medium text-slate-900">{(selectedDocItem as any)?.diperiksa_pada ? new Date((selectedDocItem as any).diperiksa_pada).toLocaleString("id-ID") : "-"}</p>
                 </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-slate-500">Catatan</p>
+                  <p className="font-medium text-slate-900">{selectedDocItem?.catatan || "-"}</p>
+                </div>
+                {selectedDocItem?.is_di_luar_boq && (
+                  <div className="col-span-2">
+                    <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
+                      Di luar BOQ
+                    </span>
+                  </div>
+                )}
               </div>
               <div>
                 <p className="mb-2 text-xs text-slate-500">Foto Dokumentasi</p>

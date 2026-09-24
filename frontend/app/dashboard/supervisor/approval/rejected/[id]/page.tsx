@@ -177,7 +177,7 @@ export default function SupervisorRejectedDetailPage() {
           </span>
         </div>
         <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">
-          {catatanFinal || <span className="italic text-slate-400">Tidak ada alasan tercatat.</span>}
+          {catatanFinal || <span className="italic text-slate-400">-</span>}
         </p>
         <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex items-start gap-3">
@@ -221,10 +221,6 @@ export default function SupervisorRejectedDetailPage() {
           <Field label="Tanggal" value={formatDateShort(detail.tanggal)} />
           <Field label="Tipe" value={tipeLabel(detail.tipe)} />
           <Field label="Project" value={detail.project?.nama_project ?? detail.project_id ?? "-"} />
-          <Field
-            label="Kategori Persetujuan"
-            value={detail.kategori_approval ?? <span className="italic text-slate-400">-</span>}
-          />
           <Field
             label="Gudang Asal"
             value={

@@ -82,6 +82,9 @@ interface ModalItemRow {
   qty: number;
   satuan_id: string;
   satuan_label: string;
+  catatan: string;
+  is_di_luar_boq: boolean;
+  catatanAutoFilled: boolean;
 }
 
 function Modal({
@@ -155,6 +158,7 @@ export default function InboundListPage() {
 
   const [selectedBoqId, setSelectedBoqId] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [boqItemsDetail, setBoqItemsDetail] = useState<Array<{ barang_id: string | number; itemCode?: string; itemName?: string }>>([]);
   const [nomorSuratJalan, setNomorSuratJalan] = useState("");
   const [selectedGudangTujuanId, setSelectedGudangTujuanId] = useState("");
   const [tanggalMasuk, setTanggalMasuk] = useState("");
@@ -253,9 +257,42 @@ export default function InboundListPage() {
     setFormError(null);
     setSuratJalanPdf(null);
     setSuratJalanPdfUrl("");
+    setBoqItemsDetail([]);
     setModalOpen(true);
     await loadOptions();
   };
+
+  useEffect(() => {
+    if (!selectedBoqId) {
+      setBoqItemsDetail([]);
+      return;
+    }
+    let cancelled = false;
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    const fetchBoqDetail = async () => {
+      try {
+        const res = await get(`${baseUrl}/api/boqs/${selectedBoqId}`);
+        if (!res.ok) return;
+        const json = await res.json();
+        const boq = json?.data;
+        if (!boq || !Array.isArray(boq.items)) return;
+        if (cancelled) return;
+        setBoqItemsDetail(
+          boq.items.map((item: any) => ({
+            barang_id: String(item.barang_id || item.id || ""),
+            itemCode: item.itemCode || item.barang?.kode_perangkat || "",
+            itemName: item.itemName || item.barang?.nama_barang || "",
+          }))
+        );
+      } catch {
+        // ignore BOQ detail fetch error
+      }
+    };
+    fetchBoqDetail();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBoqId, get]);
 
   const handlePdfChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -310,6 +347,9 @@ export default function InboundListPage() {
         qty: 1,
         satuan_id: "",
         satuan_label: "",
+        catatan: "",
+        is_di_luar_boq: true,
+        catatanAutoFilled: false,
       },
     ]);
   };
@@ -330,11 +370,23 @@ export default function InboundListPage() {
             nama_barang: "",
             satuan_id: "",
             satuan_label: "",
+            is_di_luar_boq: true,
+            catatan: row.catatan || "Di luar BOQ",
+            catatanAutoFilled: true,
           };
         }
         const satuanId = picked.satuan_default_id
           ? String(picked.satuan_default_id)
           : "";
+        const isInBoq = boqItemsDetail.some(
+          (boqItem) => String(boqItem.barang_id) === String(picked.id)
+        );
+        const catatan =
+          row.catatan && row.catatan !== "Di luar BOQ"
+            ? row.catatan
+            : isInBoq
+              ? ""
+              : "Di luar BOQ";
         return {
           ...row,
           barang_id: picked.id,
@@ -342,6 +394,9 @@ export default function InboundListPage() {
           nama_barang: picked.nama_barang,
           satuan_id: satuanId,
           satuan_label: picked.satuan_default_kode || "",
+          is_di_luar_boq: !isInBoq,
+          catatan,
+          catatanAutoFilled: true,
         };
       }),
     );
@@ -350,6 +405,54 @@ export default function InboundListPage() {
   const setModalItemQty = (id: string, value: number) => {
     setModalItems((prev) =>
       prev.map((row) => (row.id === id ? { ...row, qty: Math.max(0, value) } : row)),
+    );
+  };
+
+  useEffect(() => {
+    if (!boqItemsDetail.length) {
+      setModalItems((prev) =>
+        prev.map((row) => {
+          const nextIsDiLuarBoq = row.barang_id ? true : row.is_di_luar_boq;
+          const nextCatatan =
+            row.catatanAutoFilled && row.catatan && row.catatan !== "Di luar BOQ"
+              ? row.catatan
+              : row.barang_id
+                ? "Di luar BOQ"
+                : "";
+          return {
+            ...row,
+            is_di_luar_boq: nextIsDiLuarBoq,
+            catatan: nextCatatan,
+            catatanAutoFilled: row.barang_id ? true : row.catatanAutoFilled,
+          };
+        })
+      );
+      return;
+    }
+    setModalItems((prev) =>
+      prev.map((row) => {
+        if (!row.barang_id) return row;
+        const isInBoq = boqItemsDetail.some(
+          (boqItem) => String(boqItem.barang_id) === String(row.barang_id)
+        );
+        const nextIsDiLuarBoq = !isInBoq;
+        const nextCatatan = row.catatanAutoFilled
+          ? isInBoq
+            ? ""
+            : "Di luar BOQ"
+          : row.catatan;
+        return {
+          ...row,
+          is_di_luar_boq: nextIsDiLuarBoq,
+          catatan: nextCatatan,
+        };
+      })
+    );
+  }, [boqItemsDetail]);
+
+  const setModalItemCatatan = (id: string, value: string) => {
+    setModalItems((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, catatan: value, catatanAutoFilled: false } : row)),
     );
   };
 
@@ -418,7 +521,8 @@ pic_pemohon_nama: picPemohon.trim() || null,
           satuan_id: row.satuan_id,
           kondisi: "baik",
           is_kelebihan: false,
-          catatan: null,
+          is_di_luar_boq: row.is_di_luar_boq,
+          catatan: row.catatan?.trim() || null,
         })),
       };
 
@@ -883,6 +987,20 @@ pic_pemohon_nama: picPemohon.trim() || null,
                   >
                     <Trash2 size={14} />
                   </button>
+                </div>
+                <div className="col-span-12">
+                  <input
+                    type="text"
+                    value={row.catatan}
+                    onChange={(e) => setModalItemCatatan(row.id, e.target.value)}
+                    placeholder="Catatan (opsional)"
+                    className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
+                  />
+                  {row.is_di_luar_boq && (
+                    <span className="mt-1 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
+                      Di luar BOQ
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
