@@ -181,6 +181,7 @@ const create = async (data, actorId, tx = prisma) => {
           serial_number: item.serial_number || null,
           foto_url: item.foto_url || null,
           is_kelebihan: Boolean(item.is_kelebihan),
+          is_di_luar_boq: Boolean(item.is_di_luar_boq),
           catatan: item.catatan || null,
           zona_id: item.zona_id ? Number(item.zona_id) : null,
         })),

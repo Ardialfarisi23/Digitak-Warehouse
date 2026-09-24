@@ -441,6 +441,7 @@ model surat_jalan_item {
   serial_number       String?
   foto_url            String?
   is_kelebihan        Boolean                 @default(false)
+  is_di_luar_boq      Boolean                 @default(false)
   catatan             String?
   zona_id             BigInt?
   diperiksa_oleh      BigInt?

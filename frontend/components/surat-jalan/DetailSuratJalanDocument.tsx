@@ -17,6 +17,7 @@ export interface DetailSuratJalanItem {
   kondisi?: string;
   serial_number?: string;
   catatan?: string;
+  is_di_luar_boq?: boolean;
 }
 
 export interface DetailSuratJalanData {
@@ -287,7 +288,18 @@ export function DetailSuratJalanDocument({
                     </td>
                     <td className="border p-1 text-center font-semibold">{Number(item.qty || 0)}</td>
                     <td className="border p-1 text-center">{tampilkan(item.satuan?.kode_satuan ?? item.barang?.satuan_default?.kode_satuan)}</td>
-                    <td className="border p-1 text-center">{item.kondisi != null ? getKondisiLabel(item.kondisi) : tampilkan(item.catatan)}</td>
+                    <td className="border p-1 text-center">
+                      <div>
+                        {item.kondisi != null && <div>{getKondisiLabel(item.kondisi)}</div>}
+                        {item.catatan && <div className="text-xs text-slate-500 italic">{item.catatan}</div>}
+                        {item.is_di_luar_boq && (
+                          <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
+                            Di luar BOQ
+                          </span>
+                        )}
+                        {item.kondisi == null && !item.catatan && !item.is_di_luar_boq && tampilkan(null)}
+                      </div>
+                    </td>
                     {showAksi && (
                       <td className="border p-1 text-center">{renderItemAction ? renderItemAction(item, i) : null}</td>
                     )}
