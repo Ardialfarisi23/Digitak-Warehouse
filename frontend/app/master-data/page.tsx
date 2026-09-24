@@ -503,8 +503,12 @@ function DetailModal({ open, onClose, tab, tabLabel, record }: { open: boolean; 
 
       <dl className="divide-y divide-slate-50">
         {fields.map((field) => {
-          if (field.key === "kategori_id" || field.key === "satuan_default_id") {
-            const label = field.key === "kategori_id" ? (record as any)?.kategori?.nama_kategori : (record as any)?.satuan_default?.kode_satuan;
+          if (field.key === "kategori_id" || field.key === "satuan_default_id" || field.key === "gudang_id") {
+            const label = field.key === "kategori_id"
+              ? (record as any)?.kategori?.nama_kategori
+              : field.key === "satuan_default_id"
+                ? (record as any)?.satuan_default?.kode_satuan
+                : (record as any)?.gudang?.nama_gudang || (record as any)?.gudang_id;
 
             return (
               <div key={field.key} className="flex items-start justify-between gap-4 py-2.5">
