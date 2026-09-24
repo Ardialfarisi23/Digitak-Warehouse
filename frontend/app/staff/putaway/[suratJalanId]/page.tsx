@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, PackagePlus, Loader2, AlertCircle, MapPin, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { KondisiBadge } from "@/components/common/KondisiBadge";
 import { useApi } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
@@ -415,7 +416,7 @@ export default function PutawayDetailPage() {
                     </span>
                   )}
                 </td>
-                <td className="py-3 pr-4 text-gray-600">{item.kondisi || "-"}</td>
+                <td className="py-3 pr-4"><KondisiBadge value={item.kondisi} /></td>
                 <td className="py-3 pr-4 text-right text-gray-600">{item.qty}</td>
                 <td className="py-3">
                   {isSelesai ? (
