@@ -202,6 +202,7 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
     { key: "kategori_id", label: "Kategori", type: "select", required: true, options: [] },
     { key: "satuan_default_id", label: "Satuan Default", type: "select", required: true, options: [] },
     { key: "foto", label: "Foto Barang", type: "file" },
+    { key: "wajib_sn", label: "Wajib Serial Number", type: "checkbox" },
   ],
   projects: [
     { key: "nama_project", label: "Nama Project", type: "text", required: true },

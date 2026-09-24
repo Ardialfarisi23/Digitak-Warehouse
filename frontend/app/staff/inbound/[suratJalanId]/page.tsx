@@ -18,6 +18,7 @@ type ApiBarang = {
   barang_id: number;
   kode_perangkat?: string;
   nama_barang?: string;
+  wajib_sn?: boolean;
 };
 
 type ApiSuratJalanItem = {
@@ -83,6 +84,7 @@ type EditableItem = {
   serialNumber: string;
   isKelebihan: boolean;
   catatanKelebihan: string;
+  wajibSn: boolean;
   zona?: {
     zona_id: number;
     kode_zona?: string;
@@ -133,9 +135,16 @@ export default function InboundDetailPage() {
   const [showFotoSuccessModal, setShowFotoSuccessModal] = useState(false);
   const [showFotoErrorModal, setShowFotoErrorModal] = useState(false);
   const [fotoModalMessage, setFotoModalMessage] = useState("");
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const [showExcessModal, setShowExcessModal] = useState(false);
   const [excessNotesDraft, setExcessNotesDraft] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   useEffect(() => {
     async function load() {
@@ -171,6 +180,7 @@ export default function InboundDetailPage() {
             serialNumber: it.serial_number || "",
             isKelebihan: false,
             catatanKelebihan: it.catatan || "",
+            wajibSn: Boolean(it.barang?.wajib_sn),
             fotos: (it.fotos || []).map((f) => ({
               foto_id: f.foto_id,
               url: f.url,
@@ -326,7 +336,8 @@ export default function InboundDetailPage() {
     .filter(({ i }) => i.qtyDiterima > i.qtyRencana && !i.isKelebihan)
     .map(({ idx }) => idx);
   const hasUnresolvedExcess = unresolvedExcessIndexes.length > 0;
-  const canSubmit = allKondisiFilled && items.some((i) => i.qtyDiterima > 0);
+  const serialRequiredMissing = items.some((i) => i.qtyDiterima > 0 && i.wajibSn && !i.serialNumber.trim());
+  const canSubmit = allKondisiFilled && items.some((i) => i.qtyDiterima > 0) && !serialRequiredMissing;
 
   const tujuanLabel =
     data?.tujuan_tipe === "lapangan"
@@ -344,6 +355,12 @@ export default function InboundDetailPage() {
 
   function handleSubmitClick() {
     if (!canSubmit || !data) return;
+
+    if (serialRequiredMissing) {
+      const missing = items.find((i) => i.qtyDiterima > 0 && i.wajibSn && !i.serialNumber.trim());
+      setToast({ message: `Serial number wajib diisi untuk barang ${missing?.namaBarang || ""}.`, type: "error" });
+      return;
+    }
 
     if (hasUnresolvedExcess) {
       const defaults: Record<number, string> = {};
@@ -387,9 +404,6 @@ export default function InboundDetailPage() {
             kondisi: i.kondisi || null,
             serial_number: i.serialNumber || null,
             catatan: i.catatanKelebihan || null,
-            // TODO(backend): baris ini baru berfungsi setelah
-            // receiveInboundSchema & receiveInbound() di backend ditambah
-            // dukungan is_kelebihan (lihat catatan sebelumnya).
             is_kelebihan: i.isKelebihan,
           })),
       };
@@ -398,12 +412,20 @@ export default function InboundDetailPage() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => null);
-        throw new Error(err?.message || "Gagal menyimpan hasil pencocokan barang.");
+        const status = res.status;
+        const message = (err as any)?.message || "Gagal menyimpan hasil pencocokan barang.";
+        if (status === 400 || status === 404 || status === 409 || status === 422) {
+          setToast({ message, type: "error" });
+        } else {
+          console.error(String(message));
+          setToast({ message, type: "error" });
+        }
+        return;
       }
 
       router.push("/staff/inbound");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Terjadi kesalahan saat menyimpan.");
+      setToast({ message: err instanceof Error ? err.message : "Terjadi kesalahan saat menyimpan.", type: "error" });
     } finally {
       setSubmitting(false);
     }
@@ -482,6 +504,11 @@ export default function InboundDetailPage() {
 
   return (
     <div className="px-8 py-6">
+      {toast && (
+        <div className={`mb-4 rounded-xl px-4 py-3 text-sm ${toast.type === "error" ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"}`}>
+          {toast.message}
+        </div>
+      )}
       <div className="mb-4 flex items-center justify-between">
         <button onClick={() => router.push("/staff/inbound")} className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-700">
           <ArrowLeft size={16} />
@@ -612,18 +639,23 @@ export default function InboundDetailPage() {
                        <span className="text-gray-500">Belum ditempatkan</span>
                      )}
                    </td>
-                  <td className="py-3">
-                    {item.qtyDiterima === 0 ? (
-                      <span className="text-xs text-gray-300">—</span>
-                    ) : (
-                      <input
-                        value={item.serialNumber}
-                        onChange={(e) => updateItem(index, { serialNumber: e.target.value })}
-                        placeholder="Serial Number (opsional)"
-                        className="w-44 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
-                      />
-                    )}
-                  </td>
+                   <td className="py-3">
+                     {item.qtyDiterima === 0 ? (
+                       <span className="text-xs text-gray-300">—</span>
+                     ) : (
+                       <div className="flex flex-col gap-1">
+                         <input
+                           value={item.serialNumber}
+                           onChange={(e) => updateItem(index, { serialNumber: e.target.value })}
+                           placeholder={item.wajibSn ? "Serial Number (wajib)" : "Serial Number (opsional)"}
+                           className="w-44 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
+                         />
+                         {item.wajibSn && !item.serialNumber.trim() && (
+                           <span className="text-[11px] font-medium text-rose-600">Serial number wajib diisi.</span>
+                         )}
+                       </div>
+                     )}
+                   </td>
                   <td className="py-3">
                     <div className="flex flex-col gap-2">
                       <div className="flex flex-wrap gap-1.5">

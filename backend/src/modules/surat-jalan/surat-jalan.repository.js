@@ -670,6 +670,37 @@ const deleteItemFoto = async (fotoId) => {
   });
 };
 
+const findInboundItemsBySerial = async (serials, { barangId, excludeItemIds = [], tx = prisma }) => {
+  if (!Array.isArray(serials) || serials.length === 0) {
+    return [];
+  }
+
+  const where = {
+    surat_jalan: {
+      tipe: "inbound",
+      status: { not: "ditolak" },
+    },
+    barang_id: Number(barangId),
+    serial_number: { in: serials, mode: "insensitive" },
+    ...(excludeItemIds.length > 0
+      ? { item_id: { notIn: excludeItemIds.map(Number) } }
+      : {}),
+  };
+
+  return await tx.surat_jalan_item.findMany({
+    where,
+    include: {
+      surat_jalan: {
+        select: {
+          nomor_surat_jalan: true,
+          tipe: true,
+          status: true,
+        },
+      },
+    },
+  });
+};
+
 const findRejectedList = async ({ tipe = "all", search = "", startDate, endDate, page = 1, limit = 10 } = {}) => {
   const where = { status: "ditolak" };
 
