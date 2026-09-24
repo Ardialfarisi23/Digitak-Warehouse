@@ -114,6 +114,32 @@ const update = async (personil_id, data, userId) => {
     }
   }
 
+  if (data.nik && String(data.nik).trim() !== String(record.nik ?? "").trim()) {
+    const existingNik = await personnelRepository.findByNik(
+      String(data.nik).trim()
+    );
+
+    if (existingNik && String(existingNik.personil_id) !== String(personil_id)) {
+      throw new AppError(
+        `NIK sudah digunakan oleh ${existingNik.nama}.`,
+        409
+      );
+    }
+  }
+
+  if (data.email && String(data.email).trim() !== String(record.email ?? "").trim()) {
+    const existingEmail = await personnelRepository.findByEmail(
+      String(data.email).trim()
+    );
+
+    if (existingEmail && String(existingEmail.personil_id) !== String(personil_id)) {
+      throw new AppError(
+        `Email sudah digunakan oleh ${existingEmail.nama}.`,
+        409
+      );
+    }
+  }
+
   const updateData = {
     ...data,
     updated_by: Number(userId),

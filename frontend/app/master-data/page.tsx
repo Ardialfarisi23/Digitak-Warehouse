@@ -914,21 +914,29 @@ function FormModal({
           ? `${message} Detail: ${JSON.stringify(validationDetails)}`
           : message;
 
+        if ([400, 404, 409, 422].includes(response.status)) {
+          onShowToast(message, "error");
+          return;
+        }
+
         if (response.status >= 500) {
-          console.error(`[FormModal] ${tabLabel} ${mode} failed:`, {
-            status: response.status,
-            statusText: response.statusText,
-            body: resultObj,
-            rawText,
-            url,
-            payload: submitData,
-          });
+          console.error(
+            `[FormModal] ${tabLabel} ${mode} failed: status=${response.status} body=${JSON.stringify(
+              resultObj
+            )} raw=${rawText}`
+          );
 
           if (tab === "personnel" && mode === "edit") {
             console.error("[Edit Master Data Validation Error - Personil]:", resultObj);
           } else if (tab === "vehicles" && mode === "edit") {
             console.error("[Edit Master Data Validation Error - Kendaraan]:", resultObj);
           }
+        } else {
+          console.error(
+            `[FormModal] ${tabLabel} ${mode} failed: status=${response.status} body=${JSON.stringify(
+              resultObj
+            )} raw=${rawText}`
+          );
         }
 
         throw new Error(fullMessage);
