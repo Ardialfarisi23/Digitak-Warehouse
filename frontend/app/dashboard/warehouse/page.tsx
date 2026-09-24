@@ -23,6 +23,8 @@ import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity, getStatusSourceLabel } from "@/lib/capacity";
+import { ConfirmModal } from "@/components/ConfirmModal";
+import { useAccountStatusGuard } from "@/hooks/use-account-status-guard";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -57,6 +59,8 @@ export default function WarehouseLayoutPage() {
 
   const { get, request } = useApi();
   const { user } = useAuth();
+
+  const { showDeactivatedModal, handleReturnToLogin } = useAccountStatusGuard(15000);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1488,6 +1492,17 @@ export default function WarehouseLayoutPage() {
           <span className="text-[13px] font-semibold">{toast.message}</span>
         </div>
       )}
+
+      <ConfirmModal
+        open={showDeactivatedModal}
+        onConfirm={handleReturnToLogin}
+        onClose={() => {}}
+        title="Akun Anda Dinonaktifkan"
+        description="Akun Anda telah dinonaktifkan oleh admin. Anda akan diarahkan ke halaman login."
+        confirmText="Kembali ke Login"
+        cancelText=""
+        dismissProof
+      />
     </div>
   );
 }

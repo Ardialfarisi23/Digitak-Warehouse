@@ -32,6 +32,7 @@ import { useAuth } from "@/lib/auth-context";
 import { mapRole, formatRole } from "@/lib/navigation";
 import { useSupervisorDashboard } from "@/hooks/use-supervisor-dashboard";
 import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity } from "@/lib/capacity";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 const summaryCards = [
   {
@@ -206,7 +207,7 @@ export default function SupervisorDashboard() {
     );
   }
 
-  const { kapasitasPerGudang } = useSupervisorDashboard();
+  const { kapasitasPerGudang, showDeactivatedModal, handleReturnToLogin } = useSupervisorDashboard();
 
   return (
     <div className={`flex min-h-screen bg-[#F8F6F0] text-slate-800`}>
@@ -782,6 +783,16 @@ export default function SupervisorDashboard() {
             </div>
           </div>
         </main>
+        <ConfirmModal
+          open={showDeactivatedModal}
+          onConfirm={handleReturnToLogin}
+          onClose={() => {}}
+          title="Akun Anda Dinonaktifkan"
+          description="Akun Anda telah dinonaktifkan oleh admin. Anda akan diarahkan ke halaman login."
+          confirmText="Kembali ke Login"
+          cancelText=""
+          dismissProof
+        />
       </div>
     </div>
   );

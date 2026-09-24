@@ -419,9 +419,12 @@ export default function UsersPage() {
       if (newUser.metode_aktivasi === "manual") {
         setTempPassword(newUser.password.trim());
         setShowTempPasswordModal(true);
+        setShowAddModal(false);
       } else {
         setShowAddModal(false);
       }
+
+      setToast({ message: "Pengguna berhasil ditambahkan.", type: "success" });
 
       setNewUser({
         nama: "",
