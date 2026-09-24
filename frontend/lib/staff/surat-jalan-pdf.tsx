@@ -127,7 +127,7 @@ export async function downloadSuratJalanPdf(
           {/* Header dengan logo dan judul */}
           <View style={styles.headerRow}>
             {/* eslint-disable-next-line jsx-a11y/alt-text */}
-            <Image src="/logo digitak grdasi.png" style={styles.logo} />
+            <Image src="/logo-digitak-gradasi.png" style={styles.logo} />
             <View style={styles.titleBlock}>
               <Text style={styles.title}>SURAT JALAN</Text>
               <Text style={styles.subtitle}>Surat Jalan Internal — Digitak Studio</Text>

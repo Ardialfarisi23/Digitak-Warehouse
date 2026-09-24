@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import AuthLogo from "@/components/AuthLogo";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -40,13 +41,11 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#FAF9F6] p-4 font-sans">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-sm p-8 border border-gray-100">
+    <div className="min-h-screen flex items-center justify-center bg-[#FAF8F5] p-4 font-sans">
+      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl shadow-slate-200/50 p-6 sm:p-8 border border-slate-100">
         <div className="text-center mb-6">
-          <div className="flex justify-center mb-4">
-            <span className="text-2xl font-black tracking-tight text-orange-500">digitak</span>
-          </div>
-          <h2 className="text-xl font-bold text-gray-900">Lupa Kata Sandi?</h2>
+          <AuthLogo />
+          <h2 className="text-xl font-bold text-gray-900 mt-2">Lupa Kata Sandi?</h2>
           <p className="text-sm text-gray-500 mt-1">
             Masukkan email terdaftar Anda untuk menerima instruksi pemulihan kata sandi.
           </p>

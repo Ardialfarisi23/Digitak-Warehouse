@@ -216,7 +216,7 @@ export default function SupervisorDashboard() {
         <div className="flex flex-col items-center gap-8 w-full">
           <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden p-0.5">
             <Image
-              src="/logo digitak grdasi.png"
+              src="/logo-digitak-gradasi.png"
               alt="Logo Digitak Studio"
               width={56}
               height={56}

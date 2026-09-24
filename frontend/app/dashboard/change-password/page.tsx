@@ -13,7 +13,7 @@ export default function ChangePasswordPage() {
       <div className="mx-auto flex w-full max-w-7xl flex-col justify-center gap-12 lg:flex-row lg:items-center my-auto">
         <div className="flex-1 space-y-8 max-w-xl">
           <div className="relative h-12 w-52">
-            <Image src="/logo digitak grdasi.png" alt="Digitak Logo" width={208} height={48} className="object-contain object-left" />
+            <Image src="/logo-digitak-gradasi.png" alt="Digitak Logo" width={208} height={48} className="object-contain object-left" />
           </div>
 
           <div className="space-y-3">

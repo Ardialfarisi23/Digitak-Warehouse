@@ -2,9 +2,9 @@
 
 import React, { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
+import AuthLogo from "@/components/AuthLogo";
 
 function ResetPasswordForm() {
   const searchParams = useSearchParams();
@@ -21,8 +21,8 @@ function ResetPasswordForm() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FAF9F6] p-4 font-sans">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-sm p-8 border border-gray-100 text-center">
+      <div className="min-h-screen flex items-center justify-center bg-[#FAF8F5] p-4 font-sans">
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-xl shadow-slate-200/50 p-6 sm:p-8 border border-slate-100 text-center">
           <h2 className="text-xl font-bold text-gray-900 mb-2">Akses Tidak Sah</h2>
           <p className="text-sm text-gray-500">Token reset kata sandi tidak ditemukan atau telah kadaluarsa.</p>
           <Link href="/forgot-password" className="mt-4 inline-block text-orange-600 hover:underline text-sm">
@@ -67,22 +67,11 @@ function ResetPasswordForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#FAF9F6] p-4 font-sans">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-sm p-8 border border-gray-100">
+    <div className="min-h-screen flex items-center justify-center bg-[#FAF8F5] p-4 font-sans">
+      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl shadow-slate-200/50 p-6 sm:p-8 border border-slate-100">
         <div className="text-center mb-6">
-          <div className="flex justify-center mb-3">
-            <Image
-              src="/logo digitak .png"
-              alt="Digitak Logo"
-              width={140}
-              height={40}
-              className="h-10 w-auto object-contain"
-              onError={(e) => {
-                e.currentTarget.src = "/logo digitak grdasi.png";
-              }}
-            />
-          </div>
-          <p className="text-[10px] font-bold tracking-widest text-orange-600 uppercase mb-4">
+          <AuthLogo />
+          <p className="text-[10px] font-bold tracking-widest text-orange-600 uppercase mt-2">
             PT METANOUVA INFORMATIKA
           </p>
           <h2 className="text-xl font-bold text-gray-900">Buat Kata Sandi Baru</h2>

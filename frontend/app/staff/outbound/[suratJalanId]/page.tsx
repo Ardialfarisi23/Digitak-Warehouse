@@ -316,7 +316,7 @@ export default function SuratJalanDetailPage() {
         {/* Kop surat dengan logo */}
         <div className="mb-8 flex items-start justify-between border-b-2 border-[#E8632C] pb-6">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo digitak grdasi.png" alt="Digitak Studio — PT Metanouva Informatika" className="h-16 w-auto object-contain" />
+          <img src="/logo-digitak-gradasi.png" alt="Digitak Studio — PT Metanouva Informatika" className="h-16 w-auto object-contain" />
           <div className="flex flex-col items-end">
             <h1 className="text-3xl font-bold tracking-wide text-gray-900">SURAT JALAN</h1>
             <p className="mt-1 text-xs text-gray-500">Surat Jalan Internal — Digitak Studio</p>

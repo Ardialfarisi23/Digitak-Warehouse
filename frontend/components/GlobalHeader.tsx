@@ -364,7 +364,7 @@ export function GlobalHeader() {
               <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-4 border border-stone-100">
                 <div className="relative h-10 w-10 shrink-0">
                    <Image
-                     src="/logo digitak .png"
+                     src="/logo-digitak.png"
                      alt="Digitak Logo"
                      fill
                      className="object-contain"
