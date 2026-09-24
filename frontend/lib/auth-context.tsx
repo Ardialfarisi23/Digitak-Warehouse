@@ -68,8 +68,18 @@ export function AuthProvider({
           }
 
           const parsedUser: User = JSON.parse(storedUser);
+          let restoredUser = parsedUser;
+
+          try {
+            const responseData = await res.json();
+            if (responseData?.success && responseData?.data) {
+              restoredUser = { ...restoredUser, ...responseData.data };
+              localStorage.setItem("user", JSON.stringify(restoredUser));
+            }
+          } catch {}
+
           setToken(storedToken);
-          setUser(parsedUser);
+          setUser(restoredUser);
         }
       } catch (error) {
         console.error("Gagal membaca session:", error);

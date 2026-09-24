@@ -1,23 +1,29 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useAuth();
+  const pathname = usePathname();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const [shouldRender, setShouldRender] = useState(false);
 
   useEffect(() => {
     if (!isLoading) {
       if (!isAuthenticated) {
         router.push("/");
+      } else if (
+        user?.must_change_password &&
+        pathname !== "/dashboard/change-password"
+      ) {
+        router.replace("/dashboard/change-password");
       } else {
         setShouldRender(true);
       }
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isLoading, pathname, router, user?.must_change_password]);
 
   if (isLoading || !shouldRender) {
     return (

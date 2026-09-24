@@ -59,6 +59,13 @@ export function useApi() {
       // 2. Akses ditolak (Role tidak diizinkan) -> Jangan logout, biarkan UI menangani
       if (response.status === 403) {
         console.warn(`[403 Forbidden] Akses ditolak untuk endpoint: ${url}`);
+        try {
+          const cloned = response.clone();
+          const data = await cloned.json();
+          if (data?.code === "MUST_CHANGE_PASSWORD") {
+            router.replace("/dashboard/change-password");
+          }
+        } catch {}
         return response;
       }
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 
 interface ChangePasswordFormProps {
@@ -16,6 +17,7 @@ export default function ChangePasswordForm({
   onCancel,
 }: ChangePasswordFormProps) {
   const { request } = useApi();
+  const { updateUser } = useAuth();
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -75,6 +77,16 @@ export default function ChangePasswordForm({
       setSuccess("Password berhasil diubah.");
 
       if (mode === "forced") {
+        try {
+          const storedUser = localStorage.getItem("user");
+          if (storedUser) {
+            const parsedUser = JSON.parse(storedUser);
+            const updatedUser = { ...parsedUser, must_change_password: false };
+            localStorage.setItem("user", JSON.stringify(updatedUser));
+            updateUser({ must_change_password: false });
+          }
+        } catch {}
+
         setTimeout(() => {
           window.location.href = "/dashboard";
         }, 1500);
