@@ -195,7 +195,7 @@ export function CompactSidebar({ userRole }: CompactSidebarProps) {
           <div className="flex h-16 items-center justify-center border-b border-stone-200/60">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/40 shadow-sm ring-1 ring-stone-200/70">
               <Image
-                src="/logo digitak .png"
+                src="/logo-digitak.png"
                 alt="Digitak Logo"
                 width={28}
                 height={28}
@@ -237,7 +237,7 @@ export function CompactSidebar({ userRole }: CompactSidebarProps) {
         <div className="flex h-16 w-full items-center justify-center border-b border-stone-200/60 shrink-0">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/40 shadow-sm ring-1 ring-stone-200/70">
             <Image
-              src="/logo digitak .png"
+              src="/logo-digitak.png"
               alt="Digitak Logo"
               width={28}
               height={28}

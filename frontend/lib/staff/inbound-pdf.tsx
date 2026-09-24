@@ -123,7 +123,7 @@ export async function downloadInboundPdf(data: InboundSuratJalan, penerimaName: 
           {/* Header dengan logo dan judul */}
           <View style={styles.headerRow}>
             {/* eslint-disable-next-line jsx-a11y/alt-text */}
-            <Image src="/logo digitak grdasi.png" style={styles.logo} />
+            <Image src="/logo-digitak-gradasi.png" style={styles.logo} />
             <View style={styles.titleBlock}>
               <Text style={styles.title}>SURAT JALAN INBOUND</Text>
               <Text style={styles.subtitle}>Bukti Penerimaan Barang — Digitak Studio</Text>

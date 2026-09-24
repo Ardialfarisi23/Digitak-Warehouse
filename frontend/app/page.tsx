@@ -171,7 +171,7 @@ export default function Home() {
           {/* Logo */}
           <div className="relative h-12 w-52">
             <Image
-              src="/logo digitak grdasi.png"
+              src="/logo-digitak-gradasi.png"
               alt="Digitak Logo"
               fill
               className="object-contain object-left"
@@ -254,7 +254,7 @@ export default function Home() {
             {/* Login Logo */}
             <div className="relative h-12 w-44 mx-auto mb-6">
               <Image
-                src="/logo digitak grdasi.png"
+                src="/logo-digitak-gradasi.png"
                 alt="Digitak Logo"
                 fill
                 className="object-contain"

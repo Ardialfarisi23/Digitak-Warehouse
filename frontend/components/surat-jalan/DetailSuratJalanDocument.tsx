@@ -185,7 +185,7 @@ export function DetailSuratJalanDocument({
       <div className="mb-8 flex items-start justify-between border-b-2 border-[#E8632C] pb-6">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/logo digitak grdasi.png"
+          src="/logo-digitak-gradasi.png"
           alt="Digitak Studio — PT Metanouva Informatika"
           className="h-16 w-auto object-contain"
         />
