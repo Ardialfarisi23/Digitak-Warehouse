@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
+import { getKondisiLabel } from "@/lib/kondisi-barang";
 
 export interface DetailSuratJalanItem {
   item_id?: number | string;
@@ -162,7 +163,7 @@ export function DetailSuratJalanDocument({
         className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
       >
         <ExternalLink size={12} />
-        {tampilkan(data.boq?.boq_number, `BOQ #${data.boq_id}`)}
+        {tampilkan(data.boq?.boq_number, "BOQ Tidak Diketahui")}
       </Link>
       <span className="text-xs text-slate-500">
         Tiket: {tampilkan(data.boq?.tiket?.kode_tiket)}
@@ -286,7 +287,7 @@ export function DetailSuratJalanDocument({
                     </td>
                     <td className="border p-1 text-center font-semibold">{Number(item.qty || 0)}</td>
                     <td className="border p-1 text-center">{tampilkan(item.satuan?.kode_satuan ?? item.barang?.satuan_default?.kode_satuan)}</td>
-                    <td className="border p-1 text-center">{tampilkan(item.kondisi ?? item.catatan)}</td>
+                    <td className="border p-1 text-center">{item.kondisi != null ? getKondisiLabel(item.kondisi) : tampilkan(item.catatan)}</td>
                     {showAksi && (
                       <td className="border p-1 text-center">{renderItemAction ? renderItemAction(item, i) : null}</td>
                     )}

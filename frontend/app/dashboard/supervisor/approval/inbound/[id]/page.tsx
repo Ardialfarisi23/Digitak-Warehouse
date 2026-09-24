@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { CheckCircle2, ArrowLeft, Printer, Eye, X, FileText } from "lucide-react";
 import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
+import { getKondisiLabel } from "@/lib/kondisi-barang";
 import dynamic from "next/dynamic";
 
 const PdfViewerComponent = dynamic(() => import("@/components/PdfViewerComponent"), {
@@ -376,7 +377,7 @@ export default function SupervisorApprovalInboundDetailPage() {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-xs text-slate-500">Kondisi</p>
-                  <p className="font-medium text-slate-900">{selectedDocItem?.kondisi || "-"}</p>
+                  <p className="font-medium text-slate-900">{getKondisiLabel(selectedDocItem?.kondisi)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">QTY</p>
@@ -384,7 +385,7 @@ export default function SupervisorApprovalInboundDetailPage() {
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Diperiksa Oleh</p>
-                  <p className="font-medium text-slate-900">{(selectedDocItem as any)?.diperiksa_oleh || "-"}</p>
+                  <p className="font-medium text-slate-900">{selectedDocItem?.diperiksa_oleh_user?.nama || "-"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Waktu Verifikasi</p>
