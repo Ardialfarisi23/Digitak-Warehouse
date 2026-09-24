@@ -6,6 +6,7 @@ const createItemSchema = z.object({
   kategori_id: z.number().optional(),
   satuan_default_id: z.number().optional(),
   foto: z.string().url("Format URL foto tidak valid.").optional().nullable(),
+  wajib_sn: z.boolean().optional(),
 });
 
 const updateItemSchema = createItemSchema.partial().refine(

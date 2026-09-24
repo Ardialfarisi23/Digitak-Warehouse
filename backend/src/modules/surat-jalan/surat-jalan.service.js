@@ -61,6 +61,12 @@ const collectShipmentGudangIds = (shipment) => {
   return [...new Set(ids)];
 };
 
+const normalizeSerial = (value) => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed.toUpperCase();
+};
+
 const create = async (data, actorId) => {
   if (!data.tipe || !["inbound", "outbound"].includes(data.tipe)) {
     throw new AppError("Tipe surat jalan harus inbound atau outbound.", 400);
@@ -86,6 +92,21 @@ const create = async (data, actorId) => {
     }
   }
 
+  const normalizedItems = data.items.map((item) => ({
+    ...item,
+    serial_number: normalizeSerial(item.serial_number),
+  }));
+
+  const seen = new Map();
+  for (const item of normalizedItems) {
+    if (!item.serial_number) continue;
+    const key = `${item.serial_number}::${item.barang_id}`;
+    if (seen.has(key)) {
+      throw new AppError(`Serial number ${item.serial_number} diinput lebih dari sekali.`, 409);
+    }
+    seen.set(key, item);
+  }
+
   const MAX_ATTEMPTS = 5;
   let attempt = 0;
 
@@ -93,7 +114,29 @@ const create = async (data, actorId) => {
     attempt += 1;
     try {
       const suratJalan = await prisma.$transaction(async (tx) => {
-        const created = await suratJalanRepository.create(data, actorId, tx);
+        const checksByBarang = new Map();
+        for (const item of normalizedItems) {
+          if (!item.serial_number) continue;
+          const barangId = Number(item.barang_id);
+          if (!checksByBarang.has(barangId)) {
+            checksByBarang.set(barangId, new Set());
+          }
+          checksByBarang.get(barangId).add(item.serial_number);
+        }
+
+        for (const [barangId, serials] of checksByBarang) {
+          const existing = await suratJalanRepository.findInboundItemsBySerial(
+            Array.from(serials),
+            { barangId, tx },
+            tx
+          );
+          if (existing.length > 0) {
+            const nomor = existing[0].surat_jalan?.nomor_surat_jalan || "...";
+            throw new AppError(`Serial number ${existing[0].serial_number} sudah tercatat pada surat jalan ${nomor}.`, 409);
+          }
+        }
+
+        const created = await suratJalanRepository.create({ ...data, items: normalizedItems }, actorId, tx);
 
         const aksi = data.tipe === "inbound" ? "create_inbound" : "create_outbound";
 
@@ -230,7 +273,67 @@ const receiveInbound = async (id, items, actorId) => {
     throw new AppError("Inbound ini sudah diproses.", 400);
   }
 
+  const normalizedItems = items.map((item) => ({
+    ...item,
+    serial_number: normalizeSerial(item.serial_number),
+  }));
+
+  const barangMap = new Map(shipment.items.map((si) => [String(si.item_id), Number(si.barang_id)]));
+  const seen = new Map();
+  for (const item of normalizedItems) {
+    if (!item.serial_number) continue;
+    const barangId = barangMap.get(String(item.item_id));
+    if (!barangId) continue;
+    const key = `${item.serial_number}::${barangId}`;
+    if (seen.has(key)) {
+      throw new AppError(`Serial number ${item.serial_number} diinput lebih dari sekali.`, 409);
+    }
+    seen.set(key, item);
+  }
+
   await prisma.$transaction(async (tx) => {
+    const itemToBarang = new Map(shipment.items.map((si) => [String(si.item_id), Number(si.barang_id)]));
+    const barangIds = [...new Set(shipment.items.map((si) => Number(si.barang_id)).filter((id) => Number.isFinite(id) && id > 0))];
+    const barangs = await tx.barang.findMany({
+      where: { barang_id: { in: barangIds } },
+      select: { barang_id: true, nama_barang: true, wajib_sn: true },
+    });
+    const barangMap = new Map(barangs.map((b) => [Number(b.barang_id), b]));
+
+    for (const item of normalizedItems) {
+      if (item.serial_number) continue;
+      const barangId = itemToBarang.get(String(item.item_id));
+      if (!barangId) continue;
+      const barang = barangMap.get(barangId);
+      if (barang?.wajib_sn) {
+        throw new AppError(`Serial number wajib diisi untuk barang ${barang.nama_barang}.`, 422);
+      }
+    }
+
+    const checksByBarang = new Map();
+    const excludeItemIds = normalizedItems.map((item) => Number(item.item_id));
+    for (const item of normalizedItems) {
+      if (!item.serial_number) continue;
+      const barangId = barangMap.get(String(item.item_id));
+      if (!barangId) continue;
+      if (!checksByBarang.has(barangId)) {
+        checksByBarang.set(barangId, new Set());
+      }
+      checksByBarang.get(barangId).add(item.serial_number);
+    }
+
+    for (const [barangId, serials] of checksByBarang) {
+      const existing = await suratJalanRepository.findInboundItemsBySerial(
+        Array.from(serials),
+        { barangId, excludeItemIds, tx },
+        tx
+      );
+      if (existing.length > 0) {
+        const nomor = existing[0].surat_jalan?.nomor_surat_jalan || "...";
+        throw new AppError(`Serial number ${existing[0].serial_number} sudah tercatat pada surat jalan ${nomor}.`, 409);
+      }
+    }
+
     // Mapping label UI → enum Prisma kondisi_barang
     const KONDISI_MAP = {
       "Baik": "baik",
@@ -246,14 +349,13 @@ const receiveInbound = async (id, items, actorId) => {
       "doa": "doa",
     };
 
-    for (const item of items) {
+    for (const item of normalizedItems) {
       const updateData = {};
 
       if (typeof item.qty === "number") {
         updateData.qty = item.qty;
       }
       if (typeof item.kondisi === "string") {
-        // Konversi ke format enum Prisma (lowercase_underscore)
         const kondisiMapped = KONDISI_MAP[item.kondisi];
         if (kondisiMapped) {
           updateData.kondisi = kondisiMapped;

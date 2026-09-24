@@ -274,6 +274,7 @@ model barang {
   kategori_id       BigInt
   satuan_default_id BigInt
   foto              String?
+  wajib_sn          Boolean            @default(false)
   created_at        DateTime           @default(now())
   updated_at        DateTime           @default(now())
   created_by        BigInt
