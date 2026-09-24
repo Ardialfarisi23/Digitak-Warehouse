@@ -177,6 +177,14 @@ const update = async (gudang_id, data, userId) => {
     throw new AppError("Warehouse telah dinonaktifkan. Pulihkan untuk mengubah data.", 400);
   }
 
+  if (data.is_aktif === false && warehouse.is_aktif) {
+    const stockExists = await hasActiveStock(warehouse.gudang_id);
+
+    if (stockExists) {
+      throw new AppError("Gudang tidak dapat dinonaktifkan karena masih memiliki stok.", 400);
+    }
+  }
+
   if (data.tipe && data.tipe !== warehouse.tipe) {
     const check = await canEditType(warehouse.gudang_id);
 
@@ -296,13 +304,13 @@ const softDelete = async (gudang_id) => {
   const warehouse = await warehouseRepository.findById(gudang_id);
 
   if (!warehouse) {
-    throw new AppError("Warehouse tidak ditemukan.", 404);
+    throw new AppError("Gudang tidak ditemukan.", 404);
   }
 
   const stockExists = await hasActiveStock(warehouse.gudang_id);
 
   if (stockExists) {
-    throw new AppError("Gudang tidak dapat dinonaktifkan karena masih memiliki stok tersisa. Pindahkan seluruh stok ke gudang lain terlebih dahulu.", 400);
+    throw new AppError("Gudang tidak dapat dinonaktifkan karena masih memiliki stok.", 400);
   }
 
   return await warehouseRepository.softDelete(warehouse.gudang_id);
