@@ -411,6 +411,8 @@ export default function SupervisorApprovalInboundDetailPage() {
                       <img key={idx} src={foto.url} alt={foto.filename || `Foto ${idx + 1}`} className="h-24 w-full rounded-lg border border-slate-100 object-cover" />
                     ))}
                   </div>
+                ) : (selectedDocItem as any)?.foto_url ? (
+                  <img src={(selectedDocItem as any).foto_url} alt="Foto dokumentasi" className="h-40 w-full rounded-lg border border-slate-100 object-cover" />
                 ) : (
                   <p className="text-xs text-slate-400">Belum ada foto dokumentasi untuk item ini.</p>
                 )}

@@ -111,7 +111,7 @@ export async function downloadSuratJalanPdf(
     { key: "nama", label: "Nama Barang", width: 180 },
     { key: "qty", label: "QTY", width: 45 },
     { key: "uom", label: "UOM", width: 55 },
-    { key: "ket", label: "Keterangan", width: 105 },
+    { key: "ket", label: "Kondisi", width: 105 },
   ];
 
   function SuratJalanPdfDocument({

@@ -435,6 +435,44 @@ const findOutboundForDelivery = async (params = {}) => {
   return await suratJalanRepository.findOutboundForDelivery(params);
 };
 
+const findOutboundDetail = async (id, actor) => {
+  const record = await suratJalanRepository.findOutboundDetail(id);
+
+  if (!record) {
+    throw new AppError("Surat Jalan tidak ditemukan.", 404);
+  }
+
+  if (record.tipe !== "outbound") {
+    throw new AppError("Surat Jalan ini bukan outbound.", 400);
+  }
+
+  if (!actor || ["admin_general", "supervisor"].includes(actor.role)) {
+    return record;
+  }
+
+  if (actor.role === "staf_gudang") {
+    const personil = await prisma.personil.findUnique({
+      where: { user_id: BigInt(actor.id) },
+      select: { gudang_id: true },
+    });
+
+    const gudangId = personil?.gudang_id ? Number(personil.gudang_id) : null;
+    const actorId = Number(actor.id);
+
+    const isCreator = Number(record.created_by) === actorId;
+    const isAsal = record.gudang_asal_id !== null && Number(record.gudang_asal_id) === gudangId;
+    const isTujuan = record.gudang_tujuan_id !== null && Number(record.gudang_tujuan_id) === gudangId;
+
+    if (!isCreator && !isAsal && !isTujuan) {
+      throw new AppError("Anda tidak memiliki akses ke surat jalan ini.", 403);
+    }
+
+    return record;
+  }
+
+  throw new AppError("Anda tidak memiliki akses ke surat jalan ini.", 403);
+};
+
 const findById = async (id, actor) => {
   const record = await suratJalanRepository.findById(id);
 
@@ -819,6 +857,48 @@ const rejectInbound = async (id, catatan = null, actorId) => {
     }
 
     return updatedShipment;
+  };
+
+  const cancelDraft = async (id, catatan = null, actorId) => {
+    const shipment = await suratJalanRepository.findById(id);
+
+    if (!shipment) {
+      throw new AppError("Surat Jalan tidak ditemukan.", 404);
+    }
+
+    if (shipment.status !== "draft_diajukan") {
+      throw new AppError("Hanya draft yang belum diproses yang bisa dibatalkan.", 400);
+    }
+
+    const actor = await prisma.user_account.findUnique({
+      where: { user_id: BigInt(actorId) },
+      select: { nama: true, role: true },
+    });
+
+    if (actor?.role === "staf_gudang" && Number(shipment.created_by) !== Number(actorId)) {
+      throw new AppError("Anda tidak berhak membatalkan draft yang bukan milik Anda.", 403);
+    }
+
+    const tahap = shipment.tipe === "inbound" ? "inbound_verifikasi" : "outbound_approval";
+
+    await prisma.$transaction(async (tx) => {
+      await suratJalanRepository.updateStatus(id, "ditolak", { catatan }, tx);
+
+      await suratJalanRepository.createApprovalLog(id, actorId, tahap, "ditolak", catatan, tx);
+
+      await tx.audit_log.create({
+        data: {
+          entity_type: "surat_jalan",
+          entity_id: BigInt(id),
+          aksi: "cancel_draft",
+          actor_id: BigInt(actorId),
+          data_sebelum: { status: shipment.status },
+          data_sesudah: { status: "ditolak", surat_jalan_id: id, catatan },
+        },
+      });
+    });
+
+    return suratJalanRepository.findById(id);
   };
 
   const putaway = async (suratJalanId, items = [], actorId) => {
@@ -1366,6 +1446,7 @@ if (!Array.isArray(items) || items.length === 0) {
     findOutboundQueue,
     findInboundList,
     findById,
+    findOutboundDetail,
     findVerificationQueue,
     findOutboundForApproval,
     findOutboundForDelivery,
@@ -1374,6 +1455,7 @@ if (!Array.isArray(items) || items.length === 0) {
     confirmDistributed,
     rejectInbound,
     rejectOutbound,
+    cancelDraft,
     putaway,
     retrieve,
     updateDeliveryStatus,

@@ -5,6 +5,7 @@ const capacityService = require("../capacity/capacity.service");
 const baseInclude = {
   items: {
     include: {
+      // baseInclude TIDAK diubah — tetap dipakai inbound/verifikasi
       fotos: true,
       zona: {
         select: {
@@ -85,6 +86,32 @@ const findByIdInclude = {
       diperiksa_oleh_user: {
         select: {
           nama: true,
+        },
+      },
+    },
+  },
+};
+
+const stokKritisConfig = require("../../config/stok-kritis.config");
+
+const outboundInclude = {
+  ...baseInclude,
+  items: {
+    ...baseInclude.items,
+    include: {
+      ...baseInclude.items.include,
+      barang: {
+        ...baseInclude.items.include.barang,
+        include: {
+          ...baseInclude.items.include.barang.include,
+          stok_gudangs: {
+            select: {
+              qty: true,
+              gudang_id: true,
+              zona_id: true,
+              kondisi: true,
+            },
+          },
         },
       },
     },
@@ -292,7 +319,7 @@ const findInboundList = async (filters = {}) => {
 
   return await prisma.surat_jalan.findMany({
     where,
-    include: baseInclude,
+    include: outboundInclude,
     orderBy: [{ updated_at: "desc" }],
   });
 };
@@ -382,6 +409,15 @@ const findById = async (id) => {
       surat_jalan_id: Number(id),
     },
     include: findByIdInclude,
+  });
+};
+
+const findOutboundDetail = async (id) => {
+  return await prisma.surat_jalan.findUnique({
+    where: {
+      surat_jalan_id: Number(id),
+    },
+    include: outboundInclude,
   });
 };
 
@@ -984,6 +1020,7 @@ module.exports = {
   findOutboundQueue,
   findInboundList,
   findById,
+  findOutboundDetail,
   findVerificationQueue,
   findOutboundForApproval,
   findOutboundForDelivery,

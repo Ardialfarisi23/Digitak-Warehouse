@@ -109,6 +109,15 @@ const findById = async (req, res, next) => {
   }
 };
 
+const findOutboundDetail = async (req, res, next) => {
+  try {
+    const result = await suratJalanService.findOutboundDetail(req.params.id, req.user);
+    return response.success(res, "Detail Surat Jalan Outbound berhasil diambil.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 const approveInbound = async (req, res, next) => {
   try {
     const result = await suratJalanService.approveInbound(req.params.id, req.body.itemAdjustments, req.user.id);
@@ -149,6 +158,15 @@ const rejectOutbound = async (req, res, next) => {
   try {
     const result = await suratJalanService.rejectOutbound(req.params.id, req.body.catatan, req.user.id);
     return response.success(res, "Outbound berhasil ditolak.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const cancelDraft = async (req, res, next) => {
+  try {
+    const result = await suratJalanService.cancelDraft(req.params.id, req.body.catatan, req.user.id);
+    return response.success(res, "Draft surat jalan berhasil dibatalkan.", result);
   } catch (err) {
     next(err);
   }
@@ -218,6 +236,7 @@ module.exports = {
   findOutboundQueue,
   findInboundList,
   findById,
+  findOutboundDetail,
   findVerificationQueue,
   findOutboundForApproval,
   findOutboundForDelivery,
@@ -226,6 +245,7 @@ module.exports = {
   confirmDistributed,
   rejectInbound,
   rejectOutbound,
+  cancelDraft,
   putaway,
   retrieve,
   updateDeliveryStatus,

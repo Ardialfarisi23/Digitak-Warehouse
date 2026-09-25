@@ -257,7 +257,7 @@ export function DetailSuratJalanDocument({
                 <th className="border p-1 text-left font-semibold whitespace-nowrap">Nama Barang</th>
                 <th className="border p-1 text-center font-semibold whitespace-nowrap">QTY</th>
                 <th className="border p-1 text-center font-semibold whitespace-nowrap">UOM</th>
-                <th className="border p-1 text-center font-semibold whitespace-nowrap">Keterangan</th>
+                <th className="border p-1 text-center font-semibold whitespace-nowrap">Kondisi</th>
                 {showAksi && (
                   <th className="border p-1 text-center font-semibold whitespace-nowrap">Aksi</th>
                 )}
