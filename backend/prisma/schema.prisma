@@ -288,6 +288,8 @@ model barang {
   stok_gudangs      stok_gudang[]
   stok_ledgers      stok_ledger[]
   surat_jalan_items surat_jalan_item[]
+  laporan_mitras    laporan_mitra[] @relation("LaporanMitraBarang")
+  reconciliation_upload_details reconciliation_upload_detail[] @relation("ReconciliationUploadDetailBarang")
 
   @@index([kode_perangkat])
   @@index([kategori_id])
@@ -547,24 +549,27 @@ model reconciliation_upload_log {
   failed_rows  Int
 
   actor   user_account                   @relation("ReconciliationUploadLogActor", fields: [uploaded_by], references: [user_id])
-  details reconciliation_upload_detail[]
+  details reconciliation_upload_detail[] @relation("ReconciliationUploadLogDetail")
 
   @@index([uploaded_at])
 }
 
 model reconciliation_upload_detail {
-  detail_id  BigInt                       @id @default(autoincrement())
-  upload_id  BigInt
-  kode_tiket String
-  mos        Decimal                      @db.Decimal(14, 2)
-  used       Decimal                      @db.Decimal(14, 2)
-  remains_lapangan Decimal?               @db.Decimal(14, 2)
-  status     reconciliation_detail_status
-  reason     String?
+  detail_id        BigInt                       @id @default(autoincrement())
+  upload_id        BigInt
+  kode_tiket       String
+  barang_id        BigInt?
+  mos              Decimal                      @db.Decimal(14, 2)
+  used             Decimal                      @db.Decimal(14, 2)
+  remains_lapangan Decimal?                     @db.Decimal(14, 2)
+  status           reconciliation_detail_status
+  reason           String?
 
-  upload reconciliation_upload_log @relation(fields: [upload_id], references: [upload_id])
+  upload_log    reconciliation_upload_log @relation("ReconciliationUploadLogDetail", fields: [upload_id], references: [upload_id], onDelete: Cascade)
+  barang        barang?                  @relation("ReconciliationUploadDetailBarang", fields: [barang_id], references: [barang_id], onDelete: SetNull)
 
-   @@index([upload_id])
+  @@index([upload_id])
+  @@index([barang_id])
 }
 
 model laporan_mitra {
@@ -576,6 +581,7 @@ model laporan_mitra {
   tanggal_laporan DateTime  @db.Date
   pic_mitra       String?   @db.Text
   nama_barang     String?   @db.Text
+  barang_id       BigInt?
   mos             Decimal   @db.Decimal(14, 2)
   used            Decimal   @db.Decimal(14, 2)
   remains_lapangan Decimal?  @db.Decimal(14, 2)
@@ -587,11 +593,13 @@ model laporan_mitra {
 
   tiket    tiket_material @relation("LaporanMitraTiket", fields: [tiket_id], references: [tiket_id])
   project  project        @relation("LaporanMitraProject", fields: [project_id], references: [project_id])
+  barang   barang?        @relation("LaporanMitraBarang", fields: [barang_id], references: [barang_id], onDelete: SetNull)
   uploader user_account   @relation("LaporanMitraUploader", fields: [uploaded_by], references: [user_id])
 
   @@index([tiket_id])
   @@index([project_id])
   @@index([tanggal_laporan])
+  @@index([barang_id])
   @@index([uploaded_at])
 }
 

@@ -117,6 +117,10 @@ const rejectOutboundSchema = z.object({
   catatan: z.string().max(500).optional().nullable(),
 });
 
+const cancelDraftSchema = z.object({
+  catatan: z.string().max(500).optional().nullable(),
+});
+
 const putawaySchema = z
   .object({
     tahap: z.coerce.number().optional().default(2),
@@ -209,6 +213,7 @@ module.exports = {
   approveInboundSchema,
   rejectInboundSchema,
   rejectOutboundSchema,
+  cancelDraftSchema,
   putawaySchema,
   retrieveSchema,
   deliveryStatusSchema,

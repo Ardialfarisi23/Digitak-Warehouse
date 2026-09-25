@@ -3,7 +3,18 @@ const express = require("express");
 const router = express.Router();
 
 const suratJalanController = require("./surat-jalan.controller");
-const { createSuratJalanSchema, receiveInboundSchema, approveInboundSchema, rejectInboundSchema, rejectOutboundSchema, putawaySchema, retrieveSchema, deliveryStatusSchema, itemFotoSchema } = require("./surat-jalan.validation");
+const {
+  createSuratJalanSchema,
+  receiveInboundSchema,
+  approveInboundSchema,
+  rejectInboundSchema,
+  rejectOutboundSchema,
+  cancelDraftSchema,
+  putawaySchema,
+  retrieveSchema,
+  deliveryStatusSchema,
+  itemFotoSchema
+} = require("./surat-jalan.validation");
 const validate = require("../../middlewares/validation.middleware");
 const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
@@ -23,8 +34,10 @@ router.post(
 );
 router.get("/outbound/queue", authenticate, suratJalanController.findOutboundQueue);
 router.get("/outbound/approval", authenticate, authorize("SUPERVISOR"), suratJalanController.findOutboundForApproval);
-router.get("/outbound/delivery", authenticate, suratJalanController.findOutboundForDelivery);
+router.get("/outbound/delivery", authenticate, authorize("SUPERVISOR"), suratJalanController.findOutboundForDelivery);
 router.get("/outbound/riwayat-approval", authenticate, authorize("SUPERVISOR"), suratJalanController.findOutboundApprovalHistory);
+router.get("/outbound/:id", authenticate, suratJalanController.findOutboundDetail);
+
 router.get("/inbound", authenticate, suratJalanController.findInboundList);
 router.get("/verification/queue", authenticate, suratJalanController.findVerificationQueue);
 router.get("/staff/history", authenticate, suratJalanController.findStaffHistory);
@@ -83,6 +96,14 @@ router.put(
   authorize("SUPERVISOR"),
   validate(rejectOutboundSchema),
   suratJalanController.rejectOutbound
+);
+
+router.put(
+  "/:id/cancel-draft",
+  authenticate,
+  authorize("STAFF", "SUPERVISOR", "ADMIN"),
+  validate(cancelDraftSchema),
+  suratJalanController.cancelDraft
 );
 
 router.post(

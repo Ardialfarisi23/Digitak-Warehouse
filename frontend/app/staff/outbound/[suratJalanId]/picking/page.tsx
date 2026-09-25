@@ -333,7 +333,7 @@ export default function PickingDetailPage() {
   const [stockAvailability, setStockAvailability] = useState<Record<string, StockAvailability>>({});
   const [pickingStockByItem, setPickingStockByItem] = useState<Record<number, PickingStockAvailability["zonas"]>>({});
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [showOtherConditions, setShowOtherConditions] = useState(false);
+  const [showOtherConditions, setShowOtherConditions] = useState<Record<number, boolean>>({});
   const [kondisiByItem, setKondisiByItem] = useState<Record<number, string>>({});
   const [catatanKondisiByItem, setCatatanKondisiByItem] = useState<Record<number, string>>({});
   const [overrideItemId, setOverrideItemId] = useState<number | null>(null);
@@ -434,6 +434,14 @@ export default function PickingDetailPage() {
   const isDadakanSingleZone = useMemo(() => {
     return data?.gudang_asal?.tipe === "dadakan" && zonasForGudang.length === 1;
   }, [data, zonasForGudang]);
+
+  const zonaNameMap = useMemo(() => {
+    const map = new Map<number, ApiZona>();
+    for (const z of zonas) {
+      map.set(Number(z.zona_id), z);
+    }
+    return map;
+  }, [zonas]);
 
   useEffect(() => {
     if (!data) return;
@@ -753,100 +761,121 @@ export default function PickingDetailPage() {
                         const currentStockZona = stockForItem.find((s) => s.zona_id === Number(currentZonaId));
                         const currentZonaKondisi = currentStockZona?.kondisi || selectedKondisi;
                         const isOverride = currentZona && currentZonaKondisi.toLowerCase() !== requiredKondisi.toLowerCase();
-                       
-                       if (validZones.length === 0 && !showOtherConditions) {
-                         const availableKondisi = pickingStockByItem[item.barang_id] || [];
-                         const otherKondisi = availableKondisi.filter(
-                           (z) => z.kondisi.toLowerCase() !== requiredKondisi.toLowerCase() && z.available_qty > 0
+                        const availableKondisi = pickingStockByItem[item.barang_id] || [];
+                        const otherKondisi = availableKondisi.filter(
+                          (z) => z.kondisi.toLowerCase() !== requiredKondisi.toLowerCase() && z.available_qty > 0
+                        );
+                        const hasOtherKondisi = otherKondisi.length > 0;
+                        const showOther = showOtherConditions[item.item_id] || false;
+
+                        if (validZones.length === 0 && !showOther) {
+                           const otherSummary = otherKondisi
+                             .map((z) => `${z.kondisi} (${z.available_qty})`)
+                             .join(", ");
+                          
+                           return (
+                             <div>
+                               <div className="text-xs text-red-600">
+                                 Tidak ada stok kondisi {requiredKondisi} di gudang ini.
+                                 {otherSummary && (
+                                   <span className="block text-gray-500">Tersedia: {otherSummary}</span>
+                                 )}
+                               </div>
+                               {hasOtherKondisi && (
+                                 <label className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
+                                   <input
+                                     type="checkbox"
+                                     checked={showOther}
+                                     onChange={(e) => setShowOtherConditions((prev) => ({ ...prev, [item.item_id]: e.target.checked }))}
+                                   />
+                                   Tampilkan kondisi lain
+                                 </label>
+                               )}
+                             </div>
+                           );
+                        }
+
+                         const otherZonaIds = new Set(
+                           otherKondisi.map((z) => z.zona_id).filter((id): id is number => typeof id === "number")
                          );
-                         const otherSummary = otherKondisi
-                           .map((z) => `${z.kondisi} (${z.available_qty})`)
-                           .join(", ");
-                         
+
+                         const zonesToShow = showOther
+                           ? otherKondisi.map((z) => ({
+                               zona_id: z.zona_id,
+                               kondisi: z.kondisi,
+                               available_qty: z.available_qty,
+                               zona: zonaNameMap.get(Number(z.zona_id)),
+                             }))
+                           : validZones;
+
+                        const handleZonaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+                          const newZonaId = e.target.value;
+                          if (!newZonaId) {
+                            setZonaByItem((prev) => {
+                              const next = { ...prev };
+                              delete next[item.item_id];
+                              return next;
+                            });
+                            setKondisiByItem((prev) => {
+                              const next = { ...prev };
+                              delete next[item.item_id];
+                              return next;
+                            });
+                            return;
+                          }
+
+                          const selectedZona = zonasForGudang.find((z) => String(z.zona_id) === String(newZonaId));
+                          const stockForItem = pickingStockByItem[item.barang_id] || [];
+                          const stockZona = stockForItem.find((s) => s.zona_id === Number(newZonaId));
+                          const selectedKondisi = stockZona?.kondisi || requiredKondisi;
+
+                          if (selectedKondisi.toLowerCase() !== requiredKondisi.toLowerCase()) {
+                            setOverrideItemId(item.item_id);
+                            setZonaByItem((prev) => ({ ...prev, [item.item_id]: newZonaId }));
+                            setKondisiByItem((prev) => ({ ...prev, [item.item_id]: selectedKondisi }));
+                          } else {
+                            setZonaByItem((prev) => ({ ...prev, [item.item_id]: newZonaId }));
+                            setKondisiByItem((prev) => ({ ...prev, [item.item_id]: selectedKondisi }));
+                           }
+                         };
+
                          return (
-                           <div className="text-xs text-red-600">
-                             Tidak ada stok kondisi {requiredKondisi} di gudang ini.
-                             {otherSummary && (
-                               <span className="block text-gray-500">Tersedia: {otherSummary}</span>
+                           <div>
+                             <select
+                               value={currentZonaId || ""}
+                               onChange={handleZonaChange}
+                              className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
+                            >
+                              <option value="">Pilih zona...</option>
+                              {zonesToShow.map((z) => {
+                                const isOther = showOther;
+                                const zona = isOther ? (z as any).zona : z;
+                                const zonaKondisi = isOther ? (z as any).kondisi : (pickingStockByItem[item.barang_id] || []).find((s) => s.zona_id === z.zona_id)?.kondisi || requiredKondisi;
+                                const qtyToShow = isOther ? (z as any).available_qty : getAvailableQtyForItemZone(item, z.zona_id, pickingStockByItem, zonaKondisi);
+                                const label = zona ? zonaLabel(zona) : `Zona ${z.zona_id}`;
+                                return (
+                                  <option key={z.zona_id} value={String(z.zona_id)}>
+                                     {label} — {qtyToShow} unit ({zonaKondisi})
+                                  </option>
+                                );
+                              })}
+                            </select>
+                             {isOverride && (
+                               <p className="mt-1 text-xs text-amber-700">
+                                 Override kondisi: {currentZonaKondisi}
+                               </p>
                              )}
-                           </div>
-                         );
-                       }
-
-                       const zonesToShow = showOtherConditions
-                         ? zonasForGudang.filter((z) => {
-                             const stock = pickingStockByItem[item.barang_id] || [];
-                             return stock.some((s) => s.zona_id === z.zona_id && s.available_qty > 0);
-                           })
-                         : validZones;
-
-                       const handleZonaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-                         const newZonaId = e.target.value;
-                         if (!newZonaId) {
-                           setZonaByItem((prev) => {
-                             const next = { ...prev };
-                             delete next[item.item_id];
-                             return next;
-                           });
-                           setKondisiByItem((prev) => {
-                             const next = { ...prev };
-                             delete next[item.item_id];
-                             return next;
-                           });
-                           return;
-                         }
-
-                         const selectedZona = zonasForGudang.find((z) => String(z.zona_id) === String(newZonaId));
-                         const stockForItem = pickingStockByItem[item.barang_id] || [];
-                         const stockZona = stockForItem.find((s) => s.zona_id === Number(newZonaId));
-                         const selectedKondisi = stockZona?.kondisi || requiredKondisi;
-
-                         if (selectedKondisi.toLowerCase() !== requiredKondisi.toLowerCase()) {
-                           setOverrideItemId(item.item_id);
-                           setZonaByItem((prev) => ({ ...prev, [item.item_id]: newZonaId }));
-                           setKondisiByItem((prev) => ({ ...prev, [item.item_id]: selectedKondisi }));
-                         } else {
-                           setZonaByItem((prev) => ({ ...prev, [item.item_id]: newZonaId }));
-                           setKondisiByItem((prev) => ({ ...prev, [item.item_id]: selectedKondisi }));
-                         }
-                       };
-
-                       return (
-                         <div>
-                           <select
-                             value={currentZonaId || ""}
-                             onChange={handleZonaChange}
-                             className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
-                           >
-                             <option value="">Pilih zona...</option>
-                             {zonesToShow.map((z) => {
-                               const stockForItem = pickingStockByItem[item.barang_id] || [];
-                               const stockZona = stockForItem.find((s) => s.zona_id === z.zona_id);
-                               const zonaKondisi = stockZona?.kondisi || requiredKondisi;
-                               const isOther = zonaKondisi.toLowerCase() !== requiredKondisi.toLowerCase();
-                               return (
-                                 <option key={z.zona_id} value={String(z.zona_id)}>
-                                    {zonaLabel(z)} — {getAvailableQtyForItemZone(item, z.zona_id, pickingStockByItem, kondisiByItem[item.item_id])} unit {isOther ? `(${zonaKondisi})` : ""}
-                                 </option>
-                               );
-                             })}
-                           </select>
-                            {isOverride && (
-                              <p className="mt-1 text-xs text-amber-700">
-                                Override kondisi: {currentZonaKondisi}
-                              </p>
-                            )}
-                           <label className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
-                             <input
-                               type="checkbox"
-                               checked={showOtherConditions}
-                               onChange={(e) => setShowOtherConditions(e.target.checked)}
-                             />
-                             Tampilkan kondisi lain
-                           </label>
-                         </div>
-                       );
-                     })()}
+                             <label className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
+                               <input
+                                 type="checkbox"
+                                 checked={showOther}
+                                 onChange={(e) => setShowOtherConditions((prev) => ({ ...prev, [item.item_id]: e.target.checked }))}
+                               />
+                               Tampilkan kondisi lain
+                             </label>
+                          </div>
+                        );
+                      })()}
                   </td>
                 )}
               </tr>

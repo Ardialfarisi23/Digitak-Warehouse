@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
+import { KRITIS_THRESHOLD, MENIPIS_THRESHOLD } from "@/lib/constants/stok";
 
 type SuratJalanStatus = "draft_diajukan" | "menunggu_verifikasi" | "ready_putaway" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "sedang_dikirim" | "ditolak";
 
@@ -33,7 +34,10 @@ interface SuratJalanItem {
   item_id: number;
   nama_barang?: string;
   qty: number;
-  barang?: { kategori?: { is_kritis?: boolean } };
+  barang?: {
+    kategori?: { is_kritis?: boolean };
+    stok_gudangs?: { qty: number; gudang_id: number; zona_id: number | null; kondisi: string }[];
+  };
 }
 
 interface SuratJalan {
@@ -43,6 +47,7 @@ interface SuratJalan {
   status: SuratJalanStatus;
   created_at: string;
   items: SuratJalanItem[];
+  gudang_asal?: { gudang_id: number; nama_gudang: string };
   gudang_tujuan?: { nama_gudang: string };
   project?: { nama_project: string };
 }
@@ -163,7 +168,14 @@ export default function SuratJalanListPage() {
                   month: "long",
                   year: "numeric",
                 });
-                const isKritis = sj.items.some((item) => item.barang?.kategori?.is_kritis === true);
+                const gudangAsalId = sj.gudang_asal?.gudang_id;
+                const itemStokQtys = sj.items.map((item) =>
+                  (item.barang?.stok_gudangs || [])
+                    .filter((s) => s.gudang_id === gudangAsalId && s.kondisi === "baik")
+                    .reduce((sum, s) => sum + Number(s.qty || 0), 0)
+                );
+                const isKritis = itemStokQtys.some((qty) => qty < KRITIS_THRESHOLD);
+                const isMenipis = itemStokQtys.some((qty) => qty >= KRITIS_THRESHOLD && qty < MENIPIS_THRESHOLD);
 
                 return (
                   <tr
@@ -177,6 +189,11 @@ export default function SuratJalanListPage() {
                         {isKritis && (
                           <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">
                             Kritis
+                          </span>
+                        )}
+                        {isMenipis && !isKritis && (
+                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
+                            Menipis
                           </span>
                         )}
                       </span>

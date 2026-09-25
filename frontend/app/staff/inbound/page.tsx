@@ -8,6 +8,7 @@ import BarangPicker, {
   type BarangPickerItem,
 } from "@/components/BarangPicker";
 import { useApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import BoqPicker, { type BoqPickerItem } from "@/components/BoqPicker";
 
 type InboundStatus = "draft_diajukan" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "ditolak" | "menunggu_verifikasi" | "ready_putaway" | "sedang_dikirim";
@@ -47,6 +48,12 @@ interface InboundSuratJalan {
   nomor_surat_jalan: string;
   status: InboundStatus;
   created_at: string;
+  created_by?: string | number;
+  creator?: {
+    user_id?: string | number;
+    nama?: string;
+    name?: string;
+  } | null;
   items: InboundItem[];
   tipe_pengirim?: "internal" | "external";
   supplier?: { nama: string; kode: string };
@@ -141,11 +148,13 @@ function Modal({
 }
 
 export default function InboundListPage() {
-  const { get, post } = useApi();
+  const { get, post, put } = useApi();
+  const { user } = useAuth();
   const [list, setList] = useState<InboundSuratJalan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -194,6 +203,32 @@ export default function InboundListPage() {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCancelDraft = async (suratJalanId: number) => {
+    const confirmed = window.confirm("Yakin ingin membatalkan draft ini? Aksi ini tidak dapat dibatalkan.");
+    if (!confirmed) return;
+
+    setCancellingId(suratJalanId);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const response = await put(`${baseUrl}/api/surat-jalan/${suratJalanId}/cancel-draft`, {});
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        throw new Error(err?.message || "Gagal membatalkan draft surat jalan.");
+      }
+
+      setToast({ message: "Draft surat jalan berhasil dibatalkan.", type: "success" });
+      fetchList();
+    } catch (err) {
+      setToast({
+        message: err instanceof Error ? err.message : "Terjadi kesalahan saat membatalkan draft.",
+        type: "error",
+      });
+    } finally {
+      setCancellingId(null);
     }
   };
 
@@ -679,6 +714,17 @@ pic_pemohon_nama: picPemohon.trim() || null,
                         >
                           Putaway
                         </Link>
+                      ) : sj.status === "draft_diajukan" &&
+                        (String(user?.id) === String(sj.created_by || sj.creator?.user_id) ||
+                          user?.role === "supervisor" ||
+                          user?.role === "admin_general") ? (
+                        <button
+                          onClick={() => handleCancelDraft(sj.surat_jalan_id)}
+                          disabled={cancellingId === sj.surat_jalan_id}
+                          className="text-sm font-semibold text-rose-600 hover:underline disabled:opacity-60"
+                        >
+                          {cancellingId === sj.surat_jalan_id ? "Membatalkan..." : "Batalkan"}
+                        </button>
                       ) : (
                         <Link
                           href={`/staff/inbound/${sj.surat_jalan_id}`}

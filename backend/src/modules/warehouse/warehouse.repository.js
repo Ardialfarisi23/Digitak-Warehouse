@@ -190,15 +190,10 @@ const getPickingStockAvailability = async (gudang_id, items = [], projectId = nu
     return [];
   }
 
-  const kondisiList = items
-    .map((it) => (it.kondisi || "baik").toLowerCase())
-    .filter(Boolean);
-
   const stockWhere = {
     gudang_id: Number(gudang_id),
     barang_id: { in: barangIds },
     ...(projectId ? { project_id: Number(projectId) } : {}),
-    ...(kondisiList.length ? { kondisi: { in: [...new Set(kondisiList)] } } : {}),
   };
 
   const stocks = await prisma.stok_gudang.findMany({

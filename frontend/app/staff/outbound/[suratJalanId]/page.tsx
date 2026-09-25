@@ -8,6 +8,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { KRITIS_THRESHOLD, MENIPIS_THRESHOLD } from "@/lib/constants/stok";
 
 const STATUS_META: Record<string, { label: string; tone: string }> = {
   draft_diajukan: { label: "Menunggu Persetujuan Supervisor", tone: "bg-amber-50 text-amber-700" },
@@ -25,7 +26,13 @@ interface SuratJalanItem {
   barang_id: number;
   qty: number;
   satuan_id: number;
-  barang?: { nama_barang: string; kode_perangkat: string; satuan_default?: { kode_satuan?: string }; kategori?: { is_kritis?: boolean } };
+  barang?: {
+    nama_barang: string;
+    kode_perangkat: string;
+    satuan_default?: { kode_satuan?: string };
+    kategori?: { is_kritis?: boolean };
+    stok_gudangs?: { qty: number; gudang_id: number; zona_id: number | null; kondisi: string }[];
+  };
   satuan?: { kode_satuan?: string };
 }
 
@@ -35,9 +42,10 @@ interface SuratJalan {
   tipe: string;
   status: string;
   created_at: string;
+  created_by?: number;
   notes?: string;
   items: SuratJalanItem[];
-  gudang_asal?: { nama_gudang: string };
+  gudang_asal?: { gudang_id: number; nama_gudang: string };
   gudang_tujuan?: { nama_gudang: string };
   project?: { nama_project: string };
   kendaraan?: { jenis_kendaraan: string; no_polisi: string };
@@ -75,13 +83,14 @@ function InfoRow({ label, value }: { label: string; value: ReactNode }) {
 export default function SuratJalanDetailPage() {
   const params = useParams<{ suratJalanId: string }>();
   const router = useRouter();
-  const { get } = useApi();
+  const { get, put } = useApi();
   const { user } = useAuth();
 
   const [suratJalan, setSuratJalan] = useState<SuratJalan | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [cancellingDraft, setCancellingDraft] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -89,7 +98,7 @@ export default function SuratJalanDetailPage() {
       setError(null);
       try {
         const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-        const response = await get(`${baseUrl}/api/surat-jalan/${params.suratJalanId}`);
+        const response = await get(`${baseUrl}/api/surat-jalan/outbound/${params.suratJalanId}`);
         if (!response.ok) {
           const err = await response.json().catch(() => null);
           throw new Error(err?.message || "Gagal mengambil detail Surat Jalan.");
@@ -162,14 +171,22 @@ export default function SuratJalanDetailPage() {
     year: "numeric",
   });
 
-  const mappedItems = suratJalan.items.map((item) => ({
-    kodeBarang: item.barang?.kode_perangkat || String(item.barang_id),
-    namaBarang: item.barang?.nama_barang || "-",
-    qty: item.qty,
-    uom: item.satuan?.kode_satuan || item.barang?.satuan_default?.kode_satuan || "Unit",
-    keterangan: null,
-    isKritis: item.barang?.kategori?.is_kritis === true,
-  }));
+  const mappedItems = suratJalan.items.map((item) => {
+    const gudangAsalId = suratJalan.gudang_asal?.gudang_id;
+    const stokQty = (item.barang?.stok_gudangs || [])
+      .filter((s) => s.gudang_id === gudangAsalId && s.kondisi === "baik")
+      .reduce((sum, s) => sum + Number(s.qty || 0), 0);
+    const kritisLevel = stokQty < KRITIS_THRESHOLD ? "kritis" : stokQty < MENIPIS_THRESHOLD ? "menipis" : "normal";
+    return {
+      kodeBarang: item.barang?.kode_perangkat || String(item.barang_id),
+      namaBarang: item.barang?.nama_barang || "-",
+      qty: item.qty,
+      uom: item.satuan?.kode_satuan || item.barang?.satuan_default?.kode_satuan || "Unit",
+      keterangan: null,
+      isKritis: kritisLevel === "kritis",
+      isMenipis: kritisLevel === "menipis",
+    };
+  });
 
   const displaySJ = {
     ...suratJalan,
@@ -183,6 +200,36 @@ export default function SuratJalanDetailPage() {
     namaDriver: suratJalan.personil_pengantar?.nama || "-",
     items: mappedItems,
     alamatLapangan: suratJalan.alamat_lapangan || undefined,
+  };
+
+  const canCancelDraft =
+    suratJalan.status === "draft_diajukan" &&
+    (String(user?.id) === String(suratJalan.created_by) ||
+      user?.role === "supervisor" ||
+      user?.role === "admin_general");
+
+  const handleCancelDraft = async () => {
+    if (!suratJalan) return;
+
+    const confirmed = window.confirm("Yakin ingin membatalkan draft ini? Aksi ini tidak dapat dibatalkan.");
+    if (!confirmed) return;
+
+    setCancellingDraft(true);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const response = await put(`${baseUrl}/api/surat-jalan/${suratJalan.surat_jalan_id}/cancel-draft`, {});
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        throw new Error(err?.message || "Gagal membatalkan draft surat jalan.");
+      }
+
+      router.push("/staff/outbound");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan.");
+    } finally {
+      setCancellingDraft(false);
+    }
   };
 
   return (
@@ -237,6 +284,15 @@ export default function SuratJalanDetailPage() {
                 </p>
               )}
             </div>
+          )}
+          {canCancelDraft && (
+            <Button
+              disabled={cancellingDraft}
+              onClick={handleCancelDraft}
+              className="flex h-auto items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+            >
+              {cancellingDraft ? "Membatalkan..." : "Batalkan Draft"}
+            </Button>
           )}
           {suratJalan.status !== "draft_diajukan" && suratJalan.status !== "ditolak" && (
             <Button
@@ -380,7 +436,7 @@ export default function SuratJalanDetailPage() {
               <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Nama Barang</th>
               <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">QTY</th>
               <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">UOM</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Keterangan</th>
+              <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Kondisi</th>
             </tr>
           </thead>
           <tbody>
@@ -393,6 +449,9 @@ export default function SuratJalanDetailPage() {
                     <span>{item.namaBarang}</span>
                     {item.isKritis && (
                       <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">Kritis</span>
+                    )}
+                    {item.isMenipis && !item.isKritis && (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">Menipis</span>
                     )}
                   </div>
                 </td>
