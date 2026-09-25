@@ -183,6 +183,8 @@ const retrieveSchema = z.object({
         item_id: z.coerce.number(),
         zona_id: z.coerce.number().positive("Zona wajib diisi."),
         qty: z.coerce.number().positive("Qty harus lebih dari 0."),
+        kondisi: z.string().optional().nullable(),
+        catatan_kondisi: z.string().optional().nullable(),
       }),
     )
     .min(1, "Minimal satu item harus di-retrieve."),

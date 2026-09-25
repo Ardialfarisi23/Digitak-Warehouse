@@ -26,7 +26,7 @@ const getInventory = async (filters = {}, actor = null) => {
             select: {
               tiket_id: true,
               kode_tiket: true,
-              mos: true,
+              used: true,
               project: {
                 select: {
                   project_id: true,
@@ -85,6 +85,7 @@ const getInventory = async (filters = {}, actor = null) => {
   const inboundByProjectBarang = new Map();
   const outboundByProjectBarang = new Map();
   const additionalByProjectBarang = new Map();
+  const mosByProjectBarang = new Map();
 
   for (const item of shipmentItems) {
     const projectIdNum = Number(item.surat_jalan?.project_id);
@@ -102,20 +103,14 @@ const getInventory = async (filters = {}, actor = null) => {
 
     if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
       outboundByProjectBarang.set(key, (outboundByProjectBarang.get(key) || 0) + qty);
-    }
-  }
-
-  const tiketMosMap = new Map();
-  for (const item of boqItems) {
-    const kodeTiket = item.boq?.tiket?.kode_tiket;
-    if (kodeTiket && !tiketMosMap.has(kodeTiket)) {
-      tiketMosMap.set(kodeTiket, Number(item.boq?.tiket?.mos || 0));
+      mosByProjectBarang.set(key, (mosByProjectBarang.get(key) || 0) + qty);
     }
   }
 
   const aggregatedMap = new Map();
   const gudangByKey = new Map();
   const satuanByKey = new Map();
+  const usedByProjectBarang = new Map();
 
   for (const item of boqItems) {
     const tiket = item.boq?.tiket;
@@ -145,30 +140,32 @@ const getInventory = async (filters = {}, actor = null) => {
     agg.boq += Number(item.qty_rencana || 0);
     agg.kode_tiket_list.push(tiket?.kode_tiket);
 
+    const tiketUsed = Number(tiket?.used || 0);
+    if (tiketUsed > 0) {
+      usedByProjectBarang.set(key, (usedByProjectBarang.get(key) || 0) + tiketUsed);
+    }
+
     if (item.gudang_tujuan?.nama_gudang) {
       gudangByKey.get(key).add(item.gudang_tujuan.nama_gudang);
     }
     if (item.satuan?.kode_satuan) {
-      satuanByKey.get(key).add(item.satuan.kode_satuan);
+      satuanByKey.get(key).add(item.satuan?.kode_satuan);
     }
   }
 
   let rows = Array.from(aggregatedMap.values()).map((agg) => {
     const key = `${agg.project_id}-${agg.barang_id}`;
     const additional = Number(additionalByProjectBarang.get(key) || 0);
-    const mosSistem = Number(inboundByProjectBarang.get(key) || 0);
-    const uniqueTiketsForMos = [...new Set(agg.kode_tiket_list)].filter(Boolean);
-    const mosMitra = uniqueTiketsForMos.reduce((sum, kodeTiket) => {
-      return sum + (tiketMosMap.get(kodeTiket) || 0);
-    }, 0);
-    const used = Number(outboundByProjectBarang.get(key) || 0);
-    const remains = mosSistem - (agg.boq + additional);
-    const selisih = mosSistem - mosMitra;
+    const mos = Number(mosByProjectBarang.get(key) || 0);
+    const used = Number(usedByProjectBarang.get(key) || 0) > 0
+      ? Number(usedByProjectBarang.get(key) || 0)
+      : Number(outboundByProjectBarang.get(key) || 0);
+    const remains = mos - (agg.boq + additional);
 
     let recStatus = "berjalan";
     if (remains < 0) {
       recStatus = "perhatian";
-    } else if (mosSistem >= agg.boq + additional && agg.boq > 0) {
+    } else if (mos >= agg.boq + additional && agg.boq > 0) {
       recStatus = "sesuai";
     }
 
@@ -194,9 +191,7 @@ const getInventory = async (filters = {}, actor = null) => {
       satuan: satuanStr,
       boq: agg.boq,
       additional,
-      mos_sistem: mosSistem,
-      mos_mitra: mosMitra,
-      selisih,
+      mos,
       used,
       remains,
       status: recStatus,

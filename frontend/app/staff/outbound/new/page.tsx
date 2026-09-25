@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import BoqPicker, { type BoqPickerItem } from "@/components/BoqPicker";
+import { KondisiBadge } from "@/components/common/KondisiBadge";
 
 type Project = {
   project_id: string | number;
@@ -852,22 +853,23 @@ const [itemsRes, boqsRes] = await Promise.all([
                           <div className="flex min-h-[150px] flex-col items-center justify-center text-center">
                             <p className="text-xs text-gray-500">Tidak ada stok barang di gudang ini.</p>
                           </div>
-                        ) : (
-                          <div className="max-h-[350px] overflow-y-auto space-y-2 pr-1">
-                            {stockByBarang.map((item) => (
-                              <div key={item.barang_id} className="flex items-center justify-between rounded-xl border border-gray-200 p-3">
-                                <div>
-                                  <p className="text-xs font-bold text-gray-800">{item.nama_barang}</p>
-                                  <p className="text-[10px] text-gray-500">SKU: {item.kode_perangkat} {item.nama_zona !== "-" ? `· ${item.nama_zona}` : ""}</p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-xs font-bold text-gray-900">{Number(item.qty || 0).toLocaleString("id-ID")}</p>
-                                  <p className="text-[10px] text-gray-500">{item.satuan}</p>
-                                </div>
-                              </div>
-                            ))}
-</div>
-                        )}
+                         ) : (
+                           <div className="max-h-[350px] overflow-y-auto space-y-2 pr-1">
+                             {stockByBarang.map((item) => (
+                               <div key={item.barang_id} className="flex items-center justify-between rounded-xl border border-gray-200 p-3">
+                                 <div>
+                                   <p className="text-xs font-bold text-gray-800">{item.nama_barang}</p>
+                                   <p className="text-[10px] text-gray-500">SKU: {item.kode_perangkat} {item.nama_zona !== "-" ? `· ${item.nama_zona}` : ""}</p>
+                                 </div>
+                                 <div className="text-right">
+                                   <p className="text-xs font-bold text-gray-900">{Number(item.qty || 0).toLocaleString("id-ID")}</p>
+                                   <p className="text-[10px] text-gray-500">{item.satuan}</p>
+                                   <div className="mt-1"><KondisiBadge value={item.kondisi} /></div>
+                                 </div>
+                               </div>
+                             ))}
+                           </div>
+                         )}
                       </div>
                     )}
                   </div>

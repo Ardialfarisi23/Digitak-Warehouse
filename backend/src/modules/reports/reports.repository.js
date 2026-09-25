@@ -1006,7 +1006,7 @@ const getHardwareReconciliation = async (filters = {}) => {
 
   const shipmentTotals = await prisma.surat_jalan.findMany({
     where: {
-      status: "diterima_didistribusikan",
+      status: { in: ["disetujui", "diterima_didistribusikan"] },
       ...(projectId !== "all" && { project_id: BigInt(projectId) }),
     },
     select: {
@@ -1070,7 +1070,7 @@ const getHardwareReconciliation = async (filters = {}) => {
 
     const totalQty = shipment.items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
 
-    if (shipment.tipe === "inbound") {
+    if (shipment.tipe === "outbound" && shipment.tujuan_tipe !== "gudang") {
       hardwareOnSiteByProject.set(
         projectIdNum,
         (hardwareOnSiteByProject.get(projectIdNum) || 0) + totalQty
@@ -1148,7 +1148,7 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
   });
 
   const shipmentWhere = {
-    status: "diterima_didistribusikan",
+    status: { in: ["disetujui", "diterima_didistribusikan"] },
   };
   if (projectId !== "all") {
     shipmentWhere.project_id = BigInt(projectId);
@@ -1197,7 +1197,7 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
     const projectIdNum = Number(tiket.project_id);
     const boqPlan = tiket.boq?.items?.reduce((sum, item) => sum + Number(item.qty_rencana || 0), 0) || 0;
     const additional = Number(additionalByProject.get(projectIdNum) || 0);
-    const mos = tiket.mos ? Number(tiket.mos) : Number(inboundByProject.get(projectIdNum) || 0);
+    const mos = Number(outboundByProject.get(projectIdNum) || 0);
     const used = tiket.used ? Number(tiket.used) : Number(outboundByProject.get(projectIdNum) || 0);
     const remains = mos - (boqPlan + additional);
 
@@ -1287,7 +1287,7 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
   const shipmentItems = await prisma.surat_jalan_item.findMany({
     where: {
       surat_jalan: {
-        status: "diterima_didistribusikan",
+        status: { in: ["disetujui", "diterima_didistribusikan"] },
         ...(projectId !== "all" && { project_id: BigInt(projectId) }),
       },
     },
@@ -1341,7 +1341,7 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
 
     const boq = Number(item.qty_rencana || 0);
     const additional = Number(additionalByBarang.get(key) || 0);
-    const hardwareOnSite = Number(inboundByBarang.get(key) || 0);
+    const hardwareOnSite = Number(outboundByBarang.get(key) || 0);
     const used = Number(outboundByBarang.get(key) || 0);
     const remains = hardwareOnSite - (boq + additional);
 

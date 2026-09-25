@@ -94,6 +94,7 @@ export interface DetailSuratJalanDocumentProps {
   renderItemAction?: (item: DetailSuratJalanItem, index: number) => React.ReactNode;
   showItemAction?: boolean;
   hideTujuanBadge?: boolean;
+  stockStatusByItemId?: Record<number, { status: string; availableQty: number; otherConditions?: string }>;
 }
 
 export function DetailSuratJalanDocument({
@@ -102,6 +103,7 @@ export function DetailSuratJalanDocument({
   renderItemAction,
   showItemAction,
   hideTujuanBadge = false,
+  stockStatusByItemId,
 }: DetailSuratJalanDocumentProps) {
   if (!data) {
     return (
@@ -288,18 +290,38 @@ export function DetailSuratJalanDocument({
                     </td>
                     <td className="border p-1 text-center font-semibold">{Number(item.qty || 0)}</td>
                     <td className="border p-1 text-center">{tampilkan(item.satuan?.kode_satuan ?? item.barang?.satuan_default?.kode_satuan)}</td>
-                    <td className="border p-1 text-center">
-                      <div>
-                        {item.kondisi != null && <div>{getKondisiLabel(item.kondisi)}</div>}
-                        {item.catatan && <div className="text-xs text-slate-500 italic">{item.catatan}</div>}
-                        {item.is_di_luar_boq && (
-                          <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
-                            Di luar BOQ
-                          </span>
-                        )}
-                        {item.kondisi == null && !item.catatan && !item.is_di_luar_boq && tampilkan(null)}
-                      </div>
-                    </td>
+                     <td className="border p-1 text-center">
+                       <div>
+                         {item.kondisi != null && <div>{getKondisiLabel(item.kondisi)}</div>}
+                         {item.catatan && <div className="text-xs text-slate-500 italic">{item.catatan}</div>}
+                         {item.is_di_luar_boq && (
+                           <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
+                             Di luar BOQ
+                           </span>
+                         )}
+                         {item.kondisi == null && !item.catatan && !item.is_di_luar_boq && tampilkan(null)}
+                       </div>
+                       {stockStatusByItemId && (() => {
+                         const stokStatus = stockStatusByItemId[Number(item.item_id)];
+                         if (!stokStatus) return null;
+                         const tone =
+                           stokStatus.status === "Cukup"
+                             ? "bg-emerald-50 text-emerald-700"
+                             : stokStatus.status === "Kurang"
+                               ? "bg-amber-50 text-amber-700"
+                               : "bg-red-50 text-red-700";
+                         return (
+                           <div className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${tone}`}>
+                             {stokStatus.status === "Cukup" && `Cukup (${stokStatus.availableQty})`}
+                             {stokStatus.status === "Kurang" && `Kurang (tersedia: ${stokStatus.availableQty})`}
+                             {stokStatus.status === "Tidak Tersedia" && "Tidak Tersedia"}
+                             {stokStatus.otherConditions && stokStatus.status !== "Cukup" && (
+                               <span className="ml-1 text-slate-500">· {stokStatus.otherConditions}</span>
+                             )}
+                           </div>
+                         );
+                       })()}
+                     </td>
                     {showAksi && (
                       <td className="border p-1 text-center">{renderItemAction ? renderItemAction(item, i) : null}</td>
                     )}
