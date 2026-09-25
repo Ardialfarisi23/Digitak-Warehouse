@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, PackagePlus, Loader2, AlertCircle, MapPin, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
+import { KondisiBadge } from "@/components/common/KondisiBadge";
 
 type ApiSuratJalanItem = {
   item_id: number;
@@ -50,11 +51,30 @@ type ConfirmModalProps = {
   zonaByItem: Record<number, string>;
 };
 
+type OverrideConfirmModalProps = {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: (catatan: string) => void;
+  submitting: boolean;
+  item: ApiSuratJalanItem | null;
+  zona: ApiZona | null;
+  kondisi: string | null;
+};
+
 type StockAvailability = {
   barang_id: number;
   zona_id: number | null;
   kondisi: string;
   available_qty: number;
+};
+
+type PickingStockAvailability = {
+  barang_id: number;
+  zonas: Array<{
+    zona_id: number;
+    kondisi: string;
+    available_qty: number;
+  }>;
 };
 
 function zonaLabel(z: ApiZona): string {
@@ -64,6 +84,29 @@ function zonaLabel(z: ApiZona): string {
 
 function stockKey(barangId: number, zonaId: number | null, kondisi: string): string {
   return `${barangId}|${zonaId ?? "global"}|${kondisi}`;
+}
+
+function getValidZonesForItem(
+  item: ApiSuratJalanItem,
+  zonas: ApiZona[],
+  pickingStock: Record<number, PickingStockAvailability["zonas"]>,
+  requiredKondisi?: string
+): ApiZona[] {
+  const zonasForItem = pickingStock[item.barang_id] || [];
+  const kondisi = (requiredKondisi || item.kondisi || "baik").toLowerCase();
+  const validZonaIds = new Set(
+    zonasForItem
+      .filter((z) => z.kondisi.toLowerCase() === kondisi && z.available_qty > 0)
+      .map((z) => z.zona_id)
+  );
+  return zonas.filter((z) => validZonaIds.has(z.zona_id));
+}
+
+function getAvailableQtyForItemZone(item: ApiSuratJalanItem, zonaId: number, pickingStock: Record<number, PickingStockAvailability["zonas"]>, selectedKondisi?: string): number {
+  const zonasForItem = pickingStock[item.barang_id] || [];
+  const kondisi = (selectedKondisi || item.kondisi || "baik").toLowerCase();
+  const match = zonasForItem.find((z) => z.zona_id === zonaId && z.kondisi.toLowerCase() === kondisi);
+  return match ? match.available_qty : 0;
 }
 
 function ConfirmModal({
@@ -177,6 +220,106 @@ function ConfirmModal({
   );
 }
 
+function OverrideConfirmModal({
+  open,
+  onClose,
+  onConfirm,
+  submitting,
+  item,
+  zona,
+  kondisi,
+}: OverrideConfirmModalProps) {
+  const [catatan, setCatatan] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setCatatan("");
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
+  if (!open || !item || !zona) return null;
+
+  const requiredKondisi = item.kondisi || "baik";
+  const selectedKondisi = kondisi || requiredKondisi;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-2xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">Konfirmasi Override Kondisi</h3>
+            <p className="mt-0.5 text-xs text-slate-400">
+              Barang ini akan diambil dengan kondisi yang berbeda dari yang diminta.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="px-6 py-5">
+          <p className="mb-3 text-sm text-slate-600">
+            Anda akan mengambil <span className="font-semibold">{item.barang?.nama_barang || "-"}</span> di zona{" "}
+            <span className="font-semibold">{zonaLabel(zona)}</span> dengan kondisi{" "}
+            <span className="font-semibold">{selectedKondisi}</span>.
+          </p>
+          <p className="mb-2 text-sm text-slate-600">
+            Kondisi yang diminta pada surat jalan: <span className="font-semibold">{requiredKondisi}</span>.
+          </p>
+          <p className="mb-3 text-sm text-amber-700">
+            Silakan jelaskan alasan pengambilan dengan kondisi berbeda.
+          </p>
+
+          <label className="mb-1 block text-xs font-medium text-slate-600">Alasan override *</label>
+          <textarea
+            value={catatan}
+            onChange={(e) => setCatatan(e.target.value)}
+            placeholder="Contoh: stok kondisi Baik habis, mengambil stok Rusak Ringan untuk segera kirim."
+            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+            rows={3}
+          />
+
+          <div className="mt-4 flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={() => onConfirm(catatan)}
+              disabled={submitting || !catatan.trim()}
+              className="rounded-xl bg-[#E8632C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
+            >
+              {submitting ? "Menyimpan..." : "Ya, Lanjutkan dengan Override"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PickingDetailPage() {
   const params = useParams<{ suratJalanId: string }>();
   const router = useRouter();
@@ -188,7 +331,12 @@ export default function PickingDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const [zonaByItem, setZonaByItem] = useState<Record<number, string>>({});
   const [stockAvailability, setStockAvailability] = useState<Record<string, StockAvailability>>({});
+  const [pickingStockByItem, setPickingStockByItem] = useState<Record<number, PickingStockAvailability["zonas"]>>({});
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showOtherConditions, setShowOtherConditions] = useState(false);
+  const [kondisiByItem, setKondisiByItem] = useState<Record<number, string>>({});
+  const [catatanKondisiByItem, setCatatanKondisiByItem] = useState<Record<number, string>>({});
+  const [overrideItemId, setOverrideItemId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -242,6 +390,11 @@ export default function PickingDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.suratJalanId]);
 
+  const zonasForGudang = useMemo(() => {
+    if (!data?.gudang_asal_id) return [];
+    return zonas.filter((z) => Number(z.gudang_id) === Number(data.gudang_asal_id));
+  }, [zonas, data]);
+
   useEffect(() => {
     if (!data?.items?.length || !data?.gudang_asal_id) return;
     fetchStockCheck(data.items, data.gudang_asal_id, data.project_id);
@@ -250,14 +403,33 @@ export default function PickingDetailPage() {
 
   useEffect(() => {
     if (!data?.items?.length || !data?.gudang_asal_id) return;
+    fetchPickingStockCheck(data.items, data.gudang_asal_id, data.project_id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.surat_jalan_id]);
+
+  useEffect(() => {
+    if (!data?.items?.length) return;
+    setZonaByItem((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const it of data.items) {
+        const currentZonaId = next[it.item_id];
+        if (!currentZonaId) continue;
+        const validZones = getValidZonesForItem(it, zonasForGudang, pickingStockByItem, kondisiByItem[it.item_id]);
+        if (!validZones.some((z) => String(z.zona_id) === String(currentZonaId))) {
+          delete next[it.item_id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [data, zonasForGudang, pickingStockByItem]);
+
+  useEffect(() => {
+    if (!data?.items?.length || !data?.gudang_asal_id) return;
     fetchStockCheck(data.items, data.gudang_asal_id, data.project_id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [Object.values(zonaByItem).join(",")]);
-
-  const zonasForGudang = useMemo(() => {
-    if (!data?.gudang_asal_id) return [];
-    return zonas.filter((z) => Number(z.gudang_id) === Number(data.gudang_asal_id));
-  }, [zonas, data]);
 
   const isDadakanSingleZone = useMemo(() => {
     return data?.gudang_asal?.tipe === "dadakan" && zonasForGudang.length === 1;
@@ -323,7 +495,12 @@ export default function PickingDetailPage() {
     );
   }
 
-  const allAssigned = data.items.every((it) => !!zonaByItem[it.item_id]);
+  const allAssigned = data.items.every((it) => {
+    const selectedZonaId = zonaByItem[it.item_id];
+    if (!selectedZonaId) return false;
+    const validZones = getValidZonesForItem(it, zonasForGudang, pickingStockByItem, kondisiByItem[it.item_id]);
+    return validZones.some((z) => String(z.zona_id) === String(selectedZonaId));
+  });
 
   function showToast(message: string, type: "success" | "error") {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -375,8 +552,45 @@ export default function PickingDetailPage() {
     }
   }
 
+  async function fetchPickingStockCheck(items: ApiSuratJalanItem[], gudangAsalId: number | null | undefined, projectId?: number | null) {
+    if (!gudangAsalId || !items.length) return;
+
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    const payloadItems = items.map((it) => ({
+      barang_id: Number(it.barang_id),
+      kondisi: it.kondisi || "baik",
+    }));
+
+    try {
+      const params = new URLSearchParams();
+      params.set("items", JSON.stringify(payloadItems));
+      if (projectId) params.set("project_id", String(projectId));
+
+      const res = await get(`${baseUrl}/api/warehouses/${gudangAsalId}/picking-stock-check?${params.toString()}`);
+      if (!res.ok) return;
+
+      const json = await res.json();
+      const rows: PickingStockAvailability[] = Array.isArray(json?.data) ? json.data : [];
+
+      const map: Record<number, PickingStockAvailability["zonas"]> = {};
+      for (const row of rows) {
+        map[row.barang_id] = row.zonas;
+      }
+      setPickingStockByItem(map);
+    } catch {
+      // silently ignore picking stock check fetch errors
+    }
+  }
+
   async function handleSubmit() {
     if (!allAssigned || !data) return;
+    setShowConfirmModal(true);
+  }
+
+  async function handleOverrideConfirm(catatan: string) {
+    if (!overrideItemId) return;
+    setCatatanKondisiByItem((prev) => ({ ...prev, [overrideItemId]: catatan }));
+    setOverrideItemId(null);
     setShowConfirmModal(true);
   }
 
@@ -385,7 +599,15 @@ export default function PickingDetailPage() {
 
     const resolvedItems = data.items.map((it) => {
       const zonaId = zonaByItem[it.item_id];
-      return { item_id: it.item_id, qty: Number(it.qty), zona_id: Number(zonaId) };
+      const selectedKondisi = kondisiByItem[it.item_id] || it.kondisi || "baik";
+      const catatanKondisi = catatanKondisiByItem[it.item_id];
+      return {
+        item_id: it.item_id,
+        qty: Number(it.qty),
+        zona_id: Number(zonaId),
+        kondisi: selectedKondisi,
+        catatan_kondisi: catatanKondisi || null,
+      };
     });
 
     setSubmitting(true);
@@ -514,29 +736,117 @@ export default function PickingDetailPage() {
                 <td className="py-3 pr-4 text-gray-600">{item.kondisi || "-"}</td>
                 <td className="py-3 pr-4 text-right text-gray-600">{item.qty}</td>
 
-                {!isSelesai && (
+                 {!isSelesai && (
                   <td className="py-3">
                     {isDadakanSingleZone ? (
                       <div className="flex items-center gap-2 rounded-md bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600">
                         <MapPin size={14} className="text-[#E8632C]" />
                         {zonaLabel(zonasForGudang[0])} <span className="text-[10px] text-slate-400">(otomatis)</span>
                       </div>
-                    ) : (
-                      <select
-                        value={zonaByItem[item.item_id] || ""}
-                        onChange={(e) =>
-                          setZonaByItem((prev) => ({ ...prev, [item.item_id]: e.target.value }))
-                        }
-                        className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
-                      >
-                        <option value="">Pilih zona...</option>
-                        {zonasForGudang.map((z) => (
-                          <option key={z.zona_id} value={String(z.zona_id)}>
-                            {zonaLabel(z)}
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                      ) : (() => {
+                        const requiredKondisi = item.kondisi || "baik";
+                        const selectedKondisi = kondisiByItem[item.item_id] || requiredKondisi;
+                        const validZones = getValidZonesForItem(item, zonasForGudang, pickingStockByItem, selectedKondisi);
+                        const currentZonaId = zonaByItem[item.item_id];
+                        const currentZona = zonasForGudang.find((z) => String(z.zona_id) === String(currentZonaId));
+                        const stockForItem = pickingStockByItem[item.barang_id] || [];
+                        const currentStockZona = stockForItem.find((s) => s.zona_id === Number(currentZonaId));
+                        const currentZonaKondisi = currentStockZona?.kondisi || selectedKondisi;
+                        const isOverride = currentZona && currentZonaKondisi.toLowerCase() !== requiredKondisi.toLowerCase();
+                       
+                       if (validZones.length === 0 && !showOtherConditions) {
+                         const availableKondisi = pickingStockByItem[item.barang_id] || [];
+                         const otherKondisi = availableKondisi.filter(
+                           (z) => z.kondisi.toLowerCase() !== requiredKondisi.toLowerCase() && z.available_qty > 0
+                         );
+                         const otherSummary = otherKondisi
+                           .map((z) => `${z.kondisi} (${z.available_qty})`)
+                           .join(", ");
+                         
+                         return (
+                           <div className="text-xs text-red-600">
+                             Tidak ada stok kondisi {requiredKondisi} di gudang ini.
+                             {otherSummary && (
+                               <span className="block text-gray-500">Tersedia: {otherSummary}</span>
+                             )}
+                           </div>
+                         );
+                       }
+
+                       const zonesToShow = showOtherConditions
+                         ? zonasForGudang.filter((z) => {
+                             const stock = pickingStockByItem[item.barang_id] || [];
+                             return stock.some((s) => s.zona_id === z.zona_id && s.available_qty > 0);
+                           })
+                         : validZones;
+
+                       const handleZonaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+                         const newZonaId = e.target.value;
+                         if (!newZonaId) {
+                           setZonaByItem((prev) => {
+                             const next = { ...prev };
+                             delete next[item.item_id];
+                             return next;
+                           });
+                           setKondisiByItem((prev) => {
+                             const next = { ...prev };
+                             delete next[item.item_id];
+                             return next;
+                           });
+                           return;
+                         }
+
+                         const selectedZona = zonasForGudang.find((z) => String(z.zona_id) === String(newZonaId));
+                         const stockForItem = pickingStockByItem[item.barang_id] || [];
+                         const stockZona = stockForItem.find((s) => s.zona_id === Number(newZonaId));
+                         const selectedKondisi = stockZona?.kondisi || requiredKondisi;
+
+                         if (selectedKondisi.toLowerCase() !== requiredKondisi.toLowerCase()) {
+                           setOverrideItemId(item.item_id);
+                           setZonaByItem((prev) => ({ ...prev, [item.item_id]: newZonaId }));
+                           setKondisiByItem((prev) => ({ ...prev, [item.item_id]: selectedKondisi }));
+                         } else {
+                           setZonaByItem((prev) => ({ ...prev, [item.item_id]: newZonaId }));
+                           setKondisiByItem((prev) => ({ ...prev, [item.item_id]: selectedKondisi }));
+                         }
+                       };
+
+                       return (
+                         <div>
+                           <select
+                             value={currentZonaId || ""}
+                             onChange={handleZonaChange}
+                             className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
+                           >
+                             <option value="">Pilih zona...</option>
+                             {zonesToShow.map((z) => {
+                               const stockForItem = pickingStockByItem[item.barang_id] || [];
+                               const stockZona = stockForItem.find((s) => s.zona_id === z.zona_id);
+                               const zonaKondisi = stockZona?.kondisi || requiredKondisi;
+                               const isOther = zonaKondisi.toLowerCase() !== requiredKondisi.toLowerCase();
+                               return (
+                                 <option key={z.zona_id} value={String(z.zona_id)}>
+                                    {zonaLabel(z)} — {getAvailableQtyForItemZone(item, z.zona_id, pickingStockByItem, kondisiByItem[item.item_id])} unit {isOther ? `(${zonaKondisi})` : ""}
+                                 </option>
+                               );
+                             })}
+                           </select>
+                            {isOverride && (
+                              <p className="mt-1 text-xs text-amber-700">
+                                Override kondisi: {currentZonaKondisi}
+                              </p>
+                            )}
+                           <label className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
+                             <input
+                               type="checkbox"
+                               checked={showOtherConditions}
+                               onChange={(e) => setShowOtherConditions(e.target.checked)}
+                             />
+                             Tampilkan kondisi lain
+                           </label>
+                         </div>
+                       );
+                     })()}
                   </td>
                 )}
               </tr>
@@ -563,6 +873,16 @@ export default function PickingDetailPage() {
         data={data}
         zonas={zonas}
         zonaByItem={zonaByItem}
+      />
+
+      <OverrideConfirmModal
+        open={!!overrideItemId}
+        onClose={() => setOverrideItemId(null)}
+        onConfirm={handleOverrideConfirm}
+        submitting={submitting}
+        item={overrideItemId ? data.items.find((it) => it.item_id === overrideItemId) || null : null}
+        zona={overrideItemId ? zonasForGudang.find((z) => String(z.zona_id) === String(zonaByItem[overrideItemId])) || null : null}
+        kondisi={overrideItemId ? kondisiByItem[overrideItemId] || null : null}
       />
 
       {toast && (

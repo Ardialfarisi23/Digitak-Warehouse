@@ -24,6 +24,7 @@ import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity, getStatusSourceLabel } from "@/lib/capacity";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { KondisiBadge } from "@/components/common/KondisiBadge";
 import { useAccountStatusGuard } from "@/hooks/use-account-status-guard";
 
 const API_BASE =
@@ -1290,6 +1291,7 @@ export default function WarehouseLayoutPage() {
                   <tr className="border-b border-[#e5e7eb]">
                     <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Nama Barang</th>
                     <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Kategori</th>
+                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Kondisi</th>
                     <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085] text-right">Qty</th>
                     <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Satuan</th>
                   </tr>
@@ -1302,6 +1304,7 @@ export default function WarehouseLayoutPage() {
                         <p className="text-[11px] text-[#98a2b3]">{item.kode_perangkat}</p>
                       </td>
                       <td className="px-4 py-3 text-[13px] text-[#6b7280]">{item.kategori}</td>
+                      <td className="px-4 py-3 text-[13px] text-[#6b7280]"><KondisiBadge value={item.kondisi} /></td>
                       <td className="px-4 py-3 text-right text-[13px] font-semibold text-[#111827]">{Number(item.qty).toLocaleString("id-ID")}</td>
                       <td className="px-4 py-3 text-[13px] text-[#6b7280]">{item.satuan}</td>
                     </tr>

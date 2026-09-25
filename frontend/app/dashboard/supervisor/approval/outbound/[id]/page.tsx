@@ -7,6 +7,7 @@ import { useApi } from "@/lib/api";
 import Link from "next/link";
 import { ExternalLink, Loader2, Search, AlertCircle, Eye, X } from "lucide-react";
 import { DetailSuratJalanDocument, type DetailSuratJalanData } from "@/components/surat-jalan/DetailSuratJalanDocument";
+import { KondisiBadge } from "@/components/common/KondisiBadge";
 
 const STATUS_META: Record<string, { label: string; tone: string }> = {
   draft_diajukan: { label: "Draft Diajukan", tone: "bg-slate-100 text-slate-700" },
@@ -156,6 +157,52 @@ export default function SupervisorApprovalOutboundDetailPage() {
     });
     return Array.from(map.values());
   }, [filteredStock]);
+
+  type StockSufficiencyStatus = "Cukup" | "Kurang" | "Tidak Tersedia";
+
+  interface StockStatusInfo {
+    status: StockSufficiencyStatus;
+    availableQty: number;
+    otherConditions: string;
+  }
+
+  const stockStatusByItemId = useMemo(() => {
+    const statusMap: Record<number, StockStatusInfo> = {};
+    const items = request?.items ?? [];
+    const stock = filteredStock;
+
+    for (const item of items) {
+      const itemId = Number(item.item_id);
+      const barangId = Number(item.barang_id);
+      const requiredKondisi = (item.kondisi || "baik").toLowerCase();
+      const requiredQty = Number(item.qty || 0);
+
+      const matching = stock.filter(
+        (s) => Number(s.barang_id) === barangId && String(s.kondisi).toLowerCase() === requiredKondisi
+      );
+      const availableQty = matching.reduce((sum, s) => sum + Number(s.qty || 0), 0);
+
+      const others = stock.filter(
+        (s) => Number(s.barang_id) === barangId && String(s.kondisi).toLowerCase() !== requiredKondisi && Number(s.qty || 0) > 0
+      );
+      const otherConditions = others
+        .map((s) => `${s.nama_zona || s.kode_zona}: ${s.qty}`)
+        .join(", ");
+
+      let status: StockSufficiencyStatus;
+      if (availableQty >= requiredQty) {
+        status = "Cukup";
+      } else if (availableQty > 0) {
+        status = "Kurang";
+      } else {
+        status = "Tidak Tersedia";
+      }
+
+      statusMap[itemId] = { status, availableQty, otherConditions };
+    }
+
+    return statusMap;
+  }, [request, filteredStock]);
 
   useEffect(() => {
     let mounted = true;
@@ -420,6 +467,7 @@ export default function SupervisorApprovalOutboundDetailPage() {
             data={request as DetailSuratJalanData}
             variant="full"
             hideTujuanBadge
+            stockStatusByItemId={stockStatusByItemId}
             renderItemAction={(item) => (
               <button
                 type="button"
@@ -474,21 +522,22 @@ export default function SupervisorApprovalOutboundDetailPage() {
               <p className="text-xs text-slate-500">Tidak ada stok barang di gudang ini.</p>
             </div>
           ) : (
-            <div className="max-h-[500px] overflow-y-auto space-y-2 pr-1">
-              {stockByBarang.map((item) => (
-                <div key={item.barang_id} className="flex items-center justify-between rounded-xl border border-slate-200 p-3">
-                  <div>
-                    <p className="text-xs font-bold text-slate-800">{item.nama_barang}</p>
-                    <p className="text-[10px] text-slate-500">SKU: {item.kode_perangkat} {item.kode_zona !== "-" ? `· Zona ${item.kode_zona}` : ""}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs font-bold text-slate-900">{Number(item.qty || 0).toLocaleString("id-ID")}</p>
-                    <p className="text-[10px] text-slate-500">{item.satuan}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+             <div className="max-h-[500px] overflow-y-auto space-y-2 pr-1">
+               {stockByBarang.map((item) => (
+                 <div key={item.barang_id} className="flex items-center justify-between rounded-xl border border-slate-200 p-3">
+                   <div>
+                     <p className="text-xs font-bold text-slate-800">{item.nama_barang}</p>
+                     <p className="text-[10px] text-slate-500">SKU: {item.kode_perangkat} {item.kode_zona !== "-" ? `· Zona ${item.kode_zona}` : ""}</p>
+                   </div>
+                   <div className="text-right">
+                     <p className="text-xs font-bold text-slate-900">{Number(item.qty || 0).toLocaleString("id-ID")}</p>
+                     <p className="text-[10px] text-slate-500">{item.satuan}</p>
+                     <div className="mt-1"><KondisiBadge value={item.kondisi} /></div>
+                   </div>
+                 </div>
+               ))}
+             </div>
+           )}
         </div>
       </div>
 

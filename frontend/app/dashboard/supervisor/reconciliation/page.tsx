@@ -31,9 +31,7 @@ interface ReconciliationRecord {
   satuan: string;
   boq: number;
   additional: number;
-  mos_sistem: number;
-  mos_mitra: number;
-  selisih: number;
+  mos: number;
   used: number;
   remains: number;
   status: "sesuai" | "berjalan" | "perhatian";
@@ -159,16 +157,14 @@ export default function SupervisorReconciliationPage() {
       const mapped: ReconciliationRecord[] = list.map((item: any) => {
         const boq = Number(item.boq ?? item.qty_boq ?? item.qty_rencana ?? 0);
         const additional = Number(item.additional ?? item.qty_additional ?? 0);
-        const mosSistem = Number(item.mos_sistem ?? item.hardware_on_site ?? item.qty_on_site ?? 0);
-        const mosMitra = Number(item.mos_mitra ?? 0);
+        const mos = Number(item.mos ?? item.hardware_on_site ?? item.qty_on_site ?? 0);
         const used = Number(item.used ?? item.qty_used ?? 0);
-        const remains = mosSistem - (boq + additional);
-        const selisih = mosSistem - mosMitra;
+        const remains = mos - (boq + additional);
 
         let recStatus: ReconciliationRecord["status"] = "berjalan";
         if (remains < 0) {
           recStatus = "perhatian";
-        } else if (mosSistem >= boq + additional && boq > 0) {
+        } else if (mos >= boq + additional && boq > 0) {
           recStatus = "sesuai";
         }
 
@@ -187,9 +183,7 @@ export default function SupervisorReconciliationPage() {
           satuan: item.satuan ?? "-",
           boq,
           additional,
-          mos_sistem: mosSistem,
-          mos_mitra: mosMitra,
-          selisih,
+          mos,
           used,
           remains,
           status: recStatus,
@@ -289,14 +283,12 @@ export default function SupervisorReconciliationPage() {
       (total, item) => {
         total.boq += item.boq;
         total.additional += item.additional;
-        total.mos_sistem += item.mos_sistem;
-        total.mos_mitra += item.mos_mitra;
-        total.selisih += item.selisih;
+        total.mos += item.mos;
         total.used += item.used;
         total.remains += item.remains;
         return total;
       },
-      { boq: 0, additional: 0, mos_sistem: 0, mos_mitra: 0, selisih: 0, used: 0, remains: 0 },
+      { boq: 0, additional: 0, mos: 0, used: 0, remains: 0 }
     );
   }, [records]);
 
@@ -305,7 +297,7 @@ export default function SupervisorReconciliationPage() {
   const handleExportCSV = () => {
     if (filteredRecords.length === 0) return;
 
-    const headers = ["Project", "Area", "Cluster", "Kode Tiket", "Kode Perangkat", "Nama Barang", "Gudang", "Satuan", "BOQ", "Additional", "MOS Sistem", "MOS Mitra", "Selisih", "Used", "Remains", "Status"];
+    const headers = ["Project", "Area", "Cluster", "Kode Tiket", "Kode Perangkat", "Nama Barang", "Gudang", "Satuan", "BOQ", "Additional", "MOS", "Used", "Remains", "Status"];
 
     const csvRows = [
       headers.join(","),
@@ -321,9 +313,7 @@ export default function SupervisorReconciliationPage() {
           `"${r.satuan}"`,
           r.boq,
           r.additional,
-          r.mos_sistem,
-          r.mos_mitra,
-          r.selisih,
+          r.mos,
           r.used,
           r.remains,
           `"${r.status}"`,
@@ -385,9 +375,7 @@ export default function SupervisorReconciliationPage() {
             <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-7">
               <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
               <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
-              <KpiCard title="MOS Sistem" value={formatNumber(summary.mos_sistem)} description="Material on Site (Sistem)" icon={PackageCheck} tone="slate" />
-              <KpiCard title="MOS Mitra" value={formatNumber(summary.mos_mitra)} description="Material on Site (Mitra)" icon={PackageCheck} tone="slate" />
-              <KpiCard title="Selisih" value={formatNumber(summary.selisih)} description="MOS Mitra - MOS Sistem" icon={AlertTriangle} tone={summary.selisih !== 0 ? "rose" : "slate"} />
+              <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material on Site" icon={PackageCheck} tone="slate" />
               <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan" icon={PackageMinus} tone="slate" />
               <KpiCard title="Remains" value={formatNumber(summary.remains)} description="Sisa ketersediaan" icon={Package} tone={summary.remains < 0 ? "rose" : "slate"} />
             </div>
@@ -463,11 +451,9 @@ export default function SupervisorReconciliationPage() {
                       <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
                       <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
                       <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
-                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
-                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS Sistem</th>
-                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS Mitra</th>
-                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Selisih</th>
-                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
+                       <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
+                       <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
+                       <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
                       <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Remains</th>
                       <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
                       <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
@@ -496,9 +482,8 @@ export default function SupervisorReconciliationPage() {
                     ) : (
                       filteredRecords.map((record) => {
                         const statusBadge = getStatusBadge(record.status);
-                        const isSelisih = record.selisih !== 0;
                         return (
-                          <tr key={record.id} className={`group transition-colors ${isSelisih ? "bg-yellow-50" : "hover:bg-slate-50"}`}>
+                          <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
                             <td className="px-6 py-4">
                               <p className="font-medium text-slate-900">{record.project_nama}</p>
                               <p className="text-xs text-slate-400">
@@ -520,12 +505,7 @@ export default function SupervisorReconciliationPage() {
 
                             <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.boq)}</td>
                             <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.additional)}</td>
-                            <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos_sistem)}</td>
-                            <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos_mitra)}</td>
-                            <td className="px-6 py-4 text-right">
-                              <span className={isSelisih ? "font-semibold text-amber-700" : "font-semibold text-slate-700"}>{formatNumber(record.selisih)}</span>
-                            </td>
-
+                            <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos)}</td>
                             <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.used)}</td>
 
                             <td className="px-6 py-4 text-right">
@@ -569,18 +549,10 @@ export default function SupervisorReconciliationPage() {
                   <p className="mt-2 text-xs leading-relaxed text-indigo-800/90">Tambahan material di luar rencana BOQ awal (misal kelebihan kiriman atau kebutuhan tambahan).</p>
                 </div>
                 <div className="rounded-xl border border-blue-200/80 bg-blue-50/50 p-4">
-                  <p className="text-xs font-bold text-blue-900">MOS Sistem</p>
-                  <p className="mt-2 text-xs leading-relaxed text-blue-800/90">Jumlah material yang tercatat masuk ke project menurut sistem (otomatis dari surat jalan inbound).</p>
+                  <p className="text-xs font-bold text-blue-900">MOS</p>
+                  <p className="mt-2 text-xs leading-relaxed text-blue-800/90">Material yang sudah sampai di lapangan sesuai Surat Jalan Pengambilan (outbound ke lapangan, status disetujui/diterima).</p>
                 </div>
-                <div className="rounded-xl border border-orange-200/80 bg-orange-50/50 p-4">
-                  <p className="text-xs font-bold text-orange-900">MOS Mitra</p>
-                  <p className="mt-2 text-xs leading-relaxed text-orange-800/90">Jumlah material yang dikonfirmasi diterima oleh mitra di lapangan, diinput manual oleh Admin dari laporan mitra.</p>
-                </div>
-                <div className="rounded-xl border border-amber-200/80 bg-amber-50/50 p-4">
-                  <p className="text-xs font-bold text-amber-900">Selisih</p>
-                  <p className="mt-2 text-xs leading-relaxed text-amber-800/90">Perbedaan antara catatan sistem dan laporan mitra (MOS Sistem − MOS Mitra). Jika ≠ 0, berarti ada ketidakcocokan yang perlu dicek ulang.</p>
-                </div>
-                <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3">
                   <p className="text-xs font-bold text-slate-900">Used</p>
                   <p className="mt-2 text-xs leading-relaxed text-slate-800/90">Jumlah material yang sudah dikirim ke lapangan untuk dipasang (otomatis dari surat jalan outbound yang disetujui).</p>
                 </div>
@@ -725,8 +697,7 @@ export default function SupervisorReconciliationPage() {
                   <div className="space-y-2">
                     <DetailRow label="BOQ" value={selectedRecord.boq} />
                     <DetailRow label="Additional" value={selectedRecord.additional} />
-                    <DetailRow label="MOS Sistem" value={selectedRecord.mos_sistem} />
-                    <DetailRow label="MOS Mitra" value={selectedRecord.mos_mitra} />
+                    <DetailRow label="MOS" value={selectedRecord.mos} />
                     <DetailRow label="Used" value={selectedRecord.used} />
                     <div className="border-t border-slate-100 pt-2">
                       <DetailRow label="Remains" value={selectedRecord.remains} highlight />

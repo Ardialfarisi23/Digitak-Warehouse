@@ -53,9 +53,7 @@ interface ReconciliationRecord {
   satuan: string;
   boq: number;
   additional: number;
-  mos_sistem: number;
-  mos_mitra: number;
-  selisih: number;
+  mos: number;
   used: number;
   remains: number;
   status: "sesuai" | "berjalan" | "perhatian";
@@ -122,7 +120,7 @@ export default function ReconciliationInventoryPage() {
   const [manualRows, setManualRows] = useState<Array<{
     id: string;
     nama_barang: string;
-    mos: string;
+    remains_lapangan: string;
     used: string;
     catatan: string;
     kondisi: string;
@@ -190,16 +188,14 @@ export default function ReconciliationInventoryPage() {
       const mapped: ReconciliationRecord[] = list.map((item: any) => {
         const boq = Number(item.boq ?? item.qty_boq ?? item.qty_rencana ?? 0);
         const additional = Number(item.additional ?? item.qty_additional ?? 0);
-        const mosSistem = Number(item.mos_sistem ?? item.hardware_on_site ?? item.qty_on_site ?? 0);
-        const mosMitra = Number(item.mos_mitra ?? 0);
+        const mos = Number(item.mos ?? item.hardware_on_site ?? item.qty_on_site ?? 0);
         const used = Number(item.used ?? item.qty_used ?? 0);
-        const remains = mosSistem - (boq + additional);
-        const selisih = mosSistem - mosMitra;
+        const remains = mos - (boq + additional);
 
         let recStatus: ReconciliationRecord["status"] = "berjalan";
         if (remains < 0) {
           recStatus = "perhatian";
-        } else if (mosSistem >= boq + additional && boq > 0) {
+        } else if (mos >= boq + additional && boq > 0) {
           recStatus = "sesuai";
         }
 
@@ -218,9 +214,7 @@ export default function ReconciliationInventoryPage() {
           satuan: item.satuan ?? item.satuan?.kode_satuan ?? item.barang?.satuan_default?.kode_satuan ?? "-",
           boq,
           additional,
-          mos_sistem: mosSistem,
-          mos_mitra: mosMitra,
-          selisih,
+          mos,
           used,
           remains,
           status: recStatus,
@@ -353,8 +347,8 @@ export default function ReconciliationInventoryPage() {
         setMitraError("Setiap item harus memiliki Nama Barang.");
         return;
       }
-      if (Number(row.mos) <= 0 && Number(row.used) <= 0) {
-        setMitraError("Setiap item harus memiliki minimal salah satu Qty MOS atau Qty Used > 0.");
+      if (Number(row.used) <= 0 && Number(row.remains_lapangan) <= 0) {
+        setMitraError("Setiap item harus memiliki minimal salah satu Qty Used atau Qty Remains di Lapangan > 0.");
         return;
       }
     }
@@ -371,8 +365,8 @@ export default function ReconciliationInventoryPage() {
           kode_tiket: selectedKodeTiket,
           project_nama: projectName,
           nama_barang: row.nama_barang.trim(),
-          mos: Number(row.mos) || 0,
           used: Number(row.used) || 0,
+          remains_lapangan: Number(row.remains_lapangan) || 0,
           catatan: row.catatan.trim() || null,
           kondisi: row.kondisi.trim() || null,
         }));
@@ -396,8 +390,10 @@ export default function ReconciliationInventoryPage() {
 
       closeMitraModal();
       fetchReconciliation();
+      setToast({ message: "Laporan mitra berhasil disimpan.", type: "success" });
     } catch (err) {
       setMitraError(err instanceof Error ? err.message : "Terjadi kesalahan saat konfirmasi.");
+      setToast({ message: err instanceof Error ? err.message : "Terjadi kesalahan saat konfirmasi.", type: "error" });
     } finally {
       setMitraConfirming(false);
     }
@@ -410,7 +406,7 @@ export default function ReconciliationInventoryPage() {
       {
         id: `${Date.now()}-${prev.length}`,
         nama_barang: "",
-        mos: "",
+        remains_lapangan: "",
         used: "",
         catatan: "",
         kondisi: "",
@@ -538,9 +534,7 @@ export default function ReconciliationInventoryPage() {
         "Satuan",
         "BOQ",
         "Additional",
-        "MOS Sistem",
-        "MOS Mitra",
-        "Selisih",
+        "MOS",
         "Used",
         "Remains",
         "Status",
@@ -563,9 +557,7 @@ export default function ReconciliationInventoryPage() {
         escapeCsv(r.satuan),
         escapeCsv(r.boq),
         escapeCsv(r.additional),
-        escapeCsv(r.mos_sistem),
-        escapeCsv(r.mos_mitra),
-        escapeCsv(r.selisih),
+        escapeCsv(r.mos),
         escapeCsv(r.used),
         escapeCsv(r.remains),
         escapeCsv(r.status),
@@ -593,14 +585,12 @@ export default function ReconciliationInventoryPage() {
       (total, item) => {
         total.boq += item.boq;
         total.additional += item.additional;
-        total.mos_sistem += item.mos_sistem;
-        total.mos_mitra += item.mos_mitra;
-        total.selisih += item.selisih;
+        total.mos += item.mos;
         total.used += item.used;
         total.remains += item.remains;
         return total;
       },
-      { boq: 0, additional: 0, mos_sistem: 0, mos_mitra: 0, selisih: 0, used: 0, remains: 0 }
+      { boq: 0, additional: 0, mos: 0, used: 0, remains: 0 }
     );
   }, [filteredRecords]);
 
@@ -626,15 +616,7 @@ export default function ReconciliationInventoryPage() {
         <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-7">
           <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
           <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
-          <KpiCard title="MOS Sistem" value={formatNumber(summary.mos_sistem)} description="Material on Site (Sistem)" icon={PackageCheck} tone="slate" />
-          <KpiCard title="MOS Mitra" value={formatNumber(summary.mos_mitra)} description="Material on Site (Mitra)" icon={PackageCheck} tone="slate" />
-          <KpiCard
-            title="Selisih"
-            value={formatNumber(summary.selisih)}
-             description="MOS Sistem - MOS Mitra"
-            icon={AlertTriangle}
-            tone={summary.selisih !== 0 ? "rose" : "slate"}
-          />
+          <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material on Site" icon={PackageCheck} tone="slate" />
           <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan" icon={PackageMinus} tone="slate" />
           <KpiCard title="Remains" value={formatNumber(summary.remains)} description="Sisa setelah used" icon={Wallet} tone="slate" />
         </div>
@@ -764,9 +746,7 @@ export default function ReconciliationInventoryPage() {
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
                   <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
                   <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
-                  <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS Sistem</th>
-                  <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS Mitra</th>
-                  <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Selisih</th>
+                  <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
                   <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
                   <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Remains</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
@@ -802,9 +782,8 @@ export default function ReconciliationInventoryPage() {
                 ) : (
                   filteredRecords.map((record) => {
                     const statusBadge = getStatusBadge(record.status);
-                    const isSelisih = record.selisih !== 0;
                     return (
-                      <tr key={record.id} className={`group transition-colors ${isSelisih ? "bg-yellow-50" : "hover:bg-slate-50"}`}>
+                      <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
                         <td className="px-6 py-4">
                           <p className="font-medium text-slate-900">{record.project_nama}</p>
                           <p className="text-xs text-slate-400">
@@ -828,14 +807,7 @@ export default function ReconciliationInventoryPage() {
 
                         <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.boq)}</td>
                         <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.additional)}</td>
-                        <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos_sistem)}</td>
-                        <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos_mitra)}</td>
-                        <td className="px-6 py-4 text-right">
-                          <span className={isSelisih ? "font-semibold text-amber-700" : "font-semibold text-slate-700"}>
-                            {formatNumber(record.selisih)}
-                          </span>
-                        </td>
-
+                        <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos)}</td>
                         <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.used)}</td>
 
                         <td className="px-6 py-4 text-right">
@@ -886,16 +858,8 @@ export default function ReconciliationInventoryPage() {
               <p className="mt-1 text-[11px] leading-relaxed text-indigo-700">Tambahan material di luar rencana BOQ awal (misal kelebihan kiriman atau kebutuhan tambahan).</p>
             </div>
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
-              <p className="text-xs font-semibold text-blue-800">MOS Sistem</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-blue-700">Jumlah material yang tercatat masuk ke project menurut sistem (otomatis dari surat jalan inbound).</p>
-            </div>
-            <div className="rounded-xl border border-orange-200 bg-orange-50 p-3">
-              <p className="text-xs font-semibold text-orange-800">MOS Mitra</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-orange-700">Jumlah material yang dikonfirmasi diterima oleh mitra di lapangan, diinput manual oleh Admin dari laporan mitra.</p>
-            </div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-              <p className="text-xs font-semibold text-amber-800">Selisih</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-amber-700">Perbedaan antara catatan sistem dan laporan mitra (MOS Sistem − MOS Mitra). Jika ≠ 0, berarti ada ketidakcocokan yang perlu dicek ulang.</p>
+              <p className="text-xs font-semibold text-blue-800">MOS</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-blue-700">Material yang sudah sampai di lapangan sesuai Surat Jalan Pengambilan (outbound ke lapangan, status disetujui/diterima).</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs font-semibold text-slate-800">Used</p>
@@ -964,8 +928,7 @@ export default function ReconciliationInventoryPage() {
                   <div className="space-y-2">
                     <DetailRow label="BOQ" value={selectedRecord.boq} />
                     <DetailRow label="Additional" value={selectedRecord.additional} />
-                    <DetailRow label="MOS Sistem" value={selectedRecord.mos_sistem} />
-                    <DetailRow label="MOS Mitra" value={selectedRecord.mos_mitra} />
+                    <DetailRow label="MOS" value={selectedRecord.mos} />
                     <DetailRow label="Used" value={selectedRecord.used} />
                     <div className="border-t border-slate-100 pt-2">
                       <DetailRow label="Remains" value={selectedRecord.remains} highlight />
@@ -1163,10 +1126,10 @@ export default function ReconciliationInventoryPage() {
                              <tr className="border-b border-slate-100 bg-slate-50">
                                <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
                                <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
-                               <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
-                               <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
-                               <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
-                               <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kondisi</th>
+                                <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
+                                <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
+                                <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Remains di Lapangan</th>
+                                <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kondisi</th>
                                <th className="px-4 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
                              </tr>
                            </thead>
@@ -1175,10 +1138,10 @@ export default function ReconciliationInventoryPage() {
                                <tr key={idx} className="hover:bg-slate-50">
                                  <td className="px-4 py-2 font-mono text-xs font-semibold text-orange-600">{row.kode_tiket}</td>
                                  <td className="px-4 py-2 text-slate-700">{row.project_nama}</td>
-                                 <td className="px-4 py-2 text-slate-700">{row.nama_barang || "-"}</td>
-                                 <td className="px-4 py-2 text-right font-mono text-slate-600">{row.mos}</td>
-                                 <td className="px-4 py-2 text-right font-mono text-slate-600">{row.used}</td>
-                                 <td className="px-4 py-2 text-slate-700">{row.kondisi || "-"}</td>
+                                  <td className="px-4 py-2 text-slate-700">{row.nama_barang || "-"}</td>
+                                  <td className="px-4 py-2 text-right font-mono text-slate-600">{row.used}</td>
+                                  <td className="px-4 py-2 text-right font-mono text-slate-600">{row.remains_lapangan}</td>
+                                  <td className="px-4 py-2 text-slate-700">{row.kondisi || "-"}</td>
                                  <td className="px-4 py-2 text-center">
                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
                                      <CheckCircle2 size={12} />
@@ -1322,23 +1285,23 @@ export default function ReconciliationInventoryPage() {
                                 />
                               </div>
                               <div className="col-span-6 sm:col-span-3">
-                                <label className="mb-1 block text-[11px] font-medium text-slate-500">Qty Sampai di Site (MOS)</label>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={row.mos}
-                                  onChange={(e) => updateManualRow(row.id, "mos", e.target.value)}
-                                  placeholder="0"
-                                  className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-400"
-                                />
-                              </div>
-                              <div className="col-span-6 sm:col-span-3">
                                 <label className="mb-1 block text-[11px] font-medium text-slate-500">Qty Terpasang (Used)</label>
                                 <input
                                   type="number"
                                   min={0}
                                   value={row.used}
                                   onChange={(e) => updateManualRow(row.id, "used", e.target.value)}
+                                  placeholder="0"
+                                  className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-400"
+                                />
+                              </div>
+                              <div className="col-span-6 sm:col-span-3">
+                                <label className="mb-1 block text-[11px] font-medium text-slate-500">Remains di Lapangan</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={row.remains_lapangan}
+                                  onChange={(e) => updateManualRow(row.id, "remains_lapangan", e.target.value)}
                                   placeholder="0"
                                   className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-400"
                                 />
@@ -1621,8 +1584,8 @@ export default function ReconciliationInventoryPage() {
                       <thead>
                         <tr className="border-b border-slate-100 bg-slate-50">
                           <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
-                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">MOS</th>
                           <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">Used</th>
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">Remains di Lapangan</th>
                           <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
                           <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Alasan Gagal</th>
                         </tr>
@@ -1633,8 +1596,8 @@ export default function ReconciliationInventoryPage() {
                             return (
                               <tr key={d.detail_id} className="hover:bg-slate-50">
                                 <td className="px-3 py-2 font-mono font-semibold text-slate-700">{d.kode_tiket}</td>
-                                <td className="px-3 py-2 text-right font-mono text-slate-600">{d.mos}</td>
                                 <td className="px-3 py-2 text-right font-mono text-slate-600">{d.used}</td>
+                                <td className="px-3 py-2 text-right font-mono text-slate-600">{d.remains_lapangan ?? d.mos ?? "-"}</td>
                                 <td className="px-3 py-2">
                                   {duplicate ? (
                                     <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">

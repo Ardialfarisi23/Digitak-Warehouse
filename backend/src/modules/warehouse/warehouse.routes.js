@@ -35,5 +35,6 @@ router.patch("/:nama_gudang/restore", authenticate, authorize("ADMIN"), warehous
 router.get("/:gudang_id/layout", authenticate, warehouseController.getLayout);
 router.get("/:gudang_id/zona/:zona_id/stock-snapshot", authenticate, warehouseController.getZoneStockSnapshot);
 router.get("/:gudang_id/stock-check", authenticate, warehouseController.getStockCheck);
+router.get("/:gudang_id/picking-stock-check", authenticate, warehouseController.getPickingStockCheck);
 
 module.exports = router;

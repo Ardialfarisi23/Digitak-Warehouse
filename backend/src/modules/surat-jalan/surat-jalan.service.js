@@ -5,6 +5,14 @@ const { PrismaClientKnownRequestError } = require("@prisma/client");
 const notificationService = require("../notifications/notifications.service");
 const capacityService = require("../capacity/capacity.service");
 
+const KONDISI_LABEL = {
+  baik: "Baik",
+  rusak_ringan: "Rusak Ringan",
+  rusak_berat: "Rusak Berat",
+  tidak_sesuai_spek: "Tidak Sesuai Spek",
+  doa: "DOA",
+};
+
 const getRelatedUserIdsByGudang = async (gudangIds, roles) => {
   if (!Array.isArray(gudangIds) || gudangIds.length === 0 || !Array.isArray(roles) || roles.length === 0) {
     return [];
@@ -1013,6 +1021,7 @@ if (!Array.isArray(items) || items.length === 0) {
       for (const item of items) {
         const qty = Number(item.qty || 0);
         const zonaId = item.zona_id ? Number(item.zona_id) : null;
+        const pickedKondisi = item.kondisi ? String(item.kondisi).toLowerCase() : null;
 
         if (qty <= 0) continue;
         if (!zonaId) continue;
@@ -1021,23 +1030,67 @@ if (!Array.isArray(items) || items.length === 0) {
         if (!suratItem) continue;
 
         const barangId = Number(suratItem.barang_id);
+        const requestedKondisi = (suratItem.kondisi || "baik").toLowerCase();
+
+        if (pickedKondisi && pickedKondisi !== requestedKondisi && !item.catatan_kondisi?.trim()) {
+          const barangNama =
+            suratItem.barang?.nama_barang || suratItem.barang?.kode_perangkat || `Barang ${barangId}`;
+          const kondisiLabel = KONDISI_LABEL[requestedKondisi] || requestedKondisi;
+          throw new AppError(
+            `Pengambilan kondisi ${pickedKondisi} untuk ${barangNama} memerlukan alasan override (catatan_kondisi).`,
+            400
+          );
+        }
+
+        const searchKondisi = pickedKondisi || requestedKondisi;
 
         const stock = await tx.stok_gudang.findFirst({
           where: {
             gudang_id: gudangAsalId,
             barang_id: barangId,
             zona_id: zonaId,
-            kondisi: suratItem.kondisi || "baik",
+            kondisi: searchKondisi,
             project_id: shipment.project_id,
           },
           orderBy: { qty: "desc" },
         });
 
         if (!stock) {
-          throw new AppError(
-            `Stok barang ${barangId} di zona tidak ditemukan.`,
-            400
-          );
+          const fallbackStocks = await tx.stok_gudang.findMany({
+            where: {
+              gudang_id: gudangAsalId,
+              barang_id: barangId,
+              zona_id: zonaId,
+              project_id: shipment.project_id,
+            },
+            select: {
+              kondisi: true,
+              qty: true,
+            },
+          });
+
+          const zona = await tx.zona_gudang.findUnique({
+            where: { zona_id: zonaId },
+            select: { nama_zona: true, kode_zona: true },
+          });
+
+          const barangNama =
+            suratItem.barang?.nama_barang || suratItem.barang?.kode_perangkat || `Barang ${barangId}`;
+          const zonaNama = zona?.nama_zona || zona?.kode_zona || `Zona ${zonaId}`;
+          const kondisiDimintaLabel = KONDISI_LABEL[searchKondisi] || searchKondisi;
+
+          let message = `Stok ${barangNama} dengan kondisi ${kondisiDimintaLabel} tidak tersedia di zona ${zonaNama}.`;
+
+          if (fallbackStocks.length > 0) {
+            const summary = fallbackStocks
+              .map((s) => `${KONDISI_LABEL[s.kondisi] || s.kondisi} (${Number(s.qty || 0)})`)
+              .join(", ");
+            message += ` Stok di zona ini: ${summary}.`;
+          } else {
+            message += ` Stok tidak ditemukan di zona ${zonaNama}.`;
+          }
+
+          throw new AppError(message, 400);
         }
 
         const existingQty = Number(stock.qty || 0);
@@ -1068,6 +1121,27 @@ if (!Array.isArray(items) || items.length === 0) {
             jenis_mutasi: "out",
             qty: qty,
             saldo_setelah: Math.max(0, updatedQty),
+          },
+        });
+
+        await tx.audit_log.create({
+          data: {
+            entity_type: "surat_jalan",
+            entity_id: BigInt(suratJalanId),
+            aksi: "retrieve",
+            actor_id: BigInt(actorId),
+            data_sebelum: null,
+            data_sesudah: {
+              surat_jalan_id: Number(suratJalanId),
+              surat_jalan_item_id: Number(suratItem.item_id),
+              barang_id: Number(barangId),
+              zona_id: Number(zonaId),
+              qty: Number(qty),
+              kondisi_diminta: requestedKondisi,
+              kondisi_diambil: searchKondisi,
+              override: Boolean(pickedKondisi && pickedKondisi !== requestedKondisi),
+              catatan_kondisi: item.catatan_kondisi || null,
+            },
           },
         });
 

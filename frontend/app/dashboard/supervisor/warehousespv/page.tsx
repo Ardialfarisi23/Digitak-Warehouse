@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity, getStatusSourceLabel } from "@/lib/capacity";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { KondisiBadge } from "@/components/common/KondisiBadge";
 import { useAccountStatusGuard } from "@/hooks/use-account-status-guard";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -733,23 +734,24 @@ export default function SpvWarehouseLayoutPage() {
                   <h4 className="text-[14px] font-bold text-[#111827]">Belum ada barang di zona ini</h4>
                   <p className="mt-1 text-[12px] text-[#9ca3af]">Zona ini belum memiliki stok barang</p>
                 </div>
-              ) : (
-                /* List Barang */
-                <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
-                  {filteredStock.map((item, idx) => (
-                    <div key={idx} className="flex items-center justify-between rounded-xl border border-[#e5e7eb] p-3 transition hover:bg-[#f9fafb]">
-                      <div>
-                        <p className="text-[13px] font-bold text-[#111827]">{item.nama_barang || item.nama_perangkat || "Tanpa Nama"}</p>
-                        <p className="text-[11px] text-[#6b7280]">Kode: {item.kode_barang || item.kode_perangkat || "-"}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[13px] font-bold text-[#111827]">{Number(item.qty || item.stok || 0).toLocaleString("id-ID")}</p>
-                        <p className="text-[11px] text-[#6b7280]">Unit</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                ) : (
+                 /* List Barang */
+                 <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
+                   {filteredStock.map((item, idx) => (
+                     <div key={idx} className="flex items-center justify-between rounded-xl border border-[#e5e7eb] p-3 transition hover:bg-[#f9fafb]">
+                       <div>
+                         <p className="text-[13px] font-bold text-[#111827]">{item.nama_barang || item.nama_perangkat || "Tanpa Nama"}</p>
+                         <p className="text-[11px] text-[#6b7280]">Kode: {item.kode_barang || item.kode_perangkat || "-"}</p>
+                       </div>
+                       <div className="text-right">
+                         <p className="text-[13px] font-bold text-[#111827]">{Number(item.qty || item.stok || 0).toLocaleString("id-ID")}</p>
+                         <p className="text-[11px] text-[#6b7280]">Unit</p>
+                         <div className="mt-1"><KondisiBadge value={item.kondisi} /></div>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+               )}
             </div>
           </div>
         </div>

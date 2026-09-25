@@ -181,6 +181,64 @@ const getStockAvailability = async (gudang_id, items = [], projectId = null) => 
   return results;
 };
 
+const getPickingStockAvailability = async (gudang_id, items = [], projectId = null) => {
+  const barangIds = items
+    .map((it) => Number(it.barang_id))
+    .filter((id) => !Number.isNaN(id) && id > 0);
+
+  if (!barangIds.length) {
+    return [];
+  }
+
+  const kondisiList = items
+    .map((it) => (it.kondisi || "baik").toLowerCase())
+    .filter(Boolean);
+
+  const stockWhere = {
+    gudang_id: Number(gudang_id),
+    barang_id: { in: barangIds },
+    ...(projectId ? { project_id: Number(projectId) } : {}),
+    ...(kondisiList.length ? { kondisi: { in: [...new Set(kondisiList)] } } : {}),
+  };
+
+  const stocks = await prisma.stok_gudang.findMany({
+    where: stockWhere,
+    select: {
+      barang_id: true,
+      zona_id: true,
+      kondisi: true,
+      qty: true,
+    },
+  });
+
+  const grouped = new Map();
+  for (const row of stocks) {
+    const key = `${row.barang_id}|${row.zona_id ?? "global"}|${row.kondisi}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        barang_id: Number(row.barang_id),
+        zona_id: row.zona_id ? Number(row.zona_id) : null,
+        kondisi: row.kondisi,
+        available_qty: 0,
+      });
+    }
+    grouped.get(key).available_qty += Number(row.qty || 0);
+  }
+
+  const byBarang = new Map();
+  for (const entry of grouped.values()) {
+    if (!byBarang.has(entry.barang_id)) {
+      byBarang.set(entry.barang_id, []);
+    }
+    byBarang.get(entry.barang_id).push(entry);
+  }
+
+  return Array.from(byBarang.entries()).map(([barang_id, zonas]) => ({
+    barang_id: Number(barang_id),
+    zonas,
+  }));
+};
+
 module.exports = {
   create,
   findById,
@@ -190,4 +248,5 @@ module.exports = {
   softDelete,
   restore,
   getStockAvailability,
+  getPickingStockAvailability,
 };

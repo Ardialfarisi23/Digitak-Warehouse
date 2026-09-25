@@ -90,7 +90,7 @@ type ProjectSummaryRow = {
   area: string;
   statusBoq: string;
   hardwareOnSite: number;
-  mos_sistem: number;
+  mos: number;
   boq: number;
   additional: number;
   used: number;
@@ -190,7 +190,7 @@ function DashboardPageContent() {
       project_nama?: string;
       boq: number;
       additional: number;
-      mos_sistem: number;
+      mos: number;
       used: number;
       remains: number;
       status?: string;
@@ -296,7 +296,7 @@ function DashboardPageContent() {
             project_nama: (row?.project_nama ?? proj?.nama_project ?? undefined) as string | undefined,
             boq: Number(row?.boq ?? 0) || 0,
             additional: Number(row?.additional ?? 0) || 0,
-            mos_sistem: Number(row?.mos_sistem ?? 0) || 0,
+            mos: Number(row?.mos ?? 0) || 0,
             used: Number(row?.used ?? 0) || 0,
             remains: Number(row?.remains ?? 0) || 0,
             status: row?.status ? String(row.status) : undefined,
@@ -451,12 +451,12 @@ function DashboardPageContent() {
     (acc, row) => {
       acc.boq += row.boq;
       acc.additional += row.additional;
-      acc.mos_sistem += row.mos_sistem;
+      acc.mos += row.mos;
       acc.used += row.used;
       acc.remains += row.remains;
       return acc;
     },
-    { boq: 0, additional: 0, mos_sistem: 0, used: 0, remains: 0 }
+    { boq: 0, additional: 0, mos: 0, used: 0, remains: 0 }
   );
 
   const projectRows = projectSummary.map((p) => {
@@ -480,7 +480,7 @@ function DashboardPageContent() {
   const reconciliationBreakdown = [
     { label: "BOQ (Rencana)", value: reconciliationTotals.boq, tone: "bg-slate-300" },
     { label: "Additional", value: reconciliationTotals.additional, tone: "bg-blue-400" },
-    { label: "MOS (Sistem)", value: reconciliationTotals.mos_sistem, tone: "bg-emerald-400" },
+    { label: "MOS", value: reconciliationTotals.mos, tone: "bg-emerald-400" },
     { label: "Used (Terpasang)", value: reconciliationTotals.used, tone: "bg-orange-400" },
     { label: "Remains", value: reconciliationTotals.remains, tone: "bg-slate-400" },
   ];

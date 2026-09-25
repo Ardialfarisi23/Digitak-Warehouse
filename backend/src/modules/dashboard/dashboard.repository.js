@@ -210,7 +210,7 @@ const getProjectSummary = async () => {
       projectAggregates.set(pid, {
         boq: 0,
         additional: 0,
-        mos_sistem: 0,
+        mos: 0,
         used: 0,
         remains: 0,
         statuses: [],
@@ -220,7 +220,7 @@ const getProjectSummary = async () => {
     const agg = projectAggregates.get(pid);
     agg.boq += Number(row.boq || 0);
     agg.additional += Number(row.additional || 0);
-    agg.mos_sistem += Number(row.mos_sistem || 0);
+    agg.mos += Number(row.mos || 0);
     agg.used += Number(row.used || 0);
     agg.remains += Number(row.remains || 0);
     if (row.status) agg.statuses.push(row.status);
@@ -235,19 +235,19 @@ const getProjectSummary = async () => {
 
     const boq = agg ? Number(agg.boq) || 0 : 0;
     const additional = agg ? Number(agg.additional) || 0 : 0;
-    const mosSistem = agg ? Number(agg.mos_sistem) || 0 : 0;
+    const mos = agg ? Number(agg.mos) || 0 : 0;
     const used = agg ? Number(agg.used) || 0 : 0;
-    const remains = agg ? reconciliationUtils.computeRemains(mosSistem, boq, additional) : 0;
+    const remains = agg ? reconciliationUtils.computeRemains(mos, boq, additional) : 0;
     const reconStatus = agg
       ? reconciliationUtils.aggregateProjectStatus(agg.statuses)
       : "berjalan";
 
-    // Legacy alias — agar hardwareOnSite konsisten dengan MOS Sistem yang baru.
-    const hardwareOnSite = mosSistem;
+    // Legacy alias — agar hardwareOnSite konsisten dengan MOS yang baru.
+    const hardwareOnSite = mos;
 
     const progress =
-      mosSistem > 0
-        ? Math.min(Math.round((used / mosSistem) * 100), 100)
+      mos > 0
+        ? Math.min(Math.round((used / mos) * 100), 100)
         : 0;
 
     return {
@@ -258,7 +258,7 @@ const getProjectSummary = async () => {
       area: project.area || "-",
       statusBoq,
       hardwareOnSite,
-      mos_sistem: mosSistem,
+      mos: mos,
       boq,
       additional,
       used,

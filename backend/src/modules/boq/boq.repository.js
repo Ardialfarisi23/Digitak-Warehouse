@@ -386,13 +386,13 @@ const getExportMatrixData = async () => {
             select: {
               tiket_id: true,
               kode_tiket: true,
-              mos: true,
+              used: true,
               project: {
                 select: {
                   project_id: true,
                   nama_project: true,
-                  cluster_id: true,
                   area: true,
+                  cluster_id: true,
                 },
               },
             },
@@ -436,6 +436,8 @@ const getExportMatrixData = async () => {
   const inboundByProjectBarang = new Map();
   const outboundByProjectBarang = new Map();
   const additionalByProjectBarang = new Map();
+  const mosByProjectBarang = new Map();
+  const usedByProjectBarang = new Map();
 
   for (const item of shipmentItems) {
     const projectIdNum = Number(item.surat_jalan?.project_id);
@@ -462,6 +464,23 @@ const getExportMatrixData = async () => {
         key,
         (outboundByProjectBarang.get(key) || 0) + qty
       );
+      mosByProjectBarang.set(
+        key,
+        (mosByProjectBarang.get(key) || 0) + qty
+      );
+    }
+  }
+
+  for (const item of boqItems) {
+    const tiket = item.boq?.tiket;
+    const project = tiket?.project;
+    const projectIdNum = Number(project?.project_id || 0);
+    const barangId = String(item.barang_id);
+    const key = `${projectIdNum}-${barangId}`;
+
+    const tiketUsed = Number(tiket?.used || 0);
+    if (tiketUsed > 0) {
+      usedByProjectBarang.set(key, (usedByProjectBarang.get(key) || 0) + tiketUsed);
     }
   }
 
@@ -474,10 +493,11 @@ const getExportMatrixData = async () => {
 
     const boq = Number(item.qty_rencana || 0);
     const additional = Number(additionalByProjectBarang.get(key) || 0);
-    const mosSistem = Number(inboundByProjectBarang.get(key) || 0);
-    const mosMitra = Number(tiket?.mos || 0);
-    const used = Number(outboundByProjectBarang.get(key) || 0);
-    const remains = mosSistem - (boq + additional);
+    const mos = Number(mosByProjectBarang.get(key) || 0);
+    const used = Number(usedByProjectBarang.get(key) || 0) > 0
+      ? Number(usedByProjectBarang.get(key) || 0)
+      : Number(outboundByProjectBarang.get(key) || 0);
+    const remains = mos - (boq + additional);
 
     return {
       project_id: projectIdNum,
@@ -490,8 +510,7 @@ const getExportMatrixData = async () => {
       satuan: item.satuan?.kode_satuan || "-",
       boq,
       additional,
-      mos_sistem: mosSistem,
-      mos_mitra: mosMitra,
+      mos,
       used,
       remains,
     };
@@ -528,8 +547,7 @@ const getExportMatrixData = async () => {
         project_nama: row.project_nama,
         boq: 0,
         additional: 0,
-        mos_sistem: 0,
-        mos_mitra: row.mos_mitra,
+        mos: 0,
         used: 0,
         remains: 0,
       };
@@ -538,10 +556,9 @@ const getExportMatrixData = async () => {
     const proj = material.projects[projectKey];
     proj.boq += row.boq;
     proj.additional += row.additional;
-    proj.mos_sistem += row.mos_sistem;
-    proj.mos_mitra = Math.max(proj.mos_mitra, row.mos_mitra);
+    proj.mos += row.mos;
     proj.used += row.used;
-    proj.remains = proj.mos_sistem - (proj.boq + proj.additional);
+    proj.remains = proj.mos - (proj.boq + proj.additional);
   }
 
   const usedProjectIds = new Set();
@@ -549,7 +566,7 @@ const getExportMatrixData = async () => {
   for (const material of materialMap.values()) {
     const filteredProjects = {};
     for (const [key, proj] of Object.entries(material.projects)) {
-      if (proj.boq > 0 || proj.additional > 0 || proj.mos_sistem > 0 || proj.used > 0) {
+      if (proj.boq > 0 || proj.additional > 0 || proj.mos > 0 || proj.used > 0) {
         filteredProjects[key] = proj;
         usedProjectIds.add(key);
       }

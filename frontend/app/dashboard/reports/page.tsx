@@ -106,7 +106,8 @@ interface AuditLogEntry {
   details?: Array<{
     detail_id: number | string;
     kode_tiket: string;
-    mos: number | string;
+    mos?: number | string;
+    remains_lapangan?: number | string;
     used: number | string;
     status: string;
     reason?: string | null;
@@ -156,6 +157,7 @@ interface ReconciliationUploadLogEntry {
     detail_id: number | string;
     kode_tiket?: string;
     mos?: string;
+    remains_lapangan?: string;
     used?: string;
     status?: string;
     alasan_gagal?: string;
@@ -377,7 +379,8 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
     }
 
     const labelMap: Record<string, string> = {
-      mos: "MOS",
+      mos: "MOS (arsip)",
+      remains_lapangan: "Remains di Lapangan",
       used: "Used",
       source_file: "File Sumber",
       filename: "Nama File",
@@ -1743,21 +1746,23 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
               {detailRow.details && detailRow.details.length > 0 ? (
                 <div className="overflow-x-auto rounded-lg border border-slate-100">
                   <table className="min-w-full text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-slate-100 bg-slate-50">
-                        <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
-                        <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">MOS</th>
-                        <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">Used</th>
-                        <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                        <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Alasan Gagal</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      {detailRow.details.map((d) => (
-                        <tr key={d.detail_id} className="hover:bg-slate-50">
-                          <td className="px-3 py-2 font-mono font-semibold text-slate-700">{d.kode_tiket}</td>
-                          <td className="px-3 py-2 text-right font-mono text-slate-600">{d.mos}</td>
-                          <td className="px-3 py-2 text-right font-mono text-slate-600">{d.used}</td>
+                      <thead>
+                        <tr className="border-b border-slate-100 bg-slate-50">
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">MOS (arsip)</th>
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">Remains di Lapangan</th>
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">Used</th>
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Alasan Gagal</th>
+                        </tr>
+                      </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {detailRow.details.map((d) => (
+                            <tr key={d.detail_id} className="hover:bg-slate-50">
+                              <td className="px-3 py-2 font-mono font-semibold text-slate-700">{d.kode_tiket}</td>
+                              <td className="px-3 py-2 text-right font-mono text-slate-600">{d.mos ?? "-"}</td>
+                              <td className="px-3 py-2 text-right font-mono text-slate-600">{d.remains_lapangan ?? "-"}</td>
+                              <td className="px-3 py-2 text-right font-mono text-slate-600">{d.used}</td>
                            <td className="px-3 py-2">{statusBadge(d.status || "-")}</td>
                           <td className="px-3 py-2 text-slate-500">{d.reason || "-"}</td>
                         </tr>

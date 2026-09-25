@@ -12,8 +12,8 @@ const reconciliationService = require("../reconciliation/reconciliation.service"
 const RECONCILIATION_REQUIRED_COLUMNS = [
   { name: "Kode Tiket", aliases: ["Kode Tiket", "kode_tiket", "KODE_TIKET"] },
   { name: "Nama Barang", aliases: ["Nama Barang", "nama_barang", "Barang"] },
-  { name: "MOS", aliases: ["MOS", "mos", "Material on Site"] },
   { name: "Used", aliases: ["Used", "used"] },
+  { name: "Remains di Lapangan", aliases: ["Remains di Lapangan", "remains_lapangan", "Remains", "Sisa di Lapangan"] },
   { name: "Kondisi", aliases: ["Kondisi", "kondisi", "KONDISI"] },
 ];
 
@@ -350,19 +350,19 @@ const uploadReconciliationFile = async (req, res, next) => {
       for (let i = 0; i < jsonData.length; i++) {
         const row = jsonData[i];
         const kodeTiket = row["Kode Tiket"] || row["kode_tiket"] || row["KODE_TIKET"];
-        const mos = Number(row["MOS"] || row["mos"] || row["Material on Site"] || 0);
         const used = Number(row["Used"] || row["used"] || 0);
+        const remainsLapangan = Number(row["Remains di Lapangan"] || row["remains_lapangan"] || row["Remains"] || row["Sisa di Lapangan"] || 0);
         const namaBarang = row["Nama Barang"] || row["nama_barang"] || row["Barang"] || null;
         const kondisi = row["Kondisi"] || row["kondisi"] || row["KONDISI"] || null;
 
         if (!kodeTiket) {
-          failed.push({ row: i + 2, mos, used, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak ditemukan" });
+          failed.push({ row: i + 2, used, remains_lapangan: remainsLapangan, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak ditemukan" });
           continue;
         }
 
         const tiket = tiketMap.get(String(kodeTiket).trim());
         if (!tiket) {
-          failed.push({ row: i + 2, kode_tiket: kodeTiket, mos, used, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak terdaftar" });
+          failed.push({ row: i + 2, kode_tiket: kodeTiket, used, remains_lapangan: remainsLapangan, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak terdaftar" });
           continue;
         }
 
@@ -373,8 +373,8 @@ const uploadReconciliationFile = async (req, res, next) => {
           cluster_id: tiket.project?.cluster_id || "-",
           area: tiket.project?.area || "-",
           nama_barang: namaBarang,
-          mos,
           used,
+          remains_lapangan: remainsLapangan,
           kondisi,
         });
       }
@@ -464,7 +464,8 @@ const confirmReconciliationUpload = async (req, res, next) => {
             data: {
               upload_id: uploadLog.upload_id,
               kode_tiket: kodeTiket || "-",
-              mos: Number(item.mos || 0),
+              mos: 0,
+              remains_lapangan: Number(item.remains_lapangan || 0),
               used: Number(item.used || 0),
               status: "gagal",
               reason: "Tiket tidak terdaftar",
@@ -490,7 +491,8 @@ const confirmReconciliationUpload = async (req, res, next) => {
             data: {
               upload_id: uploadLog.upload_id,
               kode_tiket: kodeTiket || "-",
-              mos: Number(item.mos || 0),
+              mos: 0,
+              remains_lapangan: Number(item.remains_lapangan || 0),
               used: Number(item.used || 0),
               status: "gagal",
               reason: "Tiket tidak terdaftar",
@@ -532,7 +534,8 @@ const confirmReconciliationUpload = async (req, res, next) => {
               tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
               pic_mitra: pic_mitra || null,
               nama_barang: nama_barang || item.nama_barang || null,
-              mos: Number(item.mos || 0),
+              mos: 0,
+              remains_lapangan: Number(item.remains_lapangan || 0),
               used: Number(item.used || 0),
               catatan: catatan || null,
               kondisi: kondisi || null,
@@ -545,7 +548,8 @@ const confirmReconciliationUpload = async (req, res, next) => {
             data: {
               upload_id: uploadLog.upload_id,
               kode_tiket: tiket.kode_tiket,
-              mos: Number(item.mos || 0),
+              mos: 0,
+              remains_lapangan: Number(item.remains_lapangan || 0),
               used: Number(item.used || 0),
               status: "berhasil",
               reason: null,
@@ -556,7 +560,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
           updatedTikets.push({
             tiket_id: tiketId,
             kode_tiket: tiket.kode_tiket,
-            mos: item.mos,
+            remains_lapangan: item.remains_lapangan,
             used: item.used,
           });
         } catch (insertErr) {
@@ -564,7 +568,8 @@ const confirmReconciliationUpload = async (req, res, next) => {
             data: {
               upload_id: uploadLog.upload_id,
               kode_tiket: tiket.kode_tiket,
-              mos: Number(item.mos || 0),
+              mos: 0,
+              remains_lapangan: Number(item.remains_lapangan || 0),
               used: Number(item.used || 0),
               status: "gagal",
               reason: insertErr.message || "Gagal menyimpan laporan mitra",
@@ -581,7 +586,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
             actor_id: BigInt(actorId),
             data_sebelum: dataSebelum,
             data_sesudah: {
-              mos: item.mos,
+              remains_lapangan: item.remains_lapangan,
               used: item.used,
               source_file: filename,
               jenis_laporan: jenisLaporan,
@@ -595,7 +600,8 @@ const confirmReconciliationUpload = async (req, res, next) => {
           data: {
             upload_id: uploadLog.upload_id,
             kode_tiket: item.kode_tiket || "-",
-            mos: Number(item.mos || 0),
+            mos: 0,
+            remains_lapangan: Number(item.remains_lapangan || 0),
             used: Number(item.used || 0),
             status: "gagal",
             reason: item.reason || "Gagal memproses baris",
@@ -643,7 +649,7 @@ const downloadReconciliationTemplate = async (req, res, next) => {
       right: { style: "thin" },
     };
 
-    const headers = ["Kode Tiket", "Nama Barang", "MOS", "Used", "Kondisi", "Catatan"];
+    const headers = ["Kode Tiket", "Nama Barang", "Used", "Remains di Lapangan", "Kondisi", "Catatan"];
     headers.forEach((header, index) => {
       const cell = worksheet.getCell(1, index + 1);
       cell.value = header;
@@ -653,7 +659,7 @@ const downloadReconciliationTemplate = async (req, res, next) => {
       cell.border = borderStyle;
     });
 
-    const exampleRow = ["TIKET-001", "Kabel Fiber Optik", 10, 3, "Baik", "Contoh catatan opsional"];
+    const exampleRow = ["TIKET-001", "Kabel Fiber Optik", 3, 2, "Baik", "Contoh catatan opsional"];
     exampleRow.forEach((value, colIndex) => {
       const cell = worksheet.getCell(2, colIndex + 1);
       cell.value = value;

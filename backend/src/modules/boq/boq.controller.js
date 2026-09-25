@@ -300,12 +300,12 @@ const exportMatrixExcel = async (req, res, next) => {
         const projData = material.projects[String(project.project_id)] || {
           boq: 0,
           additional: 0,
-          mos_sistem: 0,
+          mos: 0,
           used: 0,
           remains: 0,
         };
         const baseCol = BASE_COLS + j * METRICS.length;
-        const values = [projData.boq, projData.additional, projData.mos_sistem, projData.used, projData.remains];
+        const values = [projData.boq, projData.additional, projData.mos, projData.used, projData.remains];
         for (let k = 0; k < METRICS.length; k++) {
           const cell = worksheet.getCell(row, baseCol + k + 1);
           cell.value = values[k];

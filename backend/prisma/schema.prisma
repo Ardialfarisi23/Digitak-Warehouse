@@ -558,6 +558,7 @@ model reconciliation_upload_detail {
   kode_tiket String
   mos        Decimal                      @db.Decimal(14, 2)
   used       Decimal                      @db.Decimal(14, 2)
+  remains_lapangan Decimal?               @db.Decimal(14, 2)
   status     reconciliation_detail_status
   reason     String?
 
@@ -577,6 +578,7 @@ model laporan_mitra {
   nama_barang     String?   @db.Text
   mos             Decimal   @db.Decimal(14, 2)
   used            Decimal   @db.Decimal(14, 2)
+  remains_lapangan Decimal?  @db.Decimal(14, 2)
   catatan         String?   @db.Text
   kondisi         String?   @db.Text
   uploaded_by     BigInt

@@ -401,7 +401,7 @@ export function useSupervisorDashboard() {
             nama_barang?: string;
             boq?: number;
             additional?: number;
-            mos_sistem?: number;
+            mos?: number;
             used?: number;
             remains?: number;
             status?: string;
@@ -416,7 +416,7 @@ export function useSupervisorDashboard() {
                   nama_barang?: string;
                   boq?: number;
                   additional?: number;
-                  mos_sistem?: number;
+                  mos?: number;
                   used?: number;
                   remains?: number;
                   status?: string;
@@ -444,7 +444,7 @@ export function useSupervisorDashboard() {
             const ticketList = tickets.length ? tickets : ["-"];
             const boq = Number(row.boq || 0);
             const additional = Number(row.additional || 0);
-            const mos = Number(row.mos_sistem || 0);
+            const mos = Number(row.mos || 0);
             const used = Number(row.used || 0);
             const remains = Number(row.remains || 0);
 
