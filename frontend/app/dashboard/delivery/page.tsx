@@ -7,6 +7,7 @@ import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import { DetailSuratJalanDocument, DetailSuratJalanData } from "@/components/surat-jalan/DetailSuratJalanDocument";
+import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -39,6 +40,10 @@ interface SuratJalanRecord {
   creator?: {
     nama: string;
   };
+  approval_verification?: {
+    approver_nama: string | null;
+    waktu_verifikasi: string | null;
+  } | null;
   items: {
     item_id: number;
     barang: {
@@ -53,6 +58,10 @@ interface SuratJalanRecord {
       kode_satuan: string;
     };
     kondisi?: string;
+    approval_verification?: {
+      approver_nama: string | null;
+      waktu_verifikasi: string | null;
+    } | null;
   }[];
 }
 
@@ -563,27 +572,41 @@ export default function AdminDeliveryPage() {
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Diperiksa Oleh</p>
-                  <p className="text-sm font-medium text-slate-900">{selectedItem.diperiksa_oleh_user?.nama || "-"}</p>
+                  <p className="text-sm font-medium text-slate-900">
+                    {selectedRecord?.approval_verification?.approver_nama ||
+                      selectedItem.diperiksa_oleh_user?.nama ||
+                      "-"}
+                  </p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Waktu Verifikasi</p>
-                  <p className="text-sm font-medium text-slate-900">{selectedItem.diperiksa_pada ? new Date(selectedItem.diperiksa_pada).toLocaleString("id-ID") : "-"}</p>
+                  <p className="text-sm font-medium text-slate-900">
+                    {selectedRecord?.approval_verification?.waktu_verifikasi
+                      ? new Date(selectedRecord.approval_verification.waktu_verifikasi).toLocaleString("id-ID")
+                      : selectedItem.diperiksa_pada
+                        ? new Date(selectedItem.diperiksa_pada).toLocaleString("id-ID")
+                        : "-"}
+                  </p>
                 </div>
               </div>
 
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">Foto Dokumentasi</p>
-                {selectedItem.fotos && selectedItem.fotos.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {selectedItem.fotos.map((foto: any) => (
-                      <div key={foto.foto_id} className="overflow-hidden rounded-xl border border-slate-100">
-                        <img src={foto.url} alt={foto.filename || "Foto barang"} className="h-32 w-full object-cover" />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-400">Belum ada foto dokumentasi untuk item ini.</p>
-                )}
+                {(() => {
+                  const fotoUrls = getItemFotoUrls(selectedItem);
+                  if (fotoUrls.length === 0) {
+                    return <p className="text-xs text-slate-400">Belum ada foto dokumentasi untuk item ini.</p>;
+                  }
+                  return (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {fotoUrls.map((url, idx) => (
+                        <div key={idx} className="overflow-hidden rounded-xl border border-slate-100">
+                          <img src={url} alt={`Foto barang ${idx + 1}`} className="h-32 w-full object-cover" />
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="flex justify-end">

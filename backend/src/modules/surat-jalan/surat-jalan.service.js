@@ -447,7 +447,8 @@ const findOutboundDetail = async (id, actor) => {
   }
 
   if (!actor || ["admin_general", "supervisor"].includes(actor.role)) {
-    return record;
+    const approvalVerification = await suratJalanRepository.getApprovalVerification(id);
+    return { ...record, approval_verification: approvalVerification };
   }
 
   if (actor.role === "staf_gudang") {
@@ -467,7 +468,8 @@ const findOutboundDetail = async (id, actor) => {
       throw new AppError("Anda tidak memiliki akses ke surat jalan ini.", 403);
     }
 
-    return record;
+    const approvalVerification = await suratJalanRepository.getApprovalVerification(id);
+    return { ...record, approval_verification: approvalVerification };
   }
 
   throw new AppError("Anda tidak memiliki akses ke surat jalan ini.", 403);
@@ -481,7 +483,8 @@ const findById = async (id, actor) => {
   }
 
   if (!actor || ["admin_general", "supervisor"].includes(actor.role)) {
-    return record;
+    const approvalVerification = await suratJalanRepository.getApprovalVerification(id);
+    return { ...record, approval_verification: approvalVerification };
   }
 
   if (actor.role === "staf_gudang") {
@@ -501,7 +504,8 @@ const findById = async (id, actor) => {
       throw new AppError("Anda tidak memiliki akses ke surat jalan ini.", 403);
     }
 
-    return record;
+    const approvalVerification = await suratJalanRepository.getApprovalVerification(id);
+    return { ...record, approval_verification: approvalVerification };
   }
 
   throw new AppError("Anda tidak memiliki akses ke surat jalan ini.", 403);

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Search, ChevronDown, Filter, X, Eye, CheckSquare, AlertTriangle, Clock, PackageCheck, Truck, XCircle } from "lucide-react";
 import { useApi } from "@/lib/api";
 import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
+import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
 
 const STATUS_LABEL: Record<string, string> = {
   stok_kurang: "Stok Tidak Cukup",
@@ -27,6 +28,10 @@ interface OutboundItem {
   catatan?: string | null;
   barang?: { nama_barang?: string; kode_perangkat?: string; satuan_default?: { kode_satuan?: string }; kategori?: { is_kritis?: boolean } } | null;
   satuan?: { kode_satuan?: string } | null;
+  approval_verification?: {
+    approver_nama: string | null;
+    waktu_verifikasi: string | null;
+  } | null;
 }
 
 interface OutboundRow {
@@ -729,63 +734,47 @@ export default function SupervisorApprovalOutboundPage() {
                   <p className="font-medium text-slate-900">{selectedDocItem?.qty || 0}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500">Diperiksa Oleh</p>
-                  <p className="font-medium text-slate-900">{(selectedDocItem as any)?.diperiksa_oleh || "-"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Waktu Verifikasi</p>
-                  <p className="font-medium text-slate-900">
-                    {(selectedDocItem as any)?.diperiksa_pada ? new Date((selectedDocItem as any).diperiksa_pada).toLocaleString("id-ID") : "-"}
-                  </p>
-                </div>
+                   <p className="text-xs text-slate-500">Diperiksa Oleh</p>
+                   <p className="font-medium text-slate-900">
+                     {(selectedDocItem as any)?.approval_verification?.approver_nama ||
+                       (selectedDocItem as any)?.diperiksa_oleh_user?.nama ||
+                       "-"}
+                   </p>
+                 </div>
+                 <div>
+                   <p className="text-xs text-slate-500">Waktu Verifikasi</p>
+                   <p className="font-medium text-slate-900">
+                     {(selectedDocItem as any)?.approval_verification?.waktu_verifikasi
+                       ? new Date((selectedDocItem as any).approval_verification.waktu_verifikasi).toLocaleString("id-ID")
+                       : (selectedDocItem as any)?.diperiksa_pada
+                         ? new Date((selectedDocItem as any).diperiksa_pada).toLocaleString("id-ID")
+                         : "-"}
+                   </p>
+                 </div>
               </div>
                <div>
-                  <p className="mb-2 text-xs text-slate-500">Foto Dokumentasi</p>
-                  {(() => {
-                    const item = selectedDocItem as any;
-                    const fotoUrl =
-                      item?.foto_dokumentasi ||
-                      item?.foto_barang ||
-                      item?.foto ||
-                      item?.foto_url ||
-                      item?.documentation_photo ||
-                      (Array.isArray(item?.photos) && item.photos.length > 0 ? item.photos[0] : null) ||
-                      (Array.isArray(item?.foto) && item.foto.length > 0 ? item.foto[0] : null);
-
-                    if (!fotoUrl) {
-                      return <p className="text-xs text-slate-400">Belum ada foto dokumentasi untuk item ini.</p>;
-                    }
-
-                    if (Array.isArray(fotoUrl)) {
-                      return (
-                        <div className="grid grid-cols-3 gap-2">
-                          {fotoUrl.map((foto: any, idx: number) => {
-                            const src = typeof foto === "string" ? foto : foto?.url;
-                            if (!src) return null;
-                            return (
-                              <img
-                                key={idx}
-                                src={src}
-                                alt={typeof foto === "string" ? `Foto ${idx + 1}` : foto?.filename || `Foto ${idx + 1}`}
-                                className="h-24 w-full rounded-lg border border-slate-100 object-cover cursor-pointer"
-                                onClick={() => openPreview(src)}
-                              />
-                            );
-                          })}
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <img
-                        src={fotoUrl}
-                        alt="Foto Dokumentasi"
-                        className="h-24 w-24 rounded-lg border border-slate-100 object-cover cursor-pointer"
-                        onClick={() => openPreview(fotoUrl)}
-                      />
-                    );
-                  })()}
-                </div>
+                   <p className="mb-2 text-xs text-slate-500">Foto Dokumentasi</p>
+                   {(() => {
+                     const item = selectedDocItem as any;
+                     const fotoUrls = getItemFotoUrls(item);
+                     if (fotoUrls.length === 0) {
+                       return <p className="text-xs text-slate-400">Belum ada foto dokumentasi untuk item ini.</p>;
+                     }
+                     return (
+                       <div className="grid grid-cols-3 gap-2">
+                         {fotoUrls.map((url, idx) => (
+                           <img
+                             key={idx}
+                             src={url}
+                             alt={`Foto ${idx + 1}`}
+                             className="h-24 w-full rounded-lg border border-slate-100 object-cover cursor-pointer"
+                             onClick={() => openPreview(url)}
+                           />
+                         ))}
+                       </div>
+                     );
+                   })()}
+                 </div>
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4">
               <button

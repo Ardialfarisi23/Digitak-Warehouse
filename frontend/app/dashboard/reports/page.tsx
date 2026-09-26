@@ -399,6 +399,13 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
       gudang_tujuan_id: "Gudang Tujuan",
       project_id: "Project",
       boq_id: "BOQ",
+      zona_id: "Zona",
+      barang_id: "Barang",
+      surat_jalan_item_id: "Item Surat Jalan",
+      override: "Override Kondisi",
+      kondisi_diminta: "Kondisi Diminta",
+      kondisi_diambil: "Kondisi Diambil",
+      catatan_kondisi: "Catatan Override",
     };
 
     const idRefKeys = new Set([
@@ -408,6 +415,9 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
       "gudang_tujuan_id",
       "project_id",
       "boq_id",
+      "zona_id",
+      "barang_id",
+      "surat_jalan_item_id",
     ]);
 
     return (

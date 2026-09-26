@@ -119,6 +119,7 @@ export default function ReconciliationInventoryPage() {
   const [mitraConfirming, setMitraConfirming] = useState(false);
   const [manualRows, setManualRows] = useState<Array<{
     id: string;
+    barang_id: string;
     nama_barang: string;
     remains_lapangan: string;
     used: string;
@@ -365,6 +366,7 @@ export default function ReconciliationInventoryPage() {
           kode_tiket: selectedKodeTiket,
           project_nama: projectName,
           nama_barang: row.nama_barang.trim(),
+          barang_id: row.barang_id || null,
           used: Number(row.used) || 0,
           remains_lapangan: Number(row.remains_lapangan) || 0,
           catatan: row.catatan.trim() || null,
@@ -405,6 +407,7 @@ export default function ReconciliationInventoryPage() {
       ...prev,
       {
         id: `${Date.now()}-${prev.length}`,
+        barang_id: "",
         nama_barang: "",
         remains_lapangan: "",
         used: "",
@@ -867,7 +870,7 @@ export default function ReconciliationInventoryPage() {
             </div>
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
               <p className="text-xs font-semibold text-emerald-800">Remains</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-emerald-700">Sisa material yang masih tersedia setelah dikurangi rencana. Rumus: MOS − (BOQ Plan + Additional). Jika minus, berarti pemakaian sudah melebihi rencana.</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-emerald-700">Sisa material yang secara fisik masih ada di lapangan, setelah dikurangi kebutuhan rencana, pemakaian (Used), dan barang yang sudah diretur ke gudang. Rumus: MOS − (BOQ Plan + Additional) − Used − Return (diterima gudang).</p>
             </div>
           </div>
         </div>
@@ -1274,15 +1277,18 @@ export default function ReconciliationInventoryPage() {
                             <div className="grid grid-cols-12 gap-2">
                               <div className="col-span-12 sm:col-span-4">
                                 <label className="mb-1 block text-[11px] font-medium text-slate-500">Nama Barang</label>
-                                <BarangPicker
-                                  value={row.nama_barang}
-                                  onSelect={(item) => updateManualRow(row.id, "nama_barang", item.nama_barang || item.kode_perangkat || "")}
-                                  placeholder="Pilih atau ketik nama barang"
-                                  disabled={!selectedProjectId}
-                                  fetchEndpoint="/api/boqs/items"
-                                  queryParams={boqItemsQueryParams}
-                                  emptyMessage="Belum ada BOQ aktif untuk project ini — Anda tetap bisa mengetik nama barang manual"
-                                />
+                                 <BarangPicker
+                                   value={row.nama_barang}
+                                   onSelect={(item) => {
+                                     updateManualRow(row.id, "barang_id", item.id || "");
+                                     updateManualRow(row.id, "nama_barang", item.nama_barang || item.kode_perangkat || "");
+                                   }}
+                                   placeholder="Pilih atau ketik nama barang"
+                                   disabled={!selectedProjectId}
+                                   fetchEndpoint="/api/boqs/items"
+                                   queryParams={boqItemsQueryParams}
+                                   emptyMessage="Belum ada BOQ aktif untuk project ini — Anda tetap bisa mengetik nama barang manual"
+                                 />
                               </div>
                               <div className="col-span-6 sm:col-span-3">
                                 <label className="mb-1 block text-[11px] font-medium text-slate-500">Qty Terpasang (Used)</label>

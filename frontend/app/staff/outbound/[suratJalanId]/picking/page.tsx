@@ -49,6 +49,8 @@ type ConfirmModalProps = {
   data: ApiSuratJalan | null;
   zonas: ApiZona[];
   zonaByItem: Record<number, string>;
+  kondisiByItem: Record<number, string>;
+  catatanKondisiByItem: Record<number, string>;
 };
 
 type OverrideConfirmModalProps = {
@@ -86,6 +88,13 @@ function stockKey(barangId: number, zonaId: number | null, kondisi: string): str
   return `${barangId}|${zonaId ?? "global"}|${kondisi}`;
 }
 
+function getZonaIdFromComposite(value: string | undefined | null): number | null {
+  if (!value) return null;
+  const part = String(value).split("|")[0];
+  const num = Number(part);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
 function getValidZonesForItem(
   item: ApiSuratJalanItem,
   zonas: ApiZona[],
@@ -117,6 +126,8 @@ function ConfirmModal({
   data,
   zonas,
   zonaByItem,
+  kondisiByItem,
+  catatanKondisiByItem,
 }: ConfirmModalProps) {
   useEffect(() => {
     if (!open) return;
@@ -131,9 +142,11 @@ function ConfirmModal({
 
   const selectedZones = data.items
     .map((it) => {
-      const zid = zonaByItem[it.item_id];
+      const zid = getZonaIdFromComposite(zonaByItem[it.item_id]);
       const zona = zonas.find((z) => String(z.zona_id) === String(zid));
-      return { item: it, zona };
+      const selectedKondisi = kondisiByItem[it.item_id] || it.kondisi || "baik";
+      const isOverride = selectedKondisi.toLowerCase() !== (it.kondisi || "baik").toLowerCase();
+      return { item: it, zona, isOverride, selectedKondisi, catatan: catatanKondisiByItem[it.item_id] };
     })
     .filter((row) => row.zona);
 
@@ -173,7 +186,7 @@ function ConfirmModal({
                 Detail Pengambilan
               </p>
               <div className="space-y-2">
-                {selectedZones.map(({ item, zona }) => (
+                 {selectedZones.map(({ item, zona, isOverride, selectedKondisi, catatan }) => (
                   <div
                     key={item.item_id}
                     className="flex items-center justify-between text-sm"
@@ -185,10 +198,18 @@ function ConfirmModal({
                       <span className="text-xs text-slate-400">
                         {item.barang?.kode_perangkat || "-"}
                       </span>
+                      {isOverride && catatan && (
+                        <span className="mt-1 text-xs text-amber-700">
+                          Alasan: {catatan}
+                        </span>
+                      )}
                     </div>
                     <div className="text-right">
                       <div className="font-medium text-slate-700">{zonaLabel(zona!)}</div>
                       <div className="text-xs text-slate-400">Qty: {item.qty}</div>
+                      {isOverride && (
+                        <div className="text-xs text-amber-700">Override kondisi: {selectedKondisi}</div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -408,22 +429,31 @@ export default function PickingDetailPage() {
   }, [data?.surat_jalan_id]);
 
   useEffect(() => {
-    if (!data?.items?.length) return;
+    if (!data?.items?.length || !data?.gudang_asal_id) return;
+    const hasStockData = data.items.some((it) => (pickingStockByItem[it.barang_id] || []).length > 0);
+    if (!hasStockData) return;
     setZonaByItem((prev) => {
       const next = { ...prev };
       let changed = false;
       for (const it of data.items) {
-        const currentZonaId = next[it.item_id];
+        if (it.item_id === overrideItemId) continue;
+        const currentComposite = next[it.item_id];
+        if (!currentComposite) continue;
+        const currentZonaId = getZonaIdFromComposite(currentComposite);
         if (!currentZonaId) continue;
-        const validZones = getValidZonesForItem(it, zonasForGudang, pickingStockByItem, kondisiByItem[it.item_id]);
-        if (!validZones.some((z) => String(z.zona_id) === String(currentZonaId))) {
+        const currentKondisi = String(currentComposite).includes("|")
+          ? String(currentComposite).split("|")[1]
+          : kondisiByItem[it.item_id] || it.kondisi || "baik";
+        const validZones = getValidZonesForItem(it, zonasForGudang, pickingStockByItem, currentKondisi);
+        const stillValid = validZones.some((z) => String(z.zona_id) === String(currentZonaId));
+        if (!stillValid) {
           delete next[it.item_id];
           changed = true;
         }
       }
       return changed ? next : prev;
     });
-  }, [data, zonasForGudang, pickingStockByItem]);
+  }, [data, zonasForGudang, pickingStockByItem, kondisiByItem, overrideItemId]);
 
   useEffect(() => {
     if (!data?.items?.length || !data?.gudang_asal_id) return;
@@ -451,7 +481,9 @@ export default function PickingDetailPage() {
         const next = { ...prev };
         data.items.forEach((it) => {
           if (!next[it.item_id]) {
-            next[it.item_id] = onlyZoneId;
+            const kondisi = it.kondisi || "baik";
+            next[it.item_id] = `${onlyZoneId}|${kondisi}`;
+            setKondisiByItem((prev2) => ({ ...prev2, [it.item_id]: kondisi }));
           }
         });
         return next;
@@ -504,10 +536,24 @@ export default function PickingDetailPage() {
   }
 
   const allAssigned = data.items.every((it) => {
-    const selectedZonaId = zonaByItem[it.item_id];
+    const selectedComposite = zonaByItem[it.item_id];
+    if (!selectedComposite) return false;
+    const selectedZonaId = getZonaIdFromComposite(selectedComposite);
     if (!selectedZonaId) return false;
-    const validZones = getValidZonesForItem(it, zonasForGudang, pickingStockByItem, kondisiByItem[it.item_id]);
-    return validZones.some((z) => String(z.zona_id) === String(selectedZonaId));
+    const selectedKondisi = kondisiByItem[it.item_id] || it.kondisi || "baik";
+    const requestedKondisi = it.kondisi || "baik";
+    const isOverride = selectedKondisi.toLowerCase() !== requestedKondisi.toLowerCase();
+    const catatan = catatanKondisiByItem[it.item_id];
+    if (isOverride && !catatan?.trim()) return false;
+
+    const validZones = getValidZonesForItem(it, zonasForGudang, pickingStockByItem, selectedKondisi);
+    if (validZones.some((z) => String(z.zona_id) === String(selectedZonaId))) return true;
+
+    const stockForItem = pickingStockByItem[it.barang_id] || [];
+    const stockZona = stockForItem.find((s) => s.zona_id === selectedZonaId);
+    if (!stockZona || stockZona.available_qty < Number(it.qty || 0)) return false;
+
+    return true;
   });
 
   function showToast(message: string, type: "success" | "error") {
@@ -524,7 +570,7 @@ export default function PickingDetailPage() {
 
     const payloadItems = items
       .map((it) => {
-        const zonaId = zonaByItem[it.item_id] ? Number(zonaByItem[it.item_id]) : null;
+        const zonaId = getZonaIdFromComposite(zonaByItem[it.item_id]);
         const key = stockKey(it.item_id, zonaId, it.kondisi || "baik");
         if (uniqueKeys.has(key)) return null;
         uniqueKeys.add(key);
@@ -603,10 +649,13 @@ export default function PickingDetailPage() {
   }
 
   async function confirmSubmit() {
-    if (!allAssigned || !data) return;
+    if (!allAssigned || !data) {
+      showToast("Lengkapi pemilihan zona (dan alasan jika kondisi berbeda) untuk semua barang sebelum submit.", "error");
+      return;
+    }
 
     const resolvedItems = data.items.map((it) => {
-      const zonaId = zonaByItem[it.item_id];
+      const zonaId = getZonaIdFromComposite(zonaByItem[it.item_id]);
       const selectedKondisi = kondisiByItem[it.item_id] || it.kondisi || "baik";
       const catatanKondisi = catatanKondisiByItem[it.item_id];
       return {
@@ -633,9 +682,10 @@ export default function PickingDetailPage() {
       }
 
       const successDetails = data.items.map((it) => {
-        const zona = zonas.find((z) => String(z.zona_id) === String(zonaByItem[it.item_id]));
+        const zonaId = getZonaIdFromComposite(zonaByItem[it.item_id]);
+        const zona = zonas.find((z) => String(z.zona_id) === String(zonaId));
         const name = it.barang?.nama_barang || it.barang?.kode_perangkat || `Item #${it.item_id}`;
-        const zoneName = zona ? zonaLabel(zona) : `Zona ${zonaByItem[it.item_id]}`;
+        const zoneName = zona ? zonaLabel(zona) : zonaId ? `Zona ${zonaId}` : "Zona belum dipilih";
         return `${name} di ${zoneName}`;
       });
 
@@ -722,23 +772,23 @@ export default function PickingDetailPage() {
                         Kelebihan Barang
                       </span>
                     )}
-                    {(() => {
-                      const currentZonaId = zonaByItem[item.item_id] ? Number(zonaByItem[item.item_id]) : null;
-                      const key = stockKey(item.item_id, currentZonaId, item.kondisi || "baik");
-                      const stock = stockAvailability[key];
-                      if (!stock) return null;
-                      const available = Number(stock.available_qty || 0);
-                      const required = Number(item.qty || 0);
-                      if (available < required) {
-                        return (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700 border border-red-200">
-                            <AlertCircle size={10} />
-                            Stok Tidak Cukup (tersedia: {available}, diminta: {required})
-                          </span>
-                        );
-                      }
-                      return null;
-                    })()}
+                     {(() => {
+                       const currentZonaId = getZonaIdFromComposite(zonaByItem[item.item_id]);
+                       const key = stockKey(item.item_id, currentZonaId, item.kondisi || "baik");
+                       const stock = stockAvailability[key];
+                       if (!stock) return null;
+                       const available = Number(stock.available_qty || 0);
+                       const required = Number(item.qty || 0);
+                       if (available < required) {
+                         return (
+                           <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700 border border-red-200">
+                             <AlertCircle size={10} />
+                             Stok Tidak Cukup (tersedia: {available}, diminta: {required})
+                           </span>
+                         );
+                       }
+                       return null;
+                     })()}
                   </div>
                 </td>
                 <td className="py-3 pr-4 text-gray-600">{item.kondisi || "-"}</td>
@@ -755,10 +805,11 @@ export default function PickingDetailPage() {
                         const requiredKondisi = item.kondisi || "baik";
                         const selectedKondisi = kondisiByItem[item.item_id] || requiredKondisi;
                         const validZones = getValidZonesForItem(item, zonasForGudang, pickingStockByItem, selectedKondisi);
-                        const currentZonaId = zonaByItem[item.item_id];
-                        const currentZona = zonasForGudang.find((z) => String(z.zona_id) === String(currentZonaId));
+                        const currentComposite = zonaByItem[item.item_id] || "";
+                        const currentZonaId = getZonaIdFromComposite(currentComposite);
+                        const currentZona = currentZonaId ? zonasForGudang.find((z) => String(z.zona_id) === String(currentZonaId)) : null;
                         const stockForItem = pickingStockByItem[item.barang_id] || [];
-                        const currentStockZona = stockForItem.find((s) => s.zona_id === Number(currentZonaId));
+                        const currentStockZona = currentZonaId ? stockForItem.find((s) => s.zona_id === currentZonaId) : null;
                         const currentZonaKondisi = currentStockZona?.kondisi || selectedKondisi;
                         const isOverride = currentZona && currentZonaKondisi.toLowerCase() !== requiredKondisi.toLowerCase();
                         const availableKondisi = pickingStockByItem[item.barang_id] || [];
@@ -799,67 +850,78 @@ export default function PickingDetailPage() {
                            otherKondisi.map((z) => z.zona_id).filter((id): id is number => typeof id === "number")
                          );
 
-                         const zonesToShow = showOther
-                           ? otherKondisi.map((z) => ({
-                               zona_id: z.zona_id,
-                               kondisi: z.kondisi,
-                               available_qty: z.available_qty,
-                               zona: zonaNameMap.get(Number(z.zona_id)),
-                             }))
-                           : validZones;
+                          const zonesToShow = showOther
+                            ? otherKondisi.map((z) => ({
+                                zona_id: z.zona_id,
+                                kondisi: z.kondisi,
+                                available_qty: z.available_qty,
+                                zona: zonaNameMap.get(Number(z.zona_id)),
+                              }))
+                            : validZones.map((z) => ({
+                                zona_id: z.zona_id,
+                                kondisi: requiredKondisi,
+                                available_qty: getAvailableQtyForItemZone(item, z.zona_id, pickingStockByItem, requiredKondisi),
+                                zona: z,
+                              }));
 
-                        const handleZonaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-                          const newZonaId = e.target.value;
-                          if (!newZonaId) {
-                            setZonaByItem((prev) => {
-                              const next = { ...prev };
-                              delete next[item.item_id];
-                              return next;
-                            });
-                            setKondisiByItem((prev) => {
-                              const next = { ...prev };
-                              delete next[item.item_id];
-                              return next;
-                            });
-                            return;
-                          }
-
-                          const selectedZona = zonasForGudang.find((z) => String(z.zona_id) === String(newZonaId));
-                          const stockForItem = pickingStockByItem[item.barang_id] || [];
-                          const stockZona = stockForItem.find((s) => s.zona_id === Number(newZonaId));
-                          const selectedKondisi = stockZona?.kondisi || requiredKondisi;
-
-                          if (selectedKondisi.toLowerCase() !== requiredKondisi.toLowerCase()) {
-                            setOverrideItemId(item.item_id);
-                            setZonaByItem((prev) => ({ ...prev, [item.item_id]: newZonaId }));
-                            setKondisiByItem((prev) => ({ ...prev, [item.item_id]: selectedKondisi }));
-                          } else {
-                            setZonaByItem((prev) => ({ ...prev, [item.item_id]: newZonaId }));
-                            setKondisiByItem((prev) => ({ ...prev, [item.item_id]: selectedKondisi }));
+                         const handleZonaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+                           const rawValue = e.target.value;
+                           if (!rawValue) {
+                             setZonaByItem((prev) => {
+                               const next = { ...prev };
+                               delete next[item.item_id];
+                               return next;
+                             });
+                             setKondisiByItem((prev) => {
+                               const next = { ...prev };
+                               delete next[item.item_id];
+                               return next;
+                             });
+                             return;
                            }
-                         };
+
+                           let selectedZonaId: number;
+                           let selectedKondisi: string;
+
+                           if (rawValue.includes("|")) {
+                             const [zonaId, kondisi] = rawValue.split("|");
+                             selectedZonaId = Number(zonaId);
+                             selectedKondisi = kondisi;
+                           } else {
+                             selectedZonaId = Number(rawValue);
+                             const stockForItem = pickingStockByItem[item.barang_id] || [];
+                             const stockZona = stockForItem.find((s) => s.zona_id === selectedZonaId);
+                             selectedKondisi = stockZona?.kondisi || requiredKondisi;
+                           }
+
+                           if (selectedKondisi.toLowerCase() !== requiredKondisi.toLowerCase()) {
+                             setOverrideItemId(item.item_id);
+                           }
+
+                            setZonaByItem((prev) => ({ ...prev, [item.item_id]: `${selectedZonaId}|${selectedKondisi}` }));
+                            setKondisiByItem((prev) => ({ ...prev, [item.item_id]: selectedKondisi }));
+                           };
 
                          return (
                            <div>
-                             <select
-                               value={currentZonaId || ""}
-                               onChange={handleZonaChange}
-                              className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
-                            >
-                              <option value="">Pilih zona...</option>
-                              {zonesToShow.map((z) => {
-                                const isOther = showOther;
-                                const zona = isOther ? (z as any).zona : z;
-                                const zonaKondisi = isOther ? (z as any).kondisi : (pickingStockByItem[item.barang_id] || []).find((s) => s.zona_id === z.zona_id)?.kondisi || requiredKondisi;
-                                const qtyToShow = isOther ? (z as any).available_qty : getAvailableQtyForItemZone(item, z.zona_id, pickingStockByItem, zonaKondisi);
-                                const label = zona ? zonaLabel(zona) : `Zona ${z.zona_id}`;
-                                return (
-                                  <option key={z.zona_id} value={String(z.zona_id)}>
-                                     {label} — {qtyToShow} unit ({zonaKondisi})
-                                  </option>
-                                );
-                              })}
-                            </select>
+                              <select
+                                value={currentComposite || ""}
+                                onChange={handleZonaChange}
+                               className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
+                              >
+                               <option value="">Pilih zona...</option>
+                               {zonesToShow.map((z) => {
+                                 const zona = z.zona;
+                                 const label = zona ? zonaLabel(zona) : `Zona ${z.zona_id}`;
+                                 const qtyToShow = z.available_qty;
+                                 const optionValue = `${z.zona_id}|${z.kondisi}`;
+                                 return (
+                                   <option key={optionValue} value={optionValue}>
+                                      {label} — {qtyToShow} unit ({z.kondisi})
+                                   </option>
+                                 );
+                               })}
+                             </select>
                              {isOverride && (
                                <p className="mt-1 text-xs text-amber-700">
                                  Override kondisi: {currentZonaKondisi}
@@ -902,6 +964,8 @@ export default function PickingDetailPage() {
         data={data}
         zonas={zonas}
         zonaByItem={zonaByItem}
+        kondisiByItem={kondisiByItem}
+        catatanKondisiByItem={catatanKondisiByItem}
       />
 
       <OverrideConfirmModal
@@ -910,7 +974,7 @@ export default function PickingDetailPage() {
         onConfirm={handleOverrideConfirm}
         submitting={submitting}
         item={overrideItemId ? data.items.find((it) => it.item_id === overrideItemId) || null : null}
-        zona={overrideItemId ? zonasForGudang.find((z) => String(z.zona_id) === String(zonaByItem[overrideItemId])) || null : null}
+        zona={overrideItemId ? zonasForGudang.find((z) => String(z.zona_id) === String(getZonaIdFromComposite(zonaByItem[overrideItemId]))) || null : null}
         kondisi={overrideItemId ? kondisiByItem[overrideItemId] || null : null}
       />
 

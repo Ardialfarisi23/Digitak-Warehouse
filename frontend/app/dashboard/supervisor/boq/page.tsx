@@ -104,6 +104,7 @@ interface ReconciliationSummary {
   boqQty: number;
   hardwareOnSite: number;
   used: number;
+  approved_return_qty?: number;
   remains: number;
   additional?: number;
   mosSistem?: number;
@@ -1144,7 +1145,9 @@ export default function BoqPage() {
         const totalBoq = boq.items?.reduce((s, i) => s + (i.quantity || 0), 0) || 0;
         const totalAdditional = boq.reconciliation?.additional || 0;
         const mosSistem = boq.reconciliation?.mosSistem || 0;
-        const remains = mosSistem - (totalBoq + totalAdditional);
+        const used = boq.reconciliation?.used || 0;
+        const approvedReturnQty = boq.reconciliation?.approved_return_qty || 0;
+        const remains = mosSistem - (totalBoq + totalAdditional) - used - approvedReturnQty;
         const hasWarning = remains !== 0;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -1156,7 +1159,7 @@ export default function BoqPage() {
                   <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                   <div>
                     <p className="font-semibold">Perhatian: BOQ ini masih memiliki sisa material.</p>
-                    <p className="mt-0.5 text-xs">Remains = <span className="font-semibold">{remains}</span> (MOS Sistem: {mosSistem}, BOQ: {totalBoq}, Additional: {totalAdditional})</p>
+                     <p className="mt-0.5 text-xs">Remains = <span className="font-semibold">{remains}</span> (MOS Sistem: {mosSistem}, BOQ: {totalBoq}, Additional: {totalAdditional}, Used: {used}, Return: {approvedReturnQty})</p>
                   </div>
                 </div>
               )}

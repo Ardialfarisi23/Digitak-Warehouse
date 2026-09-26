@@ -1,1 +1,0 @@
-SELECT sj.surat_jalan_id, sj.nomor_surat_jalan, sj.boq_id, b.tiket_id, tm.kode_tiket FROM surat_jalan sj LEFT JOIN boq b ON sj.boq_id = b.boq_id LEFT JOIN tiket_material tm ON b.tiket_id = tm.tiket_id WHERE sj.boq_id IS NULL OR tm.kode_tiket IS NULL OR tm.kode_tiket = '' LIMIT 20;

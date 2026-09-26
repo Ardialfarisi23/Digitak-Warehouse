@@ -14,21 +14,20 @@ const AppError = require("../../shared/errors");
  *   numerically & logically consistent with `/dashboard/reconciliation`.
  */
 
-/** Remains = MOS (Sistem) - (BOQ Plan + Additional) */
-function computeRemains(mosSistem, boq, additional) {
-  return Number(mosSistem || 0) - (Number(boq || 0) + Number(additional || 0));
+/** Remains = MOS (Sistem) - (BOQ Plan + Additional) - Used - ApprovedReturnQty */
+function computeRemains(mosSistem, boq, additional, used, approvedReturnQty) {
+  return Number(mosSistem || 0) - (Number(boq || 0) + Number(additional || 0)) - Number(used || 0) - Number(approvedReturnQty || 0);
 }
 
 /**
- * Per-barang reconciliation status.
- *   perhatian : remains < 0  (MOS kurang dari rencana)
- *   sesuai   : MOS >= (BOQ + Additional) dan BOQ > 0
+ * Per-barang reconciliation status based on final remains.
+ *   perhatian : remains < 0 atau (remains >= 0 tapi BOQ = 0)
+ *   sesuai   : remains >= 0 dan BOQ > 0
  *   berjalan : selain kasus di atas
  */
-function computeReconciliationStatus(remains, mosSistem, boq, additional) {
-  if (remains < 0) return "perhatian";
-  if (mosSistem >= boq + additional && boq > 0) return "sesuai";
-  return "berjalan";
+function computeReconciliationStatus(remains, boq) {
+  if (remains < 0 || boq <= 0) return "perhatian";
+  return "sesuai";
 }
 
 /**

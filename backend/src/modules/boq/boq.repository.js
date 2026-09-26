@@ -1,4 +1,6 @@
 const prisma = require("../../config/prisma");
+const returnRepository = require("../return/return.repository");
+const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
 
 const DEFAULT_LIMIT = 10;
 const DEFAULT_PAGE = 1;
@@ -437,7 +439,6 @@ const getExportMatrixData = async () => {
   const outboundByProjectBarang = new Map();
   const additionalByProjectBarang = new Map();
   const mosByProjectBarang = new Map();
-  const usedByProjectBarang = new Map();
 
   for (const item of shipmentItems) {
     const projectIdNum = Number(item.surat_jalan?.project_id);
@@ -471,17 +472,92 @@ const getExportMatrixData = async () => {
     }
   }
 
+  const usedByProjectBarang = new Map();
+
+  const activeLaporans = await prisma.laporan_mitra.findMany({
+    where: { is_aktif: true },
+    select: {
+      tiket_id: true,
+      project_id: true,
+      barang_id: true,
+      nama_barang: true,
+      used: true,
+    },
+  });
+
+  const barangLookupCache = new Map();
+  const laporanUsedByTicketBarang = new Map();
+  const ticketProjectMap = new Map();
+
+  for (const laporan of activeLaporans) {
+    let barangId = laporan.barang_id ? String(laporan.barang_id) : null;
+
+    if (!barangId && laporan.nama_barang) {
+      const namaTrimmed = String(laporan.nama_barang).trim();
+      if (barangLookupCache.has(namaTrimmed)) {
+        barangId = barangLookupCache.get(namaTrimmed);
+      } else {
+        const barang = await prisma.barang.findFirst({
+          where: { nama_barang: namaTrimmed },
+          select: { barang_id: true },
+        });
+        const resolved = barang ? String(barang.barang_id) : null;
+        barangLookupCache.set(namaTrimmed, resolved);
+        barangId = resolved;
+      }
+    }
+
+    if (!barangId) continue;
+
+    const ticketIdNum = String(laporan.tiket_id || 0);
+    const projectIdNum = String(laporan.project_id || 0);
+    const ticketBarangKey = `${ticketIdNum}-${barangId}`;
+    const usedVal = Number(laporan.used || 0);
+
+    laporanUsedByTicketBarang.set(ticketBarangKey, (laporanUsedByTicketBarang.get(ticketBarangKey) || 0) + usedVal);
+    ticketProjectMap.set(ticketBarangKey, projectIdNum);
+  }
+
+  for (const [ticketBarangKey, laporanUsed] of laporanUsedByTicketBarang.entries()) {
+    if (laporanUsed <= 0) continue;
+
+    const projectIdNum = ticketProjectMap.get(ticketBarangKey) || "0";
+    const [, barangId] = ticketBarangKey.split("-");
+    const projectBarangKey = `${projectIdNum}-${barangId}`;
+
+    usedByProjectBarang.set(projectBarangKey, (usedByProjectBarang.get(projectBarangKey) || 0) + laporanUsed);
+  }
+
+  // Compute approved returns per project+barang from the Return module.
+  const approvedReturnByProjectBarang = new Map();
+
   for (const item of boqItems) {
-    const tiket = item.boq?.tiket;
-    const project = tiket?.project;
+    const project = item.boq?.tiket;
     const projectIdNum = Number(project?.project_id || 0);
     const barangId = String(item.barang_id);
     const key = `${projectIdNum}-${barangId}`;
 
-    const tiketUsed = Number(tiket?.used || 0);
-    if (tiketUsed > 0) {
-      usedByProjectBarang.set(key, (usedByProjectBarang.get(key) || 0) + tiketUsed);
+    if (approvedReturnByProjectBarang.has(key)) continue;
+
+    const projectTickets = new Set();
+    for (const boqItem of boqItems) {
+      const tiket = boqItem.boq?.tiket;
+      const proj = tiket?.project;
+      if (Number(proj?.project_id || 0) === projectIdNum) {
+        projectTickets.add(tiket.tiket_id);
+      }
     }
+
+    let totalApprovedQty = 0;
+    for (const tiketId of projectTickets) {
+      const { snapshot } = await getLatestPhysicalSnapshot(tiketId, barangId);
+      if (!snapshot) continue;
+
+      const qty = await getApprovedReturnsAfterSnapshot(tiketId, barangId, snapshot.tanggal_laporan);
+      totalApprovedQty += Number(qty);
+    }
+
+    approvedReturnByProjectBarang.set(key, totalApprovedQty);
   }
 
   const rows = boqItems.map((item) => {
@@ -497,7 +573,8 @@ const getExportMatrixData = async () => {
     const used = Number(usedByProjectBarang.get(key) || 0) > 0
       ? Number(usedByProjectBarang.get(key) || 0)
       : Number(outboundByProjectBarang.get(key) || 0);
-    const remains = mos - (boq + additional);
+    const approvedReturnQty = Number(approvedReturnByProjectBarang.get(key) || 0);
+    const remains = mos - (boq + additional) - used - approvedReturnQty;
 
     return {
       project_id: projectIdNum,
@@ -512,6 +589,7 @@ const getExportMatrixData = async () => {
       additional,
       mos,
       used,
+      approved_return_qty: approvedReturnQty,
       remains,
     };
   });
@@ -549,6 +627,7 @@ const getExportMatrixData = async () => {
         additional: 0,
         mos: 0,
         used: 0,
+        approved_return_qty: 0,
         remains: 0,
       };
     }
@@ -558,7 +637,8 @@ const getExportMatrixData = async () => {
     proj.additional += row.additional;
     proj.mos += row.mos;
     proj.used += row.used;
-    proj.remains = proj.mos - (proj.boq + proj.additional);
+    proj.approved_return_qty += row.approved_return_qty || 0;
+    proj.remains = proj.mos - (proj.boq + proj.additional) - proj.used - proj.approved_return_qty;
   }
 
   const usedProjectIds = new Set();

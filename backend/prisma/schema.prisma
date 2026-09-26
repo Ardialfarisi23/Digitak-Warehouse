@@ -45,6 +45,9 @@ model user_account {
   laporan_mitras                  laporan_mitra[]             @relation("LaporanMitraUploader")
   notifications                   notification[]
   notification_preferences        user_notification_preferences[]
+  created_return_transactions     return_transaction[]        @relation("ReturnCreatedBy")
+  approved_return_transactions    return_transaction[]        @relation("ReturnApprovedBy")
+  received_return_transactions    return_transaction[]        @relation("ReturnReceivedBy")
 
   @@index([email])
 }
@@ -143,6 +146,7 @@ model project {
   tiket_materials tiket_material[]
   titik_lapangans titik_lapangan[]
   laporans        laporan_mitra[]      @relation("LaporanMitraProject")
+  return_transactions return_transaction[]
 
   @@index([area])
 }
@@ -290,6 +294,7 @@ model barang {
   surat_jalan_items surat_jalan_item[]
   laporan_mitras    laporan_mitra[] @relation("LaporanMitraBarang")
   reconciliation_upload_details reconciliation_upload_detail[] @relation("ReconciliationUploadDetailBarang")
+  return_transactions return_transaction[]
 
   @@index([kode_perangkat])
   @@index([kategori_id])
@@ -308,6 +313,7 @@ model tiket_material {
   boq             boq?
   permintaan_boqs permintaan_boq[]
   laporans        laporan_mitra[]      @relation("LaporanMitraTiket")
+  return_transactions return_transaction[]
   creator         user_account     @relation("tiket_material_created_by", fields: [created_by], references: [user_id])
   project         project          @relation(fields: [project_id], references: [project_id])
 
@@ -456,6 +462,7 @@ model surat_jalan_item {
   zona                zona_gudang?            @relation(fields: [zona_id], references: [zona_id])
   diperiksa_oleh_user user_account?           @relation("SuratJalanItemDiperiksaOleh", fields: [diperiksa_oleh], references: [user_id])
   fotos               surat_jalan_item_foto[]
+  return_transactions return_transaction[]
 
   @@index([surat_jalan_id])
   @@index([barang_id])
@@ -495,18 +502,21 @@ model stok_gudang {
 }
 
 model stok_ledger {
-  ledger_id           BigInt           @id @default(autoincrement())
-  surat_jalan_item_id BigInt
-  barang_id           BigInt
-  jenis_mutasi        mutasi_jenis
-  qty                 Decimal          @db.Decimal(14, 2)
-  saldo_setelah       Decimal          @db.Decimal(14, 2)
-  waktu_mutasi        DateTime         @default(now())
-  barang              barang           @relation(fields: [barang_id], references: [barang_id])
-  surat_jalan_item    surat_jalan_item @relation(fields: [surat_jalan_item_id], references: [item_id])
+  ledger_id              BigInt           @id @default(autoincrement())
+  surat_jalan_item_id    BigInt?
+  return_transaction_id  BigInt?
+  barang_id              BigInt
+  jenis_mutasi           mutasi_jenis
+  qty                    Decimal          @db.Decimal(14, 2)
+  saldo_setelah          Decimal          @db.Decimal(14, 2)
+  waktu_mutasi           DateTime         @default(now())
+  barang                 barang           @relation(fields: [barang_id], references: [barang_id])
+  surat_jalan_item       surat_jalan_item? @relation(fields: [surat_jalan_item_id], references: [item_id])
+  return_transaction     return_transaction? @relation(fields: [return_transaction_id], references: [return_id], onDelete: SetNull)
 
   @@index([barang_id, waktu_mutasi])
   @@index([surat_jalan_item_id])
+  @@index([return_transaction_id])
 }
 
 model approval_log {
@@ -595,12 +605,53 @@ model laporan_mitra {
   project  project        @relation("LaporanMitraProject", fields: [project_id], references: [project_id])
   barang   barang?        @relation("LaporanMitraBarang", fields: [barang_id], references: [barang_id], onDelete: SetNull)
   uploader user_account   @relation("LaporanMitraUploader", fields: [uploaded_by], references: [user_id])
+  return_baselines return_transaction[] @relation("ReturnBaselineLaporan")
 
   @@index([tiket_id])
   @@index([project_id])
   @@index([tanggal_laporan])
   @@index([barang_id])
   @@index([uploaded_at])
+}
+
+model return_transaction {
+  return_id            BigInt                    @id @default(autoincrement())
+  tiket_id             BigInt
+  project_id           BigInt
+  barang_id            BigInt
+  baseline_laporan_id  BigInt
+  surat_jalan_item_id  BigInt?
+
+  qty                  Decimal                   @db.Decimal(14, 2)
+  status               return_status             @default(draft)
+  effective_return_at  DateTime
+
+  created_by           BigInt
+  created_at           DateTime                  @default(now())
+
+  approved_by          BigInt?
+  approved_at          DateTime?
+
+  received_by          BigInt?
+  received_at          DateTime?
+
+  note                 String?                   @db.Text
+  reason               String?                   @db.Text
+
+  tiket                tiket_material            @relation(fields: [tiket_id], references: [tiket_id])
+  project              project                   @relation(fields: [project_id], references: [project_id])
+  barang               barang                    @relation(fields: [barang_id], references: [barang_id])
+  baseline_laporan     laporan_mitra             @relation("ReturnBaselineLaporan", fields: [baseline_laporan_id], references: [laporan_id], onDelete: Restrict)
+  surat_jalan_item     surat_jalan_item?         @relation(fields: [surat_jalan_item_id], references: [item_id], onDelete: SetNull)
+  creator              user_account              @relation("ReturnCreatedBy", fields: [created_by], references: [user_id])
+  approver             user_account?             @relation("ReturnApprovedBy", fields: [approved_by], references: [user_id])
+  receiver             user_account?             @relation("ReturnReceivedBy", fields: [received_by], references: [user_id])
+  stok_ledgers         stok_ledger[]
+
+  @@index([tiket_id, barang_id, status, effective_return_at])
+  @@index([baseline_laporan_id])
+  @@index([surat_jalan_item_id])
+  @@index([created_at])
 }
 
 enum jenis_laporan_enum {
@@ -695,9 +746,18 @@ enum mutasi_jenis {
   out
 }
 
+enum return_status {
+  draft
+  diajukan
+  disetujui
+  diterima_gudang
+  ditolak
+}
+
 enum approval_entity_type {
   boq
   surat_jalan
+  return_transaction
 }
 
 enum approval_tahap {
@@ -709,6 +769,8 @@ enum approval_tahap {
   outbound_kritis
   outbound_di_luar_boq
   outbound_melebihi_remains
+  return_approval
+  return_receive
 }
 
 enum approval_status {
@@ -743,6 +805,11 @@ enum audit_aksi {
   retrieve
   create_inbound
   create_outbound
+  start_delivery
+  nonaktifkan_project
+  aktifkan_project
+  soft_delete
+  restore
 }
 
 enum notification_type {

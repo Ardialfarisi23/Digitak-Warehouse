@@ -100,6 +100,12 @@ const outboundInclude = {
     ...baseInclude.items,
     include: {
       ...baseInclude.items.include,
+      diperiksa_oleh_user: {
+        select: {
+          user_id: true,
+          nama: true,
+        },
+      },
       barang: {
         ...baseInclude.items.include.barang,
         include: {
@@ -112,6 +118,22 @@ const outboundInclude = {
               kondisi: true,
             },
           },
+        },
+      },
+    },
+  },
+};
+
+const modalListInclude = {
+  ...baseInclude,
+  items: {
+    ...baseInclude.items,
+    include: {
+      ...baseInclude.items.include,
+      diperiksa_oleh_user: {
+        select: {
+          user_id: true,
+          nama: true,
         },
       },
     },
@@ -263,11 +285,18 @@ const findOutboundQueue = async (filters = {}) => {
     where.AND = andConditions;
   }
 
-  return await prisma.surat_jalan.findMany({
+  const data = await prisma.surat_jalan.findMany({
     where,
-    include: baseInclude,
+    include: modalListInclude,
     orderBy: [{ updated_at: "desc" }],
   });
+
+  const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
+
+  return data.map((item) => ({
+    ...item,
+    approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+  }));
 };
 
 const findInboundList = async (filters = {}) => {
@@ -317,11 +346,18 @@ const findInboundList = async (filters = {}) => {
     where.AND = andConditions;
   }
 
-  return await prisma.surat_jalan.findMany({
+  const data = await prisma.surat_jalan.findMany({
     where,
     include: outboundInclude,
     orderBy: [{ updated_at: "desc" }],
   });
+
+  const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
+
+  return data.map((item) => ({
+    ...item,
+    approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+  }));
 };
 
 const findVerificationQueue = async ({ status, tipe, kategori_approval, search, startDate, endDate, page = 1, limit = 10 } = {}) => {
@@ -345,7 +381,7 @@ const findVerificationQueue = async ({ status, tipe, kategori_approval, search, 
     prisma.surat_jalan.count({ where }),
     prisma.surat_jalan.findMany({
       where,
-      include: baseInclude,
+      include: modalListInclude,
       orderBy: [{ created_at: "desc" }],
       skip: (sanitizedPage - 1) * sanitizedLimit,
       take: sanitizedLimit,
@@ -369,14 +405,22 @@ const findOutboundForApproval = async (params = {}) => {
     prisma.surat_jalan.count({ where }),
     prisma.surat_jalan.findMany({
       where,
-      include: baseInclude,
+      include: modalListInclude,
       orderBy: [{ created_at: "desc" }],
       skip: (sanitizedPage - 1) * sanitizedLimit,
       take: sanitizedLimit,
     }),
   ]);
 
-  return { data, meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }) };
+  const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
+
+  return {
+    data: data.map((item) => ({
+      ...item,
+      approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+    })),
+    meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }),
+  };
 };
 
 const findOutboundForDelivery = async (params = {}) => {
@@ -393,14 +437,22 @@ const findOutboundForDelivery = async (params = {}) => {
     prisma.surat_jalan.count({ where }),
     prisma.surat_jalan.findMany({
       where,
-      include: baseInclude,
-      orderBy: [{ updated_at: "desc" }],
+      include: modalListInclude,
+      orderBy: [{ created_at: "desc" }],
       skip: (sanitizedPage - 1) * sanitizedLimit,
       take: sanitizedLimit,
     }),
   ]);
 
-  return { data, meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }) };
+  const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
+
+  return {
+    data: data.map((item) => ({
+      ...item,
+      approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+    })),
+    meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }),
+  };
 };
 
 const findById = async (id) => {
@@ -552,6 +604,75 @@ const createApprovalLog = async (suratJalanId, approverId, tahap, approvalStatus
       catatan: catatan || null,
     },
   });
+};
+
+const getApprovalVerification = async (suratJalanId) => {
+  const log = await prisma.approval_log.findFirst({
+    where: {
+      entity_type: "surat_jalan",
+      entity_id: Number(suratJalanId),
+      tahap: "outbound_approval",
+      status: "disetujui",
+    },
+    orderBy: {
+      created_at: "desc",
+    },
+    include: {
+      approver: {
+        select: {
+          nama: true,
+        },
+      },
+    },
+  });
+
+  if (!log) {
+    return null;
+  }
+
+  return {
+    approver_nama: log.approver?.nama || null,
+    waktu_verifikasi: log.created_at,
+  };
+};
+
+const getBatchApprovalVerifications = async (suratJalanIds) => {
+  const numericIds = suratJalanIds.map(Number).filter((id) => Number.isFinite(id) && id > 0);
+  if (numericIds.length === 0) {
+    return {};
+  }
+
+  const logs = await prisma.approval_log.findMany({
+    where: {
+      entity_type: "surat_jalan",
+      entity_id: { in: numericIds },
+      tahap: "outbound_approval",
+      status: "disetujui",
+    },
+    orderBy: {
+      created_at: "desc",
+    },
+    include: {
+      approver: {
+        select: {
+          nama: true,
+        },
+      },
+    },
+  });
+
+  const latestById = new Map();
+  for (const log of logs) {
+    const key = String(log.entity_id);
+    if (!latestById.has(key)) {
+      latestById.set(key, {
+        approver_nama: log.approver?.nama || null,
+        waktu_verifikasi: log.created_at,
+      });
+    }
+  }
+
+  return latestById;
 };
 
 const deductOutboundStock = async (suratJalan, tx = prisma) => {
@@ -1037,4 +1158,6 @@ module.exports = {
   findOutboundApprovalHistory,
   findStaffHistory,
   findRejectedList,
+  getApprovalVerification,
+  getBatchApprovalVerifications,
 };
