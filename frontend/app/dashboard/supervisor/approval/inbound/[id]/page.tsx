@@ -7,6 +7,7 @@ import { useApi } from "@/lib/api";
 import { CheckCircle2, ArrowLeft, Printer, Eye, X, FileText } from "lucide-react";
 import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
+import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
 import dynamic from "next/dynamic";
 
 const PdfViewerComponent = dynamic(() => import("@/components/PdfViewerComponent"), {
@@ -385,11 +386,21 @@ export default function SupervisorApprovalInboundDetailPage() {
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Diperiksa Oleh</p>
-                  <p className="font-medium text-slate-900">{selectedDocItem?.diperiksa_oleh_user?.nama || "-"}</p>
+                  <p className="font-medium text-slate-900">
+                    {(selectedDocItem as any)?.approval_verification?.approver_nama ||
+                      selectedDocItem?.diperiksa_oleh_user?.nama ||
+                      "-"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Waktu Verifikasi</p>
-                  <p className="font-medium text-slate-900">{(selectedDocItem as any)?.diperiksa_pada ? new Date((selectedDocItem as any).diperiksa_pada).toLocaleString("id-ID") : "-"}</p>
+                  <p className="font-medium text-slate-900">
+                    {(selectedDocItem as any)?.approval_verification?.waktu_verifikasi
+                      ? new Date((selectedDocItem as any).approval_verification.waktu_verifikasi).toLocaleString("id-ID")
+                      : (selectedDocItem as any)?.diperiksa_pada
+                        ? new Date((selectedDocItem as any).diperiksa_pada).toLocaleString("id-ID")
+                        : "-"}
+                  </p>
                 </div>
                 <div className="col-span-2">
                   <p className="text-xs text-slate-500">Catatan</p>
@@ -405,17 +416,20 @@ export default function SupervisorApprovalInboundDetailPage() {
               </div>
               <div>
                 <p className="mb-2 text-xs text-slate-500">Foto Dokumentasi</p>
-                {(selectedDocItem as any)?.fotos && (selectedDocItem as any).fotos.length > 0 ? (
-                  <div className="grid grid-cols-3 gap-2">
-                    {(selectedDocItem as any).fotos.map((foto: any, idx: number) => (
-                      <img key={idx} src={foto.url} alt={foto.filename || `Foto ${idx + 1}`} className="h-24 w-full rounded-lg border border-slate-100 object-cover" />
-                    ))}
-                  </div>
-                ) : (selectedDocItem as any)?.foto_url ? (
-                  <img src={(selectedDocItem as any).foto_url} alt="Foto dokumentasi" className="h-40 w-full rounded-lg border border-slate-100 object-cover" />
-                ) : (
-                  <p className="text-xs text-slate-400">Belum ada foto dokumentasi untuk item ini.</p>
-                )}
+                {(() => {
+                  const item = selectedDocItem as any;
+                  const fotoUrls = getItemFotoUrls(item);
+                  if (fotoUrls.length === 0) {
+                    return <p className="text-xs text-slate-400">Belum ada foto dokumentasi untuk item ini.</p>;
+                  }
+                  return (
+                    <div className="grid grid-cols-3 gap-2">
+                      {fotoUrls.map((url, idx) => (
+                        <img key={idx} src={url} alt={url} className="h-24 w-full rounded-lg border border-slate-100 object-cover" />
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4">

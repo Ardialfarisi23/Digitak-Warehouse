@@ -33,6 +33,7 @@ interface ReconciliationRecord {
   additional: number;
   mos: number;
   used: number;
+  approved_return_qty: number;
   remains: number;
   status: "sesuai" | "berjalan" | "perhatian";
 }
@@ -159,12 +160,13 @@ export default function SupervisorReconciliationPage() {
         const additional = Number(item.additional ?? item.qty_additional ?? 0);
         const mos = Number(item.mos ?? item.hardware_on_site ?? item.qty_on_site ?? 0);
         const used = Number(item.used ?? item.qty_used ?? 0);
-        const remains = mos - (boq + additional);
+        const approvedReturnQty = Number(item.approved_return_qty ?? 0);
+        const remains = mos - (boq + additional) - used - approvedReturnQty;
 
         let recStatus: ReconciliationRecord["status"] = "berjalan";
         if (remains < 0) {
           recStatus = "perhatian";
-        } else if (mos >= boq + additional && boq > 0) {
+        } else if (remains >= 0 && boq > 0) {
           recStatus = "sesuai";
         }
 
@@ -185,6 +187,7 @@ export default function SupervisorReconciliationPage() {
           additional,
           mos,
           used,
+          approved_return_qty: approvedReturnQty,
           remains,
           status: recStatus,
         };
@@ -558,7 +561,7 @@ export default function SupervisorReconciliationPage() {
                 </div>
                 <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-4">
                   <p className="text-xs font-bold text-emerald-900">Remains</p>
-                  <p className="mt-2 text-xs leading-relaxed text-emerald-800/90">Sisa material yang masih tersedia setelah dikurangi rencana. Rumus: MOS − (BOQ Plan + Additional). Jika minus, berarti pemakaian sudah melebihi rencana.</p>
+                  <p className="mt-2 text-xs leading-relaxed text-emerald-800/90">Sisa material yang secara fisik masih ada di lapangan, setelah dikurangi kebutuhan rencana, pemakaian (Used), dan barang yang sudah diretur ke gudang. Rumus: MOS − (BOQ Plan + Additional) − Used − Return (diterima gudang).</p>
                 </div>
               </div>
             </div>

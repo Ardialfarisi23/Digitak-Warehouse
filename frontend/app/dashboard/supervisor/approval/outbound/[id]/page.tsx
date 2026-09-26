@@ -8,6 +8,7 @@ import Link from "next/link";
 import { ExternalLink, Loader2, Search, AlertCircle, Eye, X } from "lucide-react";
 import { DetailSuratJalanDocument, type DetailSuratJalanData } from "@/components/surat-jalan/DetailSuratJalanDocument";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
+import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
 
 const STATUS_META: Record<string, { label: string; tone: string }> = {
   draft_diajukan: { label: "Draft Diajukan", tone: "bg-slate-100 text-slate-700" },
@@ -628,17 +629,20 @@ export default function SupervisorApprovalOutboundDetailPage() {
               </div>
               <div>
                 <p className="mb-2 text-xs text-slate-500">Foto Dokumentasi</p>
-                {(selectedDocItem as any)?.fotos && (selectedDocItem as any).fotos.length > 0 ? (
-                  <div className="grid grid-cols-3 gap-2">
-                    {(selectedDocItem as any).fotos.map((foto: any, idx: number) => (
-                      <img key={idx} src={foto.url} alt={foto.filename || `Foto ${idx + 1}`} className="h-24 w-full rounded-lg border border-slate-100 object-cover" />
-                    ))}
-                  </div>
-                ) : selectedDocItem?.foto_url ? (
-                  <img src={selectedDocItem.foto_url} alt="Foto dokumentasi" className="h-40 w-full rounded-lg border border-slate-100 object-cover" />
-                ) : (
-                  <p className="text-xs text-slate-400">Belum ada foto dokumentasi untuk item ini.</p>
-                )}
+                {(() => {
+                  const item = selectedDocItem as any;
+                  const fotoUrls = getItemFotoUrls(item);
+                  if (fotoUrls.length === 0) {
+                    return <p className="text-xs text-slate-400">Belum ada foto dokumentasi untuk item ini.</p>;
+                  }
+                  return (
+                    <div className="grid grid-cols-3 gap-2">
+                      {fotoUrls.map((url, idx) => (
+                        <img key={idx} src={url} alt={url} className="h-24 w-full rounded-lg border border-slate-100 object-cover" />
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4">

@@ -212,6 +212,7 @@ const getProjectSummary = async () => {
         additional: 0,
         mos: 0,
         used: 0,
+        approved_return_qty: 0,
         remains: 0,
         statuses: [],
       });
@@ -222,6 +223,7 @@ const getProjectSummary = async () => {
     agg.additional += Number(row.additional || 0);
     agg.mos += Number(row.mos || 0);
     agg.used += Number(row.used || 0);
+    agg.approved_return_qty += Number(row.approved_return_qty || 0);
     agg.remains += Number(row.remains || 0);
     if (row.status) agg.statuses.push(row.status);
   }
@@ -237,7 +239,7 @@ const getProjectSummary = async () => {
     const additional = agg ? Number(agg.additional) || 0 : 0;
     const mos = agg ? Number(agg.mos) || 0 : 0;
     const used = agg ? Number(agg.used) || 0 : 0;
-    const remains = agg ? reconciliationUtils.computeRemains(mos, boq, additional) : 0;
+    const remains = agg ? reconciliationUtils.computeRemains(mos, boq, additional, used, agg.approved_return_qty) : 0;
     const reconStatus = agg
       ? reconciliationUtils.aggregateProjectStatus(agg.statuses)
       : "berjalan";

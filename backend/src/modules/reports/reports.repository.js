@@ -1,6 +1,8 @@
 const prisma = require("../../config/prisma");
 const AppError = require("../../shared/errors");
 const reconciliationService = require("../reconciliation/reconciliation.service");
+const returnRepository = require("../return/return.repository");
+const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
 
 const AUDIT_AKSI_VALUES = [
   "create",
@@ -32,6 +34,9 @@ const enrichAuditEntityNames = async (logs) => {
     gudang_tujuan_id: new Set(),
     project_id: new Set(),
     boq_id: new Set(),
+    zona_id: new Set(),
+    barang_id: new Set(),
+    surat_jalan_item_id: new Set(),
   };
 
   for (const log of logs) {
@@ -62,6 +67,9 @@ const enrichAuditEntityNames = async (logs) => {
     gudang_tujuan_id: new Map(),
     project_id: new Map(),
     boq_id: new Map(),
+    zona_id: new Map(),
+    barang_id: new Map(),
+    surat_jalan_item_id: new Map(),
   };
 
   for (const [entityType, idSet] of groupedEntity) {
@@ -193,6 +201,39 @@ const enrichAuditEntityNames = async (logs) => {
     });
     for (const row of rows) {
       refMaps.boq_id.set(Number(row.boq_id), row.boq_number);
+    }
+  }
+
+  if (refGroups.zona_id.size) {
+    const ids = Array.from(refGroups.zona_id);
+    const rows = await prisma.zona_gudang.findMany({
+      where: { zona_id: { in: ids } },
+      select: { zona_id: true, nama_zona: true, kode_zona: true },
+    });
+    for (const row of rows) {
+      refMaps.zona_id.set(Number(row.zona_id), row.nama_zona || row.kode_zona || `Zona ${row.zona_id}`);
+    }
+  }
+
+  if (refGroups.barang_id.size) {
+    const ids = Array.from(refGroups.barang_id);
+    const rows = await prisma.barang.findMany({
+      where: { barang_id: { in: ids } },
+      select: { barang_id: true, nama_barang: true, kode_perangkat: true },
+    });
+    for (const row of rows) {
+      refMaps.barang_id.set(Number(row.barang_id), row.nama_barang || row.kode_perangkat || `Barang ${row.barang_id}`);
+    }
+  }
+
+  if (refGroups.surat_jalan_item_id.size) {
+    const ids = Array.from(refGroups.surat_jalan_item_id);
+    const rows = await prisma.surat_jalan_item.findMany({
+      where: { item_id: { in: ids } },
+      select: { item_id: true, barang_id: true, qty: true },
+    });
+    for (const row of rows) {
+      refMaps.surat_jalan_item_id.set(Number(row.item_id), `Item #${row.item_id} (barang ${row.barang_id}, qty ${row.qty})`);
     }
   }
 
@@ -342,6 +383,18 @@ const getStockHistory = async (filters = {}) => {
       take: Number(limit),
       orderBy: { waktu_mutasi: "desc" },
       include: {
+        barang: {
+          select: {
+            kode_perangkat: true,
+            nama_barang: true,
+            kategori: {
+              select: {
+                kategori_id: true,
+                nama_kategori: true,
+              },
+            },
+          },
+        },
         surat_jalan_item: {
           include: {
             surat_jalan: {
@@ -418,14 +471,13 @@ const getStockHistory = async (filters = {}) => {
         },
       },
     }),
-
     prisma.stok_ledger.count({ where }),
   ]);
 
   const rows = data.map((ledger) => {
     const item = ledger.surat_jalan_item;
     const suratJalan = item?.surat_jalan;
-    const barang = item?.barang;
+    const barang = item?.barang ?? ledger.barang;
     const tiket = suratJalan?.boq?.tiket;
     const zona = item?.zona;
 
@@ -578,6 +630,18 @@ const getStockHistoryForExport = async (filters = {}) => {
       take: EXPORT_LIMIT,
       orderBy: { waktu_mutasi: "desc" },
       include: {
+        barang: {
+          select: {
+            kode_perangkat: true,
+            nama_barang: true,
+            kategori: {
+              select: {
+                kategori_id: true,
+                nama_kategori: true,
+              },
+            },
+          },
+        },
         surat_jalan_item: {
           include: {
             surat_jalan: {
@@ -656,7 +720,7 @@ const getStockHistoryForExport = async (filters = {}) => {
   const rows = data.map((ledger) => {
     const item = ledger.surat_jalan_item;
     const suratJalan = item?.surat_jalan;
-    const barang = item?.barang;
+    const barang = item?.barang ?? ledger.barang;
     const tiket = suratJalan?.boq?.tiket;
     const zona = item?.zona;
 
@@ -1085,18 +1149,58 @@ const getHardwareReconciliation = async (filters = {}) => {
     }
   }
 
+  // Compute approved returns per project from the Return module.
+  const approvedReturnByProject = new Map();
+
+  for (const project of projects) {
+    const projectIdNum = Number(project.project_id);
+    const projectBoqRecords = boqRecords.filter(
+      (b) => Number(b.tiket?.project_id || 0) === projectIdNum
+    );
+
+    const projectTickets = new Set();
+    for (const boq of projectBoqRecords) {
+      if (boq.tiket?.tiket_id) {
+        projectTickets.add(boq.tiket.tiket_id);
+      }
+    }
+
+    let totalApprovedQty = 0;
+    for (const tiketId of projectTickets) {
+      const barangIds = new Set();
+      for (const boq of projectBoqRecords) {
+        for (const item of boq.items || []) {
+          if (item.barang_id) {
+            barangIds.add(item.barang_id);
+          }
+        }
+      }
+
+      for (const barangId of barangIds) {
+        const { snapshot } = await getLatestPhysicalSnapshot(tiketId, barangId);
+        if (!snapshot) continue;
+
+        const qty = await getApprovedReturnsAfterSnapshot(tiketId, barangId, snapshot.tanggal_laporan);
+        totalApprovedQty += Number(qty);
+      }
+    }
+
+    approvedReturnByProject.set(projectIdNum, totalApprovedQty);
+  }
+
   return projects.map((project) => {
     const projectIdNum = Number(project.project_id);
     const boq = Number(boqByProject.get(projectIdNum) || 0);
     const additional = Number(additionalByProject.get(projectIdNum) || 0);
     const hardwareOnSite = Number(hardwareOnSiteByProject.get(projectIdNum) || 0);
     const used = Number(usedByProject.get(projectIdNum) || 0);
-    const remains = hardwareOnSite - (boq + additional);
+    const approvedReturnQty = Number(approvedReturnByProject.get(projectIdNum) || 0);
+    const remains = hardwareOnSite - (boq + additional) - used - approvedReturnQty;
 
     let status = "berjalan";
     if (remains < 0) {
       status = "perhatian";
-    } else if (hardwareOnSite >= boq + additional && boq > 0) {
+    } else if (remains >= 0 && boq > 0) {
       status = "sesuai";
     }
 
@@ -1109,6 +1213,7 @@ const getHardwareReconciliation = async (filters = {}) => {
       additional,
       hardware_on_site: hardwareOnSite,
       used,
+      approved_return_qty: approvedReturnQty,
       remains,
       status,
     };
@@ -1193,18 +1298,43 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
     }
   }
 
+  // Compute approved returns per tiket from the Return module.
+  const approvedReturnByTiket = new Map();
+
+  for (const tiket of tikets) {
+    const tiketId = tiket.tiket_id;
+    const barangIds = new Set();
+    for (const item of tiket.boq?.items || []) {
+      if (item.barang_id) {
+        barangIds.add(item.barang_id);
+      }
+    }
+
+    let totalApprovedQty = 0;
+    for (const barangId of barangIds) {
+      const { snapshot } = await getLatestPhysicalSnapshot(tiketId, barangId);
+      if (!snapshot) continue;
+
+      const qty = await getApprovedReturnsAfterSnapshot(tiketId, barangId, snapshot.tanggal_laporan);
+      totalApprovedQty += Number(qty);
+    }
+
+    approvedReturnByTiket.set(tiketId, totalApprovedQty);
+  }
+
   let rows = tikets.map((tiket) => {
     const projectIdNum = Number(tiket.project_id);
     const boqPlan = tiket.boq?.items?.reduce((sum, item) => sum + Number(item.qty_rencana || 0), 0) || 0;
     const additional = Number(additionalByProject.get(projectIdNum) || 0);
     const mos = Number(outboundByProject.get(projectIdNum) || 0);
     const used = tiket.used ? Number(tiket.used) : Number(outboundByProject.get(projectIdNum) || 0);
-    const remains = mos - (boqPlan + additional);
+    const approvedReturnQty = Number(approvedReturnByTiket.get(tiket.tiket_id) || 0);
+    const remains = mos - (boqPlan + additional) - used - approvedReturnQty;
 
     let status = "berjalan";
     if (remains < 0) {
       status = "perhatian";
-    } else if (mos >= boqPlan + additional && boqPlan > 0) {
+    } else if (remains >= 0 && boqPlan > 0) {
       status = "sesuai";
     }
 
@@ -1219,6 +1349,7 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
       additional,
       mos,
       used,
+      approved_return_qty: approvedReturnQty,
       remains,
       status,
     };
@@ -1333,6 +1464,43 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
     }
   }
 
+  // Compute approved returns per project+barang from the Return module.
+  const approvedReturnByProjectBarang = new Map();
+  const projectBarangKeys = new Set();
+
+  for (const item of boqItems) {
+    const project = item.boq?.tiket;
+    const projectIdNum = Number(project?.project_id || 0);
+    const barangId = String(item.barang_id);
+    const key = `${projectIdNum}-${barangId}`;
+    projectBarangKeys.add(key);
+  }
+
+  for (const key of projectBarangKeys) {
+    const [projectIdNum, barangId] = key.split("-").map(Number);
+    if (!projectIdNum || !barangId) continue;
+
+    const projectTickets = new Set();
+    for (const item of boqItems) {
+      const tiket = item.boq?.tiket;
+      const project = tiket?.project;
+      if (Number(project?.project_id || 0) === projectIdNum) {
+        projectTickets.add(tiket.tiket_id);
+      }
+    }
+
+    let totalApprovedQty = 0;
+    for (const tiketId of projectTickets) {
+      const { snapshot } = await getLatestPhysicalSnapshot(tiketId, barangId);
+      if (!snapshot) continue;
+
+      const qty = await getApprovedReturnsAfterSnapshot(tiketId, barangId, snapshot.tanggal_laporan);
+      totalApprovedQty += Number(qty);
+    }
+
+    approvedReturnByProjectBarang.set(key, totalApprovedQty);
+  }
+
   const rows = boqItems.map((item) => {
     const project = item.boq?.tiket;
     const projectIdNum = Number(project?.project_id || 0);
@@ -1343,12 +1511,13 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
     const additional = Number(additionalByBarang.get(key) || 0);
     const hardwareOnSite = Number(outboundByBarang.get(key) || 0);
     const used = Number(outboundByBarang.get(key) || 0);
-    const remains = hardwareOnSite - (boq + additional);
+    const approvedReturnQty = Number(approvedReturnByProjectBarang.get(key) || 0);
+    const remains = hardwareOnSite - (boq + additional) - used - approvedReturnQty;
 
     let status = "berjalan";
     if (remains < 0) {
       status = "perhatian";
-    } else if (hardwareOnSite >= boq + additional && boq > 0) {
+    } else if (remains >= 0 && boq > 0) {
       status = "sesuai";
     }
 
@@ -1364,6 +1533,7 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
       additional,
       hardware_on_site: hardwareOnSite,
       used,
+      approved_return_qty: approvedReturnQty,
       remains,
       status,
     };

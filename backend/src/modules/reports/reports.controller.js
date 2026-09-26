@@ -343,6 +343,7 @@ const uploadReconciliationFile = async (req, res, next) => {
       });
 
       const tiketMap = new Map(tikets.map((t) => [t.kode_tiket, t]));
+      const barangLookupCache = new Map();
 
       const preview = [];
       const failed = [];
@@ -366,6 +367,21 @@ const uploadReconciliationFile = async (req, res, next) => {
           continue;
         }
 
+        let barangId = null;
+        const namaBarangTrimmed = namaBarang ? String(namaBarang).trim() : "";
+        if (namaBarangTrimmed) {
+          if (barangLookupCache.has(namaBarangTrimmed)) {
+            barangId = barangLookupCache.get(namaBarangTrimmed);
+          } else {
+            const barang = await prisma.barang.findFirst({
+              where: { nama_barang: namaBarangTrimmed },
+              select: { barang_id: true },
+            });
+            barangId = barang ? String(barang.barang_id) : null;
+            barangLookupCache.set(namaBarangTrimmed, barangId);
+          }
+        }
+
         preview.push({
           tiket_id: tiket.tiket_id,
           kode_tiket: tiket.kode_tiket,
@@ -373,6 +389,7 @@ const uploadReconciliationFile = async (req, res, next) => {
           cluster_id: tiket.project?.cluster_id || "-",
           area: tiket.project?.area || "-",
           nama_barang: namaBarang,
+          barang_id: barangId,
           used,
           remains_lapangan: remainsLapangan,
           kondisi,
@@ -507,7 +524,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
           used: tiket.used ? Number(tiket.used) : null,
         };
 
-        const existingLaporan = await tx.laporan_mitra.findFirst({
+        const existingLaporans = await tx.laporan_mitra.findMany({
           where: {
             tiket_id: BigInt(tiketId),
             tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
@@ -516,13 +533,13 @@ const confirmReconciliationUpload = async (req, res, next) => {
           },
         });
 
-        if (existingLaporan) {
+        for (const existing of existingLaporans) {
           await tx.laporan_mitra.update({
-            where: { laporan_id: existingLaporan.laporan_id },
+            where: { laporan_id: existing.laporan_id },
             data: { is_aktif: false },
           });
-          replacedCount++;
         }
+        replacedCount += existingLaporans.length;
 
         try {
           await tx.laporan_mitra.create({
@@ -534,6 +551,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
               tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
               pic_mitra: pic_mitra || null,
               nama_barang: nama_barang || item.nama_barang || null,
+              barang_id: item.barang_id ? BigInt(item.barang_id) : null,
               mos: 0,
               remains_lapangan: Number(item.remains_lapangan || 0),
               used: Number(item.used || 0),
