@@ -512,7 +512,7 @@ model surat_jalan_item_foto {
 }
 
 model surat_jalan_item_pick {
-  pick_id              BigInt           @id @default(autoincrement())
+  pick_id              BigInt           @default(autoincrement())
   surat_jalan_item_id  BigInt
   gudang_id            BigInt
   zona_id              BigInt?
@@ -525,7 +525,8 @@ model surat_jalan_item_pick {
   picked_at            DateTime         @default(now())
   item                 surat_jalan_item @relation(fields: [surat_jalan_item_id], references: [item_id], onDelete: Restrict)
 
-  @@index([surat_jalan_item_id])
+  @@id([pick_id], map: "surat_jalan_item_pick_pick_id_pkey")
+  @@index([surat_jalan_item_id], map: "surat_jalan_item_pick_surat_jalan_item_id_idx")
 }
 
 model stok_gudang {
