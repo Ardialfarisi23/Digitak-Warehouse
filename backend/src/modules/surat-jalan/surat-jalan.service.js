@@ -1116,7 +1116,9 @@ if (!Array.isArray(items) || items.length === 0) {
         const barangId = Number(suratItem.barang_id);
         const requestedKondisi = (suratItem.kondisi || "baik").toLowerCase();
 
-        if (pickedKondisi && pickedKondisi !== requestedKondisi && !item.catatan_kondisi?.trim()) {
+        const isOverride = Boolean(pickedKondisi && pickedKondisi !== requestedKondisi);
+
+        if (isOverride && !item.catatan_kondisi?.trim()) {
           const barangNama =
             suratItem.barang?.nama_barang || suratItem.barang?.kode_perangkat || `Barang ${barangId}`;
           const kondisiLabel = KONDISI_LABEL[requestedKondisi] || requestedKondisi;
@@ -1163,6 +1165,13 @@ if (!Array.isArray(items) || items.length === 0) {
           const zonaNama = zona?.nama_zona || zona?.kode_zona || `Zona ${zonaId}`;
           const kondisiDimintaLabel = KONDISI_LABEL[searchKondisi] || searchKondisi;
 
+          if (isOverride) {
+            throw new AppError(
+              `Override ditolak: stok kondisi ${kondisiDimintaLabel} untuk ${barangNama} tidak tersedia di zona ${zonaNama}.`,
+              400
+            );
+          }
+
           let message = `Stok ${barangNama} dengan kondisi ${kondisiDimintaLabel} tidak tersedia di zona ${zonaNama}.`;
 
           if (fallbackStocks.length > 0) {
@@ -1179,8 +1188,10 @@ if (!Array.isArray(items) || items.length === 0) {
 
         const existingQty = Number(stock.qty || 0);
         if (existingQty < qty) {
+          const barangNama =
+            suratItem.barang?.nama_barang || suratItem.barang?.kode_perangkat || `Barang ${barangId}`;
           throw new AppError(
-            `Stok barang ${barangId} di zona tidak mencukupi (Tersedia: ${existingQty}, Dibutuhkan: ${qty}).`,
+            `Stok barang ${barangNama} di zona tidak mencukupi (Tersedia: ${existingQty}, Dibutuhkan: ${qty}).`,
             400
           );
         }

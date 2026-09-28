@@ -234,6 +234,92 @@ const getPickingStockAvailability = async (gudang_id, items = [], projectId = nu
   }));
 };
 
+const getPickingAvailability = async (gudang_id, items = [], projectId = null) => {
+  const results = [];
+
+  for (const item of items) {
+    const barangId = Number(item.barang_id);
+    const zonaId = item.zona_id ? Number(item.zona_id) : null;
+    const requestedKondisi = String(item.kondisi || "baik").toLowerCase();
+    const requestedQty = Number(item.qty || 0);
+
+    if (!barangId || !zonaId) {
+      results.push({
+        item_id: item.item_id,
+        barang_id: barangId,
+        requested_kondisi: requestedKondisi,
+        requested_qty: requestedQty,
+        requested_available: 0,
+        status: zonaId ? "no_stock" : "no_zone",
+        alternatives: [],
+        message: zonaId ? null : "Zona belum dipilih.",
+      });
+      continue;
+    }
+
+    const stockWhere = {
+      gudang_id: Number(gudang_id),
+      barang_id: barangId,
+      zona_id: zonaId,
+      ...(projectId ? { project_id: Number(projectId) } : {}),
+    };
+
+    const requestedStock = await prisma.stok_gudang.findFirst({
+      where: {
+        ...stockWhere,
+        kondisi: requestedKondisi,
+      },
+      select: { qty: true },
+    });
+
+    const requestedAvailable = Number(requestedStock?.qty || 0);
+
+    const allStocks = await prisma.stok_gudang.findMany({
+      where: stockWhere,
+      select: {
+        kondisi: true,
+        qty: true,
+      },
+    });
+
+    const alternatives = [];
+    for (const s of allStocks) {
+      if (String(s.kondisi).toLowerCase() === requestedKondisi) continue;
+      alternatives.push({
+        kondisi: String(s.kondisi).toLowerCase(),
+        qty: Number(s.qty || 0),
+        zona_id: zonaId,
+      });
+    }
+
+    let status = "ok";
+    let message = null;
+
+    if (requestedAvailable >= requestedQty) {
+      status = "ok";
+    } else if (alternatives.length > 0) {
+      status = "override_available";
+      message = `Stok kondisi ${requestedKondisi} tidak cukup (tersedia: ${requestedAvailable}, dibutuhkan: ${requestedQty}).`;
+    } else {
+      status = "no_stock";
+      message = `Stok kondisi ${requestedKondisi} tidak tersedia di zona ini.`;
+    }
+
+    results.push({
+      item_id: item.item_id,
+      barang_id: barangId,
+      requested_kondisi: requestedKondisi,
+      requested_qty: requestedQty,
+      requested_available: requestedAvailable,
+      status,
+      alternatives,
+      message,
+    });
+  }
+
+  return results;
+};
+
 module.exports = {
   create,
   findById,
@@ -244,4 +330,5 @@ module.exports = {
   restore,
   getStockAvailability,
   getPickingStockAvailability,
+  getPickingAvailability,
 };
