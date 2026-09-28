@@ -217,6 +217,17 @@ const getHardwareReconciliation = async (filters = {}) => {
               },
             },
           },
+          cluster: {
+            include: {
+              project: {
+                select: {
+                  cluster_id: true,
+                  area: true,
+                  nama_project: true,
+                },
+              },
+            },
+          },
         },
       },
       barang: {
@@ -352,11 +363,17 @@ const getHardwareReconciliation = async (filters = {}) => {
     const key = `${projectIdNum}-${barangId}`;
 
     if (!aggregatedMap.has(key)) {
+      const tiket = item.boq?.tiket;
+      const tiketProject = tiket?.project;
+      const clusterProject = item.boq?.cluster?.project;
+      const clusterId = clusterProject?.cluster_id || tiketProject?.cluster_id || "-";
+      const area = clusterProject?.area || tiketProject?.area || "-";
+
       aggregatedMap.set(key, {
         project_id: String(projectIdNum),
         project_nama: project?.nama_project || "-",
-        cluster_id: project?.cluster_id || "-",
-        area: project?.area || "-",
+        cluster_id: clusterId,
+        area: area,
         barang_id: barangId,
         kode_perangkat: item.barang?.kode_perangkat || "-",
         nama_barang: item.barang?.nama_barang || "-",

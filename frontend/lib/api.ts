@@ -115,5 +115,11 @@ export function useApi() {
     [request]
   );
 
-  return { request, get, post, put, del };
+  const patch = useCallback(
+    (url: string, options?: FetchOptions) =>
+      request(url, { ...options, method: "PATCH" }),
+    [request]
+  );
+
+  return { request, get, post, put, patch, del };
 }

@@ -35,7 +35,7 @@ interface ReconciliationRecord {
   used: number;
   approved_return_qty: number;
   remains: number;
-  status: "sesuai" | "berjalan" | "perhatian";
+  status: "sesuai" | "perhatian" | "belum_ada_data";
 }
 
 interface HistoryRecord {
@@ -57,10 +57,10 @@ function getStatusBadge(status: ReconciliationRecord["status"]) {
   switch (status) {
     case "sesuai":
       return { label: "Sesuai", bg: "bg-emerald-50", text: "text-emerald-600", icon: PackageCheck };
-    case "berjalan":
-      return { label: "Berjalan", bg: "bg-blue-50", text: "text-blue-600", icon: Package };
     case "perhatian":
       return { label: "Perhatian", bg: "bg-amber-50", text: "text-amber-600", icon: AlertTriangle };
+    case "belum_ada_data":
+      return { label: "Belum Ada Data", bg: "bg-slate-50", text: "text-slate-500", icon: Package };
     default:
       return { label: status, bg: "bg-slate-100", text: "text-slate-600", icon: Package };
   }
@@ -161,14 +161,14 @@ export default function SupervisorReconciliationPage() {
         const mos = Number(item.mos ?? item.hardware_on_site ?? item.qty_on_site ?? 0);
         const used = Number(item.used ?? item.qty_used ?? 0);
         const approvedReturnQty = Number(item.approved_return_qty ?? 0);
-        const remains = mos - (boq + additional) - used - approvedReturnQty;
+        const remains = Number(item.remains ?? (mos - (boq + additional)));
 
-        let recStatus: ReconciliationRecord["status"] = "berjalan";
-        if (remains < 0) {
-          recStatus = "perhatian";
-        } else if (remains >= 0 && boq > 0) {
-          recStatus = "sesuai";
-        }
+        const recStatus: ReconciliationRecord["status"] =
+          item.status === "sesuai" || item.status === "perhatian" || item.status === "belum_ada_data"
+            ? item.status
+            : Number(remains) === 0
+              ? "sesuai"
+              : "perhatian";
 
         return {
           id: String(item.id ?? ""),
@@ -417,7 +417,7 @@ export default function SupervisorReconciliationPage() {
               <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400">
                 <option value="all">Semua Status</option>
                 <option value="sesuai">Sesuai</option>
-                <option value="berjalan">Berjalan</option>
+                <option value="belum_ada_data">Belum Ada Data</option>
                 <option value="perhatian">Perhatian</option>
               </select>
             </div>
@@ -549,19 +549,19 @@ export default function SupervisorReconciliationPage() {
                 </div>
                 <div className="rounded-xl border border-indigo-200/80 bg-indigo-50/50 p-4">
                   <p className="text-xs font-bold text-indigo-900">Additional</p>
-                  <p className="mt-2 text-xs leading-relaxed text-indigo-800/90">Tambahan material di luar rencana BOQ awal (misal kelebihan kiriman atau kebutuhan tambahan).</p>
+                   <p className="mt-2 text-xs leading-relaxed text-indigo-800/90">Tambahan material yang diajukan karena kekurangan dari rencana BOQ awal, setelah disetujui dan ditambahkan resmi ke sistem.</p>
                 </div>
                 <div className="rounded-xl border border-blue-200/80 bg-blue-50/50 p-4">
                   <p className="text-xs font-bold text-blue-900">MOS</p>
-                  <p className="mt-2 text-xs leading-relaxed text-blue-800/90">Material yang sudah sampai di lapangan sesuai Surat Jalan Pengambilan (outbound ke lapangan, status disetujui/diterima).</p>
+                   <p className="mt-2 text-xs leading-relaxed text-blue-800/90">Material yang sudah dikirim dan terkonfirmasi diterima di lapangan.</p>
                 </div>
                 <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3">
                   <p className="text-xs font-bold text-slate-900">Used</p>
-                  <p className="mt-2 text-xs leading-relaxed text-slate-800/90">Jumlah material yang sudah dikirim ke lapangan untuk dipasang (otomatis dari surat jalan outbound yang disetujui).</p>
+                   <p className="mt-2 text-xs leading-relaxed text-slate-800/90">Jumlah material yang sudah dipasang/digunakan di lapangan, berdasarkan laporan harian dari mitra.</p>
                 </div>
                 <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-4">
                   <p className="text-xs font-bold text-emerald-900">Remains</p>
-                  <p className="mt-2 text-xs leading-relaxed text-emerald-800/90">Sisa material yang secara fisik masih ada di lapangan, setelah dikurangi kebutuhan rencana, pemakaian (Used), dan barang yang sudah diretur ke gudang. Rumus: MOS − (BOQ Plan + Additional) − Used − Return (diterima gudang).</p>
+                   <p className="mt-2 text-xs leading-relaxed text-emerald-800/90">Rumus: MOS − (BOQ Plan + Additional). Menghitung sisi pengiriman, bukan pemakaian di lapangan.</p>
                 </div>
               </div>
             </div>

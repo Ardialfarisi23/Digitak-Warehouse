@@ -147,8 +147,33 @@ model project {
   titik_lapangans titik_lapangan[]
   laporans        laporan_mitra[]      @relation("LaporanMitraProject")
   return_transactions return_transaction[]
+  clusters        cluster[]
 
   @@index([area])
+}
+
+model cluster {
+  cluster_id        String    @id @db.Text
+  project_id        BigInt
+  nama_cluster      String    @db.Text
+  cluster_type      String?   @db.Text
+  project_type      String?   @db.Text
+  kso_partner       String?   @db.Text
+  kso_contact       String?   @db.Text
+  no_tiket_release  String?   @db.Text
+  vendor            String?   @db.Text
+  alamat_lengkap    String?   @db.Text
+  status_aktif      Boolean   @default(true)
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @default(now())
+  created_by        BigInt
+  updated_by        BigInt
+
+  project           project    @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
+  boqs              boq[]
+
+  @@index([project_id])
+  @@unique([project_id, nama_cluster])
 }
 
 model titik_lapangan {
@@ -304,6 +329,7 @@ model tiket_material {
   tiket_id        BigInt           @id @default(autoincrement())
   kode_tiket      String           @unique @db.Text
   project_id      BigInt
+  cluster_id      String?          @db.Text
   area            String?          @db.Text
   mos             Decimal?         @db.Decimal(14, 2)
   used            Decimal?         @db.Decimal(14, 2)
@@ -323,6 +349,7 @@ model tiket_material {
 model boq {
   boq_id                       BigInt                       @id @default(autoincrement())
   tiket_id                     BigInt                       @unique
+  cluster_id                   String                       @db.Text
   boq_number                   String?                      @unique
   status                       boq_status                   @default(draft)
   source                       boq_source                   @default(top_down)
@@ -338,6 +365,7 @@ model boq {
   updated_by                   BigInt
   creator                      user_account                 @relation("boq_created_by", fields: [created_by], references: [user_id])
   diaktifkan_user              user_account?                @relation("boq_diaktifkan", fields: [diaktifkan_oleh], references: [user_id])
+  cluster          cluster?          @relation(fields: [cluster_id], references: [cluster_id])
   tiket                        tiket_material               @relation(fields: [tiket_id], references: [tiket_id])
   updater                      user_account                 @relation("boq_updated_by", fields: [updated_by], references: [user_id])
   items                        boq_item[]
@@ -345,6 +373,7 @@ model boq {
 
   @@index([status])
   @@index([boq_number])
+  @@index([cluster_id])
 }
 
 model boq_item {

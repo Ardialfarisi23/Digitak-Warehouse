@@ -99,29 +99,34 @@ if (search) {
     where,
   });
 
-  const data = await prisma.boq.findMany({
-    where,
-    orderBy: {
-      [orderField]: orderDirection,
-    },
-    skip: (sanitizedPage - 1) * sanitizedLimit,
-    take: sanitizedLimit,
-    include: {
-      tiket: {
-        include: {
-          project: true,
-        },
-      },
-      items: {
-        include: {
-          barang: true,
-          satuan: true,
-          gudang_tujuan: true,
-        },
-      },
-      diaktifkan_user: true,
-    },
-  });
+   const data = await prisma.boq.findMany({
+     where,
+     orderBy: {
+       [orderField]: orderDirection,
+     },
+     skip: (sanitizedPage - 1) * sanitizedLimit,
+     take: sanitizedLimit,
+     include: {
+       tiket: {
+         include: {
+           project: true,
+         },
+       },
+       cluster: {
+         include: {
+           project: true,
+         },
+       },
+       items: {
+         include: {
+           barang: true,
+           satuan: true,
+           gudang_tujuan: true,
+         },
+       },
+       diaktifkan_user: true,
+     },
+   });
 
   return {
     data,
@@ -254,11 +259,15 @@ const getSummary = async (boq_id) => {
   };
 };
 
-const exportBoqs = async ({ status, search, projectId, area }) => {
+const exportBoqs = async ({ status, search, projectId, area, clusterId }) => {
   const where = {};
 
   if (status) {
     where.status = status.toLowerCase();
+  }
+
+  if (clusterId) {
+    where.cluster_id = String(clusterId);
   }
 
   if (projectId || area) {
@@ -269,7 +278,11 @@ const exportBoqs = async ({ status, search, projectId, area }) => {
   }
 
   if (search) {
-    where.OR = [{ tiket: { kode_tiket: { contains: search, mode: "insensitive" } } }, { tiket: { area: { contains: search, mode: "insensitive" } } }];
+    where.OR = [
+      { tiket: { kode_tiket: { contains: search, mode: "insensitive" } } },
+      { tiket: { area: { contains: search, mode: "insensitive" } } },
+      { cluster_id: { contains: search, mode: "insensitive" } },
+    ];
   }
 
   return await prisma.boq.findMany({
@@ -277,6 +290,11 @@ const exportBoqs = async ({ status, search, projectId, area }) => {
     orderBy: { created_at: "desc" },
     include: {
       tiket: {
+        include: {
+          project: true,
+        },
+      },
+      cluster: {
         include: {
           project: true,
         },
@@ -328,14 +346,21 @@ const getAreas = async () => {
   return areas.map((row) => row.area).filter(Boolean);
 };
 
-const findItemsByProject = async (projectId) => {
+const findItemsByProject = async (projectId, clusterId) => {
+  const where = {
+    status: "aktif",
+  };
+
+  if (clusterId) {
+    where.cluster_id = String(clusterId);
+  } else if (projectId) {
+    where.tiket = {
+      project_id: Number(projectId),
+    };
+  }
+
   const boqs = await prisma.boq.findMany({
-    where: {
-      status: "aktif",
-      tiket: {
-        project_id: Number(projectId),
-      },
-    },
+    where,
     include: {
       items: {
         include: {
@@ -395,6 +420,17 @@ const getExportMatrixData = async () => {
                   nama_project: true,
                   area: true,
                   cluster_id: true,
+                },
+              },
+            },
+          },
+          cluster: {
+            include: {
+              project: {
+                select: {
+                  cluster_id: true,
+                  area: true,
+                  nama_project: true,
                 },
               },
             },
@@ -562,8 +598,12 @@ const getExportMatrixData = async () => {
 
   const rows = boqItems.map((item) => {
     const tiket = item.boq?.tiket;
-    const project = tiket?.project;
+    const tiketProject = tiket?.project;
+    const clusterProject = item.boq?.cluster?.project;
+    const project = clusterProject || tiketProject;
     const projectIdNum = Number(project?.project_id || 0);
+    const clusterId = clusterProject?.cluster_id || tiketProject?.cluster_id || "-";
+    const area = clusterProject?.area || tiketProject?.area || "-";
     const barangId = String(item.barang_id);
     const key = `${projectIdNum}-${barangId}`;
 
@@ -579,8 +619,8 @@ const getExportMatrixData = async () => {
     return {
       project_id: projectIdNum,
       project_nama: project?.nama_project || "-",
-      cluster_id: project?.cluster_id || "-",
-      area: project?.area || "-",
+      cluster_id: clusterId,
+      area: area,
       barang_id: barangId,
       kode_perangkat: item.barang?.kode_perangkat || "-",
       nama_barang: item.barang?.nama_barang || "-",

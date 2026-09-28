@@ -11,10 +11,11 @@ const reconciliationService = require("../reconciliation/reconciliation.service"
 
 const RECONCILIATION_REQUIRED_COLUMNS = [
   { name: "Kode Tiket", aliases: ["Kode Tiket", "kode_tiket", "KODE_TIKET"] },
+  { name: "Project", aliases: ["Project", "project", "Nama Project"] },
   { name: "Nama Barang", aliases: ["Nama Barang", "nama_barang", "Barang"] },
   { name: "Used", aliases: ["Used", "used"] },
-  { name: "Remains di Lapangan", aliases: ["Remains di Lapangan", "remains_lapangan", "Remains", "Sisa di Lapangan"] },
   { name: "Kondisi", aliases: ["Kondisi", "kondisi", "KONDISI"] },
+  { name: "Catatan", aliases: ["Catatan", "catatan", "Keterangan"] },
 ];
 
 const getStockHistory = async (req, res, next) => {
@@ -339,6 +340,16 @@ const uploadReconciliationFile = async (req, res, next) => {
               area: true,
             },
           },
+          boq: {
+            where: { status: { in: ["draft", "aktif", "selesai"] } },
+            include: {
+              cluster: {
+                select: {
+                  cluster_id: true,
+                },
+              },
+            },
+          },
         },
       });
 
@@ -351,19 +362,19 @@ const uploadReconciliationFile = async (req, res, next) => {
       for (let i = 0; i < jsonData.length; i++) {
         const row = jsonData[i];
         const kodeTiket = row["Kode Tiket"] || row["kode_tiket"] || row["KODE_TIKET"];
+        const projectName = row["Project"] || row["project"] || row["Nama Project"] || null;
         const used = Number(row["Used"] || row["used"] || 0);
-        const remainsLapangan = Number(row["Remains di Lapangan"] || row["remains_lapangan"] || row["Remains"] || row["Sisa di Lapangan"] || 0);
         const namaBarang = row["Nama Barang"] || row["nama_barang"] || row["Barang"] || null;
         const kondisi = row["Kondisi"] || row["kondisi"] || row["KONDISI"] || null;
 
         if (!kodeTiket) {
-          failed.push({ row: i + 2, used, remains_lapangan: remainsLapangan, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak ditemukan" });
+          failed.push({ row: i + 2, used, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak ditemukan" });
           continue;
         }
 
         const tiket = tiketMap.get(String(kodeTiket).trim());
         if (!tiket) {
-          failed.push({ row: i + 2, kode_tiket: kodeTiket, used, remains_lapangan: remainsLapangan, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak terdaftar" });
+          failed.push({ row: i + 2, kode_tiket: kodeTiket, used, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak terdaftar" });
           continue;
         }
 
@@ -382,16 +393,26 @@ const uploadReconciliationFile = async (req, res, next) => {
           }
         }
 
+        if (barangId) {
+          const boq = await prisma.boq.findFirst({
+            where: { tiket_id: BigInt(tiketId), status: { in: ["draft", "aktif", "selesai"] } },
+            include: { items: { where: { barang_id: BigInt(barangId) } } },
+          });
+          if (!boq || !boq.items.length) {
+            failed.push({ row: i + 2, kode_tiket, used, nama_barang: namaBarang, kondisi, reason: `Barang "${namaBarangTrimmed}" tidak terdaftar di BOQ tiket ${tiket.kode_tiket}` });
+            continue;
+          }
+        }
+
         preview.push({
           tiket_id: tiket.tiket_id,
           kode_tiket: tiket.kode_tiket,
-          project_nama: tiket.project?.nama_project || "-",
-          cluster_id: tiket.project?.cluster_id || "-",
+          project_nama: projectName || tiket.project?.nama_project || "-",
+          cluster_id: tiket.boq?.cluster?.cluster_id || tiket.project?.cluster_id || "-",
           area: tiket.project?.area || "-",
           nama_barang: namaBarang,
           barang_id: barangId,
           used,
-          remains_lapangan: remainsLapangan,
           kondisi,
         });
       }
@@ -482,7 +503,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
               upload_id: uploadLog.upload_id,
               kode_tiket: kodeTiket || "-",
               mos: 0,
-              remains_lapangan: Number(item.remains_lapangan || 0),
+              remains_lapangan: 0,
               used: Number(item.used || 0),
               status: "gagal",
               reason: "Tiket tidak terdaftar",
@@ -509,7 +530,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
               upload_id: uploadLog.upload_id,
               kode_tiket: kodeTiket || "-",
               mos: 0,
-              remains_lapangan: Number(item.remains_lapangan || 0),
+              remains_lapangan: 0,
               used: Number(item.used || 0),
               status: "gagal",
               reason: "Tiket tidak terdaftar",
@@ -523,6 +544,28 @@ const confirmReconciliationUpload = async (req, res, next) => {
           mos: tiket.mos ? Number(tiket.mos) : null,
           used: tiket.used ? Number(tiket.used) : null,
         };
+
+        if (item.barang_id) {
+          const boq = await tx.boq.findFirst({
+            where: { tiket_id: BigInt(tiketId), status: { in: ["draft", "aktif", "selesai"] } },
+            include: { items: { where: { barang_id: BigInt(item.barang_id) } } },
+          });
+          if (!boq || !boq.items.length) {
+            await tx.reconciliation_upload_detail.create({
+              data: {
+                upload_id: uploadLog.upload_id,
+                kode_tiket: tiket.kode_tiket,
+                mos: 0,
+                remains_lapangan: 0,
+                used: Number(item.used || 0),
+                status: "gagal",
+                reason: `Barang tidak terdaftar di BOQ tiket ${tiket.kode_tiket}`,
+              },
+            });
+            failedCount++;
+            continue;
+          }
+        }
 
         const existingLaporans = await tx.laporan_mitra.findMany({
           where: {
@@ -553,7 +596,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
               nama_barang: nama_barang || item.nama_barang || null,
               barang_id: item.barang_id ? BigInt(item.barang_id) : null,
               mos: 0,
-              remains_lapangan: Number(item.remains_lapangan || 0),
+              remains_lapangan: 0,
               used: Number(item.used || 0),
               catatan: catatan || null,
               kondisi: kondisi || null,
@@ -567,7 +610,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
               upload_id: uploadLog.upload_id,
               kode_tiket: tiket.kode_tiket,
               mos: 0,
-              remains_lapangan: Number(item.remains_lapangan || 0),
+              remains_lapangan: 0,
               used: Number(item.used || 0),
               status: "berhasil",
               reason: null,
@@ -578,7 +621,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
           updatedTikets.push({
             tiket_id: tiketId,
             kode_tiket: tiket.kode_tiket,
-            remains_lapangan: item.remains_lapangan,
+            remains_lapangan: 0,
             used: item.used,
           });
         } catch (insertErr) {
@@ -587,7 +630,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
               upload_id: uploadLog.upload_id,
               kode_tiket: tiket.kode_tiket,
               mos: 0,
-              remains_lapangan: Number(item.remains_lapangan || 0),
+              remains_lapangan: 0,
               used: Number(item.used || 0),
               status: "gagal",
               reason: insertErr.message || "Gagal menyimpan laporan mitra",
@@ -604,7 +647,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
             actor_id: BigInt(actorId),
             data_sebelum: dataSebelum,
             data_sesudah: {
-              remains_lapangan: item.remains_lapangan,
+              remains_lapangan: 0,
               used: item.used,
               source_file: filename,
               jenis_laporan: jenisLaporan,
@@ -613,18 +656,18 @@ const confirmReconciliationUpload = async (req, res, next) => {
         });
       }
 
-      for (const item of failed) {
-        await tx.reconciliation_upload_detail.create({
-          data: {
-            upload_id: uploadLog.upload_id,
-            kode_tiket: item.kode_tiket || "-",
-            mos: 0,
-            remains_lapangan: Number(item.remains_lapangan || 0),
-            used: Number(item.used || 0),
-            status: "gagal",
-            reason: item.reason || "Gagal memproses baris",
-          },
-        });
+        for (const item of failed) {
+          await tx.reconciliation_upload_detail.create({
+            data: {
+              upload_id: uploadLog.upload_id,
+              kode_tiket: item.kode_tiket || "-",
+              mos: 0,
+              remains_lapangan: 0,
+              used: Number(item.used || 0),
+              status: "gagal",
+              reason: item.reason || "Gagal memproses baris",
+            },
+          });
         failedCount++;
       }
 
@@ -667,7 +710,7 @@ const downloadReconciliationTemplate = async (req, res, next) => {
       right: { style: "thin" },
     };
 
-    const headers = ["Kode Tiket", "Nama Barang", "Used", "Remains di Lapangan", "Kondisi", "Catatan"];
+    const headers = ["Kode Tiket", "Project", "Nama Barang", "Used", "Kondisi", "Catatan"];
     headers.forEach((header, index) => {
       const cell = worksheet.getCell(1, index + 1);
       cell.value = header;
@@ -677,7 +720,7 @@ const downloadReconciliationTemplate = async (req, res, next) => {
       cell.border = borderStyle;
     });
 
-    const exampleRow = ["TIKET-001", "Kabel Fiber Optik", 3, 2, "Baik", "Contoh catatan opsional"];
+    const exampleRow = ["TIKET-001", "Project A", "Kabel Fiber Optik", 3, "Baik", "Contoh catatan opsional"];
     exampleRow.forEach((value, colIndex) => {
       const cell = worksheet.getCell(2, colIndex + 1);
       cell.value = value;

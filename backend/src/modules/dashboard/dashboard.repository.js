@@ -174,8 +174,22 @@ const getProjectSummary = async () => {
           project_id: true,
         },
       },
+      cluster: {
+        select: {
+          cluster_id: true,
+        },
+      },
     },
   });
+
+  const clusterIdByProject = new Map();
+  for (const boq of boqRecords) {
+    const projectId = Number(boq.tiket?.project_id);
+    if (!projectId) continue;
+    if (boq.cluster?.cluster_id && !clusterIdByProject.has(projectId)) {
+      clusterIdByProject.set(projectId, boq.cluster.cluster_id);
+    }
+  }
 
   for (const boq of boqRecords) {
     const projectId = Number(boq.tiket?.project_id);
@@ -242,7 +256,7 @@ const getProjectSummary = async () => {
     const remains = agg ? reconciliationUtils.computeRemains(mos, boq, additional, used, agg.approved_return_qty) : 0;
     const reconStatus = agg
       ? reconciliationUtils.aggregateProjectStatus(agg.statuses)
-      : "berjalan";
+      : "belum_ada_data";
 
     // Legacy alias — agar hardwareOnSite konsisten dengan MOS yang baru.
     const hardwareOnSite = mos;
@@ -255,8 +269,8 @@ const getProjectSummary = async () => {
     return {
       projectId,
       projectName,
-      clusterId: project.cluster_id || null,
-      clusterLabel: project.cluster_id ? `RW ${project.cluster_id}` : "-",
+      clusterId: clusterIdByProject.get(projectId) || project.cluster_id || null,
+      clusterLabel: (clusterIdByProject.get(projectId) || project.cluster_id) ? `RW ${clusterIdByProject.get(projectId) || project.cluster_id}` : "-",
       area: project.area || "-",
       statusBoq,
       hardwareOnSite,

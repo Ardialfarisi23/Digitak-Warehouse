@@ -17,6 +17,17 @@ const transformBoq = (boq) => {
       title: boq.tiket.project.title,
       status_aktif: boq.tiket.project.status_aktif,
     } : null,
+    clusterId: boq.cluster?.cluster_id || boq.cluster?.project?.cluster_id || boq.tiket?.project?.cluster_id || "",
+    cluster: boq.cluster ? {
+      clusterId: boq.cluster.cluster_id,
+      nama_cluster: boq.cluster.nama_cluster,
+      cluster_type: boq.cluster.cluster_type,
+      project: boq.cluster.project ? {
+        projectId: String(boq.cluster.project.project_id),
+        nama_project: boq.cluster.project.nama_project,
+        area: boq.cluster.project.area,
+      } : null,
+    } : null,
     area: boq.tiket?.area || "",
     status: boq.status,
     source: boq.source,

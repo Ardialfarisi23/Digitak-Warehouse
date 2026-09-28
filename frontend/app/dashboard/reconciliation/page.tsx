@@ -56,7 +56,7 @@ interface ReconciliationRecord {
   mos: number;
   used: number;
   remains: number;
-  status: "sesuai" | "berjalan" | "perhatian";
+  status: "sesuai" | "perhatian" | "belum_ada_data";
 }
 
 const formatNumber = (value: number) => {
@@ -69,10 +69,10 @@ function getStatusBadge(status: ReconciliationRecord["status"]) {
   switch (status) {
     case "sesuai":
       return { label: "Sesuai", bg: "bg-emerald-50", text: "text-emerald-600", icon: PackageCheck };
-    case "berjalan":
-      return { label: "Berjalan", bg: "bg-blue-50", text: "text-blue-600", icon: Package };
     case "perhatian":
       return { label: "Perhatian", bg: "bg-amber-50", text: "text-amber-600", icon: AlertTriangle };
+    case "belum_ada_data":
+      return { label: "Belum Ada Data", bg: "bg-slate-50", text: "text-slate-500", icon: Package };
     default:
       return { label: status, bg: "bg-slate-100", text: "text-slate-600", icon: Package };
   }
@@ -121,7 +121,6 @@ export default function ReconciliationInventoryPage() {
     id: string;
     barang_id: string;
     nama_barang: string;
-    remains_lapangan: string;
     used: string;
     catatan: string;
     kondisi: string;
@@ -191,14 +190,14 @@ export default function ReconciliationInventoryPage() {
         const additional = Number(item.additional ?? item.qty_additional ?? 0);
         const mos = Number(item.mos ?? item.hardware_on_site ?? item.qty_on_site ?? 0);
         const used = Number(item.used ?? item.qty_used ?? 0);
-        const remains = mos - (boq + additional);
+        const remains = Number(item.remains ?? (mos - (boq + additional)));
 
-        let recStatus: ReconciliationRecord["status"] = "berjalan";
-        if (remains < 0) {
-          recStatus = "perhatian";
-        } else if (mos >= boq + additional && boq > 0) {
-          recStatus = "sesuai";
-        }
+        const recStatus: ReconciliationRecord["status"] =
+          item.status === "sesuai" || item.status === "perhatian" || item.status === "belum_ada_data"
+            ? item.status
+            : Number(remains) === 0
+              ? "sesuai"
+              : "perhatian";
 
         return {
           id: String(item.id ?? item.reconciliation_id ?? item.boq_id ?? ""),
@@ -348,8 +347,8 @@ export default function ReconciliationInventoryPage() {
         setMitraError("Setiap item harus memiliki Nama Barang.");
         return;
       }
-      if (Number(row.used) <= 0 && Number(row.remains_lapangan) <= 0) {
-        setMitraError("Setiap item harus memiliki minimal salah satu Qty Used atau Qty Remains di Lapangan > 0.");
+      if (Number(row.used) <= 0) {
+        setMitraError("Setiap item harus memiliki Qty Used > 0.");
         return;
       }
     }
@@ -368,7 +367,6 @@ export default function ReconciliationInventoryPage() {
           nama_barang: row.nama_barang.trim(),
           barang_id: row.barang_id || null,
           used: Number(row.used) || 0,
-          remains_lapangan: Number(row.remains_lapangan) || 0,
           catatan: row.catatan.trim() || null,
           kondisi: row.kondisi.trim() || null,
         }));
@@ -409,7 +407,6 @@ export default function ReconciliationInventoryPage() {
         id: `${Date.now()}-${prev.length}`,
         barang_id: "",
         nama_barang: "",
-        remains_lapangan: "",
         used: "",
         catatan: "",
         kondisi: "",
@@ -696,7 +693,7 @@ export default function ReconciliationInventoryPage() {
           >
             <option value="all">Semua Status</option>
             <option value="sesuai">Sesuai</option>
-            <option value="berjalan">Berjalan</option>
+            <option value="belum_ada_data">Belum Ada Data</option>
             <option value="perhatian">Perhatian</option>
           </select>
         </div>
@@ -858,19 +855,19 @@ export default function ReconciliationInventoryPage() {
             </div>
             <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3">
               <p className="text-xs font-semibold text-indigo-800">Additional</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-indigo-700">Tambahan material di luar rencana BOQ awal (misal kelebihan kiriman atau kebutuhan tambahan).</p>
+               <p className="mt-1 text-[11px] leading-relaxed text-indigo-700">Tambahan material yang diajukan karena kekurangan dari rencana BOQ awal, setelah disetujui dan ditambahkan resmi ke sistem.</p>
             </div>
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
               <p className="text-xs font-semibold text-blue-800">MOS</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-blue-700">Material yang sudah sampai di lapangan sesuai Surat Jalan Pengambilan (outbound ke lapangan, status disetujui/diterima).</p>
+               <p className="mt-1 text-[11px] leading-relaxed text-blue-700">Material yang sudah dikirim dan terkonfirmasi diterima di lapangan.</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs font-semibold text-slate-800">Used</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-slate-600">Jumlah material yang sudah dikirim ke lapangan untuk dipasang (otomatis dari surat jalan outbound yang disetujui).</p>
+               <p className="mt-1 text-[11px] leading-relaxed text-slate-600">Jumlah material yang sudah dipasang/digunakan di lapangan, berdasarkan laporan harian dari mitra.</p>
             </div>
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
               <p className="text-xs font-semibold text-emerald-800">Remains</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-emerald-700">Sisa material yang secara fisik masih ada di lapangan, setelah dikurangi kebutuhan rencana, pemakaian (Used), dan barang yang sudah diretur ke gudang. Rumus: MOS − (BOQ Plan + Additional) − Used − Return (diterima gudang).</p>
+               <p className="mt-1 text-[11px] leading-relaxed text-emerald-700">Rumus: MOS − (BOQ Plan + Additional). Menghitung sisi pengiriman, bukan pemakaian di lapangan.</p>
             </div>
           </div>
         </div>
@@ -988,7 +985,7 @@ export default function ReconciliationInventoryPage() {
             <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h2 className="text-base font-semibold text-slate-900">Input Laporan Mitra</h2>
-                <p className="text-xs text-slate-500">Pilih metode input untuk memperbarui nilai MOS Mitra.</p>
+                <p className="text-xs text-slate-500">Pilih metode input untuk memperbarui data pemakaian material (Used) di lapangan.</p>
               </div>
               <button
                 type="button"
@@ -1300,19 +1297,8 @@ export default function ReconciliationInventoryPage() {
                                   placeholder="0"
                                   className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-400"
                                 />
-                              </div>
-                              <div className="col-span-6 sm:col-span-3">
-                                <label className="mb-1 block text-[11px] font-medium text-slate-500">Remains di Lapangan</label>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={row.remains_lapangan}
-                                  onChange={(e) => updateManualRow(row.id, "remains_lapangan", e.target.value)}
-                                  placeholder="0"
-                                  className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-400"
-                                />
-                              </div>
-                              <div className="col-span-12 sm:col-span-2 flex items-end justify-between">
+                               </div>
+                               <div className="col-span-12 sm:col-span-2 flex items-end justify-between">
                                 <div className="flex gap-1">
                                   <button
                                     type="button"
