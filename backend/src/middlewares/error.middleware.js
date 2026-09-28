@@ -13,9 +13,11 @@ module.exports = (err, req, res, next) => {
   const message =
     (err?.message && String(err.message).trim()) ||
     "Internal Server Error";
+  const code = err?.code || null;
 
   res.status(statusCode).json({
     success: false,
     message,
+    ...(code ? { code } : {}),
   });
 };

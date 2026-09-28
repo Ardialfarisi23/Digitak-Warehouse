@@ -75,6 +75,65 @@ const normalizeSerial = (value) => {
   return trimmed === "" ? null : trimmed.toUpperCase();
 };
 
+const buildPickDecision = ({
+  requestedKondisi,
+  pickedKondisi,
+  catatanKondisi,
+  stock,
+  fallbackStocks,
+  qty,
+  barangNama,
+  zonaNama,
+  kondisiLabel,
+}) => {
+  const isOverride = Boolean(pickedKondisi && pickedKondisi !== requestedKondisi);
+
+  if (isOverride && !catatanKondisi?.trim()) {
+    return {
+      ok: false,
+      code: "OVERRIDE_REASON_REQUIRED",
+      message: `Pengambilan kondisi ${pickedKondisi} untuk ${barangNama} memerlukan alasan override (catatan_kondisi).`,
+    };
+  }
+
+  const searchKondisi = pickedKondisi || requestedKondisi;
+  const kondisiDimintaLabel = kondisiLabel[searchKondisi] || searchKondisi;
+
+  if (!stock) {
+    if (isOverride) {
+      return {
+        ok: false,
+        code: "OVERRIDE_NO_STOCK",
+        message: `Override ditolak: stok kondisi ${kondisiDimintaLabel} untuk ${barangNama} tidak tersedia di zona ${zonaNama}.`,
+      };
+    }
+
+    let message = `Stok ${barangNama} dengan kondisi ${kondisiDimintaLabel} tidak tersedia di zona ${zonaNama}.`;
+
+    if (fallbackStocks && fallbackStocks.length > 0) {
+      const summary = fallbackStocks
+        .map((s) => `${kondisiLabel[s.kondisi] || s.kondisi} (${Number(s.qty || 0)})`)
+        .join(", ");
+      message += ` Stok di zona ini: ${summary}.`;
+    } else {
+      message += ` Stok tidak ditemukan di zona ${zonaNama}.`;
+    }
+
+    return { ok: false, code: "NO_STOCK", message };
+  }
+
+  const existingQty = Number(stock.qty || 0);
+  if (existingQty < qty) {
+    return {
+      ok: false,
+      code: "INSUFFICIENT_STOCK",
+      message: `Stok barang ${barangNama} di zona tidak mencukupi (Tersedia: ${existingQty}, Dibutuhkan: ${qty}).`,
+    };
+  }
+
+  return { ok: true };
+};
+
 const create = async (data, actorId) => {
   if (!data.tipe || !["inbound", "outbound"].includes(data.tipe)) {
     throw new AppError("Tipe surat jalan harus inbound atau outbound.", 400);
@@ -1102,6 +1161,10 @@ if (!Array.isArray(items) || items.length === 0) {
     }
 
     await prisma.$transaction(async (tx) => {
+      if (shipment.picking_selesai === true) {
+        throw new AppError("Surat jalan ini sudah selesai di-picking.", 400, "ALREADY_PICKED");
+      }
+
       for (const item of items) {
         const qty = Number(item.qty || 0);
         const zonaId = item.zona_id ? Number(item.zona_id) : null;
@@ -1116,33 +1179,21 @@ if (!Array.isArray(items) || items.length === 0) {
         const barangId = Number(suratItem.barang_id);
         const requestedKondisi = (suratItem.kondisi || "baik").toLowerCase();
 
-        const isOverride = Boolean(pickedKondisi && pickedKondisi !== requestedKondisi);
-
-        if (isOverride && !item.catatan_kondisi?.trim()) {
-          const barangNama =
-            suratItem.barang?.nama_barang || suratItem.barang?.kode_perangkat || `Barang ${barangId}`;
-          const kondisiLabel = KONDISI_LABEL[requestedKondisi] || requestedKondisi;
-          throw new AppError(
-            `Pengambilan kondisi ${pickedKondisi} untuk ${barangNama} memerlukan alasan override (catatan_kondisi).`,
-            400
-          );
-        }
-
-        const searchKondisi = pickedKondisi || requestedKondisi;
-
         const stock = await tx.stok_gudang.findFirst({
           where: {
             gudang_id: gudangAsalId,
             barang_id: barangId,
             zona_id: zonaId,
-            kondisi: searchKondisi,
+            kondisi: pickedKondisi || requestedKondisi,
             project_id: shipment.project_id,
           },
           orderBy: { qty: "desc" },
         });
 
+        let fallbackStocks = [];
+        let zonaNama = null;
         if (!stock) {
-          const fallbackStocks = await tx.stok_gudang.findMany({
+          fallbackStocks = await tx.stok_gudang.findMany({
             where: {
               gudang_id: gudangAsalId,
               barang_id: barangId,
@@ -1159,53 +1210,58 @@ if (!Array.isArray(items) || items.length === 0) {
             where: { zona_id: zonaId },
             select: { nama_zona: true, kode_zona: true },
           });
+          zonaNama = zona?.nama_zona || zona?.kode_zona || `Zona ${zonaId}`;
+        }
 
-          const barangNama =
-            suratItem.barang?.nama_barang || suratItem.barang?.kode_perangkat || `Barang ${barangId}`;
-          const zonaNama = zona?.nama_zona || zona?.kode_zona || `Zona ${zonaId}`;
-          const kondisiDimintaLabel = KONDISI_LABEL[searchKondisi] || searchKondisi;
+        const barangNama =
+          suratItem.barang?.nama_barang || suratItem.barang?.kode_perangkat || `Barang ${barangId}`;
 
-          if (isOverride) {
-            throw new AppError(
-              `Override ditolak: stok kondisi ${kondisiDimintaLabel} untuk ${barangNama} tidak tersedia di zona ${zonaNama}.`,
-              400
-            );
-          }
+        const decision = buildPickDecision({
+          requestedKondisi,
+          pickedKondisi,
+          catatanKondisi: item.catatan_kondisi,
+          stock,
+          fallbackStocks,
+          qty,
+          barangNama,
+          zonaNama,
+          kondisiLabel: KONDISI_LABEL,
+        });
 
-          let message = `Stok ${barangNama} dengan kondisi ${kondisiDimintaLabel} tidak tersedia di zona ${zonaNama}.`;
-
-          if (fallbackStocks.length > 0) {
-            const summary = fallbackStocks
-              .map((s) => `${KONDISI_LABEL[s.kondisi] || s.kondisi} (${Number(s.qty || 0)})`)
-              .join(", ");
-            message += ` Stok di zona ini: ${summary}.`;
-          } else {
-            message += ` Stok tidak ditemukan di zona ${zonaNama}.`;
-          }
-
-          throw new AppError(message, 400);
+        if (!decision.ok) {
+          throw new AppError(decision.message, 400, decision.code);
         }
 
         const existingQty = Number(stock.qty || 0);
-        if (existingQty < qty) {
-          const barangNama =
-            suratItem.barang?.nama_barang || suratItem.barang?.kode_perangkat || `Barang ${barangId}`;
+        const deductQty = qty;
+
+        const updated = await tx.stok_gudang.updateMany({
+          where: {
+            stok_id: stock.stok_id,
+            qty: { gte: deductQty },
+          },
+          data: {
+            qty: { decrement: deductQty },
+            updated_at: new Date(),
+          },
+        });
+
+        if (updated.count !== 1) {
           throw new AppError(
-            `Stok barang ${barangNama} di zona tidak mencukupi (Tersedia: ${existingQty}, Dibutuhkan: ${qty}).`,
-            400
+            `Stok barang ${barangNama} di zona tidak mencukupi (Tersedia: ${existingQty}, Dibutuhkan: ${deductQty}).`,
+            400,
+            "INSUFFICIENT_STOCK"
           );
         }
 
-        const updatedQty = existingQty - qty;
+        const updatedStock = await tx.stok_gudang.findFirst({
+          where: { stok_id: stock.stok_id },
+        });
+        const newQty = updatedStock ? Number(updatedStock.qty || 0) : 0;
 
-        if (updatedQty <= 0) {
+        if (newQty <= 0 && updatedStock) {
           await tx.stok_gudang.delete({
             where: { stok_id: stock.stok_id },
-          });
-        } else {
-          await tx.stok_gudang.update({
-            where: { stok_id: stock.stok_id },
-            data: { qty: updatedQty, updated_at: new Date() },
           });
         }
 
@@ -1215,7 +1271,7 @@ if (!Array.isArray(items) || items.length === 0) {
             barang_id: barangId,
             jenis_mutasi: "out",
             qty: qty,
-            saldo_setelah: Math.max(0, updatedQty),
+            saldo_setelah: Math.max(0, newQty),
           },
         });
 
@@ -1233,7 +1289,7 @@ if (!Array.isArray(items) || items.length === 0) {
               zona_id: Number(zonaId),
               qty: Number(qty),
               kondisi_diminta: requestedKondisi,
-              kondisi_diambil: searchKondisi,
+              kondisi_diambil: pickedKondisi || requestedKondisi,
               override: Boolean(pickedKondisi && pickedKondisi !== requestedKondisi),
               catatan_kondisi: item.catatan_kondisi || null,
             },
@@ -1479,4 +1535,5 @@ if (!Array.isArray(items) || items.length === 0) {
     findOutboundApprovalHistory,
     findStaffHistory,
     findRejectedList,
+    buildPickDecision,
   };

@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "seed": "node prisma/seed.js"
+    "seed": "node prisma/seed.js",
+    "test": "node --test src/modules/surat-jalan/surat-jalan.service.test.js"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
