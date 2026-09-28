@@ -6,7 +6,11 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "seed": "node prisma/seed.js",
-    "test": "node --test src/modules/surat-jalan/surat-jalan.service.test.js"
+    "test": "node --test src/modules/**/*.test.js src/**/*.test.js",
+    "seed:picking:test": "node scripts/dev/seed-picking-test.js",
+    "seed:picking:test:apply": "node scripts/dev/seed-picking-test.js --apply",
+    "seed:picking:test:restore": "node scripts/dev/seed-picking-test.js --restore",
+    "verify:picking": "node scripts/dev/verify-picking.js"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

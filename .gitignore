@@ -1,2 +1,3 @@
 ﻿backup_digitak_warehouse.dump
 backups/
+backend/scripts/dev/.seed-snapshot.json
