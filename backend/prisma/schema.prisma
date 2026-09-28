@@ -492,6 +492,7 @@ model surat_jalan_item {
   diperiksa_oleh_user user_account?           @relation("SuratJalanItemDiperiksaOleh", fields: [diperiksa_oleh], references: [user_id])
   fotos               surat_jalan_item_foto[]
   return_transactions return_transaction[]
+  picks               surat_jalan_item_pick[]
 
   @@index([surat_jalan_id])
   @@index([barang_id])
@@ -522,6 +523,7 @@ model surat_jalan_item_pick {
   catatan_override     String?          @db.Text
   picked_by            BigInt?
   picked_at            DateTime         @default(now())
+  item                 surat_jalan_item @relation(fields: [surat_jalan_item_id], references: [item_id], onDelete: Restrict)
 
   @@index([surat_jalan_item_id])
 }
