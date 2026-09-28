@@ -1,6 +1,6 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { buildPickDecision } = require("./surat-jalan.service");
+const { buildPickDecision, mapPickRow } = require("./surat-jalan.service");
 
 const KONDISI_LABEL = {
   baik: "Baik",
@@ -77,5 +77,47 @@ describe("buildPickDecision", () => {
     });
     assert.strictEqual(result.ok, false);
     assert.strictEqual(result.code, "NO_STOCK");
+  });
+});
+
+describe("mapPickRow", () => {
+  it("normal pick tanpa override", () => {
+    const row = mapPickRow({
+      suratJalanItemId: 1,
+      gudangId: 10,
+      zonaId: 5,
+      requestedKondisi: "baik",
+      pickedKondisi: "baik",
+      qty: 3,
+      catatanKondisi: null,
+      actorId: 99,
+    });
+    assert.strictEqual(row.surat_jalan_item_id, 1);
+    assert.strictEqual(row.gudang_id, 10);
+    assert.strictEqual(row.zona_id, 5);
+    assert.strictEqual(row.kondisi_diminta, "baik");
+    assert.strictEqual(row.kondisi_diambil, "baik");
+    assert.strictEqual(row.qty, 3);
+    assert.strictEqual(row.is_override, false);
+    assert.strictEqual(row.catatan_override, null);
+    assert.strictEqual(row.picked_by?.toString(), "99");
+  });
+
+  it("override pick dengan alasan", () => {
+    const row = mapPickRow({
+      suratJalanItemId: 2,
+      gudangId: 10,
+      zonaId: null,
+      requestedKondisi: "baik",
+      pickedKondisi: "rusak_ringan",
+      qty: 1,
+      catatanKondisi: "Stok Baik habis",
+      actorId: 42,
+    });
+    assert.strictEqual(row.kondisi_diminta, "baik");
+    assert.strictEqual(row.kondisi_diambil, "rusak_ringan");
+    assert.strictEqual(row.is_override, true);
+    assert.strictEqual(row.catatan_override, "Stok Baik habis");
+    assert.strictEqual(row.picked_by?.toString(), "42");
   });
 });

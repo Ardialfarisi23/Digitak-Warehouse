@@ -502,6 +502,20 @@ const updateStatus = async (id, status, options = {}, tx = prisma) => {
   });
 };
 
+const claimPicking = async (id, tx = prisma) => {
+  const result = await tx.surat_jalan.updateMany({
+    where: {
+      surat_jalan_id: Number(id),
+      picking_selesai: false,
+    },
+    data: {
+      picking_selesai: true,
+    },
+  });
+
+  return result.count === 1;
+};
+
 const updateInboundItems = async (adjustments) => {
   for (const item of adjustments) {
     await prisma.surat_jalan_item.update({
@@ -1160,4 +1174,5 @@ module.exports = {
   findRejectedList,
   getApprovalVerification,
   getBatchApprovalVerifications,
+  claimPicking,
 };

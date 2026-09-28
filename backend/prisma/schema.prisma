@@ -510,6 +510,22 @@ model surat_jalan_item_foto {
   @@index([item_id])
 }
 
+model surat_jalan_item_pick {
+  pick_id              BigInt           @id @default(autoincrement())
+  surat_jalan_item_id  BigInt
+  gudang_id            BigInt
+  zona_id              BigInt?
+  kondisi_diminta      kondisi_barang
+  kondisi_diambil      kondisi_barang
+  qty                  Decimal          @db.Decimal(14, 2)
+  is_override          Boolean          @default(false)
+  catatan_override     String?          @db.Text
+  picked_by            BigInt?
+  picked_at            DateTime         @default(now())
+
+  @@index([surat_jalan_item_id])
+}
+
 model stok_gudang {
   stok_id    BigInt         @id @default(autoincrement())
   gudang_id  BigInt

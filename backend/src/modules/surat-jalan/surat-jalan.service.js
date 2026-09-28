@@ -134,6 +134,31 @@ const buildPickDecision = ({
   return { ok: true };
 };
 
+const mapPickRow = ({
+  suratJalanItemId,
+  gudangId,
+  zonaId,
+  requestedKondisi,
+  pickedKondisi,
+  qty,
+  catatanKondisi,
+  actorId,
+}) => {
+  const isOverride = Boolean(pickedKondisi && pickedKondisi !== requestedKondisi);
+
+  return {
+    surat_jalan_item_id: suratJalanItemId,
+    gudang_id: gudangId,
+    zona_id: zonaId,
+    kondisi_diminta: requestedKondisi,
+    kondisi_diambil: pickedKondisi || requestedKondisi,
+    qty: qty,
+    is_override: isOverride,
+    catatan_override: catatanKondisi || null,
+    picked_by: actorId ? BigInt(actorId) : null,
+  };
+};
+
 const create = async (data, actorId) => {
   if (!data.tipe || !["inbound", "outbound"].includes(data.tipe)) {
     throw new AppError("Tipe surat jalan harus inbound atau outbound.", 400);
@@ -1161,7 +1186,8 @@ if (!Array.isArray(items) || items.length === 0) {
     }
 
     await prisma.$transaction(async (tx) => {
-      if (shipment.picking_selesai === true) {
+      const claimed = await suratJalanRepository.claimPicking(suratJalanId, tx);
+      if (!claimed) {
         throw new AppError("Surat jalan ini sudah selesai di-picking.", 400, "ALREADY_PICKED");
       }
 
@@ -1275,6 +1301,19 @@ if (!Array.isArray(items) || items.length === 0) {
           },
         });
 
+        await tx.surat_jalan_item_pick.create({
+          data: mapPickRow({
+            suratJalanItemId: suratItem.item_id,
+            gudangId: gudangAsalId,
+            zonaId: zonaId,
+            requestedKondisi,
+            pickedKondisi: pickedKondisi || requestedKondisi,
+            qty,
+            catatanKondisi: item.catatan_kondisi || null,
+            actorId,
+          }),
+        });
+
         await tx.audit_log.create({
           data: {
             entity_type: "surat_jalan",
@@ -1298,8 +1337,6 @@ if (!Array.isArray(items) || items.length === 0) {
 
         await capacityService.recalculateZonaStatus(tx, gudangAsalId, zonaId);
       }
-
-      await suratJalanRepository.updateStatus(suratJalanId, "disetujui", { picking_selesai: true }, tx);
 
       if (actorId) {
         await suratJalanRepository.createApprovalLog(suratJalanId, actorId, "outbound_approval", "disetujui", null, tx);
@@ -1536,4 +1573,5 @@ if (!Array.isArray(items) || items.length === 0) {
     findStaffHistory,
     findRejectedList,
     buildPickDecision,
+    mapPickRow,
   };
