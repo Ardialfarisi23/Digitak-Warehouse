@@ -94,6 +94,7 @@ app.use("/api/profile", profileRoutes);
 app.use("/api/surat-jalan", suratJalanRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/boqs", boqRoutes);
+app.use("/api/clusters", require("./modules/cluster/cluster.routes"));
 app.use("/api/permintaan-boqs", permintaanBoqRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/notifications", notificationRoutes);

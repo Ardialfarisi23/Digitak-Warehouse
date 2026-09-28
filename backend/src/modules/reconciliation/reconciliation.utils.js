@@ -14,29 +14,27 @@ const AppError = require("../../shared/errors");
  *   numerically & logically consistent with `/dashboard/reconciliation`.
  */
 
-/** Remains = MOS (Sistem) - (BOQ Plan + Additional) - Used - ApprovedReturnQty */
+/** Remains = MOS (Sistem) - (BOQ Plan + Additional) */
 function computeRemains(mosSistem, boq, additional, used, approvedReturnQty) {
-  return Number(mosSistem || 0) - (Number(boq || 0) + Number(additional || 0)) - Number(used || 0) - Number(approvedReturnQty || 0);
+  return Number(mosSistem || 0) - (Number(boq || 0) + Number(additional || 0));
 }
 
 /**
  * Per-barang reconciliation status based on final remains.
- *   perhatian : remains < 0 atau (remains >= 0 tapi BOQ = 0)
- *   sesuai   : remains >= 0 dan BOQ > 0
- *   berjalan : selain kasus di atas
+ *   sesuai   : remains === 0
+ *   perhatian : remains !== 0
  */
 function computeReconciliationStatus(remains, boq) {
-  if (remains < 0 || boq <= 0) return "perhatian";
-  return "sesuai";
+  return Number(remains) === 0 ? "sesuai" : "perhatian";
 }
 
 /**
  * Agregasi status ke level per-project dari kumpulan status per-barang.
  *
  * Aturan (dapatkan dari keputusan akhir):
- *   - "perhatian"  : ADA minimal 1 barang berstatus "perhatian"
- *   - "sesuai"     : SEMUA barang berstatus "sesuai" (dan ada >= 1 barang)
- *   - "berjalan"   : tidak memenuhi di atas
+ *   - "perhatian"      : ADA minimal 1 barang berstatus "perhatian"
+ *   - "sesuai"         : SEMUA barang berstatus "sesuai" (dan ada >= 1 barang)
+ *   - "belum_ada_data" : tidak ada data rekonsiliasi untuk project ini
  *
  * Catatan penting: ini MENGAGGREGASI berdasarkan status per-barang, BUKAN
  * dari nilai aggregate `remains`. Alasannya: sebuah project bisa memiliki
@@ -44,15 +42,15 @@ function computeReconciliationStatus(remains, boq) {
  * barangnya bernilai `remains < 0` (perhatian). Dengan mengecek per-barang,
  * project tetap akan ditandai "perhatian".
  *
- * @param {Array<"sesuai"|"perhatian"|"berjalan">} statuses
- * @returns {"sesuai"|"perhatian"|"berjalan"}
+ * @param {Array<"sesuai"|"perhatian">} statuses
+ * @returns {"sesuai"|"perhatian"|"belum_ada_data"}
  */
 function aggregateProjectStatus(statuses) {
   const arr = Array.isArray(statuses) ? statuses : [];
-  if (arr.length === 0) return "berjalan";
+  if (arr.length === 0) return "belum_ada_data";
   if (arr.some((s) => s === "perhatian")) return "perhatian";
   if (arr.every((s) => s === "sesuai")) return "sesuai";
-  return "berjalan";
+  return "perhatian";
 }
 
 module.exports = {

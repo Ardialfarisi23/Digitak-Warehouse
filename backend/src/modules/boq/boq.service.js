@@ -39,14 +39,24 @@ const normalizeVerification = (status) => {
 
 const generateBoqNumber = async () => {
   const year = new Date().getFullYear();
-  const count = await prisma.boq.count({
+  const lastBoq = await prisma.boq.findFirst({
     where: {
       boq_number: {
         startsWith: `BOQ-${year}-`,
       },
     },
+    orderBy: { boq_id: 'desc' },
+    select: { boq_number: true },
   });
-  return `BOQ-${year}-${String(count + 1).padStart(4, "0")}`;
+
+  let nextNumber = 1;
+  if (lastBoq?.boq_number) {
+    const parts = String(lastBoq.boq_number).split('-');
+    const lastNum = parseInt(parts[parts.length - 1] || '0', 10);
+    nextNumber = lastNum + 1;
+  }
+
+  return `BOQ-${year}-${String(nextNumber).padStart(4, "0")}`;
 };
 
 const getBoqIdentifier = (boq) => boq.boq_number || `BOQ-${boq.boq_id}`;
@@ -136,10 +146,33 @@ const collectBoqGudangIds = (boq) => {
 };
 
 const create = async (data, userId) => {
-  const { items, projectId, area, ticketNumber, notes, referenceFile, emailReference, ...boqData } = data;
+  const { items, projectId, area, ticketNumber, notes, referenceFile, emailReference, clusterId, ...boqData } = data;
 
   if (!ticketNumber) {
     throw new AppError("Kode tiket wajib diisi.", 400);
+  }
+
+  if (!clusterId) {
+    throw new AppError("Cluster ID wajib dipilih.", 400);
+  }
+
+  const cluster = await prisma.cluster.findUnique({
+    where: { cluster_id: String(clusterId) },
+  });
+
+  if (!cluster) {
+    throw new AppError("Cluster tidak ditemukan.", 404);
+  }
+
+  const existingActiveBoqForCluster = await prisma.boq.findFirst({
+    where: {
+      cluster_id: String(clusterId),
+      status: "aktif",
+    },
+  });
+
+  if (existingActiveBoqForCluster) {
+    throw new AppError("Cluster ini sudah memiliki BOQ aktif.", 400);
   }
 
   const existingTiket = await prisma.tiket_material.findFirst({
@@ -166,6 +199,7 @@ const create = async (data, userId) => {
     ...boqData,
     boq_number: boqNumber,
     tiket_id: tiket.tiket_id,
+    cluster_id: String(clusterId),
     created_by: userId,
     updated_by: userId,
     status: normalizeStatus(boqData.status),
@@ -354,7 +388,7 @@ const update = async (id, data, userId) => {
     throw new AppError("BOQ yang sudah aktif atau selesai tidak dapat diubah.", 400);
   }
 
-  const { items, projectId, area, ticketNumber, notes, referenceFile, emailReference, ...boqData } = data;
+  const { items, projectId, area, ticketNumber, notes, referenceFile, emailReference, clusterId, ...boqData } = data;
 
   const updateData = {
     ...boqData,
@@ -381,6 +415,33 @@ const update = async (id, data, userId) => {
   if (emailReference !== undefined) {
     updateData.email_reference = emailReference || null;
     delete updateData.emailReference;
+  }
+
+  if (clusterId !== undefined) {
+    const newClusterId = String(clusterId);
+    if (newClusterId !== (boq.cluster_id || "")) {
+      const cluster = await prisma.cluster.findUnique({
+        where: { cluster_id: newClusterId },
+      });
+
+      if (!cluster) {
+        throw new AppError("Cluster tidak ditemukan.", 404);
+      }
+
+      const existingActiveBoqForCluster = await prisma.boq.findFirst({
+        where: {
+          cluster_id: newClusterId,
+          status: "aktif",
+          boq_id: Number(id),
+        },
+      });
+
+      if (existingActiveBoqForCluster) {
+        throw new AppError("Cluster ini sudah memiliki BOQ aktif.", 400);
+      }
+
+      updateData.cluster_id = newClusterId;
+    }
   }
 
   if (projectId || area || ticketNumber) {

@@ -1053,6 +1053,11 @@ const getHardwareReconciliation = async (filters = {}) => {
           project_id: true,
         },
       },
+      cluster: {
+        select: {
+          cluster_id: true,
+        },
+      },
       items: {
         select: {
           barang_id: true,
@@ -1067,6 +1072,15 @@ const getHardwareReconciliation = async (filters = {}) => {
       },
     },
   });
+
+  const clusterIdByProject = new Map();
+  for (const boq of boqRecords) {
+    const projectIdNum = Number(boq.tiket?.project_id);
+    if (!projectIdNum) continue;
+    if (boq.cluster?.cluster_id && !clusterIdByProject.has(projectIdNum)) {
+      clusterIdByProject.set(projectIdNum, boq.cluster.cluster_id);
+    }
+  }
 
   const shipmentTotals = await prisma.surat_jalan.findMany({
     where: {
@@ -1207,7 +1221,7 @@ const getHardwareReconciliation = async (filters = {}) => {
     return {
       project_id: projectIdNum,
       project_nama: project.title || project.nama_project || "Project",
-      cluster_id: project.cluster_id || "-",
+      cluster_id: clusterIdByProject.get(projectIdNum) || project.cluster_id || "-",
       area: project.area || "-",
       boq,
       additional,
@@ -1245,6 +1259,11 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
           items: {
             select: {
               qty_rencana: true,
+            },
+          },
+          cluster: {
+            select: {
+              cluster_id: true,
             },
           },
         },
@@ -1343,7 +1362,7 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
       kode_tiket: tiket.kode_tiket,
       project_id: projectIdNum,
       project_nama: tiket.project?.nama_project || "-",
-      cluster_id: tiket.project?.cluster_id || "-",
+      cluster_id: tiket.boq?.cluster?.cluster_id || tiket.project?.cluster_id || "-",
       area: tiket.project?.area || "-",
       boq_plan: boqPlan,
       additional,
@@ -1402,6 +1421,17 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
               nama_project: true,
               area: true,
               cluster_id: true,
+            },
+          },
+          cluster: {
+            include: {
+              project: {
+                select: {
+                  cluster_id: true,
+                  area: true,
+                  nama_project: true,
+                },
+              },
             },
           },
         },
@@ -1502,8 +1532,10 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
   }
 
   const rows = boqItems.map((item) => {
-    const project = item.boq?.tiket;
-    const projectIdNum = Number(project?.project_id || 0);
+    const tiket = item.boq?.tiket;
+    const tiketProject = tiket?.project;
+    const clusterProject = item.boq?.cluster?.project;
+    const projectIdNum = Number(tiketProject?.project_id || 0);
     const barangId = String(item.barang_id);
     const key = `${projectIdNum}-${barangId}`;
 
@@ -1521,11 +1553,14 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
       status = "sesuai";
     }
 
+    const clusterId = clusterProject?.cluster_id || tiketProject?.cluster_id || "-";
+    const area = clusterProject?.area || tiketProject?.area || "-";
+
     return {
       project_id: projectIdNum,
-      project_nama: project?.nama_project || "-",
-      cluster_id: project?.cluster_id || "-",
-      area: project?.area || "-",
+      project_nama: tiketProject?.nama_project || "-",
+      cluster_id: clusterId,
+      area: area,
       barang_id: barangId,
       kode_perangkat: item.barang?.kode_perangkat || "-",
       nama_barang: item.barang?.nama_barang || "-",
@@ -1751,8 +1786,10 @@ const backfillReconciliation = async (actorId) => {
     }
 
     const pid = Number(tiket.project_id);
-    const mos = Number(inboundByProject.get(pid) || 0);
-    const used = Number(outboundByProject.get(pid) || 0);
+    // TODO: backfill ini masih pakai proxy dari surat jalan untuk migrasi data lama.
+    // Untuk data baru, Used harus SELALU dari input manual laporan mitra, bukan dari fungsi ini.
+    const mos = Number(outboundByProject.get(pid) || 0);
+    const used = Number(inboundByProject.get(pid) || 0);
 
     await prisma.laporan_mitra.create({
       data: {

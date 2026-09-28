@@ -241,6 +241,12 @@ export default function BoqPage() {
   const [uploadingRef, setUploadingRef] = useState(false);
   const [exporting, setExporting] = useState(false);
 
+  const [clusters, setClusters] = useState<{ cluster_id: string; nama_cluster: string }[]>([]);
+  const [clusterModalOpen, setClusterModalOpen] = useState(false);
+  const [clusterForm, setClusterForm] = useState({ cluster_id: "", nama_cluster: "", cluster_type: "", project_type: "", kso_partner: "", kso_contact: "", no_tiket_release: "", vendor: "", alamat_lengkap: "" });
+  const [clusterSubmitting, setClusterSubmitting] = useState(false);
+  const [clusterError, setClusterError] = useState<string | null>(null);
+
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
@@ -456,24 +462,38 @@ export default function BoqPage() {
     setDetailOpen(true);
   }
 
-  function handleProjectChange(projectId: string) {
-    setForm((prev) => ({ ...prev, projectId }));
+  async function handleProjectChange(projectId: string) {
+    setForm((prev) => ({ ...prev, projectId, cluster_id: "" }));
     const selected = projects.find((p) => p.projectId === projectId);
     if (!selected) return;
+
     setForm((prev) => ({
       ...prev,
       area: selected.area || prev.area,
-      cluster_id: selected.cluster_id || "",
+      cluster_id: "",
       kecamatan: selected.kecamatan || "",
       desa_kelurahan: selected.desa_kelurahan || "",
       kota_kabupaten: selected.kota_kabupaten || "",
       provinsi: selected.provinsi || "",
     }));
+
+    try {
+      const res = await get(`${API_BASE}/api/clusters?project_id=${projectId}`);
+      const json = await res.json();
+      if (res.ok && Array.isArray(json?.data)) {
+        setClusters(json.data);
+      } else {
+        setClusters([]);
+      }
+    } catch {
+      setClusters([]);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.projectId.trim()) { setFormError("Project wajib dipilih."); return; }
+    if (!form.cluster_id.trim()) { setFormError("Cluster wajib dipilih."); return; }
     if (!form.area.trim()) { setFormError("Area wajib diisi."); return; }
     if (!form.ticketNumber.trim()) { setFormError("Kode tiket wajib diisi."); return; }
 
@@ -497,6 +517,7 @@ export default function BoqPage() {
       const url = `${API_BASE}/api/boqs${modalMode === "edit" && selectedBoq ? `/${selectedBoq.id}` : ""}`;
       const payload = {
         projectId: form.projectId,
+        clusterId: form.cluster_id,
         area: form.area,
         ticketNumber: form.ticketNumber,
         status: "DRAFT",
@@ -526,6 +547,42 @@ export default function BoqPage() {
       setFormError(err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleCreateCluster(e: React.FormEvent) {
+    e.preventDefault();
+    setClusterSubmitting(true);
+    setClusterError(null);
+
+    try {
+      const res = await post(`${API_BASE}/api/clusters`, {
+        cluster_id: clusterForm.cluster_id,
+        project_id: form.projectId,
+        nama_cluster: clusterForm.nama_cluster,
+        cluster_type: clusterForm.cluster_type || null,
+        project_type: clusterForm.project_type || null,
+        kso_partner: clusterForm.kso_partner || null,
+        kso_contact: clusterForm.kso_contact || null,
+        no_tiket_release: clusterForm.no_tiket_release || null,
+        vendor: clusterForm.vendor || null,
+        alamat_lengkap: clusterForm.alamat_lengkap || null,
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json?.message || "Gagal membuat cluster.");
+      }
+
+      const newCluster = json.data;
+      setClusters((prev) => [...prev, newCluster]);
+      setForm((prev) => ({ ...prev, cluster_id: newCluster.cluster_id }));
+      setClusterModalOpen(false);
+      setClusterForm({ cluster_id: "", nama_cluster: "", cluster_type: "", project_type: "", kso_partner: "", kso_contact: "", no_tiket_release: "", vendor: "", alamat_lengkap: "" });
+    } catch (err) {
+      setClusterError(err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.");
+    } finally {
+      setClusterSubmitting(false);
     }
   }
 
@@ -883,11 +940,48 @@ export default function BoqPage() {
                 </div>
                 {form.projectId && (
                   <>
-                    <div><label className="mb-1.5 block text-xs font-medium text-slate-400">Cluster ID</label><input type="text" value={form.cluster_id} disabled className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none cursor-not-allowed" /></div>
-                    <div><label className="mb-1.5 block text-xs font-medium text-slate-400">Kecamatan</label><input type="text" value={form.kecamatan} disabled className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none cursor-not-allowed" /></div>
-                    <div><label className="mb-1.5 block text-xs font-medium text-slate-400">Desa/Kelurahan</label><input type="text" value={form.desa_kelurahan} disabled className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none cursor-not-allowed" /></div>
-                    <div><label className="mb-1.5 block text-xs font-medium text-slate-400">Kota/Kabupaten</label><input type="text" value={form.kota_kabupaten} disabled className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none cursor-not-allowed" /></div>
-                    <div><label className="mb-1.5 block text-xs font-medium text-slate-400">Provinsi</label><input type="text" value={form.provinsi} disabled className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none cursor-not-allowed" /></div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-500">
+                        Cluster <span className="text-rose-500">*</span>
+                      </label>
+                      <select
+                        value={form.cluster_id}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (value === "__new__") {
+                            setClusterModalOpen(true);
+                          } else {
+                            setForm((prev) => ({ ...prev, cluster_id: value }));
+                          }
+                        }}
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                      >
+                        <option value="">Pilih Cluster</option>
+                        {clusters.map((cluster) => (
+                          <option key={cluster.cluster_id} value={cluster.cluster_id}>
+                            {cluster.nama_cluster}
+                          </option>
+                        ))}
+                        <option value="__new__">+ Tambah Cluster Baru</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-400">Kecamatan</label>
+                      <input type="text" value={form.kecamatan} disabled placeholder="Otomatis dari cluster" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-orange-400 cursor-not-allowed" />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-400">Desa/Kelurahan</label>
+                      <input type="text" value={form.desa_kelurahan} disabled placeholder="Otomatis dari cluster" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-orange-400 cursor-not-allowed" />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-400">Kota/Kabupaten</label>
+                      <input type="text" value={form.kota_kabupaten} disabled placeholder="Otomatis dari cluster" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-orange-400 cursor-not-allowed" />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-400">Provinsi</label>
+                      <input type="text" value={form.provinsi} disabled placeholder="Otomatis dari cluster" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-orange-400 cursor-not-allowed" />
+                    </div>
                   </>
                 )}
                 <div>
@@ -1183,6 +1277,65 @@ export default function BoqPage() {
           </button>
         </div>
       )}
+
+      {clusterModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop:blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <h3 className="text-base font-semibold text-slate-900">Tambah Cluster Baru</h3>
+              <button type="button" onClick={() => setClusterModalOpen(false)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCluster} className="space-y-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-500">
+                  Cluster ID <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={clusterForm.cluster_id}
+                  onChange={(e) => setClusterForm((prev) => ({ ...prev, cluster_id: e.target.value.toUpperCase() }))}
+                  placeholder="Contoh: CL001, NET-H-005502"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-500">Nama Cluster <span className="text-rose-500">*</span></label>
+                <input type="text" value={clusterForm.nama_cluster} onChange={(e) => setClusterForm((prev) => ({ ...prev, nama_cluster: e.target.value }))} placeholder="Contoh: RW 05, Cluster A" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" required />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-400">Tipe Cluster</label>
+                <input type="text" value={clusterForm.cluster_type} onChange={(e) => setClusterForm((prev) => ({ ...prev, cluster_type: e.target.value }))} placeholder="Opsional" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-400">Alamat Lengkap</label>
+                <textarea value={clusterForm.alamat_lengkap} onChange={(e) => setClusterForm((prev) => ({ ...prev, alamat_lengkap: e.target.value }))} placeholder="Opsional" rows={3} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
+              </div>
+
+              {clusterError && (
+                <div className="flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-600">
+                  <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                  {clusterError}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setClusterModalOpen(false)} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Batal</button>
+                <button type="submit" disabled={clusterSubmitting} className="flex items-center gap-2 rounded-full bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:opacity-60">
+                  {clusterSubmitting && <Loader2 size={14} className="animate-spin" />}
+                  Buat Cluster
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
-}
+ }

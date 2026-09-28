@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Plus, ChevronLeft, ChevronRight, Users, Package, FolderKanban, Truck, Warehouse as WarehouseIcon, Eye, Pencil, Trash2, X, Loader2, AlertCircle, ImageOff, Building2, Ban, RotateCcw } from "lucide-react";
+import { Search, Plus, ChevronLeft, ChevronRight, Users, Package, FolderKanban, Truck, Warehouse as WarehouseIcon, Eye, Pencil, Trash2, X, Loader2, AlertCircle, ImageOff, Building2, Ban, RotateCcw, MapPin } from "lucide-react";
 
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -31,7 +31,7 @@ function normalizeRole(role: string | undefined | null): string {
 // Types
 // ---------------------------------------------------------------------------
 
-type MasterDataType = "items" | "projects" | "personnel" | "vehicles" | "warehouses" | "suppliers";
+type MasterDataType = "items" | "projects" | "personnel" | "vehicles" | "warehouses" | "suppliers" | "clusters";
 
 interface MasterDataTab {
   key: MasterDataType;
@@ -118,6 +118,15 @@ const MASTER_DATA_TABS: MasterDataTab[] = [
     idFields: ["project_id", "id"],
   },
   {
+    key: "clusters",
+    label: "Cluster",
+    singularLabel: "Cluster",
+    endpoint: "/api/clusters/all",
+    icon: MapPin,
+    idField: "cluster_id",
+    idFields: ["cluster_id"],
+  },
+  {
     key: "personnel",
     label: "Personil",
     singularLabel: "Personil",
@@ -189,6 +198,11 @@ const TAB_PERMISSIONS: Record<MasterDataType, { create: string[]; edit: string[]
     edit: [ROLE.ADMIN],
     delete: [ROLE.ADMIN],
   },
+  clusters: {
+    create: [ROLE.ADMIN, ROLE.SUPERVISOR],
+    edit: [ROLE.ADMIN, ROLE.SUPERVISOR],
+    delete: [ROLE.ADMIN, ROLE.SUPERVISOR],
+  },
 };
 
 // Field form Tambah/Edit per tab. Diambil dari kolom yang sudah ada di
@@ -207,7 +221,6 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
   projects: [
     { key: "nama_project", label: "Nama Project", type: "text", required: true },
     { key: "title", label: "Judul", type: "text" },
-    { key: "cluster_id", label: "Cluster ID", type: "text" },
     { key: "area", label: "Area", type: "text" },
     { key: "klien", label: "Klien", type: "text" },
     { key: "kecamatan", label: "Kecamatan", type: "text" },
@@ -253,6 +266,14 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
     { key: "kode", label: "Kode", type: "text", required: true },
     { key: "nama", label: "Nama", type: "text", required: true },
     { key: "deskripsi", label: "Deskripsi", type: "textarea" },
+  ],
+  clusters: [
+    { key: "project_id", label: "Project", type: "select", required: true, options: [] },
+    { key: "nama_cluster", label: "Nama Cluster", type: "text", required: true },
+    { key: "cluster_type", label: "Tipe Cluster", type: "text" },
+    { key: "alamat_lengkap", label: "Alamat Lengkap", type: "textarea" },
+    { key: "cluster_id", label: "Cluster ID", type: "text" },
+    { key: "status_aktif", label: "Status Aktif", type: "checkbox" },
   ],
 };
 
@@ -323,6 +344,7 @@ function getRecordTitle(tab: MasterDataType, record: GenericRecord | null) {
     vehicles: ["no_polisi", "jenis_kendaraan"],
     warehouses: ["nama_gudang", "tipe"],
     suppliers: ["kode", "nama"],
+    clusters: ["nama_cluster", "cluster_id"],
   };
   for (const key of candidates[tab]) {
     if (record[key]) return String(record[key]);
@@ -504,6 +526,17 @@ function DetailModal({ open, onClose, tab, tabLabel, record }: { open: boolean; 
 
       <dl className="divide-y divide-slate-50">
         {fields.map((field) => {
+          if (field.key === "project_id" && tab === "clusters") {
+            const label = (record as any)?.project?.nama_project || (record as any)?.project_id || "-";
+
+            return (
+              <div key={field.key} className="flex items-start justify-between gap-4 py-2.5">
+                <dt className="text-xs font-medium text-slate-400">{field.label}</dt>
+                <dd className="text-right text-sm font-medium text-slate-800">{label}</dd>
+              </div>
+            );
+          }
+
           if (field.key === "kategori_id" || field.key === "satuan_default_id" || field.key === "gudang_id") {
             const label = field.key === "kategori_id"
               ? (record as any)?.kategori?.nama_kategori
@@ -610,6 +643,12 @@ function FormModal({
         const direct = (record as any)?.gudang_id;
         const nested = (record as any)?.gudang?.gudang_id;
         initial[field.key] = direct ?? nested ?? "";
+      } else if (field.key === "project_id" && tab === "clusters") {
+        const direct = (record as any)?.project_id;
+        const nested = (record as any)?.project?.project_id;
+        initial[field.key] = direct ?? nested ?? "";
+      } else if (field.key === "cluster_id" && tab === "clusters") {
+        initial[field.key] = (record as any)?.cluster_id || "";
       } else if (field.key === "tipe" && tab === "warehouses" && mode === "create") {
         initial[field.key] = "tetap";
       } else {
@@ -719,6 +758,26 @@ function FormModal({
         cancelled = true;
       };
     }
+
+    if (open && tab === "clusters") {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      let cancelled = false;
+
+      get(`${baseUrl}/api/projects`)
+        .then((res) => res.json())
+        .then((result) => {
+          if (cancelled) return;
+          const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+          setProjectOptions(list.map((p: any) => ({ value: Number(p.project_id), label: p.nama_project || p.title || `Project ${p.project_id}` })));
+        })
+        .catch(() => {
+          if (!cancelled) setProjectOptions([]);
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }
   }, [open, tab, get]);
 
   const formFields = useMemo(() => {
@@ -751,6 +810,14 @@ function FormModal({
       });
     }
 
+    if (tab === "clusters") {
+      return fields.map((field) => {
+        if (field.key === "project_id") return { ...field, options: projectOptions };
+        if (field.key === "cluster_id") return { ...field, type: "text" as const, required: false };
+        return field;
+      });
+    }
+
     return fields;
   }, [tab, fields, categoryOptions, unitOptions, warehouseOptions, projectOptions]);
 
@@ -763,6 +830,11 @@ function FormModal({
         return true;
       });
     }
+
+    if (tab === "clusters") {
+      return formFields.filter((field) => field.key !== "cluster_id");
+    }
+
     return formFields;
   }, [tab, formFields, form.tipe]);
 
@@ -882,6 +954,9 @@ function FormModal({
       } else if (tab === "warehouses") {
         const warehouseName = (record as { nama_gudang?: string } | null)?.nama_gudang;
         url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(warehouseName))}`, baseUrl).toString();
+      } else if (tab === "clusters") {
+        const clusterId = (record as { cluster_id?: string } | null)?.cluster_id;
+        url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(clusterId))}`, baseUrl).toString();
       } else if (tab === "suppliers") {
         const supplierKode = (record as { kode?: string } | null)?.kode;
         url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(supplierKode))}`, baseUrl).toString();
@@ -1647,6 +1722,154 @@ function ProjectAktifModal({
   );
 }
 
+function ClusterNonaktifModal({
+  open,
+  onClose,
+  record,
+  onSuccess,
+  onShowToast,
+}: {
+  open: boolean;
+  onClose: () => void;
+  record: GenericRecord | null;
+  onSuccess: () => void;
+  onShowToast: (message: string, type: "success" | "error") => void;
+}) {
+  const { patch } = useApi();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleConfirm() {
+    if (!record) return;
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const clusterId = record.cluster_id ?? record.id;
+      const url = new URL(`/api/clusters/${clusterId}/toggle-status`, baseUrl).toString();
+
+      const response = await patch(url, {});
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.message || "Gagal menonaktifkan cluster.");
+      }
+
+      onSuccess();
+      onShowToast("Cluster berhasil dinonaktifkan.", "success");
+      onClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
+      setError(msg);
+      onShowToast(msg, "error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Nonaktifkan Cluster" widthClass="max-w-sm">
+      <p className="text-sm text-slate-600">
+        Nonaktifkan cluster <span className="font-semibold text-slate-800">{record ? String(record.nama_cluster || record.cluster_id || record.id) : ""}</span>?
+      </p>
+
+      {error && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-600">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      <div className="mt-5 flex justify-end gap-2">
+        <button onClick={onClose} className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+          Batal
+        </button>
+
+        <button onClick={handleConfirm} disabled={submitting} className="flex items-center gap-2 rounded-full bg-amber-600 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60">
+          {submitting && <Loader2 size={14} className="animate-spin" />}
+          Nonaktifkan
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function ClusterAktifModal({
+  open,
+  onClose,
+  record,
+  onSuccess,
+  onShowToast,
+}: {
+  open: boolean;
+  onClose: () => void;
+  record: GenericRecord | null;
+  onSuccess: () => void;
+  onShowToast: (message: string, type: "success" | "error") => void;
+}) {
+  const { patch } = useApi();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleConfirm() {
+    if (!record) return;
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const clusterId = record.cluster_id ?? record.id;
+      const url = new URL(`/api/clusters/${clusterId}/toggle-status`, baseUrl).toString();
+
+      const response = await patch(url, {});
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.message || "Gagal mengaktifkan cluster.");
+      }
+
+      onSuccess();
+      onShowToast("Cluster berhasil diaktifkan kembali.", "success");
+      onClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
+      setError(msg);
+      onShowToast(msg, "error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Aktifkan Kembali Cluster" widthClass="max-w-sm">
+      <p className="text-sm text-slate-600">
+        Aktifkan kembali cluster <span className="font-semibold text-slate-800">{record ? String(record.nama_cluster || record.cluster_id || record.id) : ""}</span>?
+      </p>
+
+      {error && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-600">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      <div className="mt-5 flex justify-end gap-2">
+        <button onClick={onClose} className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+          Batal
+        </button>
+
+        <button onClick={handleConfirm} disabled={submitting} className="flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+          {submitting && <Loader2 size={14} className="animate-spin" />}
+          Aktifkan
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main Content
 // ---------------------------------------------------------------------------
@@ -1691,6 +1914,8 @@ function MasterDataPageContent() {
   const [supplierAktifRecord, setSupplierAktifRecord] = useState<GenericRecord | null>(null);
   const [projectNonaktifRecord, setProjectNonaktifRecord] = useState<GenericRecord | null>(null);
   const [projectAktifRecord, setProjectAktifRecord] = useState<GenericRecord | null>(null);
+  const [clusterNonaktifRecord, setClusterNonaktifRecord] = useState<GenericRecord | null>(null);
+  const [clusterAktifRecord, setClusterAktifRecord] = useState<GenericRecord | null>(null);
 
   // -------------------------------------------------------------------------
   // Toast state
@@ -1721,7 +1946,7 @@ function MasterDataPageContent() {
       case "items":
         return ["kode_perangkat", "nama_barang", "kategori", "satuan_default", "foto"];
       case "projects":
-        return ["project_id", "title", "nama_project", "kecamatan", "desa_kelurahan", "status_aktif"];
+        return ["project_id", "title", "nama_project", "kecamatan", "desa_kelurahan", "cluster_count", "status_aktif"];
       case "personnel":
         return ["personil_id", "nama", "email", "nik", "posisi", "no_hp", "gudang", "bisa_menyetir", "is_aktif", "foto"];
       case "vehicles":
@@ -1730,6 +1955,8 @@ function MasterDataPageContent() {
         return ["nama_gudang", "alamat", "tipe", "is_aktif"];
       case "suppliers":
         return ["kode", "nama", "deskripsi", "is_aktif"];
+      case "clusters":
+        return ["cluster_display", "cluster_id", "cluster_type", "status_aktif"];
       default:
         return ["id"];
     }
@@ -1766,6 +1993,10 @@ function MasterDataPageContent() {
       foto: "Foto",
       kode: "Kode",
       deskripsi: "Deskripsi",
+      cluster_display: "Nama Cluster",
+      cluster_id: "Cluster ID",
+      cluster_type: "Tipe Cluster",
+      cluster_count: "Jumlah Cluster",
     };
 
     return labels[column] || column;
@@ -1947,7 +2178,7 @@ function MasterDataPageContent() {
             <p className="mt-0.5 text-xs text-slate-400">{meta.total} data</p>
           </div>
 
-          {canCreate && activeTab !== "personnel" && (
+           {canCreate && activeTab !== "personnel" && activeTab !== "clusters" && (
             <button
               type="button"
               onClick={() => setFormModal({ mode: "create", record: null })}
@@ -2010,10 +2241,19 @@ function MasterDataPageContent() {
 
                      return (
                        <tr key={primaryKey} onClick={() => setDetailRecord(record)} className="group cursor-pointer transition-colors hover:bg-slate-50">
-                        {columns.map((column) => {
-                          let value = record[column];
+                         {columns.map((column) => {
+                           let value = record[column];
 
-                          if (column === "status_aktif" || column === "is_aktif") {
+                           if (column === "cluster_count") {
+                             const count = (record as any)?._count?.clusters;
+                             return (
+                               <td key={column} className="px-3 py-3 text-sm font-semibold text-slate-800">
+                                 {count !== undefined ? count : "-"}
+                               </td>
+                             );
+                           }
+
+                           if (column === "status_aktif" || column === "is_aktif") {
                             const active = Boolean(value);
 
                             return (
@@ -2078,14 +2318,26 @@ function MasterDataPageContent() {
                              );
                            }
 
-                           if (column === "gudang") {
-                            const gudangNama = (record as any)?.gudang?.nama_gudang;
-                            return (
-                              <td key={column} className="px-6 py-4 text-sm text-slate-600">
-                                {gudangNama || "-"}
-                              </td>
-                            );
-                          }
+                            if (column === "gudang") {
+                             const gudangNama = (record as any)?.gudang?.nama_gudang;
+                             return (
+                               <td key={column} className="px-6 py-4 text-sm text-slate-600">
+                                 {gudangNama || "-"}
+                               </td>
+                             );
+                           }
+
+                           if (column === "cluster_display" && activeTab === "clusters") {
+                             const projectName = (record as any)?.project?.nama_project || "";
+                             const clusterName = (record as any)?.nama_cluster || "";
+                             const display = projectName && clusterName ? `${projectName} + ${clusterName}` : clusterName || projectName || "-";
+
+                             return (
+                               <td key={column} className="px-3 py-3 text-sm font-medium text-slate-800">
+                                 {display}
+                               </td>
+                             );
+                           }
 
                           if (column === "kategori" || column === "satuan_default") {
                             const label = column === "kategori" ? item.kategori?.nama_kategori : item.satuan_default?.kode_satuan;
@@ -2213,40 +2465,75 @@ function MasterDataPageContent() {
                               );
                             })()}
 
-                            {activeTab === "projects" && canDelete && (() => {
-                              const isActive = Boolean((record as any).status_aktif ?? true);
+                             {activeTab === "projects" && canDelete && (() => {
+                               const isActive = Boolean((record as any).status_aktif ?? true);
 
-                              return (
-                                <>
-                                  {isActive && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setProjectNonaktifRecord(record);
-                                      }}
-                                      title="Nonaktifkan"
-                                      className="rounded-lg p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600"
-                                    >
-                                      <Ban size={15} />
-                                    </button>
-                                  )}
-                                  {!isActive && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setProjectAktifRecord(record);
-                                      }}
-                                      title="Aktifkan"
-                                      className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
-                                    >
-                                      <RotateCcw size={15} />
-                                    </button>
-                                  )}
-                                </>
-                              );
-                            })()}
+                               return (
+                                 <>
+                                   {isActive && (
+                                     <button
+                                       type="button"
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         setProjectNonaktifRecord(record);
+                                       }}
+                                       title="Nonaktifkan"
+                                       className="rounded-lg p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600"
+                                     >
+                                       <Ban size={15} />
+                                     </button>
+                                   )}
+                                   {!isActive && (
+                                     <button
+                                       type="button"
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         setProjectAktifRecord(record);
+                                       }}
+                                       title="Aktifkan"
+                                       className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                                     >
+                                       <RotateCcw size={15} />
+                                     </button>
+                                   )}
+                                 </>
+                               );
+                             })()}
+
+                             {activeTab === "clusters" && canDelete && (() => {
+                               const isActive = Boolean((record as any).status_aktif ?? true);
+
+                               return (
+                                 <>
+                                   {isActive && (
+                                     <button
+                                       type="button"
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         setClusterNonaktifRecord(record);
+                                       }}
+                                       title="Nonaktifkan"
+                                       className="rounded-lg p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600"
+                                     >
+                                       <Ban size={15} />
+                                     </button>
+                                   )}
+                                   {!isActive && (
+                                     <button
+                                       type="button"
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         setClusterAktifRecord(record);
+                                       }}
+                                       title="Aktifkan"
+                                       className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                                     >
+                                       <RotateCcw size={15} />
+                                     </button>
+                                   )}
+                                 </>
+                               );
+                             })()}
                           </div>
                         </td>
                       </tr>
@@ -2320,10 +2607,14 @@ function MasterDataPageContent() {
 
           <SupplierAktifModal open={!!supplierAktifRecord} onClose={() => setSupplierAktifRecord(null)} record={supplierAktifRecord} onSuccess={fetchMasterData} onShowToast={showToast} />
 
-          <ProjectNonaktifModal open={!!projectNonaktifRecord} onClose={() => setProjectNonaktifRecord(null)} record={projectNonaktifRecord} onSuccess={fetchMasterData} onShowToast={showToast} />
+           <ProjectNonaktifModal open={!!projectNonaktifRecord} onClose={() => setProjectNonaktifRecord(null)} record={projectNonaktifRecord} onSuccess={fetchMasterData} onShowToast={showToast} />
 
-          <ProjectAktifModal open={!!projectAktifRecord} onClose={() => setProjectAktifRecord(null)} record={projectAktifRecord} onSuccess={fetchMasterData} onShowToast={showToast} />
-        </>
+           <ProjectAktifModal open={!!projectAktifRecord} onClose={() => setProjectAktifRecord(null)} record={projectAktifRecord} onSuccess={fetchMasterData} onShowToast={showToast} />
+
+           <ClusterNonaktifModal open={!!clusterNonaktifRecord} onClose={() => setClusterNonaktifRecord(null)} record={clusterNonaktifRecord} onSuccess={fetchMasterData} onShowToast={showToast} />
+
+           <ClusterAktifModal open={!!clusterAktifRecord} onClose={() => setClusterAktifRecord(null)} record={clusterAktifRecord} onSuccess={fetchMasterData} onShowToast={showToast} />
+         </>
       )}
 
       {/* Toast notification */}

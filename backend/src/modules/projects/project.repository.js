@@ -76,6 +76,13 @@ const findAll = async ({
     },
     skip: all ? undefined : (sanitizedPage - 1) * sanitizedLimit,
     take: all ? undefined : sanitizedLimit,
+    include: {
+      _count: {
+        select: {
+          clusters: true,
+        },
+      },
+    },
   });
 
   if (all) {

@@ -29,6 +29,7 @@ const normalizeVerification = (val) => {
 
 const createBoqSchema = z.object({
   projectId: z.string().min(1, "Project wajib dipilih."),
+  clusterId: z.string().min(1, "Cluster wajib dipilih."),
   area: z.string().min(1, "Area wajib diisi."),
   ticketNumber: z.string().min(1, "Kode tiket wajib diisi."),
   status: z.enum(["DRAFT", "AKTIF", "SELESAI", "DITOLAK"]).optional().default("DRAFT"),
@@ -42,6 +43,7 @@ const createBoqSchema = z.object({
 
 const updateBoqSchema = z.object({
   projectId: z.string().optional().nullable(),
+  clusterId: z.string().optional().nullable(),
   area: z.string().optional().nullable(),
   ticketNumber: z.string().optional().nullable(),
   status: z.enum(["DRAFT", "AKTIF", "SELESAI", "DITOLAK", "draft", "aktif", "selesai", "ditolak"]).optional().nullable(),

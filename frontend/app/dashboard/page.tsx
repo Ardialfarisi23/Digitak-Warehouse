@@ -65,9 +65,9 @@ const STATUS_META: Record<
     badge: "bg-amber-50 text-amber-600",
     icon: AlertTriangle,
   },
-  berjalan: {
-    label: "Berjalan",
-    badge: "bg-blue-50 text-blue-600",
+  belum_ada_data: {
+    label: "Belum Ada Data",
+    badge: "bg-slate-50 text-slate-500",
     icon: Package,
   },
 };
@@ -95,7 +95,7 @@ type ProjectSummaryRow = {
   additional: number;
   used: number;
   remains: number;
-  status: "sesuai" | "perhatian" | "berjalan";
+  status: "sesuai" | "perhatian" | "belum_ada_data";
   progress: number;
 };
 

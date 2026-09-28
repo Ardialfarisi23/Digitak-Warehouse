@@ -1,7 +1,7 @@
 const prisma = require("../../config/prisma");
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
-const { computeRemains } = require("./reconciliation.utils");
+const { computeRemains, computeReconciliationStatus } = require("./reconciliation.utils");
 
 const getInventory = async (filters = {}, actor = null) => {
   const { search = "", projectId = "all", warehouseId = "all", status = "all" } = filters;
@@ -9,6 +9,7 @@ const getInventory = async (filters = {}, actor = null) => {
   const whereBoq = {
     boq: {
       status: { in: ["draft", "aktif", "selesai"] },
+      source: "top_down",
     },
   };
 
@@ -36,6 +37,17 @@ const getInventory = async (filters = {}, actor = null) => {
                   nama_project: true,
                   area: true,
                   cluster_id: true,
+                },
+              },
+            },
+          },
+          cluster: {
+            include: {
+              project: {
+                select: {
+                  cluster_id: true,
+                  area: true,
+                  nama_project: true,
                 },
               },
             },
@@ -176,17 +188,21 @@ const getInventory = async (filters = {}, actor = null) => {
 
   for (const item of boqItems) {
     const tiket = item.boq?.tiket;
-    const project = tiket?.project;
-    const projectIdNum = Number(project?.project_id || 0);
+    const tiketProject = tiket?.project;
+    const clusterProject = item.boq?.cluster?.project;
+    const projectIdNum = Number(tiketProject?.project_id || 0);
     const barangId = String(item.barang_id);
     const key = `${projectIdNum}-${barangId}`;
 
     if (!aggregatedMap.has(key)) {
+      const clusterId = clusterProject?.cluster_id || tiketProject?.cluster_id || "-";
+      const area = clusterProject?.area || tiketProject?.area || "-";
+
       aggregatedMap.set(key, {
         project_id: String(projectIdNum),
-        project_nama: project?.nama_project || "-",
-        cluster_id: project?.cluster_id || "-",
-        area: project?.area || "-",
+        project_nama: tiketProject?.nama_project || "-",
+        cluster_id: clusterId,
+        area: area,
         barang_id: barangId,
         kode_perangkat: item.barang?.kode_perangkat || "-",
         nama_barang: item.barang?.nama_barang || "-",
@@ -249,12 +265,7 @@ const getInventory = async (filters = {}, actor = null) => {
     const approvedReturnQty = Number(approvedReturnByProjectBarang.get(key) || 0);
     const remains = computeRemains(mos, agg.boq, additional, used, approvedReturnQty);
 
-    let recStatus = "berjalan";
-    if (remains < 0) {
-      recStatus = "perhatian";
-    } else if (remains >= 0 && agg.boq > 0) {
-      recStatus = "sesuai";
-    }
+    const recStatus = computeReconciliationStatus(remains);
 
     const uniqueTikets = [...new Set(agg.kode_tiket_list)].filter(Boolean);
     const kodeTiketStr = uniqueTikets.join(", ") || "-";
