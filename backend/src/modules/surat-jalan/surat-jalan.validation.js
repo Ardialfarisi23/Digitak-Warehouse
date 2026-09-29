@@ -195,9 +195,21 @@ const retrieveSchema = z.object({
 });
 
 const deliveryStatusSchema = z.object({
-  status: z.enum(["sedang_dikirim", "diterima_didistribusikan"]),
+  status: z.enum(["sedang_dikirim", "tiba_menunggu_konfirmasi", "diterima_didistribusikan"]),
   estimasi_tiba: z.string().optional().nullable(),
   catatan_distribusi: z.string().optional().nullable(),
+  catatan_tiba: z.string().optional().nullable(),
+  bukti_tiba_url: z.string().url("URL bukti tidak valid.").optional().nullable(),
+  items: z
+    .array(
+      z.object({
+        item_id: z.coerce.number(),
+        qty_diterima: z.coerce.number().nonnegative("Qty diterima harus >= 0."),
+        kondisi_diterima: z.string().optional().nullable(),
+        catatan_penerimaan: z.string().optional().nullable(),
+      })
+    )
+    .optional(),
 });
 
 const itemFotoSchema = z.object({

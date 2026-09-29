@@ -37,6 +37,8 @@ model user_account {
   updated_titik_lapangans         titik_lapangan[]            @relation("titik_lapangan_updated_by")
   created_surat_jalans            surat_jalan[]               @relation("surat_jalan_created_by")
   updated_surat_jalans            surat_jalan[]               @relation("surat_jalan_updated_by")
+  surat_jalan_dilaporkan_tiba     surat_jalan[]               @relation("surat_jalan_dilaporkan_tiba_oleh")
+  surat_jalan_dikonfirmasi_tiba   surat_jalan[]               @relation("surat_jalan_dikonfirmasi_oleh")
   created_tiket_materials         tiket_material[]            @relation("tiket_material_created_by")
   zona_utilisasi_logs             zona_utilisasi_log[]        @relation("zona_utilisasi_log_updater")
   zona_dinilai_oleh               zona_gudang[]               @relation("ZonaGudangDinilaiOleh")
@@ -450,6 +452,12 @@ model surat_jalan {
   updated_at            DateTime           @default(now())
   created_by            BigInt
   updated_by            BigInt
+  dilaporkan_tiba_oleh  BigInt?
+  dilaporkan_tiba_at    DateTime?
+  catatan_tiba          String?              @db.Text
+  dikonfirmasi_oleh     BigInt?
+  dikonfirmasi_at       DateTime?
+  bukti_tiba_url        String?
   boq                   boq?               @relation(fields: [boq_id], references: [boq_id])
   creator               user_account       @relation("surat_jalan_created_by", fields: [created_by], references: [user_id])
   gudang_asal           gudang?            @relation("surat_jalan_asal", fields: [gudang_asal_id], references: [gudang_id])
@@ -460,6 +468,8 @@ model surat_jalan {
   titik_lapangan        titik_lapangan?    @relation(fields: [titik_lapangan_id], references: [titik_lapangan_id])
   alamat_lapangan       String?
   updater               user_account       @relation("surat_jalan_updated_by", fields: [updated_by], references: [user_id])
+  dilaporkan_tiba       user_account?      @relation("surat_jalan_dilaporkan_tiba_oleh", fields: [dilaporkan_tiba_oleh], references: [user_id])
+  dikonfirmasi_tiba     user_account?      @relation("surat_jalan_dikonfirmasi_oleh", fields: [dikonfirmasi_oleh], references: [user_id])
   items                 surat_jalan_item[]
 
   @@index([status])
@@ -480,6 +490,9 @@ model surat_jalan_item {
   is_kelebihan        Boolean                 @default(false)
   is_di_luar_boq      Boolean                 @default(false)
   catatan             String?
+  qty_diterima        Decimal?             @db.Decimal(14, 2)
+  kondisi_diterima    kondisi_barang?
+  catatan_penerimaan String?              @db.Text
   zona_id             BigInt?
   diperiksa_oleh      BigInt?
   diperiksa_pada      DateTime?
@@ -776,6 +789,7 @@ enum surat_jalan_status {
   ready_putaway
   disetujui
   sedang_dikirim
+  tiba_menunggu_konfirmasi
   diterima_didistribusikan
   ditolak
   digenerate

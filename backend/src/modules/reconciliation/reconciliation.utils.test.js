@@ -1,6 +1,6 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { buildPickSummary } = require("./reconciliation.utils");
+const { buildPickSummary, buildItemPickSummary } = require("./reconciliation.utils");
 
 describe("buildPickSummary", () => {
   it("tanpa baris (legacy)", () => {
@@ -53,5 +53,69 @@ describe("buildPickSummary", () => {
     assert.strictEqual(result.qty_picked_total, 0.3);
     assert.strictEqual(result.qty_override_total, 0);
     assert.strictEqual(result.pick_mismatch, false);
+  });
+});
+
+describe("buildItemPickSummary", () => {
+  it("tanpa pick", () => {
+    const result = buildItemPickSummary([]);
+    assert.strictEqual(result.size, 0);
+  });
+
+  it("satu item satu kondisi", () => {
+    const picks = [
+      { surat_jalan_item_id: 1, qty: 5, kondisi_diambil: "baik" },
+    ];
+    const result = buildItemPickSummary(picks);
+    const summary = result.get(1);
+    assert.strictEqual(summary.totalQty, 5);
+    assert.deepStrictEqual(summary.kondisiList, [{ kondisi: "baik", qty: 5 }]);
+  });
+
+  it("multi kondisi per item", () => {
+    const picks = [
+      { surat_jalan_item_id: 1, qty: 3, kondisi_diambil: "baik" },
+      { surat_jalan_item_id: 1, qty: 2, kondisi_diambil: "rusak_ringan" },
+      { surat_jalan_item_id: 1, qty: 1, kondisi_diambil: "baik" },
+    ];
+    const result = buildItemPickSummary(picks);
+    const summary = result.get(1);
+    assert.strictEqual(summary.totalQty, 6);
+    assert.deepStrictEqual(summary.kondisiList, [
+      { kondisi: "baik", qty: 4 },
+      { kondisi: "rusak_ringan", qty: 2 },
+    ]);
+  });
+});
+
+describe("buildItemPickSummary", () => {
+  it("tanpa pick", () => {
+    const result = buildItemPickSummary([]);
+    assert.strictEqual(result.size, 0);
+  });
+
+  it("satu item satu kondisi", () => {
+    const picks = [
+      { surat_jalan_item_id: 1, qty: 5, kondisi_diambil: "baik" },
+    ];
+    const result = buildItemPickSummary(picks);
+    const summary = result.get(1);
+    assert.strictEqual(summary.totalQty, 5);
+    assert.deepStrictEqual(summary.kondisiList, [{ kondisi: "baik", qty: 5 }]);
+  });
+
+  it("multi kondisi per item", () => {
+    const picks = [
+      { surat_jalan_item_id: 1, qty: 3, kondisi_diambil: "baik" },
+      { surat_jalan_item_id: 1, qty: 2, kondisi_diambil: "rusak_ringan" },
+      { surat_jalan_item_id: 1, qty: 1, kondisi_diambil: "baik" },
+    ];
+    const result = buildItemPickSummary(picks);
+    const summary = result.get(1);
+    assert.strictEqual(summary.totalQty, 6);
+    assert.deepStrictEqual(summary.kondisiList, [
+      { kondisi: "baik", qty: 4 },
+      { kondisi: "rusak_ringan", qty: 2 },
+    ]);
   });
 });

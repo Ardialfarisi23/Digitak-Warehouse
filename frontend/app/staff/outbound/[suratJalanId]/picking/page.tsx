@@ -119,6 +119,36 @@ function getAvailableQtyForItemZone(item: ApiSuratJalanItem, zonaId: number, pic
   return match ? match.available_qty : 0;
 }
 
+function findBestPickOption(barangId: number, requestedQty: number, requestedKondisi: string, zonasForGudang: ApiZona[], pickingStock: Record<number, PickingStockAvailability["zonas"]>): string | null {
+  const stocks = pickingStock[barangId] || [];
+  const validZonaIds = new Set(zonasForGudang.map((z) => z.zona_id));
+
+  const zonasWithOptions = new Map<number, Array<{ kondisi: string; qty: number }>>();
+  for (const s of stocks) {
+    if (s.available_qty < requestedQty || !validZonaIds.has(Number(s.zona_id))) continue;
+    const zonaId = Number(s.zona_id);
+    if (!zonasWithOptions.has(zonaId)) {
+      zonasWithOptions.set(zonaId, []);
+    }
+    zonasWithOptions.get(zonaId)!.push({ kondisi: s.kondisi, qty: s.available_qty });
+  }
+
+  if (zonasWithOptions.size !== 1) return null;
+
+  const [zonaId, options] = Array.from(zonasWithOptions.entries())[0];
+  const requestedOpt = options.find((o) => o.kondisi.toLowerCase() === requestedKondisi.toLowerCase());
+  if (requestedOpt) {
+    return `${zonaId}|${requestedOpt.kondisi}`;
+  }
+
+  if (options.length === 1) {
+    return `${zonaId}|${options[0].kondisi}`;
+  }
+
+  const best = options.sort((a, b) => b.qty - a.qty)[0];
+  return `${zonaId}|${best.kondisi}`;
+}
+
 function ConfirmModal({
   open,
   onClose,
@@ -201,7 +231,7 @@ function ConfirmModal({
                       </span>
                       {isOverride && catatan && (
                         <span className="mt-1 text-xs text-amber-700">
-                          Alasan: {catatan}
+                          Catatan: {catatan}
                         </span>
                       )}
                     </div>
@@ -209,7 +239,9 @@ function ConfirmModal({
                       <div className="font-medium text-slate-700">{zonaLabel(zona!)}</div>
                       <div className="text-xs text-slate-400">Qty: {item.qty}</div>
                       {isOverride && (
-                        <div className="text-xs text-amber-700">Override kondisi: {selectedKondisi}</div>
+                        <div className="text-xs text-amber-700">
+                          Override otomatis: {item.kondisi || "baik"} → {selectedKondisi}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -251,6 +283,7 @@ export default function PickingDetailPage() {
   const [zonas, setZonas] = useState<ApiZona[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [zonaByItem, setZonaByItem] = useState<Record<number, string>>({});
   const [stockAvailability, setStockAvailability] = useState<Record<string, StockAvailability>>({});
   const [pickingStockByItem, setPickingStockByItem] = useState<Record<number, PickingStockAvailability["zonas"]>>({});
@@ -398,6 +431,32 @@ export default function PickingDetailPage() {
     }
   }, [isDadakanSingleZone, zonasForGudang, data]);
 
+  useEffect(() => {
+    if (!data?.items?.length || !zonasForGudang.length) return;
+
+    setZonaByItem((prev) => {
+      const next = { ...prev };
+      let changed = false;
+
+      for (const it of data.items) {
+        if (next[it.item_id]) continue;
+
+        const requestedQty = Number(it.qty || 0);
+        const requestedKondisi = (it.kondisi || "baik").toLowerCase();
+        const best = findBestPickOption(it.barang_id, requestedQty, requestedKondisi, zonasForGudang, pickingStockByItem);
+        if (best) {
+          next[it.item_id] = best;
+          const [, kondisi] = best.split("|");
+          setKondisiByItem((prev2) => ({ ...prev2, [it.item_id]: kondisi }));
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.surat_jalan_id, zonasForGudang, pickingStockByItem]);
+
   const tujuanLabel =
     data?.tujuan_tipe === "lapangan"
       ? data?.alamat_lapangan || "-"
@@ -447,18 +506,13 @@ export default function PickingDetailPage() {
     if (!selectedComposite) return false;
     const selectedZonaId = getZonaIdFromComposite(selectedComposite);
     if (!selectedZonaId) return false;
-    const selectedKondisi = kondisiByItem[it.item_id] || it.kondisi || "baik";
-    const requestedKondisi = it.kondisi || "baik";
-    const isOverride = selectedKondisi.toLowerCase() !== requestedKondisi.toLowerCase();
-    const catatan = catatanKondisiByItem[it.item_id];
-    if (isOverride && !catatan?.trim()) return false;
 
     const availability = availabilityByItem[it.item_id];
     if (!availability) return false;
 
     if (availability.status === "no_stock" || availability.status === "no_zone") return false;
     if (availability.status === "ok") return true;
-    if (availability.status === "override_available" && isOverride && catatan?.trim()) return true;
+    if (availability.status === "override_available") return true;
 
     return false;
   });
@@ -591,8 +645,8 @@ export default function PickingDetailPage() {
   }
 
   async function confirmSubmit() {
-    if (!allAssigned || !data) {
-      showToast("Lengkapi pemilihan zona (dan alasan jika kondisi berbeda) untuk semua barang sebelum submit.", "error");
+    if (!allAssigned || !data || submittingRef.current) {
+      showToast("Lengkapi pemilihan zona untuk semua barang sebelum submit.", "error");
       return;
     }
 
@@ -610,6 +664,7 @@ export default function PickingDetailPage() {
     });
 
     setSubmitting(true);
+    submittingRef.current = true;
     setShowConfirmModal(false);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -644,6 +699,7 @@ export default function PickingDetailPage() {
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Terjadi kesalahan saat menyimpan.", "error");
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
@@ -754,26 +810,46 @@ export default function PickingDetailPage() {
                        const validZones = getValidZonesForItem(item, zonasForGudang, pickingStockByItem, selectedKondisi);
                        const currentZona = currentZonaId ? zonasForGudang.find((z) => String(z.zona_id) === String(currentZonaId)) : null;
 
-                       if (!availability || !currentZonaId) {
-                         const availableKondisi = pickingStockByItem[item.barang_id] || [];
-                         const otherKondisi = availableKondisi.filter(
-                           (z) => z.kondisi.toLowerCase() !== requiredKondisi.toLowerCase() && z.available_qty > 0
-                         );
-                         const otherSummary = otherKondisi
-                           .map((z) => `${z.kondisi} (${z.available_qty})`)
-                           .join(", ");
+                        if (!availability || !currentZonaId) {
+                          const availableKondisi = pickingStockByItem[item.barang_id] || [];
+                          const otherKondisi = availableKondisi.filter(
+                            (z) => z.kondisi.toLowerCase() !== requiredKondisi.toLowerCase() && z.available_qty > 0
+                          );
 
-                         return (
-                           <div>
-                             <div className="text-xs text-gray-500">
-                               Pilih zona pengambilan.
-                               {otherSummary && (
-                                 <span className="block text-gray-500">Tersedia: {otherSummary}</span>
-                               )}
-                             </div>
-                           </div>
-                         );
-                       }
+                          if (otherKondisi.length > 0) {
+                            return (
+                              <div>
+                                <div className="text-xs text-gray-500">Pilih zona pengambilan.</div>
+                                <div className="mt-1 flex flex-wrap gap-2">
+                                  {otherKondisi.map((z) => {
+                                    const zona = zonaNameMap.get(Number(z.zona_id));
+                                    const label = zona ? zonaLabel(zona) : `Zona ${z.zona_id}`;
+                                    return (
+                                      <button
+                                        key={`${z.zona_id}-${z.kondisi}`}
+                                        type="button"
+                                        onClick={() => {
+                                          const composite = `${z.zona_id}|${z.kondisi}`;
+                                          setZonaByItem((prev) => ({ ...prev, [item.item_id]: composite }));
+                                          setKondisiByItem((prev) => ({ ...prev, [item.item_id]: z.kondisi }));
+                                        }}
+                                        className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:border-gray-300"
+                                      >
+                                        {label} — {z.available_qty} unit ({z.kondisi})
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div>
+                              <div className="text-xs text-gray-500">Pilih zona pengambilan.</div>
+                            </div>
+                          );
+                        }
 
                        if (availability.status === "no_stock" || availability.status === "no_zone") {
                          return (
@@ -785,89 +861,52 @@ export default function PickingDetailPage() {
                          );
                        }
 
-                       if (availability.status === "override_available") {
-                         const alternatives = availability.alternatives || [];
-                         const otherSummary = alternatives
-                           .map((z) => `${z.kondisi} (${z.qty})`)
-                           .join(", ");
+                        if (availability.status === "override_available") {
+                          const alternatives = availability.alternatives || [];
 
-                         return (
-                           <div>
-                             <div className="text-xs text-amber-700">
-                               Stok kondisi {requiredKondisi} tidak cukup.
-                               {otherSummary && (
-                                 <span className="block text-gray-500">Tersedia: {otherSummary}</span>
-                               )}
-                             </div>
-                             <select
-                               value={currentComposite || ""}
-                               onChange={(e) => {
-                                 const rawValue = e.target.value;
-                                 if (!rawValue) {
-                                   setZonaByItem((prev) => {
-                                     const next = { ...prev };
-                                     delete next[item.item_id];
-                                     return next;
-                                   });
-                                   setKondisiByItem((prev) => {
-                                     const next = { ...prev };
-                                     delete next[item.item_id];
-                                     return next;
-                                   });
-                                   setCatatanKondisiByItem((prev) => {
-                                     const next = { ...prev };
-                                     delete next[item.item_id];
-                                     return next;
-                                   });
-                                   return;
-                                 }
-
-                                 let selectedZonaId: number;
-                                 let selectedKondisi: string;
-
-                                 if (rawValue.includes("|")) {
-                                   const [zonaId, kondisi] = rawValue.split("|");
-                                   selectedZonaId = Number(zonaId);
-                                   selectedKondisi = kondisi;
-                                 } else {
-                                   selectedZonaId = Number(rawValue);
-                                   const stockForItem = pickingStockByItem[item.barang_id] || [];
-                                   const stockZona = stockForItem.find((s) => s.zona_id === selectedZonaId);
-                                   selectedKondisi = stockZona?.kondisi || requiredKondisi;
-                                 }
-
-                                 setZonaByItem((prev) => ({ ...prev, [item.item_id]: `${selectedZonaId}|${selectedKondisi}` }));
-                                 setKondisiByItem((prev) => ({ ...prev, [item.item_id]: selectedKondisi }));
-                               }}
-                               className="mt-1 w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
-                             >
-                               <option value="">Pilih zona...</option>
-                               {alternatives.map((z) => {
-                                 const zona = zonaNameMap.get(Number(z.zona_id));
-                                 const label = zona ? zonaLabel(zona) : `Zona ${z.zona_id}`;
-                                 const optionValue = `${z.zona_id}|${z.kondisi}`;
-                                 return (
-                                   <option key={optionValue} value={optionValue}>
-                                     {label} — {z.qty} unit ({z.kondisi})
-                                   </option>
-                                 );
-                               })}
-                             </select>
-                             {isOverride && (
-                               <div className="mt-1">
-                                 <label className="mb-1 block text-[10px] font-medium text-slate-600">Alasan override *</label>
-                                 <textarea
-                                   value={catatanKondisiByItem[item.item_id] || ""}
-                                   onChange={(e) => setCatatanKondisiByItem((prev) => ({ ...prev, [item.item_id]: e.target.value }))}
-                                   placeholder="Contoh: stok kondisi Baik habis, mengambil stok Rusak Ringan untuk segera kirim."
-                                   className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
-                                   rows={2}
-                                 />
-                               </div>
-                             )}
-                           </div>
-                         );
-                       }
+                          return (
+                            <div>
+                              <div className="text-xs text-amber-700">
+                                Stok kondisi {requiredKondisi} tidak cukup.
+                              </div>
+                              <div className="mt-1 flex flex-wrap gap-2">
+                                {alternatives.map((z) => {
+                                  const isSelected = currentZonaId && selectedKondisi.toLowerCase() === z.kondisi.toLowerCase() && String(currentZonaId) === String(z.zona_id);
+                                  const zona = zonaNameMap.get(Number(z.zona_id));
+                                  const label = zona ? zonaLabel(zona) : `Zona ${z.zona_id}`;
+                                  return (
+                                    <button
+                                      key={`${z.zona_id}-${z.kondisi}`}
+                                      type="button"
+                                      onClick={() => {
+                                        const composite = `${z.zona_id}|${z.kondisi}`;
+                                        setZonaByItem((prev) => ({ ...prev, [item.item_id]: composite }));
+                                        setKondisiByItem((prev) => ({ ...prev, [item.item_id]: z.kondisi }));
+                                      }}
+                                      className={`rounded-md border px-2 py-1 text-xs ${
+                                        isSelected
+                                          ? "border-[#E8632C] bg-[#E8632C]/10 text-[#E8632C]"
+                                          : "border-gray-200 text-gray-600 hover:border-gray-300"
+                                      }`}
+                                    >
+                                      {label} — {z.qty} unit ({z.kondisi})
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <div className="mt-1">
+                                <label className="mb-1 block text-[10px] font-medium text-slate-600">Catatan (opsional)</label>
+                                <textarea
+                                  value={catatanKondisiByItem[item.item_id] || ""}
+                                  onChange={(e) => setCatatanKondisiByItem((prev) => ({ ...prev, [item.item_id]: e.target.value }))}
+                                  placeholder="Catatan opsional (jika ada alasan khusus)."
+                                  className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
+                                  rows={2}
+                                />
+                              </div>
+                            </div>
+                          );
+                        }
 
                        const zonesToShow = validZones.map((z) => ({
                          zona_id: z.zona_id,
@@ -935,23 +974,23 @@ export default function PickingDetailPage() {
                                );
                              })}
                            </select>
-                           {isOverride && (
-                             <p className="mt-1 text-xs text-amber-700">
-                               Override kondisi: {selectedKondisi}
-                             </p>
-                           )}
-                           {isOverride && (
-                             <div className="mt-1">
-                               <label className="mb-1 block text-[10px] font-medium text-slate-600">Alasan override *</label>
-                               <textarea
-                                 value={catatanKondisiByItem[item.item_id] || ""}
-                                 onChange={(e) => setCatatanKondisiByItem((prev) => ({ ...prev, [item.item_id]: e.target.value }))}
-                                 placeholder="Contoh: stok kondisi Baik habis, mengambil stok Rusak Ringan untuk segera kirim."
-                                 className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
-                                 rows={2}
-                               />
-                             </div>
-                           )}
+                            {isOverride && (
+                              <p className="mt-1 text-xs text-amber-700">
+                                Override otomatis: {requiredKondisi} → {selectedKondisi}
+                              </p>
+                            )}
+                            {isOverride && (
+                              <div className="mt-1">
+                                <label className="mb-1 block text-[10px] font-medium text-slate-600">Catatan (opsional)</label>
+                                <textarea
+                                  value={catatanKondisiByItem[item.item_id] || ""}
+                                  onChange={(e) => setCatatanKondisiByItem((prev) => ({ ...prev, [item.item_id]: e.target.value }))}
+                                  placeholder="Catatan opsional (jika ada alasan khusus)."
+                                  className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
+                                  rows={2}
+                                />
+                              </div>
+                            )}
                          </div>
                        );
                      })()}

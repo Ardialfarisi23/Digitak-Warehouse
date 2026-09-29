@@ -57,6 +57,21 @@ interface ReconciliationRecord {
   used: number;
   remains: number;
   status: "sesuai" | "perhatian" | "belum_ada_data";
+  temuan_penerimaan?: {
+    jumlah_item_bertemuan_selisih: number;
+    total_selisih_qty: number;
+    detail?: Array<{
+      item_id: number;
+      qty_dipick_total: number;
+      qty_diterima: number;
+      selisih_qty: number;
+      kondisi_diterima: string | null;
+      kondisi_diambil_list: Array<{ kondisi: string; qty: number }>;
+      is_kondisi_diambil: boolean;
+      has_mismatch: boolean;
+      surat_jalan_status: string | null;
+    }>;
+  } | null;
 }
 
 const formatNumber = (value: number) => {
@@ -218,6 +233,7 @@ export default function ReconciliationInventoryPage() {
           used,
           remains,
           status: recStatus,
+          temuan_penerimaan: item.temuan_penerimaan || null,
         };
       });
 
@@ -588,9 +604,11 @@ export default function ReconciliationInventoryPage() {
         total.mos += item.mos;
         total.used += item.used;
         total.remains += item.remains;
+        total.temuan_jumlah_item += item.temuan_penerimaan?.jumlah_item_bertemuan_selisih || 0;
+        total.temuan_total_selisih += item.temuan_penerimaan?.total_selisih_qty || 0;
         return total;
       },
-      { boq: 0, additional: 0, mos: 0, used: 0, remains: 0 }
+      { boq: 0, additional: 0, mos: 0, used: 0, remains: 0, temuan_jumlah_item: 0, temuan_total_selisih: 0 }
     );
   }, [filteredRecords]);
 
@@ -619,6 +637,9 @@ export default function ReconciliationInventoryPage() {
           <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material on Site" icon={PackageCheck} tone="slate" />
           <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan" icon={PackageMinus} tone="slate" />
           <KpiCard title="Remains" value={formatNumber(summary.remains)} description="Sisa setelah used" icon={Wallet} tone="slate" />
+          {summary.temuan_jumlah_item > 0 && (
+            <KpiCard title="Temuan Penerimaan" value={`${summary.temuan_jumlah_item} item`} description={`Kekurangan ${formatNumber(summary.temuan_total_selisih)}`} icon={AlertTriangle} tone="rose" />
+          )}
         </div>
 
         {/* Tabs */}
@@ -821,6 +842,11 @@ export default function ReconciliationInventoryPage() {
                             <statusBadge.icon size={12} />
                             {statusBadge.label}
                           </span>
+                          {record.temuan_penerimaan && record.temuan_penerimaan.jumlah_item_bertemuan_selisih > 0 && (
+                            <span className="mt-1 block text-xs text-amber-700">
+                              Selisih terima: {record.temuan_penerimaan.jumlah_item_bertemuan_selisih} item, kekurangan {formatNumber(record.temuan_penerimaan.total_selisih_qty)}
+                            </span>
+                          )}
                         </td>
 
                         <td className="px-4 py-4">
@@ -951,6 +977,31 @@ export default function ReconciliationInventoryPage() {
                     <p className="mt-1 text-xs leading-relaxed text-rose-600">
                       Qty Used melebihi MOS (Sistem). Kondisi ini perlu diperiksa sebelum transaksi outbound berikutnya diproses.
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {selectedRecord.temuan_penerimaan && selectedRecord.temuan_penerimaan.jumlah_item_bertemuan_selisih > 0 && (
+                <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">Temuan Penerimaan</p>
+                    <p className="mt-1 text-xs leading-relaxed text-amber-700">
+                      {selectedRecord.temuan_penerimaan.jumlah_item_bertemuan_selisih} item dengan kekurangan total {formatNumber(selectedRecord.temuan_penerimaan.total_selisih_qty)}.
+                    </p>
+                    {selectedRecord.temuan_penerimaan.detail && selectedRecord.temuan_penerimaan.detail.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {selectedRecord.temuan_penerimaan.detail.map((detail) => (
+                          <div key={detail.item_id} className="text-xs text-amber-700">
+                            <span className="font-semibold">Item {detail.item_id}:</span> Dipick {detail.qty_dipick_total}, diterima {detail.qty_diterima}, selisih {detail.selisih_qty}
+                            {detail.kondisi_diterima && `, kondisi diterima ${detail.kondisi_diterima}`}
+                            {detail.surat_jalan_status === "tiba_menunggu_konfirmasi" && (
+                              <span className="ml-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Sementara, menunggu konfirmasi SPV</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

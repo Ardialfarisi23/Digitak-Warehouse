@@ -1,1 +1,0 @@
-SELECT migration_name, checksum FROM _prisma_migrations WHERE migration_name = '20260925000000_add_remains_lapangan';

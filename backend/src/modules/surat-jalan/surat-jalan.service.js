@@ -13,6 +13,27 @@ const KONDISI_LABEL = {
   doa: "DOA",
 };
 
+const buildItemPickSummary = (picks = []) => {
+  const summary = new Map();
+  for (const pick of picks) {
+    const key = Number(pick.surat_jalan_item_id);
+    const current = summary.get(key) || { totalQty: 0, kondisiList: [] };
+    const qty = Number(pick.qty || 0);
+    const kondisi = pick.kondisi_diambil || null;
+    current.totalQty += qty;
+    if (kondisi) {
+      const existing = current.kondisiList.find((k) => k.kondisi === kondisi);
+      if (existing) {
+        existing.qty += qty;
+      } else {
+        current.kondisiList.push({ kondisi, qty });
+      }
+    }
+    summary.set(key, current);
+  }
+  return summary;
+};
+
 const getRelatedUserIdsByGudang = async (gudangIds, roles) => {
   if (!Array.isArray(gudangIds) || gudangIds.length === 0 || !Array.isArray(roles) || roles.length === 0) {
     return [];
@@ -78,51 +99,50 @@ const normalizeSerial = (value) => {
 const buildPickDecision = ({
   requestedKondisi,
   pickedKondisi,
-  catatanKondisi,
-  stock,
-  fallbackStocks,
   qty,
+  stockDiminta,
+  stockDiambil,
+  fallbackStocks,
   barangNama,
   zonaNama,
   kondisiLabel,
+  catatanKondisi,
 }) => {
   const isOverride = Boolean(pickedKondisi && pickedKondisi !== requestedKondisi);
+  const effectiveKondisi = pickedKondisi || requestedKondisi;
+  const targetStock = isOverride ? stockDiambil : stockDiminta;
 
-  if (isOverride && !catatanKondisi?.trim()) {
+  if (qty <= 0) {
     return {
       ok: false,
-      code: "OVERRIDE_REASON_REQUIRED",
-      message: `Pengambilan kondisi ${pickedKondisi} untuk ${barangNama} memerlukan alasan override (catatan_kondisi).`,
+      code: "INVALID_QTY",
+      message: `Qty harus lebih dari 0 untuk ${barangNama}.`,
     };
   }
 
-  const searchKondisi = pickedKondisi || requestedKondisi;
-  const kondisiDimintaLabel = kondisiLabel[searchKondisi] || searchKondisi;
+  if (!targetStock) {
+    const alternatives = (fallbackStocks || [])
+      .filter((s) => s.qty > 0)
+      .map((s) => `${kondisiLabel[s.kondisi] || s.kondisi} (${Number(s.qty || 0)})`)
+      .join(", ");
+    const altText = alternatives ? ` Tersedia: ${alternatives}.` : " Tidak ada stok kondisi lain di zona ini.";
 
-  if (!stock) {
     if (isOverride) {
       return {
         ok: false,
         code: "OVERRIDE_NO_STOCK",
-        message: `Override ditolak: stok kondisi ${kondisiDimintaLabel} untuk ${barangNama} tidak tersedia di zona ${zonaNama}.`,
+        message: `Override ditolak: stok kondisi ${effectiveKondisi} untuk ${barangNama} tidak tersedia di zona ${zonaNama}.${altText}`,
       };
     }
 
-    let message = `Stok ${barangNama} dengan kondisi ${kondisiDimintaLabel} tidak tersedia di zona ${zonaNama}.`;
-
-    if (fallbackStocks && fallbackStocks.length > 0) {
-      const summary = fallbackStocks
-        .map((s) => `${kondisiLabel[s.kondisi] || s.kondisi} (${Number(s.qty || 0)})`)
-        .join(", ");
-      message += ` Stok di zona ini: ${summary}.`;
-    } else {
-      message += ` Stok tidak ditemukan di zona ${zonaNama}.`;
-    }
-
-    return { ok: false, code: "NO_STOCK", message };
+    return {
+      ok: false,
+      code: "NO_STOCK",
+      message: `Stok ${barangNama} dengan kondisi ${effectiveKondisi} tidak tersedia di zona ${zonaNama}.${altText}`,
+    };
   }
 
-  const existingQty = Number(stock.qty || 0);
+  const existingQty = Number(targetStock.qty || 0);
   if (existingQty < qty) {
     return {
       ok: false,
@@ -131,7 +151,11 @@ const buildPickDecision = ({
     };
   }
 
-  return { ok: true };
+  const catatanFinal = isOverride
+    ? catatanKondisi?.trim() || `Auto: kondisi ${requestedKondisi} tidak tersedia, diambil ${effectiveKondisi}`
+    : catatanKondisi?.trim() || null;
+
+  return { ok: true, mode: isOverride ? "override" : "normal", isOverride, catatanFinal };
 };
 
 const mapPickRow = ({
@@ -566,6 +590,24 @@ const findById = async (id, actor) => {
     throw new AppError("Surat Jalan tidak ditemukan.", 404);
   }
 
+  if (record.items?.length > 0) {
+    const itemIds = record.items.map((it) => Number(it.item_id));
+    const picks = await prisma.surat_jalan_item_pick.findMany({
+      where: { surat_jalan_item_id: { in: itemIds } },
+      select: { surat_jalan_item_id: true, qty: true, kondisi_diambil: true },
+    });
+    const pickSummary = buildItemPickSummary(picks);
+    const itemsWithPick = record.items.map((item) => {
+      const summary = pickSummary.get(Number(item.item_id)) || { totalQty: 0, kondisiList: [] };
+      return {
+        ...item,
+        qty_dipick_total: summary.totalQty,
+        kondisi_diambil_list: summary.kondisiList,
+      };
+    });
+    record.items = itemsWithPick;
+  }
+
   if (!actor || ["admin_general", "supervisor"].includes(actor.role)) {
     const approvalVerification = await suratJalanRepository.getApprovalVerification(id);
     return { ...record, approval_verification: approvalVerification };
@@ -747,34 +789,90 @@ const approveOutbound = async (id, actorId) => {
   return updatedShipment;
 };
 
-const confirmDistributed = async (id, actorId) => {
-  const shipment = await suratJalanRepository.findById(id);
+  const confirmDistributed = async (id, actorId, catatanKonfirmasi) => {
+    const shipment = await suratJalanRepository.findById(id);
 
-  if (!shipment) {
-    throw new AppError("Surat Jalan tidak ditemukan.", 404);
-  }
+    if (!shipment) {
+      throw new AppError("Surat Jalan tidak ditemukan.", 404);
+    }
 
-  if (shipment.tipe !== "outbound") {
-    throw new AppError("Hanya outbound yang dapat ditandai diterima/didistribusikan.", 400);
-  }
+    if (shipment.tipe !== "outbound") {
+      throw new AppError("Hanya outbound yang dapat ditandai diterima/didistribusikan.", 400);
+    }
 
-  if (shipment.status === "diterima_didistribusikan") {
-    return shipment;
-  }
+    if (shipment.status === "diterima_didistribusikan") {
+      return shipment;
+    }
 
-  if (shipment.status !== "disetujui") {
-    throw new AppError("Surat Jalan outbound harus disetujui terlebih dahulu.", 400);
-  }
+    const allowedOrigins = ["tiba_menunggu_konfirmasi"];
+    if (!allowedOrigins.includes(shipment.status)) {
+      throw new AppError(`Transisi konfirmasi tidak diizinkan dari status ${shipment.status}. Status yang diizinkan: tiba_menunggu_konfirmasi.`, 400);
+    }
 
-  if (shipment.picking_selesai === false) {
-    throw new AppError("Picking belum selesai. Selesaikan proses picking terlebih dahulu sebelum melakukan distribusi.", 400);
-  }
+    if (shipment.picking_selesai === false) {
+      throw new AppError("Picking belum selesai. Selesaikan proses picking terlebih dahulu sebelum melakukan distribusi.", 400);
+    }
 
-  await prisma.$transaction(async (tx) => {
-    await suratJalanRepository.updateStatus(id, "diterima_didistribusikan", tx);
+    const approvalNote = catatanKonfirmasi?.trim() || (actorId ? `Dikonfirmasi oleh supervisor (user ${actorId}).` : null);
 
-    if (actorId) {
-      await suratJalanRepository.createApprovalLog(id, actorId, "outbound_delivery", "disetujui", null, tx);
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.surat_jalan.updateMany({
+        where: {
+          surat_jalan_id: Number(id),
+          status: shipment.status,
+        },
+        data: {
+          status: "diterima_didistribusikan",
+          dikonfirmasi_oleh: BigInt(actorId),
+          dikonfirmasi_at: new Date(),
+        },
+      });
+
+      if (updated.count === 0) {
+        throw new AppError("Status surat jalan sudah berubah. Muat ulang data.", 400);
+      }
+
+      if (shipment.status === "tiba_menunggu_konfirmasi" && shipment.items.length > 0) {
+        const itemIds = shipment.items.map((it) => Number(it.item_id));
+        const picks = await tx.surat_jalan_item_pick.findMany({
+          where: { surat_jalan_item_id: { in: itemIds } },
+          select: { surat_jalan_item_id: true, qty: true, kondisi_diambil: true },
+        });
+
+        const pickSummary = buildItemPickSummary(picks);
+
+        const mismatches = [];
+        for (const item of shipment.items) {
+          const key = Number(item.item_id);
+          const summary = pickSummary.get(key) || { totalQty: 0, kondisiList: [] };
+          const totalPick = summary.totalQty;
+          const kondisiList = summary.kondisiList || [];
+          const qtyDiterima = item.qty_diterima != null ? Number(item.qty_diterima) : null;
+          const kondisiDiterima = item.kondisi_diterima || null;
+
+          const qtyMatch = qtyDiterima === null || qtyDiterima === totalPick;
+          const kondisiMatch = !kondisiDiterima || (kondisiList.length === 1 && kondisiList.some((k) => k.kondisi === kondisiDiterima));
+
+          if (!qtyMatch || !kondisiMatch) {
+            mismatches.push({
+              item_id: key,
+              qty_diterima: qtyDiterima,
+              total_pick: totalPick,
+              kondisi_diterima: kondisiDiterima,
+              kondisi_diambil: kondisiList.map((k) => k.kondisi),
+            });
+          }
+        }
+
+        if (mismatches.length > 0) {
+          if (!catatanKonfirmasi?.trim()) {
+            const detail = mismatches.map((m) => `item ${m.item_id}: diterima ${m.qty_diterima}/${m.total_pick}, kondisi ${m.kondisi_diterima} vs ${m.kondisi_diambil}`).join("; ");
+            throw new AppError(`Ditemukan selisih antara yang diterima dan yang di-pick. ${detail}`, 400);
+          }
+        }
+      }
+
+      await suratJalanRepository.createApprovalLog(id, actorId, "outbound_delivery", "disetujui", approvalNote, tx);
       await tx.audit_log.create({
         data: {
           entity_type: "surat_jalan",
@@ -785,45 +883,48 @@ const confirmDistributed = async (id, actorId) => {
           data_sesudah: { status: "diterima_didistribusikan", surat_jalan_id: id },
         },
       });
+    });
+
+    const updatedShipment = await suratJalanRepository.findById(id);
+
+    const actor = await prisma.user_account.findUnique({
+      where: { user_id: BigInt(actorId) },
+      select: { nama: true, role: true },
+    });
+
+    const gudangIds = collectShipmentGudangIds(updatedShipment);
+
+    const sendNotification = async (users, link) => {
+      if (!Array.isArray(users) || users.length === 0) return;
+      try {
+        await notificationService.create({
+          userId: users,
+          type: "success",
+          title: "Outbound Diterima",
+          message: `Surat Jalan ${updatedShipment.nomor_surat_jalan} telah diterima/didistribusikan oleh ${actor?.nama || "Supervisor"}.`,
+          link,
+        });
+      } catch (notifErr) {
+        console.error("Gagal membuat notifikasi confirm distributed:", notifErr);
+      }
+    };
+
+    if (actor?.role === "supervisor") {
+      const adminIds = await getAllAdminIds(Number(actorId));
+      const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
+      const staffIds = await getRelatedStaffIds(gudangIds);
+
+      try {
+        await sendNotification(adminIds, `/dashboard`);
+        await sendNotification(supervisorIds, `/dashboard/supervisor/approval/outbound/${id}`);
+        await sendNotification(staffIds, `/staff/outbound/${id}`);
+      } catch (notifErr) {
+        console.error("Gagal memproses notifikasi confirm distributed:", notifErr);
+      }
     }
-  });
 
-  const updatedShipment = await suratJalanRepository.findById(id);
-
-  const actor = await prisma.user_account.findUnique({
-    where: { user_id: BigInt(actorId) },
-    select: { nama: true, role: true },
-  });
-
-  const gudangIds = collectShipmentGudangIds(updatedShipment);
-
-  const sendNotification = async (users, link) => {
-    if (!Array.isArray(users) || users.length === 0) return;
-    try {
-      await notificationService.create({
-        userId: users,
-        type: "success",
-        title: "Outbound Diterima",
-        message: `Surat Jalan ${updatedShipment.nomor_surat_jalan} telah diterima/didistribusikan oleh ${actor?.nama || "Supervisor"}.`,
-        link,
-      });
-    } catch (notifErr) {
-      console.error("Gagal membuat notifikasi confirm distributed:", notifErr);
-    }
+    return updatedShipment;
   };
-
-  if (actor?.role === "supervisor") {
-    const adminIds = await getAllAdminIds(Number(actorId));
-    const supervisorIds = await getRelatedSupervisorIds(Number(actorId));
-    const staffIds = await getRelatedStaffIds(gudangIds);
-
-    await sendNotification(adminIds, `/dashboard`);
-    await sendNotification(supervisorIds, `/dashboard/supervisor/approval/outbound/${updatedShipment.surat_jalan_id}`);
-    await sendNotification(staffIds, `/staff/outbound/${updatedShipment.surat_jalan_id}`);
-  }
-
-  return updatedShipment;
-};
 
 const rejectInbound = async (id, catatan = null, actorId) => {
   const shipment = await suratJalanRepository.findById(id);
@@ -1191,53 +1292,87 @@ if (!Array.isArray(items) || items.length === 0) {
         throw new AppError("Surat jalan ini sudah selesai di-picking.", 400, "ALREADY_PICKED");
       }
 
+      const shipmentInTx = await tx.surat_jalan.findUnique({
+        where: { surat_jalan_id: Number(suratJalanId) },
+        select: { status: true, picking_selesai: true, gudang_asal_id: true, project_id: true, nomor_surat_jalan: true, items: true },
+      });
+      if (!shipmentInTx || shipmentInTx.status !== "disetujui") {
+        throw new AppError("Surat jalan tidak dalam status disetujui.", 400);
+      }
+
+      const seenItemIds = new Set();
+      const pickedTotals = new Map();
+
       for (const item of items) {
         const qty = Number(item.qty || 0);
         const zonaId = item.zona_id ? Number(item.zona_id) : null;
         const pickedKondisi = item.kondisi ? String(item.kondisi).toLowerCase() : null;
+        const itemId = Number(item.item_id);
 
         if (qty <= 0) continue;
         if (!zonaId) continue;
+        if (!itemId || seenItemIds.has(itemId)) {
+          throw new AppError(`Item duplikat atau tidak valid: ${itemId}.`, 400);
+        }
+        seenItemIds.add(itemId);
 
-        const suratItem = shipment.items.find((si) => Number(si.item_id) === Number(item.item_id));
+        const suratItem = shipmentInTx.items.find((si) => Number(si.item_id) === itemId);
         if (!suratItem) continue;
+
+        const previousPicked = pickedTotals.get(itemId) || 0;
+        if (previousPicked + qty > Number(suratItem.qty || 0)) {
+          throw new AppError(
+            `Qty picking melebihi sisa kebutuhan untuk item ${itemId} (diminta: ${suratItem.qty}, sudah dipick: ${previousPicked}, tambahan: ${qty}).`,
+            400,
+            "OVER_PICK"
+          );
+        }
+        pickedTotals.set(itemId, previousPicked + qty);
 
         const barangId = Number(suratItem.barang_id);
         const requestedKondisi = (suratItem.kondisi || "baik").toLowerCase();
+        const effectiveKondisi = pickedKondisi || requestedKondisi;
 
-        const stock = await tx.stok_gudang.findFirst({
+        const stockDiminta = await tx.stok_gudang.findFirst({
           where: {
             gudang_id: gudangAsalId,
             barang_id: barangId,
             zona_id: zonaId,
-            kondisi: pickedKondisi || requestedKondisi,
+            kondisi: requestedKondisi,
             project_id: shipment.project_id,
           },
           orderBy: { qty: "desc" },
         });
 
-        let fallbackStocks = [];
-        let zonaNama = null;
-        if (!stock) {
-          fallbackStocks = await tx.stok_gudang.findMany({
-            where: {
-              gudang_id: gudangAsalId,
-              barang_id: barangId,
-              zona_id: zonaId,
-              project_id: shipment.project_id,
-            },
-            select: {
-              kondisi: true,
-              qty: true,
-            },
-          });
+        const stockDiambil = await tx.stok_gudang.findFirst({
+          where: {
+            gudang_id: gudangAsalId,
+            barang_id: barangId,
+            zona_id: zonaId,
+            kondisi: effectiveKondisi,
+            project_id: shipment.project_id,
+          },
+          orderBy: { qty: "desc" },
+        });
 
-          const zona = await tx.zona_gudang.findUnique({
-            where: { zona_id: zonaId },
-            select: { nama_zona: true, kode_zona: true },
-          });
-          zonaNama = zona?.nama_zona || zona?.kode_zona || `Zona ${zonaId}`;
-        }
+        const fallbackStocks = await tx.stok_gudang.findMany({
+          where: {
+            gudang_id: gudangAsalId,
+            barang_id: barangId,
+            zona_id: zonaId,
+            project_id: shipment.project_id,
+          },
+          select: {
+            kondisi: true,
+            qty: true,
+          },
+        });
+
+        const zona = await tx.zona_gudang.findUnique({
+          where: { zona_id: zonaId },
+          select: { nama_zona: true, kode_zona: true },
+        });
+        const zonaNama = zona?.nama_zona || zona?.kode_zona || `Zona ${zonaId}`;
 
         const barangNama =
           suratItem.barang?.nama_barang || suratItem.barang?.kode_perangkat || `Barang ${barangId}`;
@@ -1245,25 +1380,27 @@ if (!Array.isArray(items) || items.length === 0) {
         const decision = buildPickDecision({
           requestedKondisi,
           pickedKondisi,
-          catatanKondisi: item.catatan_kondisi,
-          stock,
-          fallbackStocks,
           qty,
+          stockDiminta,
+          stockDiambil,
+          fallbackStocks,
           barangNama,
           zonaNama,
           kondisiLabel: KONDISI_LABEL,
+          catatanKondisi: item.catatan_kondisi,
         });
 
         if (!decision.ok) {
           throw new AppError(decision.message, 400, decision.code);
         }
 
-        const existingQty = Number(stock.qty || 0);
+        const targetStock = decision.isOverride ? stockDiambil : stockDiminta;
+        const existingQty = Number(targetStock.qty || 0);
         const deductQty = qty;
 
         const updated = await tx.stok_gudang.updateMany({
           where: {
-            stok_id: stock.stok_id,
+            stok_id: targetStock.stok_id,
             qty: { gte: deductQty },
           },
           data: {
@@ -1281,13 +1418,13 @@ if (!Array.isArray(items) || items.length === 0) {
         }
 
         const updatedStock = await tx.stok_gudang.findFirst({
-          where: { stok_id: stock.stok_id },
+          where: { stok_id: targetStock.stok_id },
         });
         const newQty = updatedStock ? Number(updatedStock.qty || 0) : 0;
 
         if (newQty <= 0 && updatedStock) {
           await tx.stok_gudang.delete({
-            where: { stok_id: stock.stok_id },
+            where: { stok_id: targetStock.stok_id },
           });
         }
 
@@ -1307,9 +1444,9 @@ if (!Array.isArray(items) || items.length === 0) {
             gudangId: gudangAsalId,
             zonaId: zonaId,
             requestedKondisi,
-            pickedKondisi: pickedKondisi || requestedKondisi,
+            pickedKondisi: effectiveKondisi,
             qty,
-            catatanKondisi: item.catatan_kondisi || null,
+            catatanKondisi: decision.catatanFinal,
             actorId,
           }),
         });
@@ -1328,9 +1465,9 @@ if (!Array.isArray(items) || items.length === 0) {
               zona_id: Number(zonaId),
               qty: Number(qty),
               kondisi_diminta: requestedKondisi,
-              kondisi_diambil: pickedKondisi || requestedKondisi,
-              override: Boolean(pickedKondisi && pickedKondisi !== requestedKondisi),
-              catatan_kondisi: item.catatan_kondisi || null,
+              kondisi_diambil: effectiveKondisi,
+              override: decision.isOverride,
+              catatan_kondisi: decision.catatanFinal,
             },
           },
         });
@@ -1346,8 +1483,8 @@ if (!Array.isArray(items) || items.length === 0) {
             entity_id: BigInt(suratJalanId),
             aksi: "retrieve",
             actor_id: BigInt(actorId),
-            data_sebelum: { status: shipment.status },
-            data_sesudah: { status: "disetujui", surat_jalan_id: suratJalanId },
+             data_sebelum: { status: shipmentInTx.status },
+             data_sesudah: { status: "disetujui", surat_jalan_id: suratJalanId },
           },
         });
       }
@@ -1401,8 +1538,8 @@ if (!Array.isArray(items) || items.length === 0) {
       throw new AppError("Hanya surat jalan outbound yang dapat diubah status distribusinya.", 400);
     }
 
-    const allowedStatuses = ["disetujui", "sedang_dikirim"];
-    if (!allowedStatuses.includes(shipment.status)) {
+    const allowedOrigins = ["disetujui", "sedang_dikirim"];
+    if (!allowedOrigins.includes(shipment.status)) {
       throw new AppError(`Status surat jalan saat ini (${shipment.status}) tidak dapat diubah ke status distribusi.`, 400);
     }
 
@@ -1415,12 +1552,26 @@ if (!Array.isArray(items) || items.length === 0) {
     }
 
     const newStatus = body.status;
-    if (!["sedang_dikirim", "diterima_didistribusikan"].includes(newStatus)) {
+    if (!["sedang_dikirim", "tiba_menunggu_konfirmasi", "diterima_didistribusikan"].includes(newStatus)) {
       throw new AppError("Status distribusi tidak valid.", 400);
     }
 
     if (shipment.status === newStatus) {
       return shipment;
+    }
+
+    const validTransitions = {
+      disetujui: ["sedang_dikirim"],
+      sedang_dikirim: ["tiba_menunggu_konfirmasi", "sedang_dikirim"],
+    };
+    if (!validTransitions[shipment.status]?.includes(newStatus)) {
+      if (newStatus === "diterima_didistribusikan") {
+        throw new AppError("Konfirmasi diterima hanya dapat dilakukan oleh supervisor melalui konfirmasi distribusi.", 400);
+      }
+      throw new AppError(
+        `Transisi status tidak diizinkan: ${shipment.status} -> ${newStatus}.`,
+        400
+      );
     }
 
     const updateData = {
@@ -1431,18 +1582,93 @@ if (!Array.isArray(items) || items.length === 0) {
       updateData.estimasi_tiba = new Date(body.estimasi_tiba);
     }
 
-    if (body.catatan_distribusi !== undefined) {
-      updateData.catatan_distribusi = body.catatan_distribusi || null;
+    if (body.catatan_distribusi !== undefined && body.catatan_distribusi !== "") {
+      updateData.catatan_distribusi = body.catatan_distribusi;
     }
 
     await prisma.$transaction(async (tx) => {
-      await suratJalanRepository.updateDeliveryStatus(id, updateData, tx);
+      const updated = await tx.surat_jalan.updateMany({
+        where: {
+          surat_jalan_id: Number(id),
+          status: shipment.status,
+        },
+        data: updateData,
+      });
+
+      if (updated.count === 0) {
+        throw new AppError("Status surat jalan sudah berubah. Muat ulang data.", 400);
+      }
+
+      if (newStatus === "tiba_menunggu_konfirmasi") {
+        if (!Array.isArray(body.items) || body.items.length === 0) {
+          throw new AppError("Daftar item lapor tiba kosong.", 400);
+        }
+
+        const itemIds = shipment.items.map((it) => Number(it.item_id));
+        const requestedIds = body.items.map((it) => Number(it.item_id));
+        const uniqueRequested = new Set(requestedIds);
+        if (uniqueRequested.size !== requestedIds.length) {
+          throw new AppError("Daftar item lapor tiba mengandung duplikat.", 400);
+        }
+        if (!itemIds.every((id) => uniqueRequested.has(id)) || uniqueRequested.size !== itemIds.length) {
+          throw new AppError("Daftar item lapor tiba tidak sama dengan item surat jalan.", 400);
+        }
+
+        const itemIdToPickQty = new Map();
+        const pickRows = await tx.surat_jalan_item_pick.findMany({
+          where: { surat_jalan_item_id: { in: itemIds } },
+          select: { surat_jalan_item_id: true, qty: true },
+        });
+        for (const pick of pickRows) {
+          const prev = itemIdToPickQty.get(Number(pick.surat_jalan_item_id)) || 0;
+          itemIdToPickQty.set(Number(pick.surat_jalan_item_id), prev + Number(pick.qty || 0));
+        }
+
+        for (const incoming of body.items) {
+          const itemId = Number(incoming.item_id);
+          const suratItem = shipment.items.find((it) => Number(it.item_id) === itemId);
+          if (!suratItem) {
+            throw new AppError(`Item ${itemId} tidak ditemukan di surat jalan.`, 400);
+          }
+          const qtyDiterima = Number(incoming.qty_diterima || 0);
+          if (qtyDiterima < 0) {
+            throw new AppError(`Qty diterima untuk item ${itemId} tidak boleh negatif.`, 400);
+          }
+          const totalPick = itemIdToPickQty.get(itemId) || 0;
+          if (qtyDiterima > totalPick) {
+            throw new AppError(`Qty diterima item ${itemId} (${qtyDiterima}) melebihi total yang di-pick (${totalPick}).`, 400);
+          }
+        }
+
+        await tx.surat_jalan.update({
+          where: { surat_jalan_id: Number(id) },
+          data: {
+            dilaporkan_tiba_oleh: BigInt(actorId),
+            dilaporkan_tiba_at: new Date(),
+            catatan_tiba: body.catatan_tiba || null,
+            bukti_tiba_url: body.bukti_tiba_url || null,
+          },
+        });
+
+        for (const incoming of body.items) {
+          const itemId = Number(incoming.item_id);
+          await tx.surat_jalan_item.update({
+            where: { item_id: itemId },
+            data: {
+              qty_diterima: incoming.qty_diterima != null ? incoming.qty_diterima : null,
+              kondisi_diterima: incoming.kondisi_diterima || null,
+              catatan_penerimaan: incoming.catatan_penerimaan || null,
+            },
+          });
+        }
+      }
+
       await suratJalanRepository.createApprovalLog(id, actorId, "outbound_delivery", "disetujui", body.catatan_distribusi || null, tx);
       await tx.audit_log.create({
         data: {
           entity_type: "surat_jalan",
           entity_id: BigInt(id),
-          aksi: newStatus === "sedang_dikirim" ? "start_delivery" : "confirm_distributed",
+          aksi: newStatus === "sedang_dikirim" ? "start_delivery" : newStatus === "tiba_menunggu_konfirmasi" ? "report_arrival" : "confirm_distributed",
           actor_id: BigInt(actorId),
           data_sebelum: { status: shipment.status },
           data_sesudah: { status: newStatus, surat_jalan_id: id },
@@ -1574,4 +1800,5 @@ if (!Array.isArray(items) || items.length === 0) {
     findRejectedList,
     buildPickDecision,
     mapPickRow,
+    buildItemPickSummary,
   };

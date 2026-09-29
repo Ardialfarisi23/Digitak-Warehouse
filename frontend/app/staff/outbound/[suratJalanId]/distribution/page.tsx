@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, AlertCircle, MapPin, Truck, CheckCircle2, X } from "lucide-react";
+import { ArrowLeft, Loader2, AlertCircle, MapPin, Truck, CheckCircle2, X, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 
@@ -11,6 +11,11 @@ type ApiSuratJalanItem = {
   qty: number;
   kondisi?: string | null;
   barang?: { kode_perangkat?: string; nama_barang?: string };
+  qty_diterima?: number | null;
+  kondisi_diterima?: string | null;
+  catatan_penerimaan?: string | null;
+  qty_dipick_total?: number | null;
+  kondisi_diambil_list?: { kondisi: string; qty: number }[];
 };
 
 type ApiSuratJalan = {
@@ -28,6 +33,11 @@ type ApiSuratJalan = {
   tujuan_tipe?: string | null;
   titik_lapangan?: { nama_lokasi?: string } | null;
   alamat_lapangan?: string | null;
+  dilaporkan_tiba_oleh?: { nama: string } | null;
+  dilaporkan_tiba_at?: string | null;
+  catatan_tiba?: string | null;
+  dikonfirmasi_oleh?: { nama: string } | null;
+  dikonfirmasi_at?: string | null;
 };
 
 export default function DistributionDetailPage() {
@@ -40,6 +50,11 @@ export default function DistributionDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const [estimasiTiba, setEstimasiTiba] = useState("");
   const [catatan, setCatatan] = useState("");
+  const [arrivalQty, setArrivalQty] = useState<Record<number, string>>({});
+  const [arrivalKondisi, setArrivalKondisi] = useState<Record<number, string>>({});
+  const [arrivalCatatan, setArrivalCatatan] = useState<Record<number, string>>({});
+  const [catatanTiba, setCatatanTiba] = useState("");
+  const [showArrivalForm, setShowArrivalForm] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -69,6 +84,19 @@ export default function DistributionDetailPage() {
           setData(null);
           return;
         }
+
+        const qtyMap: Record<number, string> = {};
+        const kondisiMap: Record<number, string> = {};
+        const catatanMap: Record<number, string> = {};
+        for (const item of record.items) {
+          qtyMap[item.item_id] = String(item.qty_diterima ?? item.qty_dipick_total ?? 0);
+          kondisiMap[item.item_id] = item.kondisi_diterima || (item.kondisi_diambil_list?.[0]?.kondisi) || item.kondisi || "baik";
+          catatanMap[item.item_id] = item.catatan_penerimaan || "";
+        }
+        setArrivalQty(qtyMap);
+        setArrivalKondisi(kondisiMap);
+        setArrivalCatatan(catatanMap);
+        if (record.catatan_tiba) setCatatanTiba(record.catatan_tiba);
 
         setData(record);
         if (record.estimasi_tiba) {
@@ -125,9 +153,8 @@ export default function DistributionDetailPage() {
 
   const isDisetujui = data.status === "disetujui";
   const isSedangDikirim = data.status === "sedang_dikirim";
+  const isTibaMenunggu = data.status === "tiba_menunggu_konfirmasi";
   const isTerkirim = data.status === "diterima_didistribusikan";
-  const canStart = isDisetujui;
-  const canConfirm = isSedangDikirim;
 
   const tujuanLabel =
     data.tujuan_tipe === "lapangan"
@@ -175,15 +202,23 @@ export default function DistributionDetailPage() {
     }
   }
 
-  async function handleConfirmReceived() {
+  async function handleReportArrival() {
     if (!data) return;
     setSubmitting(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const items = data.items.map((item) => ({
+        item_id: item.item_id,
+        qty_diterima: Number(arrivalQty[item.item_id] ?? 0),
+        kondisi_diterima: arrivalKondisi[item.item_id] || item.kondisi || "baik",
+        catatan_penerimaan: arrivalCatatan[item.item_id] || null,
+      }));
+
       const payload: Record<string, unknown> = {
-        status: "diterima_didistribusikan",
+        status: "tiba_menunggu_konfirmasi",
+        items,
+        catatan_tiba: catatanTiba || null,
       };
-      if (catatan !== undefined) payload.catatan_distribusi = catatan || null;
 
       const res = await put(
         `${baseUrl}/api/surat-jalan/${params.suratJalanId}/delivery-status`,
@@ -192,10 +227,11 @@ export default function DistributionDetailPage() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => null);
-        throw new Error(err?.message || "Gagal mengonfirmasi penerimaan.");
+        throw new Error(err?.message || "Gagal melapor barang sampai.");
       }
 
-      showToast("Barang berhasil dikonfirmasi diterima di site.", "success");
+      showToast("Laporan barang sampai berhasil dikirim.", "success");
+      setShowArrivalForm(false);
       setTimeout(() => {
         router.push("/staff/outbound");
       }, 1500);
@@ -266,6 +302,12 @@ export default function DistributionDetailPage() {
                 Sedang Dikirim
               </span>
             )}
+            {isTibaMenunggu && (
+              <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">
+                <Clock size={14} />
+                Menunggu Konfirmasi SPV
+              </span>
+            )}
             {isTerkirim && (
               <span className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-600">
                 <CheckCircle2 size={14} />
@@ -322,31 +364,23 @@ export default function DistributionDetailPage() {
         </table>
       </div>
 
-      {!isTerkirim && (
+      {isDisetujui && (
         <div className="mt-6 rounded-2xl border border-[#F3D9C7] bg-white p-6">
           <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
-            {canStart ? "Mulai Pengiriman" : "Konfirmasi Penerimaan di Site"}
+            Mulai Pengiriman
           </p>
-
           <div className="space-y-4">
-            {canStart && (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Estimasi Tiba
-                </label>
-                <input
-                  type="datetime-local"
-                  value={estimasiTiba}
-                  onChange={(e) => setEstimasiTiba(e.target.value)}
-                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
-                />
-              </div>
-            )}
-
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">
-                Catatan Distribusi
-              </label>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Estimasi Tiba</label>
+              <input
+                type="datetime-local"
+                value={estimasiTiba}
+                onChange={(e) => setEstimasiTiba(e.target.value)}
+                className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Catatan Distribusi</label>
               <textarea
                 value={catatan}
                 onChange={(e) => setCatatan(e.target.value)}
@@ -355,19 +389,129 @@ export default function DistributionDetailPage() {
                 placeholder="Tambahkan catatan jika diperlukan..."
               />
             </div>
-
             <Button
               disabled={submitting}
-              onClick={canStart ? handleStartDelivery : handleConfirmReceived}
+              onClick={handleStartDelivery}
               className="h-auto rounded-xl bg-[#E8632C] px-6 py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
             >
-              {submitting
-                ? "Menyimpan..."
-                : canStart
-                  ? "Mulai Pengiriman"
-                  : "Konfirmasi Diterima di Site"}
+              {submitting ? "Menyimpan..." : "Mulai Pengiriman"}
             </Button>
           </div>
+        </div>
+      )}
+
+      {isSedangDikirim && !showArrivalForm && (
+        <div className="mt-6 rounded-2xl border border-[#F3D9C7] bg-white p-6">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            Lapor Barang Sampai
+          </p>
+          <p className="mb-4 text-sm text-gray-600">
+            Laporkan jumlah dan kondisi barang yang sudah sampai ke site.
+          </p>
+          <Button
+            onClick={() => setShowArrivalForm(true)}
+            className="h-auto rounded-xl bg-[#E8632C] px-6 py-3 text-sm font-semibold text-white hover:bg-[#D9591F]"
+          >
+            Lapor Barang Sampai
+          </Button>
+        </div>
+      )}
+
+      {isSedangDikirim && showArrivalForm && (
+        <div className="mt-6 rounded-2xl border border-[#F3D9C7] bg-white p-6">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            Lapor Barang Sampai
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Catatan Tiba</label>
+              <textarea
+                value={catatanTiba}
+                onChange={(e) => setCatatanTiba(e.target.value)}
+                rows={2}
+                className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+                placeholder="Catatan umum saat barang sampai..."
+              />
+            </div>
+            <div className="space-y-3">
+              {data.items.map((item) => (
+                <div key={item.item_id} className="rounded-lg border border-gray-100 p-3">
+                  <p className="text-sm font-medium text-gray-800">
+                    {item.barang?.nama_barang || "-"} <span className="text-xs text-gray-400">({item.barang?.kode_perangkat || "-"})</span>
+                  </p>
+                  <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600">Qty Diterima</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={Number(item.qty_dipick_total ?? item.qty ?? 0)}
+                        value={arrivalQty[item.item_id] ?? 0}
+                        onChange={(e) => setArrivalQty((prev) => ({ ...prev, [item.item_id]: e.target.value }))}
+                        className="w-full rounded-md border border-gray-200 px-3 py-1.5 text-sm focus:border-[#E8632C] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600">Kondisi Diterima</label>
+                      <select
+                        value={arrivalKondisi[item.item_id] || item.kondisi || "baik"}
+                        onChange={(e) => setArrivalKondisi((prev) => ({ ...prev, [item.item_id]: e.target.value }))}
+                        className="w-full rounded-md border border-gray-200 px-3 py-1.5 text-sm focus:border-[#E8632C] focus:outline-none"
+                      >
+                        <option value="baik">Baik</option>
+                        <option value="rusak_ringan">Rusak Ringan</option>
+                        <option value="rusak_berat">Rusak Berat</option>
+                        <option value="tidak_sesuai_spek">Tidak Sesuai Spek</option>
+                        <option value="doa">DOA</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600">Catatan Penerimaan</label>
+                      <input
+                        type="text"
+                        value={arrivalCatatan[item.item_id] || ""}
+                        onChange={(e) => setArrivalCatatan((prev) => ({ ...prev, [item.item_id]: e.target.value }))}
+                        className="w-full rounded-md border border-gray-200 px-3 py-1.5 text-sm focus:border-[#E8632C] focus:outline-none"
+                        placeholder="Opsional"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                disabled={submitting}
+                onClick={handleReportArrival}
+                className="h-auto rounded-xl bg-[#E8632C] px-6 py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
+              >
+                {submitting ? "Menyimpan..." : "Kirim Laporan Tiba"}
+              </Button>
+              <button
+                type="button"
+                onClick={() => setShowArrivalForm(false)}
+                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isTibaMenunggu && (
+        <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-6">
+          <p className="mb-2 text-sm font-semibold text-blue-800">Menunggu Konfirmasi SPV</p>
+          <p className="mb-4 text-sm text-blue-700">Barang sudah dilaporkan tiba. Menunggu konfirmasi dari supervisor.</p>
+          {data.dilaporkan_tiba_oleh?.nama && (
+            <p className="text-xs text-blue-600">Dilaporkan oleh: {data.dilaporkan_tiba_oleh.nama}</p>
+          )}
+          {data.dilaporkan_tiba_at && (
+            <p className="text-xs text-blue-600">Waktu lapor: {new Date(data.dilaporkan_tiba_at).toLocaleString("id-ID")}</p>
+          )}
+          {data.catatan_tiba && (
+            <p className="mt-2 text-sm text-blue-700">Catatan: {data.catatan_tiba}</p>
+          )}
         </div>
       )}
 

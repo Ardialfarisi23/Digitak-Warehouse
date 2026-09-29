@@ -75,6 +75,18 @@ const baseInclude = {
   creator: true,
   titik_lapangan: true,
   supplier: true,
+  dilaporkan_tiba: {
+    select: {
+      user_id: true,
+      nama: true,
+    },
+  },
+  dikonfirmasi_tiba: {
+    select: {
+      user_id: true,
+      nama: true,
+    },
+  },
 };
 
 const findByIdInclude = {
@@ -88,6 +100,12 @@ const findByIdInclude = {
           nama: true,
         },
       },
+    },
+    select: {
+      ...(baseInclude.items.select || {}),
+      qty_diterima: true,
+      kondisi_diterima: true,
+      catatan_penerimaan: true,
     },
   },
 };
@@ -141,7 +159,7 @@ const modalListInclude = {
 };
 
 const APPROVAL_STATUS = "draft_diajukan";
-const DELIVERY_STATUSES = ["disetujui", "digenerate", "diterima_didistribusikan"];
+const DELIVERY_STATUSES = ["disetujui", "sedang_dikirim", "tiba_menunggu_konfirmasi", "diterima_didistribusikan"];
 
 const parseIdFilter = (value, fieldName) => {
   if (value === undefined || value === null) return null;

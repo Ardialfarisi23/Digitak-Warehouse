@@ -76,9 +76,37 @@ function buildPickSummary(rows, sjQty) {
   };
 }
 
+/**
+ * Temuan penerimaan:bandingkan qty_diterima (input staff/SPV) dengan qty_dipick_total (aktual ter-pick).
+ * - selisih_qty = qty_diterima - qty_dipick_total (<= 0 atau NaN jika belum dilaporkan).
+ * - has_mismatch = true jika selisih_qty !== 0 atau kondisi_diterima tidak ada dalam kondisi_diambil_list.
+ * - total_selisih_qty = jumlah absolut selisih_qty untuk semua item yang mismatch.
+ */
+function buildItemPickSummary(picks = []) {
+  const summary = new Map();
+  for (const pick of picks) {
+    const key = Number(pick.surat_jalan_item_id);
+    const current = summary.get(key) || { totalQty: 0, kondisiList: [] };
+    const qty = Number(pick.qty || 0);
+    const kondisi = pick.kondisi_diambil || null;
+    current.totalQty += qty;
+    if (kondisi) {
+      const existing = current.kondisiList.find((k) => k.kondisi === kondisi);
+      if (existing) {
+        existing.qty += qty;
+      } else {
+        current.kondisiList.push({ kondisi, qty });
+      }
+    }
+    summary.set(key, current);
+  }
+  return summary;
+}
+
 module.exports = {
   computeRemains,
   computeReconciliationStatus,
   aggregateProjectStatus,
   buildPickSummary,
+  buildItemPickSummary,
 };
