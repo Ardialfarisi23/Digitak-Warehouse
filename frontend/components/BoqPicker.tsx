@@ -23,6 +23,7 @@ interface BoqPickerProps {
   disabled?: boolean;
   tipe?: "inbound" | "outbound";
   statusFilter?: string;
+  displayField?: "project_name" | "boq_number" | "kode_tiket";
 }
 
 interface ApiBoq {
@@ -55,7 +56,7 @@ function normalize(raw: ApiBoq): BoqPickerItem {
   };
 }
 
-export default function BoqPicker({ projectId, value, onSelect, placeholder = "Pilih BOQ / Tiket", className, disabled, tipe, statusFilter }: BoqPickerProps) {
+export default function BoqPicker({ projectId, value, onSelect, placeholder = "Pilih BOQ / Tiket", className, disabled, tipe, statusFilter, displayField }: BoqPickerProps) {
   const { get } = useApi();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -147,7 +148,15 @@ export default function BoqPicker({ projectId, value, onSelect, placeholder = "P
     setSearch("");
   }
 
-  const displayValue = value ? results.find((r) => r.boq_id === value)?.project_name || results.find((r) => r.boq_id === value)?.boq_number || results.find((r) => r.boq_id === value)?.kode_tiket || value : "";
+  const resolved = results.find((r) => r.boq_id === value);
+  const displayValue =
+    value && resolved
+      ? displayField === "kode_tiket"
+        ? resolved.kode_tiket || value
+        : displayField === "boq_number"
+          ? resolved.boq_number || value
+          : resolved.project_name || resolved.boq_number || resolved.kode_tiket || value
+      : value || "";
 
   return (
     <div ref={containerRef} className={`relative ${className ?? ""}`}>

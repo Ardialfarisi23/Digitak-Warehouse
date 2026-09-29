@@ -346,9 +346,9 @@ const getAreas = async () => {
   return areas.map((row) => row.area).filter(Boolean);
 };
 
-const findItemsByProject = async (projectId, clusterId) => {
+const findItemsByProject = async (projectId, clusterId, statuses = ["aktif"]) => {
   const where = {
-    status: "aktif",
+    status: statuses.length === 1 ? statuses[0] : { in: statuses },
   };
 
   if (clusterId) {
