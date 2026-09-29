@@ -11,7 +11,7 @@ import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import BoqPicker, { type BoqPickerItem } from "@/components/BoqPicker";
 
-type InboundStatus = "draft_diajukan" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "ditolak" | "menunggu_verifikasi" | "ready_putaway" | "sedang_dikirim";
+type InboundStatus = "draft_diajukan" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "ditolak" | "menunggu_verifikasi" | "ready_putaway" | "sedang_dikirim" | "tiba_menunggu_konfirmasi";
 
 const STATUS_META: Record<InboundStatus, { label: string; tone: string }> = {
   draft_diajukan: { label: "Menunggu Persetujuan", tone: "bg-amber-50 text-amber-600" },
@@ -19,6 +19,7 @@ const STATUS_META: Record<InboundStatus, { label: string; tone: string }> = {
   ready_putaway: { label: "Siap Putaway", tone: "bg-blue-50 text-blue-600" },
   disetujui: { label: "Disetujui", tone: "bg-emerald-50 text-emerald-600" },
   digenerate: { label: "Digenerate", tone: "bg-blue-50 text-blue-600" },
+  tiba_menunggu_konfirmasi: { label: "Menunggu Konfirmasi", tone: "bg-blue-50 text-blue-600" },
   diterima_didistribusikan: { label: "Diterima/Didistribusikan", tone: "bg-gray-100 text-gray-500" },
   sedang_dikirim: { label: "Sedang Dikirim", tone: "bg-amber-50 text-amber-600" },
   ditolak: { label: "Ditolak", tone: "bg-rose-50 text-rose-600" },

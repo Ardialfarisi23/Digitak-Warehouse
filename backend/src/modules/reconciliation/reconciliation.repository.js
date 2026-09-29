@@ -1,7 +1,10 @@
 const prisma = require("../../config/prisma");
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
-const { computeRemains, computeReconciliationStatus } = require("./reconciliation.utils");
+const { computeRemains, computeReconciliationStatus, buildPickSummary, buildItemPickSummary } = require("./reconciliation.utils");
+
+// Stok sudah berkurang saat picking, jadi angka rekonsiliasi tidak boleh naik-turun saat barang di perjalanan.
+const RECONCILIATION_SHIPMENT_STATUSES = ["disetujui", "sedang_dikirim", "tiba_menunggu_konfirmasi", "diterima_didistribusikan"];
 
 const getInventory = async (filters = {}, actor = null) => {
   const { search = "", projectId = "all", warehouseId = "all", status = "all" } = filters;
@@ -75,7 +78,7 @@ const getInventory = async (filters = {}, actor = null) => {
 
   const shipmentWhere = {
     surat_jalan: {
-      status: { in: ["disetujui", "diterima_didistribusikan"] },
+      status: { in: RECONCILIATION_SHIPMENT_STATUSES },
     },
   };
 
@@ -96,6 +99,87 @@ const getInventory = async (filters = {}, actor = null) => {
       },
     },
   });
+
+  const itemIdToProjectBarangKey = new Map();
+  for (const item of shipmentItems) {
+    const projectIdNum = Number(item.surat_jalan?.project_id);
+    const barangId = String(item.barang_id);
+    itemIdToProjectBarangKey.set(Number(item.item_id), `${projectIdNum}-${barangId}`);
+  }
+
+  const shipmentItemIds = shipmentItems.map((it) => Number(it.item_id)).filter((id) => !Number.isNaN(id) && id > 0);
+
+  const pickRows = shipmentItemIds.length > 0
+    ? await prisma.surat_jalan_item_pick.groupBy({
+        by: ["surat_jalan_item_id", "kondisi_diambil", "is_override"],
+        where: {
+          surat_jalan_item_id: { in: shipmentItemIds },
+        },
+        _sum: {
+          qty: true,
+        },
+      })
+    : [];
+
+  const pickByItemId = new Map();
+  for (const row of pickRows) {
+    const itemId = Number(row.surat_jalan_item_id);
+    if (!pickByItemId.has(itemId)) {
+      pickByItemId.set(itemId, []);
+    }
+    pickByItemId.get(itemId).push({
+      kondisi_diambil: row.kondisi_diambil,
+      is_override: row.is_override,
+      qty: row._sum.qty || 0,
+    });
+  }
+
+  const pickSummaryByItemId = buildItemPickSummary(
+    pickRows.map((r) => ({
+      surat_jalan_item_id: r.surat_jalan_item_id,
+      qty: r._sum.qty || 0,
+      kondisi_diambil: r.kondisi_diambil,
+    }))
+  );
+
+  const temuanPenerimaanByItem = new Map();
+  for (const item of shipmentItems) {
+    const itemId = Number(item.item_id);
+    const qtyDiterima = item.qty_diterima != null ? Number(item.qty_diterima) : null;
+    if (qtyDiterima === null) continue;
+
+    const summary = pickSummaryByItemId.get(itemId) || { totalQty: 0, kondisiList: [] };
+    const totalPick = summary.totalQty;
+    const kondisiList = summary.kondisiList || [];
+    const kondisiDiterima = item.kondisi_diterima || null;
+
+    const qtyMatch = qtyDiterima === totalPick;
+    const kondisiMatch = !kondisiDiterima || (kondisiList.length === 1 && kondisiList.some((k) => k.kondisi === kondisiDiterima));
+    const hasMismatch = !qtyMatch || !kondisiMatch;
+
+    temuanPenerimaanByItem.set(itemId, {
+      qty_dipick_total: totalPick,
+      qty_diterima,
+      selisih_qty: qtyMatch ? 0 : qtyDiterima - totalPick,
+      kondisi_diterima: kondisiDiterima,
+      kondisi_diambil_list: kondisiList,
+      is_kondisi_diambil: kondisiMatch,
+      has_mismatch: hasMismatch,
+      surat_jalan_status: item.surat_jalan?.status || null,
+    });
+  }
+
+  const temuanPenerimaanSummaryByKey = new Map();
+  for (const [itemId, temuan] of temuanPenerimaanByItem.entries()) {
+    const key = itemIdToProjectBarangKey.get(itemId);
+    if (!key) continue;
+    const current = temuanPenerimaanSummaryByKey.get(key) || { jumlah_item_bertemuan_selisih: 0, total_selisih_qty: 0 };
+    if (temuan.has_mismatch) {
+      current.jumlah_item_bertemuan_selisih += 1;
+      current.total_selisih_qty += Math.abs(temuan.selisih_qty || 0);
+    }
+    temuanPenerimaanSummaryByKey.set(key, current);
+  }
 
   const inboundByProjectBarang = new Map();
   const outboundByProjectBarang = new Map();
@@ -274,6 +358,33 @@ const getInventory = async (filters = {}, actor = null) => {
     const satuanList = [...(satuanByKey.get(key) || [])];
     const satuanStr = satuanList.join(", ") || "-";
 
+    const pickItemIds = [];
+    for (const [itemId, projectBarangKey] of itemIdToProjectBarangKey.entries()) {
+      if (projectBarangKey === key) {
+        pickItemIds.push(itemId);
+      }
+    }
+
+    const allPickRows = [];
+    for (const itemId of pickItemIds) {
+      const itemRows = pickByItemId.get(itemId) || [];
+      for (const r of itemRows) {
+        allPickRows.push({
+          surat_jalan_item_id: itemId,
+          kondisi_diambil: r.kondisi_diambil,
+          is_override: r.is_override,
+          qty: r.qty,
+        });
+      }
+    }
+
+    const sjQty = pickItemIds.reduce((sum, itemId) => {
+      const item = shipmentItems.find((si) => Number(si.item_id) === itemId);
+      return sum + Number(item?.qty || 0);
+    }, 0);
+
+    const pickSummary = buildPickSummary(allPickRows, sjQty);
+
     return {
       id: key,
       project_id: agg.project_id,
@@ -294,6 +405,8 @@ const getInventory = async (filters = {}, actor = null) => {
       approved_return_qty: approvedReturnQty,
       remains,
       status: recStatus,
+      ...pickSummary,
+      temuan_penerimaan: (temuanPenerimaanSummaryByKey.get(key) || null),
     };
   });
 

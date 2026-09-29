@@ -1,0 +1,1 @@
+ALTER TABLE "surat_jalan_item_pick" ADD CONSTRAINT "surat_jalan_item_pick_surat_jalan_item_id_fkey" FOREIGN KEY ("surat_jalan_item_id") REFERENCES "surat_jalan_item"("item_id") ON DELETE RESTRICT ON UPDATE CASCADE;

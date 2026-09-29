@@ -1,2 +1,17 @@
 ﻿backup_digitak_warehouse.dump
 backups/
+backend/scripts/dev/.seed-snapshot.json
+
+# Logs
+*.log
+
+# Temp/artefact scripts
+temp_query.sql
+tmp-*.js
+_tmp_*.js
+temp_*.js
+
+# TypeScript build info
+tsbuildinfo
+
+# Uploads (already ignored in backend/.gitignore)

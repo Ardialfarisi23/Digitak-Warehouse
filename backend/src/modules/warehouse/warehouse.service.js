@@ -554,6 +554,27 @@ const getPickingStockCheck = async (gudang_id, query = {}) => {
   return await warehouseRepository.getPickingStockAvailability(gudang_id, items, projectId);
 };
 
+const getPickingAvailability = async (gudang_id, query = {}) => {
+  let items = [];
+  if (Array.isArray(query.items)) {
+    items = query.items;
+  } else if (typeof query.items === "string" && query.items.trim()) {
+    try {
+      items = JSON.parse(query.items);
+    } catch {
+      items = [];
+    }
+  }
+
+  const projectId = query.project_id ? Number(query.project_id) : null;
+
+  if (!Array.isArray(items) || !items.length) {
+    return [];
+  }
+
+  return await warehouseRepository.getPickingAvailability(gudang_id, items, projectId);
+};
+
 module.exports = {
   create,
   findAll,
@@ -565,4 +586,5 @@ module.exports = {
   getZoneStockSnapshot,
   getStockCheck,
   getPickingStockCheck,
+  getPickingAvailability,
 };

@@ -32,6 +32,7 @@ const statusColor: Record<string, { fg: string; bg: string }> = {
   ready_putaway: { fg: "#1E40AF", bg: "#DBEAFE" },
   disetujui: { fg: "#1E7A4C", bg: "#E4F5EC" },
   digenerate: { fg: "#6B7280", bg: "#F3F4F6" },
+  tiba_menunggu_konfirmasi: { fg: "#1E40AF", bg: "#DBEAFE" },
   diterima_didistribusikan: { fg: "#2E9E6D", bg: "#E4F5EC" },
   sedang_dikirim: { fg: "#92400E", bg: "#FEF3C7" },
   ditolak: { fg: "#991B1B", bg: "#FEE2E2" },
@@ -801,7 +802,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
   }, []);
 
   const jenisList = ["inbound", "outbound"];
-  const statusList = ["draft_diajukan", "menunggu_verifikasi", "ready_putaway", "disetujui", "digenerate", "diterima_didistribusikan", "sedang_dikirim", "ditolak"];
+  const statusList = ["draft_diajukan", "menunggu_verifikasi", "ready_putaway", "disetujui", "digenerate", "diterima_didistribusikan", "sedang_dikirim", "tiba_menunggu_konfirmasi", "ditolak"];
 
   // Semua dropdown filter diisi dari master data supaya value-nya berupa ID
   // numerik (backend memfilter pakai ID, bukan nama). Limit dikirim eksplisit
@@ -1021,6 +1022,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
     ready_putaway: "Siap Putaway",
     disetujui: "Disetujui",
     digenerate: "Digenerate",
+    tiba_menunggu_konfirmasi: "Menunggu Konfirmasi",
     diterima_didistribusikan: "Diterima/Didistribusikan",
     sedang_dikirim: "Sedang Dikirim",
     ditolak: "Ditolak",

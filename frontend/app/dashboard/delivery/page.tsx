@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import { DetailSuratJalanDocument, DetailSuratJalanData } from "@/components/surat-jalan/DetailSuratJalanDocument";
 import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
+import { Button } from "@/components/ui/button";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -44,6 +45,13 @@ interface SuratJalanRecord {
     approver_nama: string | null;
     waktu_verifikasi: string | null;
   } | null;
+  estimasi_tiba?: string | null;
+  catatan_distribusi?: string | null;
+  dilaporkan_tiba_oleh?: { nama: string } | null;
+  dilaporkan_tiba_at?: string | null;
+  catatan_tiba?: string | null;
+  dikonfirmasi_oleh?: { nama: string } | null;
+  dikonfirmasi_at?: string | null;
   items: {
     item_id: number;
     barang: {
@@ -62,6 +70,11 @@ interface SuratJalanRecord {
       approver_nama: string | null;
       waktu_verifikasi: string | null;
     } | null;
+    qty_diterima?: number | null;
+    kondisi_diterima?: string | null;
+    catatan_penerimaan?: string | null;
+    qty_dipick_total?: number | null;
+    kondisi_diambil_list?: { kondisi: string; qty: number }[];
   }[];
 }
 
@@ -70,6 +83,7 @@ const STATUS_META: Record<string, { label: string; bg: string; text: string }> =
   menunggu_verifikasi: { label: "Menunggu Verifikasi", bg: "bg-amber-50", text: "text-amber-700" },
   disetujui: { label: "Disetujui", bg: "bg-emerald-50", text: "text-emerald-700" },
   digenerate: { label: "Digenerate", bg: "bg-blue-50", text: "text-blue-700" },
+  tiba_menunggu_konfirmasi: { label: "Menunggu Konfirmasi", bg: "bg-blue-50", text: "text-blue-700" },
   diterima_didistribusikan: { label: "Diterima / Didistribusikan", bg: "bg-emerald-50", text: "text-emerald-700" },
   sedang_dikirim: { label: "Sedang Dikirim", bg: "bg-amber-50", text: "text-amber-700" },
   ditolak: { label: "Ditolak", bg: "bg-rose-50", text: "text-rose-700" },
@@ -79,7 +93,7 @@ type TabType = "SEMUA" | "INBOUND" | "OUTBOUND";
 
 export default function AdminDeliveryPage() {
   const { user } = useAuth();
-  const { get } = useApi();
+  const { get, put } = useApi();
 
   const [activeTab, setActiveTab] = useState<TabType>("SEMUA");
   const [searchQuery, setSearchQuery] = useState("");
@@ -95,6 +109,8 @@ export default function AdminDeliveryPage() {
   const [warehouses, setWarehouses] = useState<{ gudang_id: number; nama_gudang: string; tipe?: string }[]>([]);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [catatanKonfirmasi, setCatatanKonfirmasi] = useState("");
 
   useEffect(() => {
     if (!user) return;
@@ -273,6 +289,36 @@ export default function AdminDeliveryPage() {
       console.error("Gagal generate PDF:", err);
     } finally {
       setIsGeneratingPdf(false);
+    }
+  };
+
+  const handleConfirmDistributed = async () => {
+    if (!selectedRecord) return;
+    setConfirming(true);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const payload: Record<string, unknown> = {};
+      if (catatanKonfirmasi.trim()) payload.catatan_konfirmasi = catatanKonfirmasi.trim();
+
+      const res = await put(
+        `${baseUrl}/api/surat-jalan/${selectedRecord.surat_jalan_id}/confirm-distributed`,
+        payload
+      );
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.message || "Gagal mengonfirmasi distribusi.");
+      }
+
+      setToast({ message: "Surat jalan berhasil dikonfirmasi diterima.", type: "success" });
+      setCatatanKonfirmasi("");
+      setSelectedRecord({ ...selectedRecord, status: "diterima_didistribusikan" } as SuratJalanRecord);
+      setTimeout(() => setToast(null), 4000);
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Gagal mengonfirmasi.", type: "error" });
+      setTimeout(() => setToast(null), 4000);
+    } finally {
+      setConfirming(false);
     }
   };
 
@@ -463,6 +509,7 @@ export default function AdminDeliveryPage() {
                             {record.status === "menunggu_verifikasi" && <Clock size={14} />}
                             {record.status === "disetujui" && <CheckCircle2 size={14} />}
                             {record.status === "digenerate" && <Loader2 size={14} />}
+                            {record.status === "tiba_menunggu_konfirmasi" && <Clock size={14} />}
                             {record.status === "diterima_didistribusikan" && <CheckCircle2 size={14} />}
                             {record.status === "sedang_dikirim" && <Truck size={14} />}
                             {record.status === "ditolak" && <AlertCircle size={14} />}
@@ -519,8 +566,67 @@ export default function AdminDeliveryPage() {
                 />
               </div>
 
+              {selectedRecord?.status === "tiba_menunggu_konfirmasi" && (
+                <div className="mx-6 mb-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 mb-2">Laporan Barang Sampai</p>
+                  {selectedRecord.dilaporkan_tiba_oleh?.nama && (
+                    <p className="text-sm text-blue-800">Dilaporkan oleh: {selectedRecord.dilaporkan_tiba_oleh.nama}</p>
+                  )}
+                  {selectedRecord.dilaporkan_tiba_at && (
+                    <p className="text-sm text-blue-800">Waktu: {new Date(selectedRecord.dilaporkan_tiba_at).toLocaleString("id-ID")}</p>
+                  )}
+                  {selectedRecord.catatan_tiba && (
+                    <p className="mt-1 text-sm text-blue-700">Catatan: {selectedRecord.catatan_tiba}</p>
+                  )}
+                  <div className="mt-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 mb-1">Detail Penerimaan vs Pick</p>
+                    <div className="space-y-1">
+                      {selectedRecord.items.map((item) => {
+                        const totalPick = item.qty_dipick_total ?? 0;
+                        const qtyDiterima = item.qty_diterima ?? null;
+                        const kondisiDiterima = item.kondisi_diterima || item.kondisi || "-";
+                        const kondisiList = item.kondisi_diambil_list || [];
+                        const kondisiText = kondisiList.map((k) => `${k.kondisi} (${k.qty})`).join(", ") || "-";
+                        const isQtyMismatch = qtyDiterima !== null && qtyDiterima !== totalPick;
+                        const isKondisiMismatch = item.kondisi_diterima && !kondisiList.some((k) => k.kondisi === item.kondisi_diterima);
+                        const hasMismatch = isQtyMismatch || isKondisiMismatch;
+                        return (
+                          <div key={item.item_id} className={`flex items-center justify-between rounded-md px-2 py-1.5 text-sm ${hasMismatch ? "bg-amber-50 text-amber-800" : "text-blue-800"}`}>
+                            <span>{item.barang?.nama_barang || "-"}</span>
+                            <span className="text-xs">
+                              <span className={hasMismatch ? "font-semibold text-amber-700" : ""}>Diterima: {qtyDiterima ?? totalPick} {kondisiDiterima}</span>
+                              <span className="mx-2 text-blue-400">|</span>
+                              <span className="text-blue-600">Pick: {totalPick} {kondisiText}</span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Actions */}
               <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4 print:hidden">
+                {selectedRecord?.status === "tiba_menunggu_konfirmasi" && (
+                  <div className="mr-auto flex flex-col gap-2">
+                    <p className="text-xs font-semibold text-slate-500">Konfirmasi Penerimaan (SPV)</p>
+                    <textarea
+                      value={catatanKonfirmasi}
+                      onChange={(e) => setCatatanKonfirmasi(e.target.value)}
+                      placeholder="Catatan konfirmasi (wajib jika ada selisih)"
+                      className="w-80 rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+                      rows={2}
+                    />
+                    <Button
+                      disabled={confirming}
+                      onClick={handleConfirmDistributed}
+                      className="h-auto rounded-xl bg-[#E8632C] px-4 py-2 text-xs font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
+                    >
+                      {confirming ? "Mengonfirmasi..." : "Konfirmasi Diterima"}
+                    </Button>
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={handleDownloadPdf}
@@ -531,7 +637,7 @@ export default function AdminDeliveryPage() {
                     <Loader2 size={14} className="animate-spin" />
                   ) : (
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <path d="M21 15v4a2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                       <polyline points="7 10 12 15 17 10" />
                       <line x1="12" y1="15" x2="12" y2="3" />
                     </svg>

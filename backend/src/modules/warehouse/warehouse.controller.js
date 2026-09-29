@@ -101,6 +101,18 @@ const getPickingStockCheck = async (req, res, next) => {
   }
 };
 
+const getPickingAvailability = async (req, res, next) => {
+  try {
+    const result = await warehouseService.getPickingAvailability(
+      req.params.gudang_id,
+      req.query
+    );
+    return response.success(res, "Pengecekan ketersediaan picking berhasil.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   create,
   findAll,
@@ -112,4 +124,5 @@ module.exports = {
   getZoneStockSnapshot,
   getStockCheck,
   getPickingStockCheck,
+  getPickingAvailability,
 };

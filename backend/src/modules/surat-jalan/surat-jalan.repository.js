@@ -75,6 +75,18 @@ const baseInclude = {
   creator: true,
   titik_lapangan: true,
   supplier: true,
+  dilaporkan_tiba: {
+    select: {
+      user_id: true,
+      nama: true,
+    },
+  },
+  dikonfirmasi_tiba: {
+    select: {
+      user_id: true,
+      nama: true,
+    },
+  },
 };
 
 const findByIdInclude = {
@@ -88,6 +100,12 @@ const findByIdInclude = {
           nama: true,
         },
       },
+    },
+    select: {
+      ...(baseInclude.items.select || {}),
+      qty_diterima: true,
+      kondisi_diterima: true,
+      catatan_penerimaan: true,
     },
   },
 };
@@ -141,7 +159,7 @@ const modalListInclude = {
 };
 
 const APPROVAL_STATUS = "draft_diajukan";
-const DELIVERY_STATUSES = ["disetujui", "digenerate", "diterima_didistribusikan"];
+const DELIVERY_STATUSES = ["disetujui", "sedang_dikirim", "tiba_menunggu_konfirmasi", "diterima_didistribusikan"];
 
 const parseIdFilter = (value, fieldName) => {
   if (value === undefined || value === null) return null;
@@ -500,6 +518,20 @@ const updateStatus = async (id, status, options = {}, tx = prisma) => {
     },
     data,
   });
+};
+
+const claimPicking = async (id, tx = prisma) => {
+  const result = await tx.surat_jalan.updateMany({
+    where: {
+      surat_jalan_id: Number(id),
+      picking_selesai: false,
+    },
+    data: {
+      picking_selesai: true,
+    },
+  });
+
+  return result.count === 1;
 };
 
 const updateInboundItems = async (adjustments) => {
@@ -1160,4 +1192,5 @@ module.exports = {
   findRejectedList,
   getApprovalVerification,
   getBatchApprovalVerifications,
+  claimPicking,
 };

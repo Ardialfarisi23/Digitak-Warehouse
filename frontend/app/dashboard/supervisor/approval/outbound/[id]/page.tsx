@@ -16,6 +16,7 @@ const STATUS_META: Record<string, { label: string; tone: string }> = {
   ready_putaway: { label: "Siap Putaway", tone: "bg-blue-100 text-blue-700" },
   disetujui: { label: "Disetujui", tone: "bg-emerald-100 text-emerald-700" },
   digenerate: { label: "Digenerate", tone: "bg-blue-100 text-blue-700" },
+  tiba_menunggu_konfirmasi: { label: "Menunggu Konfirmasi", tone: "bg-blue-100 text-blue-700" },
   diterima_didistribusikan: { label: "Diterima / Didistribusikan", tone: "bg-emerald-100 text-emerald-700" },
   sedang_dikirim: { label: "Sedang Dikirim", tone: "bg-amber-100 text-amber-700" },
   ditolak: { label: "Ditolak", tone: "bg-rose-100 text-rose-700" },
@@ -56,6 +57,11 @@ interface OutboundRequest {
   boq_id?: number;
   boq?: { boq_number?: string; tiket?: { kode_tiket?: string } };
   project?: { nama_project?: string; area?: string };
+  dilaporkan_tiba_oleh?: { nama: string } | null;
+  dilaporkan_tiba_at?: string | null;
+  catatan_tiba?: string | null;
+  dikonfirmasi_oleh?: { nama: string } | null;
+  dikonfirmasi_at?: string | null;
   items?: Array<{
     item_id: number;
     barang?: { nama_barang?: string };
@@ -65,6 +71,11 @@ interface OutboundRequest {
     kondisi?: string;
     foto_url?: string;
     catatan?: string;
+    qty_diterima?: number | null;
+    kondisi_diterima?: string | null;
+    catatan_penerimaan?: string | null;
+    qty_dipick_total?: number | null;
+    kondisi_diambil_list?: { kondisi: string; qty: number }[];
   }>;
 }
 
@@ -79,6 +90,7 @@ export default function SupervisorApprovalOutboundDetailPage() {
 
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectBox, setShowRejectBox] = useState(false);
+  const [catatanKonfirmasi, setCatatanKonfirmasi] = useState("");
 
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
   const [selectedDocItem, setSelectedDocItem] = useState<any>(null);
@@ -360,12 +372,16 @@ export default function SupervisorApprovalOutboundDetailPage() {
   const handleConfirmDistributed = async () => {
     setActionLoading(true);
     try {
-      const resp = await put(`${apiBase}/api/surat-jalan/${params.id}/confirm-distributed`);
+      const payload: Record<string, unknown> = {};
+      if (catatanKonfirmasi.trim()) payload.catatan_konfirmasi = catatanKonfirmasi.trim();
+
+      const resp = await put(`${apiBase}/api/surat-jalan/${params.id}/confirm-distributed`, payload);
       if (!resp.ok) {
         const err = await resp.json().catch(() => null);
         throw new Error(err?.message || "Gagal menandai diterima/didistribusikan.");
       }
-      setToast({ message: "Surat Jalan berhasil ditandai diterima/didistribusikan.", type: "success" });
+      setToast({ message: "Surat Jalan berhasil dikonfirmasi diterima.", type: "success" });
+      setCatatanKonfirmasi("");
       setTimeout(() => router.push("/dashboard/supervisor/approval"), 1500);
     } catch (error) {
       setToast({ message: (error as Error).message || "Gagal menandai diterima/didistribusikan.", type: "error" });
@@ -589,14 +605,63 @@ export default function SupervisorApprovalOutboundDetailPage() {
               </Button>
             </div>
           )
-        ) : request.status === "digenerate" ? (
-          <Button
-            onClick={handleConfirmDistributed}
-            disabled={actionLoading}
-            className="w-full rounded-xl bg-[#047857] px-4 py-3 text-sm font-semibold text-white hover:bg-[#065f46]"
-          >
-            {actionLoading ? "Memproses..." : "Tandai Diterima/Didistribusikan"}
-          </Button>
+        ) : request.status === "tiba_menunggu_konfirmasi" ? (
+          <div className="space-y-3">
+            <p className="text-xs font-semibold text-slate-500">Konfirmasi Penerimaan (SPV)</p>
+            <div className="max-h-60 overflow-y-auto space-y-2">
+              {(request.items || []).map((item) => {
+                const totalPick = Number(item.qty_dipick_total ?? 0);
+                const qtyDiterima = item.qty_diterima != null ? Number(item.qty_diterima) : null;
+                const kondisiDiterima = item.kondisi_diterima || item.kondisi || "-";
+                const kondisiList = item.kondisi_diambil_list || [];
+                const kondisiText = kondisiList.map((k) => `${k.kondisi} (${k.qty})`).join(", ") || "-";
+                const isQtyMismatch = qtyDiterima !== null && qtyDiterima !== totalPick;
+                const isKondisiMismatch = item.kondisi_diterima && !kondisiList.some((k) => k.kondisi === item.kondisi_diterima);
+                const hasMismatch = isQtyMismatch || isKondisiMismatch;
+                return (
+                  <div key={item.item_id} className={`rounded-lg border p-3 ${hasMismatch ? "border-amber-200 bg-amber-50" : "border-slate-200"}`}>
+                    <p className="text-sm font-semibold text-slate-800">{item.barang?.nama_barang || "-"}</p>
+                    <div className="mt-1 flex flex-wrap gap-4 text-xs text-slate-700">
+                      <span>Di-pick: {totalPick} {kondisiText}</span>
+                      <span>Diterima: {qtyDiterima ?? totalPick} {kondisiDiterima}</span>
+                    </div>
+                    {hasMismatch && <p className="mt-1 text-xs text-amber-700">Ada selisih antara yang di-pick dan diterima.</p>}
+                  </div>
+                );
+              })}
+            </div>
+            {(request.dilaporkan_tiba_oleh?.nama || request.dilaporkan_tiba_at || request.catatan_tiba) && (
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
+                {request.dilaporkan_tiba_oleh?.nama && <p>Dilaporkan oleh: {request.dilaporkan_tiba_oleh.nama}</p>}
+                {request.dilaporkan_tiba_at && <p>Waktu: {new Date(request.dilaporkan_tiba_at).toLocaleString("id-ID")}</p>}
+                {request.catatan_tiba && <p>Catatan: {request.catatan_tiba}</p>}
+              </div>
+            )}
+            <textarea
+              value={catatanKonfirmasi}
+              onChange={(e) => setCatatanKonfirmasi(e.target.value)}
+              placeholder="Catatan konfirmasi (wajib jika ada selisih)"
+              className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+              rows={2}
+            />
+            <Button
+              onClick={handleConfirmDistributed}
+              disabled={actionLoading || (() => {
+                const hasMismatch = (request.items || []).some((item) => {
+                  const totalPick = Number(item.qty_dipick_total ?? 0);
+                  const qtyDiterima = item.qty_diterima != null ? Number(item.qty_diterima) : null;
+                  const kondisiList = item.kondisi_diambil_list || [];
+                  const isQtyMismatch = qtyDiterima !== null && qtyDiterima !== totalPick;
+                  const isKondisiMismatch = item.kondisi_diterima && !kondisiList.some((k) => k.kondisi === item.kondisi_diterima);
+                  return isQtyMismatch || isKondisiMismatch;
+                });
+                return hasMismatch && !catatanKonfirmasi.trim();
+              })()}
+              className="w-full rounded-xl bg-[#047857] px-4 py-3 text-sm font-semibold text-white hover:bg-[#065f46]"
+            >
+              {actionLoading ? "Memproses..." : "Konfirmasi Diterima"}
+            </Button>
+          </div>
         ) : (
           <p className="text-xs text-slate-500">
             Tidak ada aksi yang diperlukan untuk status saat ini ({request.status}).
