@@ -55,6 +55,27 @@ type Zona = {
   kapasitas_belum_diatur?: boolean;
 };
 
+function ZoneDetailModal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
+  useEffect(() => {
+    if (!open) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
+      <div className="w-full max-w-[640px] max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function WarehouseLayoutPage() {
   const router = useRouter();
 
@@ -852,27 +873,6 @@ export default function WarehouseLayoutPage() {
             size={12}
             className="rotate-[-45deg] text-[#333]"
           />
-        </div>
-      </div>
-    );
-  }
-
-  function ZoneDetailModal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
-    useEffect(() => {
-      if (!open) return;
-      function handleKey(e: KeyboardEvent) {
-        if (e.key === "Escape") onClose();
-      }
-      document.addEventListener("keydown", handleKey);
-      return () => document.removeEventListener("keydown", handleKey);
-    }, [open, onClose]);
-
-    if (!open) return null;
-
-    return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
-        <div className="w-full max-w-[640px] max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
-          {children}
         </div>
       </div>
     );

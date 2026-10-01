@@ -18,6 +18,33 @@ const RECONCILIATION_REQUIRED_COLUMNS = [
   { name: "Catatan", aliases: ["Catatan", "catatan", "Keterangan"] },
 ];
 
+const KONDISI_BARANG_VALUES = new Set(["baik", "rusak_ringan", "rusak_berat", "tidak_sesuai_spek", "doa"]);
+const KONDISI_BARANG_LABEL_MAP = new Map([
+  ["baik", "baik"],
+  ["rusak ringan", "rusak_ringan"],
+  ["rusak berat", "rusak_berat"],
+  ["tidak sesuai spek", "tidak_sesuai_spek"],
+  ["tidak sesuai_spek", "tidak_sesuai_spek"],
+  ["doa", "doa"],
+  ["baik", "baik"],
+  ["rusak_ringan", "rusak_ringan"],
+  ["rusak_berat", "rusak_berat"],
+  ["tidak_sesuai_spek", "tidak_sesuai_spek"],
+  ["doa", "doa"],
+]);
+
+const normalizeKondisi = (value) => {
+  if (!value) return null;
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized) return null;
+  const withUnderscore = normalized.replace(/[\s-]+/g, "_");
+  if (KONDISI_BARANG_VALUES.has(withUnderscore)) return withUnderscore;
+  const mapped = KONDISI_BARANG_LABEL_MAP.get(normalized);
+  if (mapped) return mapped;
+  if (KONDISI_BARANG_VALUES.has(normalized)) return normalized;
+  return null;
+};
+
 const getStockHistory = async (req, res, next) => {
   try {
     const result = await reportsService.getStockHistory(req.query);
@@ -166,7 +193,7 @@ const exportStockHistoryExcel = async (req, res, next) => {
         `${row.qty}${row.satuan && row.satuan !== "-" ? ` ${row.satuan}` : ""}`,
         row.zona_kode && row.zona_kode !== "-" ? `${row.zona_gudang} / ${row.zona_kode}` : "—",
         row.gudang_asal || "-",
-        row.gudang_tujuan || "-",
+        row.gudang_tujuan && row.gudang_tujuan !== "-" ? row.gudang_tujuan : (row.lapangan_tujuan || "-"),
       ];
 
       values.forEach((value, colIndex) => {
@@ -341,7 +368,6 @@ const uploadReconciliationFile = async (req, res, next) => {
             },
           },
           boq: {
-            where: { status: { in: ["draft", "aktif", "selesai"] } },
             include: {
               cluster: {
                 select: {
@@ -353,7 +379,20 @@ const uploadReconciliationFile = async (req, res, next) => {
         },
       });
 
-      const tiketMap = new Map(tikets.map((t) => [t.kode_tiket, t]));
+      const normalizedTiketsFromDb = tikets
+        .map((t) => ({
+          ...t,
+          normalizedKodeTiket: String(t.kode_tiket)
+            .normalize("NFKC")
+            .replace(/[\u00A0\u200B-\u200D\uFEFF]/g, "")
+            .trim()
+            .toUpperCase(),
+        }))
+        .filter((t) => {
+          const status = t.boq?.status;
+          return typeof status === "string" && ["draft", "aktif", "selesai"].includes(status);
+        });
+      const tiketMap = new Map(normalizedTiketsFromDb.map((t) => [t.normalizedKodeTiket, t]));
       const barangLookupCache = new Map();
 
       const preview = [];
@@ -361,7 +400,14 @@ const uploadReconciliationFile = async (req, res, next) => {
 
       for (let i = 0; i < jsonData.length; i++) {
         const row = jsonData[i];
-        const kodeTiket = row["Kode Tiket"] || row["kode_tiket"] || row["KODE_TIKET"];
+        const rawKodeTiket = row["Kode Tiket"] || row["kode_tiket"] || row["KODE_TIKET"];
+        const kodeTiket = rawKodeTiket
+          ? String(rawKodeTiket)
+              .normalize("NFKC")
+              .replace(/[\u00A0\u200B-\u200D\uFEFF]/g, "")
+              .trim()
+              .toUpperCase()
+          : null;
         const projectName = row["Project"] || row["project"] || row["Nama Project"] || null;
         const used = Number(row["Used"] || row["used"] || 0);
         const namaBarang = row["Nama Barang"] || row["nama_barang"] || row["Barang"] || null;
@@ -373,7 +419,7 @@ const uploadReconciliationFile = async (req, res, next) => {
           continue;
         }
 
-        const tiket = tiketMap.get(String(kodeTiket).trim());
+        const tiket = tiketMap.get(kodeTiket || "");
         if (!tiket) {
           failed.push({ row: i + 2, kode_tiket: kodeTiket, used, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak terdaftar" });
           continue;
@@ -494,7 +540,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
         if (!tiketId && kodeTiket) {
           const tiket = await tx.tiket_material.findUnique({
             where: { kode_tiket: kodeTiket },
-            select: { tiket_id: true, kode_tiket: true, project_id: true },
+            select: { tiket_id: true, kode_tiket: true, project_id: true, project: { select: { nama_project: true } } },
           });
           if (tiket) {
             tiketId = tiket.tiket_id;
@@ -512,6 +558,13 @@ const confirmReconciliationUpload = async (req, res, next) => {
               used: Number(item.used || 0),
               status: "gagal",
               reason: "Tiket tidak terdaftar",
+              kondisi: normalizeKondisi(item.kondisi),
+              nama_barang: item.nama_barang || null,
+              kode_barang: null,
+              project_nama: null,
+              tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+              pic_mitra: pic_mitra || null,
+              catatan: catatan || item.catatan || null,
             },
           });
           failedCount++;
@@ -527,6 +580,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
             project_id: true,
             mos: true,
             used: true,
+            project: { select: { nama_project: true } },
           },
         });
 
@@ -540,6 +594,13 @@ const confirmReconciliationUpload = async (req, res, next) => {
               used: Number(item.used || 0),
               status: "gagal",
               reason: "Tiket tidak terdaftar",
+              kondisi: normalizeKondisi(item.kondisi),
+              nama_barang: item.nama_barang || null,
+              kode_barang: null,
+              project_nama: null,
+              tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+              pic_mitra: pic_mitra || null,
+              catatan: catatan || item.catatan || null,
             },
           });
           failedCount++;
@@ -562,6 +623,13 @@ const confirmReconciliationUpload = async (req, res, next) => {
               used: Number(item.used || 0),
               status: "gagal",
               reason: "Barang tidak terdaftar",
+              kondisi: normalizeKondisi(item.kondisi),
+              nama_barang: item.nama_barang || null,
+              kode_barang: null,
+              project_nama: tiket.project?.nama_project || null,
+              tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+              pic_mitra: pic_mitra || null,
+              catatan: catatan || item.catatan || null,
             },
           });
           failedCount++;
@@ -571,7 +639,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
 
         const boq = await tx.boq.findFirst({
           where: { tiket_id: BigInt(tiketId), status: { in: ["draft", "aktif", "selesai"] } },
-          include: { items: { where: { barang_id: BigInt(item.barang_id) } } },
+          include: { items: { where: { barang_id: BigInt(item.barang_id) }, include: { barang: { select: { kode_perangkat: true } } } } },
         });
         if (!boq || !boq.items.length) {
             await tx.reconciliation_upload_detail.create({
@@ -583,6 +651,13 @@ const confirmReconciliationUpload = async (req, res, next) => {
                 used: Number(item.used || 0),
                 status: "gagal",
                 reason: `Barang tidak terdaftar di BOQ tiket ${tiket.kode_tiket}`,
+                kondisi: normalizeKondisi(item.kondisi),
+                nama_barang: item.nama_barang || null,
+                kode_barang: null,
+                project_nama: tiket.project?.nama_project || null,
+                tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+                pic_mitra: pic_mitra || null,
+                catatan: catatan || item.catatan || null,
               },
             });
             failedCount++;
@@ -605,7 +680,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
               remains_lapangan: 0,
               used: Number(item.used || 0),
               catatan: catatan || item.catatan || null,
-              kondisi: kondisi || item.kondisi || null,
+              kondisi: normalizeKondisi(kondisi || item.kondisi),
               uploaded_by: BigInt(actorId),
               is_aktif: true,
             },
@@ -620,6 +695,13 @@ const confirmReconciliationUpload = async (req, res, next) => {
               used: Number(item.used || 0),
               status: "berhasil",
               reason: null,
+              kondisi: normalizeKondisi(kondisi || item.kondisi),
+              nama_barang: nama_barang || item.nama_barang || null,
+              kode_barang: boq.items[0]?.barang?.kode_perangkat || null,
+              project_nama: tiket.project?.nama_project || null,
+              tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+              pic_mitra: pic_mitra || null,
+              catatan: catatan || item.catatan || null,
             },
           });
           successCount++;
@@ -640,6 +722,13 @@ const confirmReconciliationUpload = async (req, res, next) => {
               used: Number(item.used || 0),
               status: "gagal",
               reason: insertErr.message || "Gagal menyimpan laporan mitra",
+              kondisi: normalizeKondisi(kondisi || item.kondisi),
+              nama_barang: nama_barang || item.nama_barang || null,
+              kode_barang: boq.items[0]?.barang?.kode_perangkat || null,
+              project_nama: tiket.project?.nama_project || null,
+              tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+              pic_mitra: pic_mitra || null,
+              catatan: catatan || item.catatan || null,
             },
           });
           failedCount++;
@@ -673,6 +762,13 @@ const confirmReconciliationUpload = async (req, res, next) => {
               used: Number(item.used || 0),
               status: "gagal",
               reason: item.reason || "Gagal memproses baris",
+              kondisi: normalizeKondisi(item.kondisi),
+              nama_barang: item.nama_barang || null,
+              kode_barang: null,
+              project_nama: null,
+              tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+              pic_mitra: pic_mitra || null,
+              catatan: null,
             },
           });
           failedCount++;

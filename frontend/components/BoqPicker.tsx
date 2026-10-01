@@ -23,7 +23,9 @@ interface BoqPickerProps {
   disabled?: boolean;
   tipe?: "inbound" | "outbound";
   statusFilter?: string;
+  excludeStatus?: string;
   displayField?: "project_name" | "boq_number" | "kode_tiket";
+  emptyMessage?: string;
 }
 
 interface ApiBoq {
@@ -56,7 +58,7 @@ function normalize(raw: ApiBoq): BoqPickerItem {
   };
 }
 
-export default function BoqPicker({ projectId, value, onSelect, placeholder = "Pilih BOQ / Tiket", className, disabled, tipe, statusFilter, displayField }: BoqPickerProps) {
+export default function BoqPicker({ projectId, value, onSelect, placeholder = "Pilih BOQ / Tiket", className, disabled, tipe, statusFilter, excludeStatus, displayField, emptyMessage }: BoqPickerProps) {
   const { get } = useApi();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -86,6 +88,7 @@ export default function BoqPicker({ projectId, value, onSelect, placeholder = "P
     if (projectId) params.set("projectId", String(projectId));
     if (tipe) params.set("tipe", tipe);
     if (statusFilter) params.set("status", statusFilter);
+    if (excludeStatus) params.set("excludeStatus", excludeStatus);
 
     get(`${API_BASE}/api/boqs?${params.toString()}`)
       .then(async (res) => {
@@ -109,7 +112,7 @@ export default function BoqPicker({ projectId, value, onSelect, placeholder = "P
     return () => {
       cancelled = true;
     };
-  }, [debounced, open, get, projectId, tipe, statusFilter]);
+  }, [debounced, open, get, projectId, tipe, statusFilter, excludeStatus]);
 
   useEffect(() => {
     if (!open) return;
@@ -226,7 +229,7 @@ export default function BoqPicker({ projectId, value, onSelect, placeholder = "P
             ) : fetchError ? (
               <div className="px-2 py-3 text-xs text-rose-500">{fetchError}</div>
             ) : results.length === 0 ? (
-              <div className="px-2 py-3 text-xs text-slate-400">{debounced ? "Tidak ada hasil." : "Pilih project untuk melihat BOQ."}</div>
+              <div className="px-2 py-3 text-xs text-slate-400">{emptyMessage || (debounced ? "Tidak ada hasil." : "Pilih project untuk melihat BOQ.")}</div>
             ) : (
               results.map((it) => (
                 <button

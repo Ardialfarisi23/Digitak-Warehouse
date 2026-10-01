@@ -3,6 +3,18 @@ const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
 const notificationService = require("../../modules/notifications/notifications.service");
 
+const toProjectResponse = (record) => {
+  if (!record || typeof record !== "object") return record;
+
+  const { creator, updater, ...rest } = record;
+
+  return {
+    ...rest,
+    created_by_name: creator?.nama ?? null,
+    updated_by_name: updater?.nama ?? null,
+  };
+};
+
 const create = async (data, userId) => {
   if (data.project_id) {
     const existing = await projectRepository.findByProjectId(data.project_id, { includeInactive: true });
@@ -91,7 +103,7 @@ const findAll = async (query = {}) => {
       );
 
       result.data = result.data.map((p) => ({
-        ...p,
+        ...toProjectResponse(p),
         has_active_boq: activeProjectIds.has(Number(p.project_id)),
       }));
     }
@@ -107,7 +119,7 @@ const findByProjectId = async (project_id) => {
     throw new AppError("Project tidak ditemukan.", 404);
   }
 
-  return record;
+  return toProjectResponse(record);
 };
 
 const update = async (project_id, data, userId) => {

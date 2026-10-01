@@ -5,6 +5,7 @@ const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRep
 const DEFAULT_LIMIT = 10;
 const DEFAULT_PAGE = 1;
 const ALLOWED_SORT_FIELDS = ["boq_id", "status", "tanggal_aktivasi", "created_at", "updated_at"];
+const EXCLUDED_BOQ_STATUSES_FOR_SJ = ["draft", "selesai", "ditolak"];
 
 const create = async (data) => {
   // 1. Cek dulu apakah tiket_id yang dikirim dari form sudah punya BOQ
@@ -68,7 +69,7 @@ const findById = async (boq_id) => {
 
 const ALLOWED_STATUS = new Set(["draft", "aktif", "selesai", "ditolak"]);
 
-const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sortBy = "created_at", sortOrder = "desc", status, projectId, area, warehouseId }) => {
+const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sortBy = "created_at", sortOrder = "desc", status, projectId, area, warehouseId, excludeStatus }) => {
   const sanitizedPage = Math.max(parseInt(page, 10) || DEFAULT_PAGE, DEFAULT_PAGE);
   const sanitizedLimit = Math.max(parseInt(limit, 10) || DEFAULT_LIMIT, 1);
   const orderField = ALLOWED_SORT_FIELDS.includes(sortBy) ? sortBy : "created_at";
@@ -78,6 +79,23 @@ const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sor
 
   if (status && ALLOWED_STATUS.has(status.toLowerCase())) {
     where.status = status.toLowerCase();
+  }
+
+  const excludeStatusParam = excludeStatus;
+  if (excludeStatusParam) {
+    const excludeList = String(excludeStatusParam)
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => ALLOWED_STATUS.has(s));
+    if (excludeList.length > 0) {
+      if (!where.status) {
+        where.status = {};
+      }
+      if (typeof where.status === "string") {
+        where.status = { not: where.status };
+      }
+      where.status.notIn = excludeList;
+    }
   }
 
   if (projectId || area) {

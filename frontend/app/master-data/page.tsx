@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Plus, ChevronLeft, ChevronRight, Users, Package, FolderKanban, Truck, Warehouse as WarehouseIcon, Eye, Pencil, Trash2, X, Loader2, AlertCircle, ImageOff, Building2, Ban, RotateCcw, MapPin } from "lucide-react";
 
@@ -77,6 +77,8 @@ interface GenericRecord {
   updatedAt?: string;
   createdBy?: string;
   updatedBy?: string;
+  created_by_name?: string | null;
+  updated_by_name?: string | null;
   [key: string]: unknown;
 }
 
@@ -516,6 +518,12 @@ function DetailModal({ open, onClose, tab, tabLabel, record }: { open: boolean; 
   const primaryPhoto = showPhoto ? getPhotoUrl(record) : null;
   const additionalPhotos = showPhoto ? getAdditionalPhotos(record) : [];
 
+  const displayUser = (name: string | null | undefined, id: string | number | null | undefined): string => {
+    if (name) return name;
+    if (id != null) return `User #${id}`;
+    return "-";
+  };
+
   return (
     <Modal open={open} onClose={onClose} title={`Detail ${tabLabel}`} subtitle={getRecordTitle(tab, record)}>
       {primaryPhoto && (
@@ -580,11 +588,11 @@ function DetailModal({ open, onClose, tab, tabLabel, record }: { open: boolean; 
           <div className="space-y-1 text-xs text-slate-500">
             <p>
               Dibuat: {formatDateTime((record as any)?.created_at ?? record.createdAt)}
-              {(record as any)?.created_by ? ` oleh ${(record as any).created_by}` : ""}
+              {` oleh ${displayUser((record as any)?.created_by_name ?? record.createdBy ?? null, (record as any)?.created_by ?? record.createdBy ?? null)}`}
             </p>
             <p>
               Diubah terakhir: {formatDateTime((record as any)?.updated_at ?? record.updatedAt)}
-              {(record as any)?.updated_by ? ` oleh ${(record as any).updated_by}` : ""}
+              {` oleh ${displayUser((record as any)?.updated_by_name ?? record.updatedBy ?? null, (record as any)?.updated_by ?? record.updatedBy ?? null)}`}
             </p>
           </div>
         </div>
@@ -1907,6 +1915,10 @@ function MasterDataPageContent() {
     record: GenericRecord | null;
   } | null>(null);
   const [detailRecord, setDetailRecord] = useState<GenericRecord | null>(null);
+  const detailRecordRef = useRef(detailRecord);
+  useEffect(() => {
+    detailRecordRef.current = detailRecord;
+  }, [detailRecord]);
   const [deleteRecord, setDeleteRecord] = useState<GenericRecord | null>(null);
   const [nonaktifRecord, setNonaktifRecord] = useState<GenericRecord | null>(null);
   const [aktifRecord, setAktifRecord] = useState<GenericRecord | null>(null);
@@ -2071,6 +2083,14 @@ function MasterDataPageContent() {
         limit: Number(metaObj.limit ?? ITEMS_PER_PAGE),
         totalPages: Number(metaObj.totalPages ?? Math.max(1, Math.ceil(dataArr.length / ITEMS_PER_PAGE))),
       });
+
+      if (detailRecordRef.current && config) {
+        const idField = config.idField;
+        const updated = dataArr.find((item) => String(item[idField]) === String((detailRecordRef.current as any)[idField]));
+        if (updated) {
+          setDetailRecord(updated);
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan saat mengambil data.");
 

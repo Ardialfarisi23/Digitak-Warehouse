@@ -278,6 +278,59 @@ const parseIdFilter = (value, fieldName) => {
   return BigInt(raw);
 };
 
+const buildZonaFallbackMap = async (rows, prisma) => {
+  const candidates = rows.filter(
+    (r) =>
+      r.surat_jalan_item?.surat_jalan?.tipe === "inbound" &&
+      r.surat_jalan_item?.surat_jalan?.status === "diterima_didistribusikan" &&
+      !r.surat_jalan_item?.zona_id &&
+      r.surat_jalan_item?.surat_jalan?.gudang_tujuan_id
+  );
+
+  if (!candidates.length) {
+    return new Map();
+  }
+
+  const uniqueKeys = new Set();
+  for (const r of candidates) {
+    uniqueKeys.add(`${r.barang_id}:${r.surat_jalan_item.surat_jalan.gudang_tujuan_id}`);
+  }
+
+  if (!uniqueKeys.size) {
+    return new Map();
+  }
+
+  const orConditions = Array.from(uniqueKeys).map((key) => {
+    const [barang_id, gudang_id] = key.split(":").map(Number);
+    return { barang_id, gudang_id };
+  });
+
+  const stokRecords = await prisma.stok_gudang.findMany({
+    where: { OR: orConditions },
+    select: { barang_id: true, gudang_id: true, zona_id: true },
+  });
+
+  const grouped = new Map();
+  for (const record of stokRecords) {
+    const key = `${record.barang_id}:${record.gudang_id}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, new Set());
+    }
+    if (record.zona_id != null) {
+      grouped.get(key).add(Number(record.zona_id));
+    }
+  }
+
+  const fallbackMap = new Map();
+  for (const [key, zonaIds] of grouped) {
+    if (zonaIds.size === 1) {
+      fallbackMap.set(key, Array.from(zonaIds)[0]);
+    }
+  }
+
+  return fallbackMap;
+};
+
 const getStockHistory = async (filters = {}) => {
   const {
     search = "",
@@ -474,12 +527,34 @@ const getStockHistory = async (filters = {}) => {
     prisma.stok_ledger.count({ where }),
   ]);
 
+  const zonaFallbackMap = await buildZonaFallbackMap(data, prisma);
+
+  const zonaMap = new Map();
+  for (const ledger of data) {
+    const z = ledger.surat_jalan_item?.zona;
+    if (z?.zona_id) {
+      zonaMap.set(Number(z.zona_id), z);
+    }
+  }
+
   const rows = data.map((ledger) => {
     const item = ledger.surat_jalan_item;
     const suratJalan = item?.surat_jalan;
     const barang = item?.barang ?? ledger.barang;
     const tiket = suratJalan?.boq?.tiket;
-    const zona = item?.zona;
+
+    const fallbackZonaId =
+      !item?.zona_id &&
+      suratJalan?.tipe === "inbound" &&
+      suratJalan?.status === "diterima_didistribusikan"
+        ? zonaFallbackMap.get(`${ledger.barang_id}:${suratJalan?.gudang_tujuan_id}`)
+        : null;
+
+    const effectiveZonaId = item?.zona_id || fallbackZonaId || null;
+    const zona =
+      effectiveZonaId && zonaMap.get(Number(effectiveZonaId))
+        ? zonaMap.get(Number(effectiveZonaId))
+        : item?.zona || null;
 
     const gudangAsal = suratJalan?.gudang_asal?.nama_gudang || null;
     const gudangTujuan = suratJalan?.gudang_tujuan?.nama_gudang || null;
@@ -503,16 +578,12 @@ const getStockHistory = async (filters = {}) => {
       status_surat_jalan: suratJalan?.status || "-",
       project_nama: suratJalan?.project?.nama_project || "-",
       area: suratJalan?.project?.area || "-",
-      // `gudang` dipertahankan untuk kompatibilitas konsumen lama.
       gudang: gudangAsal || gudangTujuan || "-",
-      // Asal & tujuan dipisah: level GUDANG (antar/keluar-masuk gudang).
       gudang_asal: gudangAsal || "-",
       gudang_tujuan: gudangTujuan || "-",
       gudang_asal_id: suratJalan?.gudang_asal_id ? String(suratJalan.gudang_asal_id) : null,
       gudang_tujuan_id: suratJalan?.gudang_tujuan_id ? String(suratJalan.gudang_tujuan_id) : null,
-      // Zona: sub-lokasi DI DALAM satu gudang (granularitas lebih kecil dari
-      // gudang_asal/gudang_tujuan, bukan duplikatnya).
-      zona_id: zona?.zona_id ? String(zona.zona_id) : null,
+      zona_id: effectiveZonaId ? String(effectiveZonaId) : null,
       zona_kode: zona?.kode_zona || "-",
       zona_nama: zona?.nama_zona || "-",
       zona_tipe: zona?.tipe_zona || "-",
@@ -717,12 +788,34 @@ const getStockHistoryForExport = async (filters = {}) => {
     prisma.stok_ledger.count({ where }),
   ]);
 
+  const zonaFallbackMap = await buildZonaFallbackMap(data, prisma);
+
+  const zonaMap = new Map();
+  for (const ledger of data) {
+    const z = ledger.surat_jalan_item?.zona;
+    if (z?.zona_id) {
+      zonaMap.set(Number(z.zona_id), z);
+    }
+  }
+
   const rows = data.map((ledger) => {
     const item = ledger.surat_jalan_item;
     const suratJalan = item?.surat_jalan;
     const barang = item?.barang ?? ledger.barang;
     const tiket = suratJalan?.boq?.tiket;
-    const zona = item?.zona;
+
+    const fallbackZonaId =
+      !item?.zona_id &&
+      suratJalan?.tipe === "inbound" &&
+      suratJalan?.status === "diterima_didistribusikan"
+        ? zonaFallbackMap.get(`${ledger.barang_id}:${suratJalan?.gudang_tujuan_id}`)
+        : null;
+
+    const effectiveZonaId = item?.zona_id || fallbackZonaId || null;
+    const zona =
+      effectiveZonaId && zonaMap.get(Number(effectiveZonaId))
+        ? zonaMap.get(Number(effectiveZonaId))
+        : item?.zona || null;
 
     const gudangAsal = suratJalan?.gudang_asal?.nama_gudang || null;
     const gudangTujuan = suratJalan?.gudang_tujuan?.nama_gudang || null;
@@ -751,7 +844,7 @@ const getStockHistoryForExport = async (filters = {}) => {
       gudang_tujuan: gudangTujuan || "-",
       gudang_asal_id: suratJalan?.gudang_asal_id ? String(suratJalan.gudang_asal_id) : null,
       gudang_tujuan_id: suratJalan?.gudang_tujuan_id ? String(suratJalan.gudang_tujuan_id) : null,
-      zona_id: zona?.zona_id ? String(zona.zona_id) : null,
+      zona_id: effectiveZonaId ? String(effectiveZonaId) : null,
       zona_kode: zona?.kode_zona || "-",
       zona_nama: zona?.nama_zona || "-",
       zona_tipe: zona?.tipe_zona || "-",

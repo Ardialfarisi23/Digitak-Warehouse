@@ -752,6 +752,8 @@ const [itemsRes, boqsRes] = await Promise.all([
               }}
               placeholder="Pilih BOQ / Tiket"
               tipe="outbound"
+              excludeStatus="draft,selesai,ditolak"
+              emptyMessage="Tidak ada BOQ yang dapat diajukan."
             />
             {selectedBoqId && <p className="mt-2 text-xs text-gray-500">Tiket: {selectedProject?.nama_project || `Project ID ${selectedProjectId}`}</p>}
           </div>
