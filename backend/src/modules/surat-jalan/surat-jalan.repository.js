@@ -91,21 +91,38 @@ const baseInclude = {
 
 const findByIdInclude = {
   ...baseInclude,
+  personil_pengantar: {
+    select: {
+      personil_id: true,
+      nama: true,
+      jenis: true,
+      no_hp: true,
+    },
+  },
   items: {
     ...baseInclude.items,
     include: {
       ...baseInclude.items.include,
+      picks: {
+        select: {
+          pick_id: true,
+          gudang_id: true,
+          zona_id: true,
+          kondisi_diminta: true,
+          kondisi_diambil: true,
+          qty: true,
+          is_override: true,
+          catatan_override: true,
+          picked_by: true,
+          picked_at: true,
+        },
+      },
       diperiksa_oleh_user: {
         select: {
+          user_id: true,
           nama: true,
         },
       },
-    },
-    select: {
-      ...(baseInclude.items.select || {}),
-      qty_diterima: true,
-      kondisi_diterima: true,
-      catatan_penerimaan: true,
     },
   },
 };
@@ -474,12 +491,154 @@ const findOutboundForDelivery = async (params = {}) => {
 };
 
 const findById = async (id) => {
-  return await prisma.surat_jalan.findUnique({
-    where: {
-      surat_jalan_id: Number(id),
-    },
-    include: findByIdInclude,
-  });
+  const [suratJalan, keberangkatanLog, timelineLogs] = await Promise.all([
+    prisma.surat_jalan.findUnique({
+      where: {
+        surat_jalan_id: Number(id),
+      },
+      include: findByIdInclude,
+    }),
+    prisma.audit_log.findFirst({
+      where: {
+        entity_type: "surat_jalan",
+        entity_id: Number(id),
+        aksi: "start_delivery",
+      },
+      orderBy: {
+        created_at: "desc",
+      },
+      include: {
+        actor: {
+          select: {
+            user_id: true,
+            nama: true,
+          },
+        },
+      },
+    }),
+    prisma.audit_log.findMany({
+      where: {
+        entity_type: "surat_jalan",
+        entity_id: Number(id),
+        aksi: {
+          in: [
+            "create_inbound",
+            "create_outbound",
+            "approve_inbound",
+            "approve_outbound",
+            "reject_inbound",
+            "reject_outbound",
+            "retrieve",
+            "start_delivery",
+            "confirm_distributed",
+          ],
+        },
+      },
+      orderBy: {
+        created_at: "asc",
+      },
+      include: {
+        actor: {
+          select: {
+            user_id: true,
+            nama: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  if (!suratJalan) {
+    return null;
+  }
+
+  const LINIMASA_LABEL = {
+    create_inbound: "Diajukan",
+    create_outbound: "Diajukan",
+    approve_inbound: "Disetujui",
+    approve_outbound: "Disetujui",
+    reject_inbound: "Ditolak",
+    reject_outbound: "Ditolak",
+    retrieve: "Picking selesai",
+    start_delivery: "Dikirim",
+    confirm_distributed: "Diterima",
+  };
+
+  const zonaIds = new Set();
+  for (const item of suratJalan.items) {
+    for (const pick of item.picks || []) {
+      if (pick.zona_id != null) {
+        zonaIds.add(Number(pick.zona_id));
+      }
+    }
+  }
+
+  const zonaMap = new Map();
+  if (zonaIds.size > 0) {
+    try {
+      const zonas = await prisma.zona_gudang.findMany({
+        where: {
+          zona_id: { in: Array.from(zonaIds) },
+        },
+        select: {
+          zona_id: true,
+          nama_zona: true,
+        },
+      });
+      for (const z of zonas) {
+        zonaMap.set(Number(z.zona_id), z.nama_zona || null);
+      }
+    } catch (err) {
+      console.error("Gagal memuat nama zona:", err);
+    }
+  }
+
+  const itemsWithZona = suratJalan.items.map((item) => ({
+    ...item,
+    picks: (item.picks || []).map((pick) => ({
+      pick_id: Number(pick.pick_id),
+      surat_jalan_item_id: Number(pick.surat_jalan_item_id),
+      gudang_id: Number(pick.gudang_id),
+      zona_id: pick.zona_id != null ? Number(pick.zona_id) : null,
+      zona_nama: pick.zona_id != null ? zonaMap.get(Number(pick.zona_id)) || null : null,
+      qty: pick.qty ? Number(pick.qty) : 0,
+      kondisi_diminta: pick.kondisi_diminta,
+      kondisi_diambil: pick.kondisi_diambil,
+      is_override: pick.is_override,
+      catatan_override: pick.catatan_override,
+      picked_by: pick.picked_by != null ? Number(pick.picked_by) : null,
+      picked_at: pick.picked_at,
+    })),
+  }));
+
+  const keberangkatan = keberangkatanLog
+    ? {
+        waktu: keberangkatanLog.created_at,
+        oleh_id: Number(keberangkatanLog.actor_id),
+        oleh_nama: keberangkatanLog.actor?.nama || null,
+      }
+    : null;
+
+  const linimasa = (() => {
+    try {
+      return timelineLogs.map((log) => ({
+        kode: log.aksi,
+        label: LINIMASA_LABEL[log.aksi] || log.aksi,
+        waktu: log.created_at,
+        oleh_nama: log.actor?.nama || null,
+      }));
+    } catch (err) {
+      console.error("Gagal memetakan linimasa:", err);
+      return [];
+    }
+  })();
+
+  return {
+    ...suratJalan,
+    items: itemsWithZona,
+    keberangkatan,
+    linimasa,
+  };
 };
 
 const findOutboundDetail = async (id) => {
@@ -567,8 +726,8 @@ const addInboundStock = async (suratJalan, tx = prisma) => {
         barang_id: item.barang_id,
         kondisi: item.kondisi || "baik",
         zona_id: null,
-        project_id: suratJalan.project_id,
       },
+      orderBy: { stok_id: "asc" },
     });
 
     if (existingStock) {
@@ -598,7 +757,7 @@ const addInboundStock = async (suratJalan, tx = prisma) => {
         data: {
           gudang_id: gudangTujuanId,
           barang_id: item.barang_id,
-          project_id: suratJalan.project_id,
+          project_id: null,
           kondisi: item.kondisi || "baik",
           qty: qty,
           zona_id: null,

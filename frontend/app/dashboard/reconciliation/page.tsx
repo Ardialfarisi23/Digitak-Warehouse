@@ -146,6 +146,10 @@ export default function ReconciliationInventoryPage() {
   const [selectedKodeTiket, setSelectedKodeTiket] = useState("");
 
   const boqItemsQueryParams = useMemo(() => ({ projectId: selectedProjectId }), [selectedProjectId]);
+  const manualBoqItemsQueryParams = useMemo(
+    () => ({ projectId: selectedProjectId, statuses: "draft,aktif,selesai" }),
+    [selectedProjectId]
+  );
   const [exporting, setExporting] = useState(false);
   const [mitraReportMeta, setMitraReportMeta] = useState({ tanggal_laporan: new Date().toISOString().slice(0, 10), pic_mitra: "" });
 
@@ -160,7 +164,7 @@ export default function ReconciliationInventoryPage() {
   const [historyActor, setHistoryActor] = useState("");
   const [historyStartDate, setHistoryStartDate] = useState("");
   const [historyEndDate, setHistoryEndDate] = useState("");
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "warning" } | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -363,6 +367,10 @@ export default function ReconciliationInventoryPage() {
         setMitraError("Setiap item harus memiliki Nama Barang.");
         return;
       }
+      if (!row.barang_id) {
+        setMitraError("Setiap item harus memilih Barang dari daftar BOQ.");
+        return;
+      }
       if (Number(row.used) <= 0) {
         setMitraError("Setiap item harus memiliki Qty Used > 0.");
         return;
@@ -404,9 +412,25 @@ export default function ReconciliationInventoryPage() {
         throw new Error(json?.message || "Gagal menyimpan hasil laporan mitra.");
       }
 
-      closeMitraModal();
-      fetchReconciliation();
-      setToast({ message: "Laporan mitra berhasil disimpan.", type: "success" });
+      const failedCount = json?.data?.failedCount || 0;
+      const failedItems = json?.data?.failedItems || [];
+
+      if (failedCount > 0 && failedCount >= (preview?.length || 0)) {
+        const reasons = failedItems.slice(0, 3).map((it: any) => it.reason).filter(Boolean).join("; ");
+        setMitraError(`Gagal menyimpan semua item (${failedCount}). ${reasons}`);
+        setToast({ message: `Gagal menyimpan semua item (${failedCount}). ${reasons}`, type: "error" });
+      } else if (failedCount > 0) {
+        const reasons = failedItems.slice(0, 3).map((it: any) => it.reason).filter(Boolean).join("; ");
+        setMitraError(null);
+        closeMitraModal();
+        fetchReconciliation();
+        setToast({ message: `${preview?.length - failedCount} berhasil, ${failedCount} gagal. ${reasons}`, type: "warning" });
+      } else {
+        setMitraError(null);
+        closeMitraModal();
+        fetchReconciliation();
+        setToast({ message: "Laporan mitra berhasil disimpan.", type: "success" });
+      }
     } catch (err) {
       setMitraError(err instanceof Error ? err.message : "Terjadi kesalahan saat konfirmasi.");
       setToast({ message: err instanceof Error ? err.message : "Terjadi kesalahan saat konfirmasi.", type: "error" });
@@ -1179,7 +1203,6 @@ export default function ReconciliationInventoryPage() {
                                <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
                                 <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
                                 <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
-                                <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Remains di Lapangan</th>
                                 <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kondisi</th>
                                <th className="px-4 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
                              </tr>
@@ -1190,9 +1213,8 @@ export default function ReconciliationInventoryPage() {
                                  <td className="px-4 py-2 font-mono text-xs font-semibold text-orange-600">{row.kode_tiket}</td>
                                  <td className="px-4 py-2 text-slate-700">{row.project_nama}</td>
                                   <td className="px-4 py-2 text-slate-700">{row.nama_barang || "-"}</td>
-                                  <td className="px-4 py-2 text-right font-mono text-slate-600">{row.used}</td>
-                                  <td className="px-4 py-2 text-right font-mono text-slate-600">{row.remains_lapangan}</td>
-                                  <td className="px-4 py-2 text-slate-700">{row.kondisi || "-"}</td>
+                                   <td className="px-4 py-2 text-right font-mono text-slate-600">{row.used}</td>
+                                   <td className="px-4 py-2 text-slate-700">{row.kondisi || "-"}</td>
                                  <td className="px-4 py-2 text-center">
                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
                                      <CheckCircle2 size={12} />
@@ -1206,9 +1228,8 @@ export default function ReconciliationInventoryPage() {
                                  <td className="px-4 py-2 font-mono text-xs font-semibold text-slate-700">{row.kode_tiket || "-"}</td>
                                  <td className="px-4 py-2 text-slate-700">-</td>
                                  <td className="px-4 py-2 text-slate-700">-</td>
-                                 <td className="px-4 py-2 text-right font-mono text-slate-400">-</td>
-                                 <td className="px-4 py-2 text-right font-mono text-slate-400">-</td>
-                                 <td className="px-4 py-2 text-slate-700">-</td>
+                                  <td className="px-4 py-2 text-right font-mono text-slate-400">-</td>
+                                  <td className="px-4 py-2 text-slate-700">-</td>
                                  <td className="px-4 py-2 text-center">
                                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700">
                                      <AlertTriangle size={12} />
@@ -1268,6 +1289,7 @@ export default function ReconciliationInventoryPage() {
                           setSelectedProjectId(e.target.value);
                           setSelectedBoqId("");
                           setSelectedKodeTiket("");
+                          setManualRows([]);
                         }}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
                       >
@@ -1281,19 +1303,20 @@ export default function ReconciliationInventoryPage() {
                     </div>
                     <div>
                       <label className="mb-1 block text-xs font-semibold text-slate-500">Kode Tiket</label>
-                      <BoqPicker
-                        value={selectedBoqId}
-                        onSelect={(picked: BoqPickerItem) => {
-                          setSelectedBoqId(picked.boq_id);
-                          setSelectedKodeTiket(picked.kode_tiket);
-                          if (picked.project_id) {
-                            setSelectedProjectId(String(picked.project_id));
-                          }
-                        }}
-                        placeholder="Pilih Kode Tiket"
-                        disabled={!selectedProjectId}
-                        projectId={selectedProjectId || undefined}
-                      />
+                       <BoqPicker
+                         value={selectedBoqId}
+                         onSelect={(picked: BoqPickerItem) => {
+                           setSelectedBoqId(picked.boq_id);
+                           setSelectedKodeTiket(picked.kode_tiket);
+                           if (picked.project_id) {
+                             setSelectedProjectId(String(picked.project_id));
+                           }
+                         }}
+                         placeholder="Pilih Kode Tiket"
+                         disabled={!selectedProjectId}
+                         projectId={selectedProjectId || undefined}
+                         displayField="kode_tiket"
+                       />
                     </div>
                   </div>
 
@@ -1325,18 +1348,18 @@ export default function ReconciliationInventoryPage() {
                             <div className="grid grid-cols-12 gap-2">
                               <div className="col-span-12 sm:col-span-4">
                                 <label className="mb-1 block text-[11px] font-medium text-slate-500">Nama Barang</label>
-                                 <BarangPicker
-                                   value={row.nama_barang}
-                                   onSelect={(item) => {
-                                     updateManualRow(row.id, "barang_id", item.id || "");
-                                     updateManualRow(row.id, "nama_barang", item.nama_barang || item.kode_perangkat || "");
-                                   }}
-                                   placeholder="Pilih atau ketik nama barang"
-                                   disabled={!selectedProjectId}
-                                   fetchEndpoint="/api/boqs/items"
-                                   queryParams={boqItemsQueryParams}
-                                   emptyMessage="Belum ada BOQ aktif untuk project ini — Anda tetap bisa mengetik nama barang manual"
-                                 />
+                                  <BarangPicker
+                                    value={row.nama_barang}
+                                    onSelect={(item) => {
+                                      updateManualRow(row.id, "barang_id", item.id || "");
+                                      updateManualRow(row.id, "nama_barang", item.nama_barang || item.kode_perangkat || "");
+                                    }}
+                                    placeholder="Pilih atau ketik nama barang"
+                                    disabled={!selectedProjectId}
+                                    fetchEndpoint="/api/boqs/items"
+                                    queryParams={manualBoqItemsQueryParams}
+                                    emptyMessage="Belum ada BOQ untuk project ini. Barang harus dipilih dari daftar BOQ."
+                                  />
                               </div>
                               <div className="col-span-6 sm:col-span-3">
                                 <label className="mb-1 block text-[11px] font-medium text-slate-500">Qty Terpasang (Used)</label>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, Fragment } from "react";
 import {
   Search,
   ChevronDown,
@@ -23,6 +23,8 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useApi } from "@/lib/api";
+import { humanizeKey, humanizeValue } from "@/lib/audit-labels";
+import { KondisiBadge } from "@/components/common/KondisiBadge";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -55,9 +57,9 @@ const badgeStyles: Record<BadgeVariant, string> = {
   "outline-gray": "bg-transparent border border-slate-200 text-slate-600",
 };
 
-function Badge({ label, icon: Icon, variant = "gray" }: { label: string; icon?: React.ComponentType<{ size?: number; className?: string }>; variant?: BadgeVariant }) {
+function Badge({ label, icon: Icon, variant = "gray", className }: { label: string; icon?: React.ComponentType<{ size?: number; className?: string }>; variant?: BadgeVariant; className?: string }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${badgeStyles[variant]}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${badgeStyles[variant]} ${className || ""}`}>
       {Icon && <Icon size={14} />}
       {label}
     </span>
@@ -134,6 +136,7 @@ interface StockHistoryEntry {
   zona_gudang: string;
   gudang_asal: string;
   gudang_tujuan: string;
+  lapangan_tujuan?: string | null;
   nomor_surat_jalan?: string;
   kondisi?: string;
   is_kelebihan?: boolean;
@@ -142,6 +145,8 @@ interface StockHistoryEntry {
   area?: string;
   zona_nama?: string;
   zona_tipe?: string;
+  asal_label?: string | null;
+  asal_tipe?: string | null;
   [key: string]: unknown;
 }
 
@@ -163,12 +168,19 @@ interface ReconciliationUploadLogEntry {
     status?: string;
     alasan_gagal?: string;
     reason?: string;
+    kondisi?: string | null;
+    nama_barang?: string | null;
+    kode_barang?: string | null;
+    project_nama?: string | null;
+    tanggal_laporan?: string | null;
+    pic_mitra?: string | null;
+    catatan?: string | null;
     [key: string]: unknown;
   }>;
   [key: string]: unknown;
 }
 
-function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+function Modal({ open, onClose, title, children, className }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode; className?: string }) {
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -187,7 +199,7 @@ function Modal({ open, onClose, title, children }: { open: boolean; onClose: () 
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl"
+        className={`w-full max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl ${className || ""}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
@@ -379,36 +391,6 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
       return <p className="text-sm text-slate-500">-</p>;
     }
 
-    const labelMap: Record<string, string> = {
-      mos: "MOS (arsip)",
-      remains_lapangan: "Remains di Lapangan",
-      used: "Used",
-      source_file: "File Sumber",
-      filename: "Nama File",
-      nama_file: "Nama File",
-      role: "Peran",
-      catatan: "Catatan",
-      nomor_surat_jalan: "Nomor Surat Jalan",
-      status: "Status",
-      kode_tiket: "Kode Tiket",
-      username_target: "Username Target",
-      target_user: "Username Target",
-      user_target: "Username Target",
-      tiket_id: "Tiket",
-      surat_jalan_id: "Surat Jalan",
-      gudang_asal_id: "Gudang Asal",
-      gudang_tujuan_id: "Gudang Tujuan",
-      project_id: "Project",
-      boq_id: "BOQ",
-      zona_id: "Zona",
-      barang_id: "Barang",
-      surat_jalan_item_id: "Item Surat Jalan",
-      override: "Override Kondisi",
-      kondisi_diminta: "Kondisi Diminta",
-      kondisi_diambil: "Kondisi Diambil",
-      catatan_kondisi: "Catatan Override",
-    };
-
     const idRefKeys = new Set([
       "tiket_id",
       "surat_jalan_id",
@@ -421,27 +403,60 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
       "surat_jalan_item_id",
     ]);
 
+    const renderValue = (key: string, value: unknown): React.ReactNode => {
+      if (idRefKeys.has(key)) {
+        const resolved = resolvedRefs[key];
+        if (resolved === null) {
+          return "(data telah dihapus)";
+        }
+        if (resolved !== undefined) {
+          return resolved;
+        }
+      }
+
+      if (Array.isArray(value)) {
+        if (value.length === 0) return "-";
+        const allPrimitives = value.every((item) => item === null || item === undefined || typeof item !== "object");
+        if (allPrimitives) {
+          return humanizeValue(key, value);
+        }
+        return (
+          <div className="mt-1 space-y-1">
+            {value.map((item, idx) => {
+              if (item === null || item === undefined) return null;
+              if (typeof item === "object") {
+                return (
+                  <div key={idx} className="rounded bg-slate-100 px-2 py-1">
+                    {renderStructuredData(`${key}[${idx}]`, item as Record<string, unknown>, resolvedRefs)}
+                  </div>
+                );
+              }
+              return (
+                <span key={idx} className="text-xs text-slate-700">
+                  {humanizeValue(key, item)}
+                </span>
+              );
+            })}
+          </div>
+        );
+      }
+
+      if (typeof value === "object" && value !== null) {
+        return renderStructuredData(key, value as Record<string, unknown>, resolvedRefs);
+      }
+
+      return humanizeValue(key, value);
+    };
+
     return (
       <div className="space-y-2">
         {entries.map(([key, value]) => {
-          const displayKey = labelMap[key] || key;
-          let displayValue: string;
-          if (idRefKeys.has(key)) {
-            const resolved = resolvedRefs[key];
-            if (resolved === null) {
-              displayValue = "(data telah dihapus)";
-            } else if (resolved === undefined) {
-              displayValue = typeof value === "object" ? JSON.stringify(value) : String(value);
-            } else {
-              displayValue = resolved;
-            }
-          } else {
-            displayValue = typeof value === "object" ? JSON.stringify(value) : String(value);
-          }
+          const displayKey = humanizeKey(key);
+          const displayValue = renderValue(key, value);
           return (
             <div key={key} className="flex items-start justify-between gap-4 rounded-lg bg-slate-50 px-3 py-2">
               <span className="text-xs font-medium text-slate-500">{displayKey}</span>
-              <span className="text-xs font-semibold text-slate-800 text-right break-all">{displayValue}</span>
+              <span className="text-xs font-semibold text-slate-800 text-right break-all">{displayValue as string}</span>
             </div>
           );
         })}
@@ -647,7 +662,7 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
                           <Badge label={aksiMap[r.aksi].label} icon={aksiMap[r.aksi].icon} variant={aksiMap[r.aksi].variant} />
                         ) : (
                           <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                            {r.aksi}
+                            {humanizeValue("aksi", r.aksi)}
                           </span>
                         )}
                       </td>
@@ -733,7 +748,7 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
               <div>
                 <p className="text-xs font-medium text-slate-400">Aksi</p>
                 <p className="text-sm text-slate-800">
-                  {aksiMap[detailRow.aksi] ? aksiMap[detailRow.aksi].label : detailRow.aksi}
+                  {aksiMap[detailRow.aksi] ? aksiMap[detailRow.aksi].label : humanizeValue("aksi", detailRow.aksi)}
                 </p>
               </div>
               <div>
@@ -791,6 +806,60 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
   const [projects, setProjects] = useState<{ id: string; label: string }[]>([]);
   const [kategoris, setKategoris] = useState<{ id: string; nama: string }[]>([]);
   const [detailTiket, setDetailTiket] = useState<StockHistoryEntry | null>(null);
+
+  const ASAL_TIPE_LABEL: Record<string, string> = {
+    gudang: "Gudang",
+    pemasok: "Pemasok",
+    project: "Project",
+    gudang_stok: "Gudang",
+    return: "Return",
+  };
+
+  const renderAsal = (row: StockHistoryEntry) => {
+    const label = row.asal_label?.trim();
+    if (label && label !== "-") {
+      const badgeLabel = ASAL_TIPE_LABEL[row.asal_tipe || ""] || row.asal_tipe || "";
+      return (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="truncate block" title={label}>
+            {label}
+          </span>
+          {badgeLabel && (
+            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-600 bg-slate-100 whitespace-nowrap">
+              {badgeLabel}
+            </span>
+          )}
+        </span>
+      );
+    }
+    const fallback = row.gudang_asal || "-";
+    return (
+      <span className={fallback === "-" ? "text-slate-300" : ""}>
+        {fallback}
+      </span>
+    );
+  };
+
+  const renderTujuan = (row: StockHistoryEntry) => {
+    const gudang = row.gudang_tujuan || "-";
+    if (gudang && gudang !== "-") {
+      return <span className="truncate block" title={gudang}>{gudang}</span>;
+    }
+    const lapangan = row.lapangan_tujuan || "-";
+    if (lapangan && lapangan !== "-") {
+      return (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="truncate block" title={lapangan}>
+            {lapangan}
+          </span>
+          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-600 bg-slate-100 whitespace-nowrap">
+            Lapangan
+          </span>
+        </span>
+      );
+    }
+    return <span className="text-slate-300">-</span>;
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1314,9 +1383,9 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-slate-700">
-                      <span className={r.gudang_asal === "-" ? "text-slate-300" : ""}>{r.gudang_asal}</span>
+                      {renderAsal(r)}
                       <span className="mx-1.5 text-slate-400">→</span>
-                      <span className={r.gudang_tujuan === "-" ? "text-slate-300" : ""}>{r.gudang_tujuan}</span>
+                      {renderTujuan(r)}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button
@@ -1562,7 +1631,23 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
   const statusBadge = (status: string) => {
     if (status === "berhasil") return <Badge label="Berhasil" variant="green" />;
     if (status === "gagal") return <Badge label="Gagal" variant="red" />;
-    return <Badge label={status} variant="gray" />;
+    if (status === "sebagian_gagal") return <Badge label="Sebagian Gagal" variant="orange" />;
+    if (status === "draft") return <Badge label="Draft" variant="gray" />;
+    return <Badge label={status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} variant="gray" />;
+  };
+
+  const renderFilename = (filename: string) => {
+    if (filename === "manual-input") {
+      return <Badge label="Input Manual" variant="blue" />;
+    }
+    return (
+      <>
+        <span className="truncate block" title={filename}>
+          {filename}
+        </span>
+        {/\.(xlsx|xls|csv)$/i.test(filename) && <Badge label="Excel" variant="outline-gray" className="mt-1" />}
+      </>
+    );
   };
 
   return (
@@ -1664,11 +1749,13 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
                         {formatDateTime(r.uploaded_at)}
                       </td>
                       <td className="px-6 py-4">
-                        <div className="font-semibold text-slate-900">{r.filename}</div>
+                        <div className="font-semibold text-slate-900">{renderFilename(r.filename)}</div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="font-semibold text-slate-900">{r.uploaded_by_nama}</div>
-                        <div className="text-xs text-slate-500">{r.uploaded_by_role}</div>
+                        <div className="text-xs">
+                          <Badge label={humanizeValue("user_role", r.uploaded_by_role)} variant="gray" />
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-center font-mono text-xs text-slate-600">{r.total_rows}</td>
                       <td className="px-6 py-4 text-center font-mono text-xs text-emerald-600">{r.success_rows}</td>
@@ -1729,13 +1816,14 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
         open={!!detailRow}
         onClose={() => setDetailRow(null)}
         title="Detail Upload Laporan Mitra"
+        className="max-w-3xl"
       >
         {detailRow && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs font-medium text-slate-400">Nama File</p>
-                <p className="text-sm font-semibold text-slate-800">{detailRow.filename}</p>
+                <div className="text-sm font-semibold text-slate-800">{renderFilename(detailRow.filename)}</div>
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-400">Waktu Upload</p>
@@ -1744,6 +1832,11 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
               <div>
                 <p className="text-xs font-medium text-slate-400">Diunggah Oleh</p>
                 <p className="text-sm font-semibold text-slate-800">{detailRow.uploaded_by_nama}</p>
+                {detailRow.uploaded_by_role && (
+                  <div className="mt-1">
+                    <Badge label={humanizeValue("user_role", detailRow.uploaded_by_role)} variant="gray" />
+                  </div>
+                )}
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-400">Total / Berhasil / Gagal</p>
@@ -1757,30 +1850,64 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
               <p className="text-xs font-medium text-slate-400 mb-3">Detail Baris</p>
               {detailRow.details && detailRow.details.length > 0 ? (
                 <div className="overflow-x-auto rounded-lg border border-slate-100">
-                  <table className="min-w-full text-left text-xs">
+                    <table className="min-w-full text-left text-xs">
                       <thead>
                         <tr className="border-b border-slate-100 bg-slate-50">
                           <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
-                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">MOS (arsip)</th>
-                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">Remains di Lapangan</th>
                           <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">Used</th>
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Kondisi</th>
                           <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
                           <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Alasan Gagal</th>
                         </tr>
                       </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {detailRow.details.map((d) => (
-                            <tr key={d.detail_id} className="hover:bg-slate-50">
-                              <td className="px-3 py-2 font-mono font-semibold text-slate-700">{d.kode_tiket}</td>
-                              <td className="px-3 py-2 text-right font-mono text-slate-600">{d.mos ?? "-"}</td>
-                              <td className="px-3 py-2 text-right font-mono text-slate-600">{d.remains_lapangan ?? "-"}</td>
-                              <td className="px-3 py-2 text-right font-mono text-slate-600">{d.used}</td>
-                           <td className="px-3 py-2">{statusBadge(d.status || "-")}</td>
-                          <td className="px-3 py-2 text-slate-500">{d.reason || "-"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      <tbody className="divide-y divide-slate-50">
+                        {detailRow.details.map((d) => {
+                          const hasDetail = d.nama_barang || d.kode_barang || d.project_nama || d.pic_mitra || d.tanggal_laporan || d.catatan;
+                          const formatDate = (iso?: string | null) => {
+                            if (!iso) return null;
+                            const date = new Date(iso);
+                            if (Number.isNaN(date.getTime())) return null;
+                            return date.toLocaleDateString("id-ID", { dateStyle: "medium" });
+                          };
+                          const parts = hasDetail
+                            ? [
+                                d.nama_barang ? <span key="nama">Nama: <span className="font-semibold">{d.nama_barang}</span></span> : null,
+                                d.kode_barang ? <span key="kode"><code className="font-mono text-[10px] bg-slate-100 px-1 py-0.5 rounded">{d.kode_barang}</code></span> : null,
+                                d.project_nama ? <span key="project">Project: <span className="font-semibold">{d.project_nama}</span></span> : null,
+                                d.pic_mitra ? <span key="pic">PIC: <span className="font-semibold">{d.pic_mitra}</span></span> : null,
+                                d.tanggal_laporan ? <span key="tgl">Tgl: <span className="font-semibold">{formatDate(d.tanggal_laporan)}</span></span> : null,
+                                d.catatan ? <span key="catatan">Catatan: <span className="font-semibold">{d.catatan}</span></span> : null,
+                              ].filter(Boolean)
+                            : [];
+                          return (
+                            <Fragment key={d.detail_id}>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-3 py-2 font-mono font-semibold text-slate-700">{d.kode_tiket}</td>
+                                <td className="px-3 py-2 text-right font-mono text-slate-600">{d.used}</td>
+                                <td className="px-3 py-2">
+                                  {d.kondisi ? (
+                                    <KondisiBadge value={d.kondisi} />
+                                  ) : (
+                                    <span className="text-xs text-slate-400">-</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2">{statusBadge(d.status || "-")}</td>
+                                <td className="px-3 py-2 text-slate-500">{d.reason || "-"}</td>
+                              </tr>
+                              {parts.length > 0 && (
+                                <tr className="bg-slate-50/60">
+                                  <td colSpan={5} className="px-3 py-1.5 text-[11px] text-slate-500">
+                                    {parts.map((part, idx) => (
+                                      <span key={idx} className="mr-3">{part}</span>
+                                    ))}
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                 </div>
               ) : (
                 <p className="text-sm text-slate-500">Tidak ada detail baris untuk upload ini.</p>

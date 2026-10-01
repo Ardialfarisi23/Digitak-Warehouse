@@ -136,7 +136,7 @@ model project {
   provinsi        String?
   status_aktif    Boolean          @default(true)
   created_at      DateTime         @default(now())
-  updated_at      DateTime         @default(now())
+  updated_at      DateTime         @default(now()) @updatedAt
   created_by      BigInt
   updated_by      BigInt
   gudangs         gudang[]
@@ -635,6 +635,14 @@ model reconciliation_upload_detail {
   remains_lapangan Decimal?                     @db.Decimal(14, 2)
   status           reconciliation_detail_status
   reason           String?
+
+  kondisi          kondisi_barang?
+  nama_barang      String?                      @db.Text
+  kode_barang      String?                      @db.Text
+  project_nama     String?                      @db.Text
+  tanggal_laporan  DateTime?
+  pic_mitra        String?                      @db.Text
+  catatan          String?                      @db.Text
 
   upload_log    reconciliation_upload_log @relation("ReconciliationUploadLogDetail", fields: [upload_id], references: [upload_id], onDelete: Cascade)
   barang        barang?                  @relation("ReconciliationUploadDetailBarang", fields: [barang_id], references: [barang_id], onDelete: SetNull)

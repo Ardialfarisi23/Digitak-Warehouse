@@ -193,7 +193,6 @@ const getPickingStockAvailability = async (gudang_id, items = [], projectId = nu
   const stockWhere = {
     gudang_id: Number(gudang_id),
     barang_id: { in: barangIds },
-    ...(projectId ? { project_id: Number(projectId) } : {}),
   };
 
   const stocks = await prisma.stok_gudang.findMany({
@@ -228,10 +227,26 @@ const getPickingStockAvailability = async (gudang_id, items = [], projectId = nu
     byBarang.get(entry.barang_id).push(entry);
   }
 
-  return Array.from(byBarang.entries()).map(([barang_id, zonas]) => ({
-    barang_id: Number(barang_id),
-    zonas,
-  }));
+  const result = [];
+  const barangDenganStok = new Set();
+  for (const [barang_id, zonas] of byBarang.entries()) {
+    barangDenganStok.add(barang_id);
+    result.push({
+      barang_id: Number(barang_id),
+      zonas,
+    });
+  }
+
+  for (const barangId of barangIds) {
+    if (!barangDenganStok.has(barangId)) {
+      result.push({
+        barang_id: Number(barangId),
+        zonas: [],
+      });
+    }
+  }
+
+  return result;
 };
 
 const getPickingAvailability = async (gudang_id, items = [], projectId = null) => {
@@ -261,7 +276,6 @@ const getPickingAvailability = async (gudang_id, items = [], projectId = null) =
       gudang_id: Number(gudang_id),
       barang_id: barangId,
       zona_id: zonaId,
-      ...(projectId ? { project_id: Number(projectId) } : {}),
     };
 
     const requestedStock = await prisma.stok_gudang.findFirst({

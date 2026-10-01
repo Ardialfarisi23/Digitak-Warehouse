@@ -23,6 +23,9 @@ interface BoqPickerProps {
   disabled?: boolean;
   tipe?: "inbound" | "outbound";
   statusFilter?: string;
+  excludeStatus?: string;
+  displayField?: "project_name" | "boq_number" | "kode_tiket";
+  emptyMessage?: string;
 }
 
 interface ApiBoq {
@@ -55,7 +58,7 @@ function normalize(raw: ApiBoq): BoqPickerItem {
   };
 }
 
-export default function BoqPicker({ projectId, value, onSelect, placeholder = "Pilih BOQ / Tiket", className, disabled, tipe, statusFilter }: BoqPickerProps) {
+export default function BoqPicker({ projectId, value, onSelect, placeholder = "Pilih BOQ / Tiket", className, disabled, tipe, statusFilter, excludeStatus, displayField, emptyMessage }: BoqPickerProps) {
   const { get } = useApi();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -85,6 +88,7 @@ export default function BoqPicker({ projectId, value, onSelect, placeholder = "P
     if (projectId) params.set("projectId", String(projectId));
     if (tipe) params.set("tipe", tipe);
     if (statusFilter) params.set("status", statusFilter);
+    if (excludeStatus) params.set("excludeStatus", excludeStatus);
 
     get(`${API_BASE}/api/boqs?${params.toString()}`)
       .then(async (res) => {
@@ -108,7 +112,7 @@ export default function BoqPicker({ projectId, value, onSelect, placeholder = "P
     return () => {
       cancelled = true;
     };
-  }, [debounced, open, get, projectId, tipe, statusFilter]);
+  }, [debounced, open, get, projectId, tipe, statusFilter, excludeStatus]);
 
   useEffect(() => {
     if (!open) return;
@@ -147,7 +151,15 @@ export default function BoqPicker({ projectId, value, onSelect, placeholder = "P
     setSearch("");
   }
 
-  const displayValue = value ? results.find((r) => r.boq_id === value)?.project_name || results.find((r) => r.boq_id === value)?.boq_number || results.find((r) => r.boq_id === value)?.kode_tiket || value : "";
+  const resolved = results.find((r) => r.boq_id === value);
+  const displayValue =
+    value && resolved
+      ? displayField === "kode_tiket"
+        ? resolved.kode_tiket || value
+        : displayField === "boq_number"
+          ? resolved.boq_number || value
+          : resolved.project_name || resolved.boq_number || resolved.kode_tiket || value
+      : value || "";
 
   return (
     <div ref={containerRef} className={`relative ${className ?? ""}`}>
@@ -217,7 +229,7 @@ export default function BoqPicker({ projectId, value, onSelect, placeholder = "P
             ) : fetchError ? (
               <div className="px-2 py-3 text-xs text-rose-500">{fetchError}</div>
             ) : results.length === 0 ? (
-              <div className="px-2 py-3 text-xs text-slate-400">{debounced ? "Tidak ada hasil." : "Pilih project untuk melihat BOQ."}</div>
+              <div className="px-2 py-3 text-xs text-slate-400">{emptyMessage || (debounced ? "Tidak ada hasil." : "Pilih project untuk melihat BOQ.")}</div>
             ) : (
               results.map((it) => (
                 <button

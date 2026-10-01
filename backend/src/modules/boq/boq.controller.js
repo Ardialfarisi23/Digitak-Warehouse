@@ -220,11 +220,21 @@ const getAreas = async (req, res, next) => {
 
 const getItems = async (req, res, next) => {
   try {
-    const projectId = req.query.projectId;
-    if (!projectId) {
-      return response.success(res, "Daftar item BOQ berhasil diambil.", []);
-    }
-    const result = await boqService.getItems(projectId);
+  const projectId = req.query.projectId;
+  const statusesParam = req.query.statuses;
+  const statuses = statusesParam
+    ? String(statusesParam)
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter((s) => ["draft", "aktif", "selesai"].includes(s))
+    : ["aktif"];
+  if (!statuses.length) {
+    statuses.push("aktif");
+  }
+  if (!projectId) {
+    return response.success(res, "Daftar item BOQ berhasil diambil.", []);
+  }
+  const result = await boqService.getItems(projectId, statuses);
     return response.success(res, "Daftar item BOQ berhasil diambil.", result);
   } catch (err) {
     next(err);

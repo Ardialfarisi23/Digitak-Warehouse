@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, AlertCircle, MapPin, Truck, CheckCircle2, X, Clock } from "lucide-react";
+import { ArrowLeft, Loader2, AlertCircle, MapPin, Truck, CheckCircle2, X, Clock, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 
@@ -10,12 +10,26 @@ type ApiSuratJalanItem = {
   item_id: number;
   qty: number;
   kondisi?: string | null;
-  barang?: { kode_perangkat?: string; nama_barang?: string };
+  barang?: { kode_perangkat?: string; nama_barang?: string; satuan_default?: { kode_satuan?: string } };
+  satuan?: { kode_satuan?: string };
   qty_diterima?: number | null;
   kondisi_diterima?: string | null;
   catatan_penerimaan?: string | null;
   qty_dipick_total?: number | null;
   kondisi_diambil_list?: { kondisi: string; qty: number }[];
+  picks?: Array<{
+    pick_id: number;
+    gudang_id: number;
+    zona_id?: number | null;
+    zona_nama?: string | null;
+    qty: number;
+    kondisi_diminta: string;
+    kondisi_diambil: string;
+    is_override?: boolean;
+    catatan_override?: string | null;
+    picked_by?: number | null;
+    picked_at?: string | null;
+  }>;
 };
 
 type ApiSuratJalan = {
@@ -23,10 +37,11 @@ type ApiSuratJalan = {
   nomor_surat_jalan: string;
   status: string;
   tanggal?: string;
+  gudang_asal?: { gudang_id: number; nama_gudang: string } | null;
   gudang_tujuan?: { nama_gudang: string } | null;
   project?: { nama_project: string } | null;
   kendaraan?: { jenis_kendaraan: string; no_polisi: string } | null;
-  personil_pengantar?: { nama: string } | null;
+  personil_pengantar?: { personil_id: number; nama: string; jenis: string; no_hp?: string | null } | null;
   estimasi_tiba?: string | null;
   catatan_distribusi?: string | null;
   items: ApiSuratJalanItem[];
@@ -38,7 +53,42 @@ type ApiSuratJalan = {
   catatan_tiba?: string | null;
   dikonfirmasi_oleh?: { nama: string } | null;
   dikonfirmasi_at?: string | null;
+  pic_pemohon_nama?: string | null;
+  surat_jalan_url?: string | null;
+  keberangkatan?: { waktu: string; oleh_id: number; oleh_nama: string } | null;
+  picking_selesai?: boolean;
+  linimasa?: Array<{ kode: string; label: string; waktu: string; oleh_nama: string | null }>;
 };
+
+type ApiSuratJalanStatus = "draft_diajukan" | "menunggu_verifikasi" | "ready_putaway" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "sedang_dikirim" | "tiba_menunggu_konfirmasi" | "ditolak";
+
+const STATUS_META: Record<ApiSuratJalanStatus, { label: string; tone: string }> = {
+  draft_diajukan: { label: "Menunggu Persetujuan", tone: "bg-amber-50 text-amber-700" },
+  menunggu_verifikasi: { label: "Menunggu Verifikasi", tone: "bg-amber-50 text-amber-700" },
+  ready_putaway: { label: "Siap Putaway", tone: "bg-blue-50 text-blue-600" },
+  disetujui: { label: "Disetujui — Siap Picking", tone: "bg-emerald-50 text-emerald-600" },
+  digenerate: { label: "Digenerate", tone: "bg-blue-50 text-blue-600" },
+  tiba_menunggu_konfirmasi: { label: "Menunggu Konfirmasi", tone: "bg-blue-50 text-blue-600" },
+  diterima_didistribusikan: { label: "Terkirim", tone: "bg-gray-100 text-gray-500" },
+  sedang_dikirim: { label: "Sedang Dikirim", tone: "bg-amber-50 text-amber-600" },
+  ditolak: { label: "Ditolak", tone: "bg-rose-50 text-rose-600" },
+};
+
+function getStatusMeta(status: ApiSuratJalanStatus, pickingSelesai?: boolean) {
+  if (status === "disetujui" && pickingSelesai) {
+    return { label: "Picking Selesai — Siap Distribusi", tone: "bg-blue-50 text-blue-600" };
+  }
+  return STATUS_META[status] || STATUS_META.draft_diajukan;
+}
+
+const formatDateTime = (iso: string) =>
+  new Date(iso).toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
 export default function DistributionDetailPage() {
   const params = useParams<{ suratJalanId: string }>();
@@ -156,6 +206,8 @@ export default function DistributionDetailPage() {
   const isTibaMenunggu = data.status === "tiba_menunggu_konfirmasi";
   const isTerkirim = data.status === "diterima_didistribusikan";
 
+  const statusMeta = getStatusMeta(data.status as ApiSuratJalanStatus, data.picking_selesai);
+
   const tujuanLabel =
     data.tujuan_tipe === "lapangan"
       ? data.alamat_lapangan || "-"
@@ -169,6 +221,9 @@ export default function DistributionDetailPage() {
     ) : data.tujuan_tipe === "gudang" ? (
       <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Gudang</span>
     ) : null;
+
+  const satuanLabel = (item: ApiSuratJalanItem) =>
+    item.satuan?.kode_satuan || item.barang?.satuan_default?.kode_satuan || "unit";
 
   async function handleStartDelivery() {
     if (!data) return;
@@ -280,64 +335,107 @@ export default function DistributionDetailPage() {
             </div>
             <div>
               <p className="text-gray-400">Driver</p>
-              <p className="font-semibold text-gray-900">{data.personil_pengantar?.nama || "-"}</p>
+              <p className="font-semibold text-gray-900">
+                {data.personil_pengantar?.nama || "-"}
+                {data.personil_pengantar?.no_hp ? (
+                  <a href={`tel:${data.personil_pengantar.no_hp}`} className="ml-2 flex items-center gap-1 text-xs text-[#E8632C] hover:underline">
+                    <Phone size={12} />
+                    {data.personil_pengantar.no_hp}
+                  </a>
+                ) : null}
+              </p>
             </div>
           </div>
         </div>
 
         <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6 lg:col-span-2">
           <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
-            Status Distribusi
+            Informasi Pengiriman
           </p>
-          <div className="flex items-center gap-3">
-            {isDisetujui && (
-              <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
-                <Truck size={14} />
-                Disetujui — Siap Kirim
-              </span>
+          <div className="space-y-2 text-sm">
+            {data.gudang_asal?.nama_gudang && (
+              <p className="text-gray-600">Dikirim dari: <span className="font-semibold text-gray-900">{data.gudang_asal.nama_gudang}</span></p>
             )}
-            {isSedangDikirim && (
-              <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
-                <Truck size={14} />
-                Sedang Dikirim
-              </span>
+            {data.project?.nama_project && (
+              <p className="text-gray-600">Project: <span className="font-semibold text-gray-900">{data.project.nama_project}</span></p>
             )}
-            {isTibaMenunggu && (
-              <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">
-                <Clock size={14} />
-                Menunggu Konfirmasi SPV
-              </span>
+            {data.pic_pemohon_nama && (
+              <p className="text-gray-600">PIC Pemohon: <span className="font-semibold text-gray-900">{data.pic_pemohon_nama}</span></p>
             )}
-            {isTerkirim && (
-              <span className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-600">
-                <CheckCircle2 size={14} />
-                Terkirim / Diterima
-              </span>
+            {data.alamat_lapangan && (
+              <p className="text-gray-600">Alamat Lapangan: <span className="font-semibold text-gray-900">{data.alamat_lapangan}</span></p>
+            )}
+            {data.surat_jalan_url && (
+              <p className="text-gray-600">
+                Surat Jalan (PDF):{" "}
+                <a href={data.surat_jalan_url} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#E8632C] hover:underline">
+                  Buka PDF
+                </a>
+              </p>
             )}
           </div>
+          <div className="mt-4">
+            <div className="flex items-center gap-3">
+              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${statusMeta.tone}`}>
+                {data.status === "sedang_dikirim" && <Truck size={14} />}
+                {data.status === "tiba_menunggu_konfirmasi" && <Clock size={14} />}
+                {data.status === "diterima_didistribusikan" && <CheckCircle2 size={14} />}
+                {statusMeta.label}
+              </span>
+            </div>
 
-          {isSedangDikirim && data.estimasi_tiba && (
-            <p className="mt-3 text-sm text-gray-600">
-              Estimasi tiba:{" "}
-              {new Date(data.estimasi_tiba).toLocaleString("id-ID", {
-                day: "2-digit",
-                month: "long",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </p>
-          )}
+            {isSedangDikirim && data.estimasi_tiba && (
+              <p className="mt-3 text-sm text-gray-600">
+                Estimasi tiba: {formatDateTime(data.estimasi_tiba)}
+              </p>
+            )}
 
-          {data.catatan_distribusi && (
-            <p className="mt-2 text-sm text-gray-600">
-              Catatan: {data.catatan_distribusi}
-            </p>
-          )}
+            {data.keberangkatan && (
+              <p className="mt-2 text-sm text-gray-600">
+                Berangkat: {formatDateTime(data.keberangkatan.waktu)} oleh {data.keberangkatan.oleh_nama || "-"}
+              </p>
+            )}
+
+            {data.catatan_distribusi && (
+              <p className="mt-2 text-sm text-gray-600">
+                Catatan: {data.catatan_distribusi}
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
+      {data.linimasa && data.linimasa.length > 0 && (
+        <div className="rounded-2xl border border-[#F3D9C9] bg-white p-6">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            Linimasa
+          </p>
+          <div className="space-y-3">
+            {data.linimasa
+              .filter((item) => !item.kode.endsWith("_inbound"))
+              .map((item, idx) => {
+                const isLast = idx === data.linimasa!.length - 1;
+                return (
+                  <div key={item.kode + item.waktu} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className={`h-2.5 w-2.5 rounded-full ${isLast ? "bg-[#E8632C]" : "bg-gray-300"}`} />
+                      {!isLast && <div className="h-full w-px flex-1 bg-gray-200" />}
+                    </div>
+                    <div className="pb-3">
+                      <p className="text-sm font-semibold text-gray-900">{item.label}</p>
+                      <p className="text-xs text-gray-500">
+                        {formatDateTime(item.waktu)}
+                        {item.oleh_nama ? ` oleh ${item.oleh_nama}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-[#F3D9C9] bg-white p-6">
         <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
           Daftar Barang
         </p>
@@ -355,9 +453,23 @@ export default function DistributionDetailPage() {
                 <td className="py-3 pr-4">
                   <p className="font-medium text-gray-800">{item.barang?.nama_barang || "-"}</p>
                   <p className="text-xs text-gray-400">{item.barang?.kode_perangkat || "-"}</p>
+                  {(() => {
+                    const zones = Array.from(
+                      new Set(
+                        item.picks
+                          ?.map((p) => p.zona_nama)
+                          .filter((z): z is string => Boolean(z)) ?? []
+                      )
+                    );
+                    return zones.length > 0 ? (
+                      <p className="text-xs text-gray-500">Zona: {zones.join(", ")}</p>
+                    ) : null;
+                  })()}
                 </td>
                 <td className="py-3 pr-4 text-gray-600">{item.kondisi || "-"}</td>
-                <td className="py-3 pr-4 text-right text-gray-600">{item.qty}</td>
+                <td className="py-3 pr-4 text-right text-gray-600">
+                  {item.qty} {satuanLabel(item)}
+                </td>
               </tr>
             ))}
           </tbody>
