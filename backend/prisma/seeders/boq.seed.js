@@ -20,6 +20,13 @@ async function seedBoq(prisma) {
     }
   }
 
+  const clusterIdByNama = new Map();
+  for (const p of projects) {
+    if (p.cluster_id) {
+      clusterIdByNama.set(p.nama_project, p.cluster_id);
+    }
+  }
+
   const resolveProjectId = (namaProject) => {
     const id = projectMap.get(namaProject);
     if (!id) {
@@ -110,6 +117,7 @@ async function seedBoq(prisma) {
     const createdBoq = await prisma.boq.create({
       data: {
         tiket_id: tiket.tiket_id,
+        cluster_id: clusterIdByNama.get(boq.nama_project),
         status: boq.status,
         tanggal_aktivasi: boq.status === "aktif" ? new Date() : null,
         diaktifkan_oleh: boq.status === "aktif" ? admin.user_id : null,
