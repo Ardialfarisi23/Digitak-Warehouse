@@ -12,6 +12,7 @@ export interface BoqPickerItem {
   kode_tiket: string;
   project_id?: string | number;
   project_name?: string;
+  status?: string;
 }
 
 interface BoqPickerProps {
@@ -35,6 +36,7 @@ interface ApiBoq {
   boqNumber?: string;
   ticketNumber?: string;
   kode_tiket?: string;
+  status?: string;
   projectId?: string | number;
   project?: {
     project_id?: number | string;
@@ -55,6 +57,7 @@ function normalize(raw: ApiBoq): BoqPickerItem {
     kode_tiket: raw.kode_tiket || raw.ticketNumber || "",
     project_id: String(projectId),
     project_name: projectName,
+    status: raw.status,
   };
 }
 
@@ -243,6 +246,9 @@ export default function BoqPicker({ projectId, value, onSelect, placeholder = "P
                   className="flex w-full items-center justify-between px-2 py-1.5 text-left text-xs hover:bg-slate-50"
                 >
                   <span className="font-medium text-slate-700">{it.project_name || it.boq_number}</span>
+                  {it.status === "selesai" && (
+                    <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">Selesai</span>
+                  )}
                   <span className="truncate text-slate-500">{it.kode_tiket ? `Tiket: ${it.kode_tiket}` : "-"}</span>
                 </button>
               ))

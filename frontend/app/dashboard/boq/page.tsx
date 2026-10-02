@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import {
@@ -246,6 +246,10 @@ export default function BoqPage() {
   const [selectedBoq, setSelectedBoq] = useState<Boq | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailBoq, setDetailBoq] = useState<Boq | null>(null);
+  const detailBoqRef = useRef(detailBoq);
+  useEffect(() => {
+    detailBoqRef.current = detailBoq;
+  }, [detailBoq]);
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
   const [confirmSelesaiOpen, setConfirmSelesaiOpen] = useState(false);
   const [confirmSelesaiBoq, setConfirmSelesaiBoq] = useState<Boq | null>(null);
@@ -292,6 +296,12 @@ export default function BoqPage() {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  const displayUser = (value: string | null | undefined): string => {
+    if (!value) return "-";
+    if (/^\d+$/.test(value)) return `User #${value}`;
+    return value;
+  };
+
   /* ---------------------------------------------------------------- */
   /* Data fetching                                                      */
   /* ---------------------------------------------------------------- */
@@ -319,7 +329,15 @@ export default function BoqPage() {
       }
 
       const data = json?.data?.data || json?.data || [];
-      setBoqs(Array.isArray(data) ? data : []);
+      const nextBoqs = Array.isArray(data) ? data : [];
+      setBoqs(nextBoqs);
+
+      if (detailBoqRef.current && detailOpen) {
+        const updated = nextBoqs.find((b) => String(b.id) === String(detailBoqRef.current?.id));
+        if (updated) {
+          setDetailBoq(updated);
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan.");
       setBoqs([]);
@@ -1926,11 +1944,11 @@ export default function BoqPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 text-xs text-slate-400">
                   <span>
                     Dibuat: {new Date(detailBoq.createdAt).toLocaleString("id-ID")}
-                    {detailBoq.createdBy ? ` oleh ${detailBoq.createdBy}` : ""}
+                    {` oleh ${displayUser(detailBoq.createdBy)}`}
                   </span>
                   <span>
                     Diubah: {new Date(detailBoq.updatedAt).toLocaleString("id-ID")}
-                    {detailBoq.updatedBy ? ` oleh ${detailBoq.updatedBy}` : ""}
+                    {` oleh ${displayUser(detailBoq.updatedBy)}`}
                   </span>
                 </div>
 

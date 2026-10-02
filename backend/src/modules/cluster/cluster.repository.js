@@ -13,20 +13,56 @@ const findByProjectId = async (projectId) => {
       no_tiket_release: true,
       vendor: true,
       alamat_lengkap: true,
+      pic_id: true,
+      pic: {
+        select: {
+          personil_id: true,
+          nama: true,
+        },
+      },
     },
     orderBy: { nama_cluster: "asc" },
   });
 };
 
-const findAll = async () => {
+const findAll = async ({ search } = {}) => {
+  let normalizedSearch = "";
+  if (typeof search === "string") {
+    normalizedSearch = search.trim();
+  } else if (Array.isArray(search) && typeof search[0] === "string") {
+    normalizedSearch = search[0].trim();
+  }
+
+  const where = {
+    status_aktif: true,
+  };
+
+  if (normalizedSearch) {
+    where.OR = [
+      { nama_cluster: { contains: normalizedSearch, mode: "insensitive" } },
+      { cluster_id: { contains: normalizedSearch, mode: "insensitive" } },
+      { cluster_type: { contains: normalizedSearch, mode: "insensitive" } },
+      { alamat_lengkap: { contains: normalizedSearch, mode: "insensitive" } },
+      { vendor: { contains: normalizedSearch, mode: "insensitive" } },
+      { no_tiket_release: { contains: normalizedSearch, mode: "insensitive" } },
+      { kso_partner: { contains: normalizedSearch, mode: "insensitive" } },
+    ];
+  }
+
   return await prisma.cluster.findMany({
-    where: { status_aktif: true },
+    where,
     include: {
       project: {
         select: {
           project_id: true,
           nama_project: true,
           area: true,
+        },
+      },
+      pic: {
+        select: {
+          personil_id: true,
+          nama: true,
         },
       },
     },
@@ -38,6 +74,10 @@ const update = async (clusterId, data) => {
   return await prisma.cluster.update({
     where: { cluster_id: clusterId },
     data,
+    include: {
+      project: { select: { project_id: true, nama_project: true } },
+      pic: { select: { personil_id: true, nama: true } },
+    },
   });
 };
 

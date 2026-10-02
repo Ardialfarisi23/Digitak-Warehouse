@@ -1,6 +1,6 @@
 export const FIELD_LABELS: Record<string, string> = {
   must_change_password: "Wajib Ganti Password",
-  is_aktif: "Akun Aktif",
+  is_aktif: "Status Aktif",
   status_aktif: "Status Aktif",
   picking_selesai: "Picking Selesai",
   is_kelebihan: "Kelebihan Kirim",
@@ -50,6 +50,53 @@ export const FIELD_LABELS: Record<string, string> = {
   url: "URL",
   user_role: "Peran Pengguna",
   required_roles: "Peran Diperlukan",
+  kode_perangkat: "Kode Perangkat",
+  nama_project: "Nama Project",
+  title: "Judul",
+  area: "Area",
+  klien: "Klien",
+  kecamatan: "Kecamatan",
+  desa_kelurahan: "Desa/Kelurahan",
+  kota_kabupaten: "Kota/Kabupaten",
+  provinsi: "Provinsi",
+  cluster_id: "Cluster",
+  nama_cluster: "Nama Cluster",
+  cluster_type: "Tipe Cluster",
+  alamat_lengkap: "Alamat Lengkap",
+  nama: "Nama",
+  posisi: "Jabatan",
+  no_hp: "Telepon",
+  nik: "NIK",
+  email: "Email",
+  gudang_id: "Gudang",
+  bisa_menyetir: "Bisa Menyetir",
+  is_material_handler: "Material Handler",
+  jenis_kendaraan: "Jenis Kendaraan",
+  merk: "Merk",
+  no_polisi: "Nomor Polisi",
+  kapasitas_angkut: "Kapasitas Angkut",
+  keterangan: "Keterangan",
+  kode: "Kode",
+  deskripsi: "Deskripsi",
+  nama_gudang: "Nama Gudang",
+  tipe: "Tipe",
+  kapasitas_maksimum: "Kapasitas Maksimum",
+  jenis: "Jenis",
+  foto: "Foto",
+  foto_url: "Foto",
+  foto_path: "Foto",
+  wajib_sn: "Wajib Serial Number",
+  created_by: "Dibuat Oleh",
+  updated_by: "Diperbarui Oleh",
+  created_at: "Dibuat Pada",
+  updated_at: "Diperbarui Pada",
+  kategori_id: "Kategori",
+  satuan_default_id: "Satuan Default",
+  personil_id: "Personil",
+  kendaraan_id: "Kendaraan",
+  supplier_id: "Supplier",
+  user_id: "Pengguna",
+  pic_id: "PIC",
 };
 
 export type ValueLabelGroup = Record<string, string>;
@@ -151,10 +198,11 @@ export const BOOLEAN_FIELDS: Set<string> = new Set([
 ]);
 
 function toTitleCase(input: string): string {
-  return input
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  let text = input.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ");
+  if (text.endsWith(" Id")) {
+    text = text.slice(0, -3).trim();
+  }
+  return text.replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function findValueLabel(value: string): string | undefined {
@@ -230,5 +278,5 @@ export function humanizeValue(key: string, value: unknown): string {
     return label;
   }
 
-  return toTitleCase(text);
+  return text;
 }

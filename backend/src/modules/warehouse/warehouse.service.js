@@ -2,6 +2,7 @@ const warehouseRepository = require("./warehouse.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
 const notificationService = require("../../modules/notifications/notifications.service");
+const { createAuditLog } = require("../../utils/audit-log");
 
 const canEditType = async (gudang_id) => {
   const warehouse = await warehouseRepository.findById(gudang_id);
@@ -79,6 +80,18 @@ const create = async (data, userId, userRole) => {
         },
       });
     }
+
+    await createAuditLog(
+      {
+        entityType: "warehouse",
+        entityId: warehouse.gudang_id,
+        aksi: "create",
+        actorId: userId,
+        dataSebelum: null,
+        dataSesudah: warehouse,
+      },
+      tx
+    );
 
     return warehouse;
   });

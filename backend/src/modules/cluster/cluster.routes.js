@@ -27,5 +27,6 @@ router.put(
   clusterController.update
 );
 router.patch("/:clusterId/toggle-status", authenticate, authorize("ADMIN", "SUPERVISOR"), clusterController.toggleStatus);
+router.delete("/all/:clusterId", authenticate, authorize("ADMIN", "SUPERVISOR"), clusterController.remove);
 
 module.exports = router;
