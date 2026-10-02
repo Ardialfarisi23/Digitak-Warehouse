@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Plus, ChevronLeft, ChevronRight, Users, Package, FolderKanban, Truck, Warehouse as WarehouseIcon, Eye, Pencil, Trash2, X, Loader2, AlertCircle, ImageOff, Building2, Ban, RotateCcw, MapPin } from "lucide-react";
 
@@ -77,8 +77,6 @@ interface GenericRecord {
   updatedAt?: string;
   createdBy?: string;
   updatedBy?: string;
-  created_by_name?: string | null;
-  updated_by_name?: string | null;
   [key: string]: unknown;
 }
 
@@ -274,9 +272,11 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
     { key: "nama_cluster", label: "Nama Cluster", type: "text", required: true },
     { key: "cluster_type", label: "Tipe Cluster", type: "text" },
     { key: "alamat_lengkap", label: "Alamat Lengkap", type: "textarea" },
-    { key: "pic_id", label: "PIC", type: "select", options: [] },
-    { key: "cluster_id", label: "Cluster ID", type: "text" },
-    { key: "status_aktif", label: "Status Aktif", type: "checkbox" },
+    { key: "cluster_id", label: "Cluster ID", type: "text", required: true },
+    { key: "status_aktif", label: "Status", type: "select", required: false, options: [
+      { value: "true", label: "Aktif" },
+      { value: "false", label: "Non-Aktif" },
+    ]},
   ],
 };
 
@@ -519,12 +519,6 @@ function DetailModal({ open, onClose, tab, tabLabel, record }: { open: boolean; 
   const primaryPhoto = showPhoto ? getPhotoUrl(record) : null;
   const additionalPhotos = showPhoto ? getAdditionalPhotos(record) : [];
 
-  const displayUser = (name: string | null | undefined, id: string | number | null | undefined): string => {
-    if (name) return name;
-    if (id != null) return `User #${id}`;
-    return "-";
-  };
-
   return (
     <Modal open={open} onClose={onClose} title={`Detail ${tabLabel}`} subtitle={getRecordTitle(tab, record)}>
       {primaryPhoto && (
@@ -589,11 +583,11 @@ function DetailModal({ open, onClose, tab, tabLabel, record }: { open: boolean; 
           <div className="space-y-1 text-xs text-slate-500">
             <p>
               Dibuat: {formatDateTime((record as any)?.created_at ?? record.createdAt)}
-              {` oleh ${displayUser((record as any)?.created_by_name ?? record.createdBy ?? null, (record as any)?.created_by ?? record.createdBy ?? null)}`}
+              {(record as any)?.created_by ? ` oleh ${(record as any).created_by}` : ""}
             </p>
             <p>
               Diubah terakhir: {formatDateTime((record as any)?.updated_at ?? record.updatedAt)}
-              {` oleh ${displayUser((record as any)?.updated_by_name ?? record.updatedBy ?? null, (record as any)?.updated_by ?? record.updatedBy ?? null)}`}
+              {(record as any)?.updated_by ? ` oleh ${(record as any).updated_by}` : ""}
             </p>
           </div>
         </div>
@@ -658,6 +652,8 @@ function FormModal({
         initial[field.key] = direct ?? nested ?? "";
       } else if (field.key === "cluster_id" && tab === "clusters") {
         initial[field.key] = (record as any)?.cluster_id || "";
+      } else if (field.key === "status_aktif" && tab === "clusters" && mode === "create") {
+        initial[field.key] = "true";
       } else if (field.key === "tipe" && tab === "warehouses" && mode === "create") {
         initial[field.key] = "tetap";
       } else {
@@ -674,7 +670,6 @@ function FormModal({
   const [unitOptions, setUnitOptions] = useState<Array<{ value: number; label: string }>>([]);
   const [warehouseOptions, setWarehouseOptions] = useState<Array<{ value: number; label: string; tipe?: string }>>([]);
   const [projectOptions, setProjectOptions] = useState<Array<{ value: number; label: string }>>([]);
-  const [personnelOptions, setPersonnelOptions] = useState<Array<{ value: number; label: string }>>([]);
 
   useEffect(() => {
     if (open && tab === "items") {
@@ -784,17 +779,6 @@ function FormModal({
           if (!cancelled) setProjectOptions([]);
         });
 
-      get(`${baseUrl}/api/personnels`)
-        .then((res) => res.json())
-        .then((result) => {
-          if (cancelled) return;
-          const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
-          setPersonnelOptions(list.map((p: any) => ({ value: Number(p.personil_id), label: p.nama || `Personil ${p.personil_id}` })));
-        })
-        .catch(() => {
-          if (!cancelled) setPersonnelOptions([]);
-        });
-
       return () => {
         cancelled = true;
       };
@@ -834,14 +818,13 @@ function FormModal({
     if (tab === "clusters") {
       return fields.map((field) => {
         if (field.key === "project_id") return { ...field, options: projectOptions };
-        if (field.key === "pic_id") return { ...field, options: personnelOptions };
-        if (field.key === "cluster_id") return { ...field, type: "text" as const, required: false };
+        if (field.key === "cluster_id") return { ...field, type: "text" as const, required: mode === "create" };
         return field;
       });
     }
 
     return fields;
-  }, [tab, fields, categoryOptions, unitOptions, warehouseOptions, projectOptions]);
+  }, [tab, fields, categoryOptions, unitOptions, warehouseOptions, projectOptions, mode]);
 
   const visibleFormFields = useMemo(() => {
     if (tab === "warehouses") {
@@ -854,11 +837,11 @@ function FormModal({
     }
 
     if (tab === "clusters") {
-      return formFields.filter((field) => field.key !== "cluster_id");
+      return formFields.filter((field) => !(field.key === "cluster_id" && mode === "edit"));
     }
 
     return formFields;
-  }, [tab, formFields, form.tipe]);
+  }, [tab, formFields, form.tipe, mode]);
 
   useEffect(() => {
     if (open) {
@@ -930,6 +913,8 @@ function FormModal({
           }
         } else if (field.type === "checkbox") {
           submitData[field.key] = Boolean(submitData[field.key]);
+        } else if (field.key === "status_aktif" && tab === "clusters" && submitData[field.key] !== undefined && submitData[field.key] !== "") {
+          submitData[field.key] = submitData[field.key] === "true" || submitData[field.key] === true || submitData[field.key] === 1;
         } else if (field.type === "select" && submitData[field.key] !== undefined && submitData[field.key] !== "") {
           const numericValue = Number(submitData[field.key]);
           if (!Number.isNaN(numericValue)) {
@@ -977,8 +962,9 @@ function FormModal({
         const warehouseName = (record as { nama_gudang?: string } | null)?.nama_gudang;
         url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(warehouseName))}`, baseUrl).toString();
       } else if (tab === "clusters") {
+        const clusterBase = "/api/clusters";
         const clusterId = (record as { cluster_id?: string } | null)?.cluster_id;
-        url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(clusterId))}`, baseUrl).toString();
+        url = mode === "create" ? new URL(clusterBase, baseUrl).toString() : new URL(`${clusterBase}/${encodeURIComponent(String(clusterId))}`, baseUrl).toString();
       } else if (tab === "suppliers") {
         const supplierKode = (record as { kode?: string } | null)?.kode;
         url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(supplierKode))}`, baseUrl).toString();
@@ -1017,7 +1003,7 @@ function FormModal({
           : message;
 
         if ([400, 404, 409, 422].includes(response.status)) {
-          onShowToast(message, "error");
+          onShowToast(fullMessage, "error");
           return;
         }
 
@@ -1263,10 +1249,6 @@ function DeleteConfirmModal({
     <Modal open={open} onClose={onClose} title={`Hapus ${tabLabel}`} widthClass="max-w-sm">
       {isActivePersonnel ? (
         <div className="rounded-xl bg-amber-50 px-3 py-2.5 text-xs text-amber-700">Personil masih aktif! Harap nonaktifkan terlebih dahulu di Halaman Operasional sebelum menghapus.</div>
-      ) : tabLabel.toLowerCase() === "cluster" ? (
-        <p className="text-sm text-slate-600">
-          Hapus cluster <span className="font-semibold text-slate-800">{record ? String(record.nama_cluster || record.cluster_id || record.id) : ""}</span> secara permanen? Tindakan ini tidak dapat dibatalkan. Cluster yang masih dipakai tidak dapat dihapus, gunakan tombol Nonaktifkan.
-        </p>
       ) : (
         <p className="text-sm text-slate-600">Yakin ingin menghapus ? Tindakan ini tidak dapat dibatalkan.</p>
       )}
@@ -1453,7 +1435,7 @@ function SupplierNonaktifModal({
   onSuccess: () => void;
   onShowToast: (message: string, type: "success" | "error") => void;
 }) {
-  const { del } = useApi();
+  const { put } = useApi();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1468,7 +1450,7 @@ function SupplierNonaktifModal({
       const supplierKode = record.kode ?? record.id;
       const url = new URL(`/api/suppliers/${supplierKode}`, baseUrl).toString();
 
-      const response = await del(url);
+      const response = await put(url, { is_aktif: false });
 
       if (!response.ok) {
         const result = await response.json().catch(() => null);
@@ -1531,7 +1513,7 @@ function SupplierAktifModal({
   onSuccess: () => void;
   onShowToast: (message: string, type: "success" | "error") => void;
 }) {
-  const { patch } = useApi();
+  const { put } = useApi();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1544,9 +1526,9 @@ function SupplierAktifModal({
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
       const supplierKode = record.kode ?? record.id;
-      const url = new URL(`/api/suppliers/${supplierKode}/restore`, baseUrl).toString();
+      const url = new URL(`/api/suppliers/${supplierKode}`, baseUrl).toString();
 
-      const response = await patch(url);
+      const response = await put(url, { is_aktif: true });
 
       if (!response.ok) {
         const result = await response.json().catch(() => null);
@@ -1926,7 +1908,6 @@ function MasterDataPageContent() {
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(1);
-  const [supplierStatusFilter, setSupplierStatusFilter] = useState<string>("Aktif");
 
   // Modal state
   const [formModal, setFormModal] = useState<{
@@ -1934,12 +1915,6 @@ function MasterDataPageContent() {
     record: GenericRecord | null;
   } | null>(null);
   const [detailRecord, setDetailRecord] = useState<GenericRecord | null>(null);
-  const detailRecordRef = useRef(detailRecord);
-  const fetchSeqRef = useRef(0);
-
-  useEffect(() => {
-    detailRecordRef.current = detailRecord;
-  }, [detailRecord]);
   const [deleteRecord, setDeleteRecord] = useState<GenericRecord | null>(null);
   const [nonaktifRecord, setNonaktifRecord] = useState<GenericRecord | null>(null);
   const [aktifRecord, setAktifRecord] = useState<GenericRecord | null>(null);
@@ -2040,11 +2015,9 @@ function MasterDataPageContent() {
   // -------------------------------------------------------------------------
 
   const fetchMasterData = useCallback(async () => {
-    const seq = ++fetchSeqRef.current;
     const config = MASTER_DATA_TABS.find((tab) => tab.key === activeTab);
 
     if (!config) {
-      if (seq !== fetchSeqRef.current) return;
       setLoading(false);
       return;
     }
@@ -2066,14 +2039,8 @@ function MasterDataPageContent() {
         url.searchParams.set("search", trimmedSearch);
       }
 
-      if (activeTab === "suppliers" && supplierStatusFilter !== "Semua") {
-        url.searchParams.set("is_aktif", supplierStatusFilter === "Aktif" ? "true" : "false");
-      }
-
       const response = await get(url.toString());
-      if (seq !== fetchSeqRef.current) return;
       const result = await response.json();
-      if (seq !== fetchSeqRef.current) return;
 
       if (!response.ok) {
         const message = result?.message || `Gagal mengambil data ${config.label}.`;
@@ -2105,7 +2072,6 @@ function MasterDataPageContent() {
         totalPages: Math.max(1, Math.ceil(dataArr.length / ITEMS_PER_PAGE)),
       };
 
-      if (seq !== fetchSeqRef.current) return;
       setData(dataArr);
       setMeta({
         total: Number(metaObj.total ?? dataArr.length),
@@ -2113,17 +2079,7 @@ function MasterDataPageContent() {
         limit: Number(metaObj.limit ?? ITEMS_PER_PAGE),
         totalPages: Number(metaObj.totalPages ?? Math.max(1, Math.ceil(dataArr.length / ITEMS_PER_PAGE))),
       });
-
-      if (detailRecordRef.current && config) {
-        const idField = config.idField;
-        const updated = dataArr.find((item) => String(item[idField]) === String((detailRecordRef.current as any)[idField]));
-        if (updated) {
-          if (seq !== fetchSeqRef.current) return;
-          setDetailRecord(updated);
-        }
-      }
     } catch (err) {
-      if (seq !== fetchSeqRef.current) return;
       setError(err instanceof Error ? err.message : "Terjadi kesalahan saat mengambil data.");
 
       setData([]);
@@ -2135,10 +2091,9 @@ function MasterDataPageContent() {
         totalPages: 1,
       });
     } finally {
-      if (seq !== fetchSeqRef.current) return;
       setLoading(false);
     }
-  }, [activeTab, page, search, supplierStatusFilter]);
+  }, [activeTab, page, search]);
 
   useEffect(() => {
     fetchMasterData();
@@ -2163,11 +2118,6 @@ function MasterDataPageContent() {
     setSearch("");
     setSearchInput("");
     setError(null);
-  }
-
-  function handleSupplierStatusFilterChange(value: string) {
-    setSupplierStatusFilter(value);
-    setPage(1);
   }
 
   // -------------------------------------------------------------------------
@@ -2236,29 +2186,16 @@ function MasterDataPageContent() {
             <p className="mt-0.5 text-xs text-slate-400">{meta.total} data</p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {activeTab === "suppliers" && (
-              <select
-                value={supplierStatusFilter}
-                onChange={(e) => handleSupplierStatusFilterChange(e.target.value)}
-                className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 outline-none focus:border-orange-400"
-              >
-                <option value="Aktif">Aktif</option>
-                <option value="Nonaktif">Nonaktif</option>
-              </select>
-            )}
-
-            {canCreate && activeTab !== "personnel" && activeTab !== "clusters" && (
-              <button
-                type="button"
-                onClick={() => setFormModal({ mode: "create", record: null })}
-                className="flex items-center gap-2 rounded-full bg-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 transition-colors hover:bg-orange-600"
-              >
-                <Plus size={16} />
-                Tambah
-              </button>
-            )}
-          </div>
+           {canCreate && activeTab !== "personnel" && (
+             <button
+               type="button"
+               onClick={() => setFormModal({ mode: "create", record: null })}
+               className="flex items-center gap-2 rounded-full bg-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 transition-colors hover:bg-orange-600"
+             >
+               <Plus size={16} />
+               Tambah
+             </button>
+           )}
         </div>
 
         {/* Table */}
@@ -2662,7 +2599,7 @@ function MasterDataPageContent() {
             open={!!deleteRecord}
             onClose={() => setDeleteRecord(null)}
             tabLabel={activeConfig.singularLabel}
-            endpoint={activeConfig.endpoint}
+            endpoint={activeTab === "clusters" ? "/api/clusters" : activeConfig.endpoint}
             record={deleteRecord}
             idField={activeConfig.idField}
             idFields={activeConfig.idFields}

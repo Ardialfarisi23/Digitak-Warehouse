@@ -13,7 +13,7 @@ const listByProject = async (req, res, next) => {
 
 const listAll = async (req, res, next) => {
   try {
-    const result = await clusterService.findAll(req.query);
+    const result = await clusterService.findAll();
     return response.success(res, "Daftar semua cluster berhasil diambil.", result);
   } catch (err) {
     next(err);
@@ -25,6 +25,7 @@ const create = async (req, res, next) => {
     const result = await clusterService.create(req.body, req.user.id);
     return response.success(res, "Cluster berhasil dibuat.", result, 201);
   } catch (err) {
+    console.error("[ClusterController] create failed:", err);
     next(err);
   }
 };
@@ -34,6 +35,7 @@ const update = async (req, res, next) => {
     const result = await clusterService.update(req.params.clusterId, req.body);
     return response.success(res, "Cluster berhasil diperbarui.", result);
   } catch (err) {
+    console.error("[ClusterController] update failed:", err);
     next(err);
   }
 };
@@ -47,10 +49,10 @@ const toggleStatus = async (req, res, next) => {
   }
 };
 
-const remove = async (req, res, next) => {
+const deleteCluster = async (req, res, next) => {
   try {
-    const result = await clusterService.remove(req.params.clusterId, req.user.id);
-    return response.success(res, "Cluster berhasil dihapus.", result);
+    const result = await clusterService.deleteCluster(req.params.clusterId);
+    return response.success(res, result.message || "Cluster berhasil dihapus.", result);
   } catch (err) {
     next(err);
   }
@@ -62,5 +64,5 @@ module.exports = {
   create,
   update,
   toggleStatus,
-  remove,
+  deleteCluster,
 };

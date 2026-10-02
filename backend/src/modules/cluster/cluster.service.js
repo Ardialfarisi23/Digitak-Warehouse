@@ -1,7 +1,6 @@
 const clusterRepository = require("./cluster.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
-const { createAuditLog } = require("../../utils/audit-log");
 
 const findByProjectId = async (projectId) => {
   if (!projectId) {
@@ -11,8 +10,8 @@ const findByProjectId = async (projectId) => {
   return await clusterRepository.findByProjectId(projectId);
 };
 
-const findAll = async (query = {}) => {
-  return await clusterRepository.findAll(query);
+const findAll = async () => {
+  return await clusterRepository.findAll();
 };
 
 const create = async (data, userId) => {
@@ -42,49 +41,12 @@ const create = async (data, userId) => {
     ...data,
     cluster_id: normalizedClusterId,
     project_id: Number(data.project_id),
+    status_aktif: data.status_aktif === undefined || data.status_aktif === null ? true : Boolean(data.status_aktif),
     created_by: Number(userId),
     updated_by: Number(userId),
-    pic_id:
-      data.pic_id !== undefined && data.pic_id !== null && data.pic_id !== ""
-        ? Number(data.pic_id)
-        : null,
   };
 
-  if (createData.pic_id !== null) {
-    const personil = await prisma.personil.findUnique({
-      where: { personil_id: BigInt(createData.pic_id) },
-      select: { personil_id: true },
-    });
-    if (!personil) {
-      throw new AppError("Personil tidak ditemukan.", 404);
-    }
-  }
-
-  const result = await prisma.$transaction(async (tx) => {
-    const cluster = await tx.cluster.create({
-      data: createData,
-      include: {
-        project: { select: { project_id: true, nama_project: true } },
-        pic: { select: { personil_id: true, nama: true } },
-      },
-    });
-
-    await createAuditLog(
-      {
-        entityType: "cluster",
-        entityId: BigInt(0),
-        aksi: "create",
-        actorId: userId,
-        dataSebelum: null,
-        dataSesudah: cluster,
-      },
-      tx
-    );
-
-    return cluster;
-  });
-
-  return result;
+  return await clusterRepository.create(createData);
 };
 
 const update = async (clusterId, data) => {
@@ -96,21 +58,7 @@ const update = async (clusterId, data) => {
     nama_cluster: data.nama_cluster,
     cluster_type: data.cluster_type,
     alamat_lengkap: data.alamat_lengkap,
-    pic_id:
-      data.pic_id !== undefined && data.pic_id !== null && data.pic_id !== ""
-        ? Number(data.pic_id)
-        : null,
   };
-
-  if (updateData.pic_id !== null) {
-    const personil = await prisma.personil.findUnique({
-      where: { personil_id: BigInt(updateData.pic_id) },
-      select: { personil_id: true },
-    });
-    if (!personil) {
-      throw new AppError("Personil tidak ditemukan.", 404);
-    }
-  }
 
   return await clusterRepository.update(clusterId, updateData);
 };
@@ -140,54 +88,35 @@ const toggleStatus = async (clusterId) => {
   return cluster;
 };
 
-const remove = async (clusterId, actorId) => {
+const deleteCluster = async (clusterId) => {
   if (!clusterId) {
     throw new AppError("Cluster ID wajib diisi.", 400);
   }
 
-  return await prisma.$transaction(async (tx) => {
-    const cluster = await tx.cluster.findUnique({
-      where: { cluster_id: clusterId },
-    });
-
-    if (!cluster) {
-      throw new AppError("Cluster tidak ditemukan.", 404);
-    }
-
-    const [boqCount, tiketCount, projectCount] = await Promise.all([
-      tx.boq.count({ where: { cluster_id: clusterId } }),
-      tx.tiket_material.count({ where: { cluster_id: { not: null }, cluster_id: clusterId } }),
-      tx.project.count({ where: { cluster_id: clusterId } }),
-    ]);
-
-    const usedBy = [];
-    if (boqCount > 0) usedBy.push(`${boqCount} BOQ`);
-    if (tiketCount > 0) usedBy.push(`${tiketCount} tiket material`);
-    if (projectCount > 0) usedBy.push(`${projectCount} project`);
-
-    if (usedBy.length > 0) {
-      throw new AppError(
-        `Cluster tidak dapat dihapus karena masih dipakai oleh ${usedBy.join(" dan ")}. Gunakan tombol Nonaktifkan.`,
-        409
-      );
-    }
-
-    await createAuditLog(
-      {
-        entityType: "cluster",
-        entityId: BigInt(0),
-        aksi: "delete",
-        actorId: actorId,
-        dataSebelum: cluster,
-        dataSesudah: null,
-      },
-      tx
-    );
-
-    await tx.cluster.delete({
-      where: { cluster_id: clusterId },
-    });
+  const existing = await prisma.cluster.findUnique({
+    where: { cluster_id: clusterId },
+    select: { cluster_id: true, nama_cluster: true },
   });
+
+  if (!existing) {
+    throw new AppError("Cluster tidak ditemukan.", 404);
+  }
+
+  const relatedBoq = await prisma.boq.findFirst({
+    where: { cluster_id: clusterId },
+    select: { boq_id: true, status: true },
+  });
+
+  if (relatedBoq) {
+    throw new AppError(`Cluster tidak dapat dihapus karena masih digunakan pada data BOQ (status: ${relatedBoq.status}). Nonaktifkan cluster jika diperlukan.`, 409);
+  }
+
+  await prisma.cluster.update({
+    where: { cluster_id: clusterId },
+    data: { status_aktif: false },
+  });
+
+  return { message: "Cluster berhasil dihapus." };
 };
 
 module.exports = {
@@ -196,5 +125,5 @@ module.exports = {
   create,
   update,
   toggleStatus,
-  remove,
+  deleteCluster,
 };

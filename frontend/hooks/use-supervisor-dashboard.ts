@@ -78,10 +78,6 @@ export type SupervisorQueue = {
   suratJalanPending: number | null;
   boqNewRequests: number | null;
   discrepancyCount: number | null;
-  inboundOldestLabel: string;
-  outboundOldestLabel: string;
-  suratJalanOldestLabel: string;
-  discrepancyOldestLabel: string;
 };
 
 export type WarehouseCapacityRow = {
@@ -136,20 +132,7 @@ const FALLBACK_QUEUE: SupervisorQueue = {
   suratJalanPending: 5,
   boqNewRequests: 3,
   discrepancyCount: 2,
-  inboundOldestLabel: "1 hari",
-  outboundOldestLabel: "3 jam",
-  suratJalanOldestLabel: "4 hari",
-  discrepancyOldestLabel: "5 jam",
 };
-
-function formatAge(ms: number): string {
-  const minutes = Math.floor(ms / 60000);
-  if (minutes < 60) return `${minutes} mnt`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} jam`;
-  const days = Math.floor(hours / 24);
-  return `${days} hari`;
-}
 
 const PENDING_STATUSES = new Set([
   "menunggu",
@@ -362,28 +345,31 @@ export function useSupervisorDashboard() {
           }
           if (mapped.length) setApprovalList(mapped);
 
-          const now = Date.now();
-          const pendingInbound = mapped.filter((it) => !it.isOutbound && it.status === "Menunggu");
-          const pendingOutbound = mapped.filter((it) => it.isOutbound && it.status === "Menunggu");
+          const backendQueue = json?.data || {};
+          const inboundPending = typeof backendQueue.inboundCount === "number"
+            ? backendQueue.inboundCount
+            : mapped.filter((it) => !it.isOutbound && it.status === "Menunggu").length;
+          const outboundPending = typeof backendQueue.outboundCount === "number"
+            ? backendQueue.outboundCount
+            : mapped.filter((it) => it.isOutbound && it.status === "Menunggu").length;
+          const suratJalanPending = typeof backendQueue.verificationCount === "number"
+            ? backendQueue.verificationCount
+            : inboundPending + outboundPending;
+          const discrepancyCount = typeof backendQueue.discrepancyCount === "number"
+            ? backendQueue.discrepancyCount
+            : null;
+
           const criticalOutbound = mapped.filter(
             (it) => it.isOutbound && (it.tag === "KRITIS" || it.status === "Ditolak")
           );
 
-          const oldest = (arr: { createdAt?: string }[]) => {
-            const valid = arr
-              .map((x) => (x.createdAt ? new Date(x.createdAt).getTime() : null))
-              .filter((t): t is number => typeof t === "number" && !isNaN(t));
-            if (!valid.length) return null;
-            return now - Math.min(...valid);
-          };
-
           setQueue((prev) => ({
             ...prev,
-            inboundPending: pendingInbound.length,
-            outboundPending: pendingOutbound.length,
+            inboundPending,
+            outboundPending,
             outboundCritical: criticalOutbound.length,
-            inboundOldestLabel: oldest(pendingInbound) ? formatAge(oldest(pendingInbound)!) : prev.inboundOldestLabel,
-            outboundOldestLabel: oldest(pendingOutbound) ? formatAge(oldest(pendingOutbound)!) : prev.outboundOldestLabel,
+            suratJalanPending,
+            discrepancyCount: discrepancyCount ?? prev.discrepancyCount,
           }));
         }
       }
