@@ -21,19 +21,31 @@ router.post(
   personnelController.create
 );
 
-router.get("/", authenticate, authorize("ADMIN", "STAFF"), personnelController.findAll);
+router.get(
+  "/",
+  authenticate,
+  authorize("ADMIN", "SUPERVISOR", "STAFF"),
+  personnelController.findAll
+);
 router.get(
   "/:personil_id",
   authenticate,
-  authorize("ADMIN"),
+  authorize("ADMIN", "SUPERVISOR", "STAFF"),
   personnelController.findByPersonilId
 );
 router.put(
   "/:personil_id",
   authenticate,
-  authorize("ADMIN"),
+  authorize("ADMIN", "SUPERVISOR"),
   validate(updatePersonnelSchema),
   personnelController.update
+);
+
+router.delete(
+  "/:personil_id",
+  authenticate,
+  authorize("ADMIN", "SUPERVISOR"),
+  personnelController.remove
 );
 
 module.exports = router;

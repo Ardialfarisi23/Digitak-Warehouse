@@ -5,7 +5,12 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "seed": "node prisma/seed.js"
+    "seed": "node prisma/seed.js",
+    "test": "node --test src/modules/**/*.test.js src/**/*.test.js",
+    "seed:picking:test": "node scripts/dev/seed-picking-test.js",
+    "seed:picking:test:apply": "node scripts/dev/seed-picking-test.js --apply",
+    "seed:picking:test:restore": "node scripts/dev/seed-picking-test.js --restore",
+    "verify:picking": "node scripts/dev/verify-picking.js"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
@@ -16,6 +21,7 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "express-async-handler": "^1.2.0",
     "jsonwebtoken": "^9.0.3",

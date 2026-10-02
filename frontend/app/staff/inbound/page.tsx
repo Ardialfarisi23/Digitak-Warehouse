@@ -2,19 +2,26 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { PackageCheck, Plus, X, ChevronDown } from "lucide-react";
+import { PackageCheck, Plus, X, ChevronDown, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import BarangPicker, {
+  type BarangPickerItem,
+} from "@/components/BarangPicker";
 import { useApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import BoqPicker, { type BoqPickerItem } from "@/components/BoqPicker";
 
-type InboundStatus = "draft_diajukan" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "ditolak" | "menunggu_verifikasi" | "ready_putaway";
+type InboundStatus = "draft_diajukan" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "ditolak" | "menunggu_verifikasi" | "ready_putaway" | "sedang_dikirim" | "tiba_menunggu_konfirmasi";
 
 const STATUS_META: Record<InboundStatus, { label: string; tone: string }> = {
-  draft_diajukan: { label: "Menunggu Approval", tone: "bg-amber-50 text-amber-600" },
+  draft_diajukan: { label: "Menunggu Persetujuan", tone: "bg-amber-50 text-amber-600" },
   menunggu_verifikasi: { label: "Menunggu Verifikasi", tone: "bg-amber-50 text-amber-600" },
-  ready_putaway: { label: "Ready for Putaway", tone: "bg-emerald-50 text-emerald-600" },
+  ready_putaway: { label: "Siap Putaway", tone: "bg-blue-50 text-blue-600" },
   disetujui: { label: "Disetujui", tone: "bg-emerald-50 text-emerald-600" },
   digenerate: { label: "Digenerate", tone: "bg-blue-50 text-blue-600" },
+  tiba_menunggu_konfirmasi: { label: "Menunggu Konfirmasi", tone: "bg-blue-50 text-blue-600" },
   diterima_didistribusikan: { label: "Diterima/Didistribusikan", tone: "bg-gray-100 text-gray-500" },
+  sedang_dikirim: { label: "Sedang Dikirim", tone: "bg-amber-50 text-amber-600" },
   ditolak: { label: "Ditolak", tone: "bg-rose-50 text-rose-600" },
 };
 
@@ -22,11 +29,6 @@ interface InboundItem {
   item_id: number;
   nama_barang?: string;
   qty: number;
-}
-
-interface ProjectOption {
-  project_id: string | number;
-  nama_project: string;
 }
 
 interface VehicleOption {
@@ -47,8 +49,16 @@ interface InboundSuratJalan {
   nomor_surat_jalan: string;
   status: InboundStatus;
   created_at: string;
+  created_by?: string | number;
+  creator?: {
+    user_id?: string | number;
+    nama?: string;
+    name?: string;
+  } | null;
   items: InboundItem[];
-  pengirim_or_vendor?: string;
+  tipe_pengirim?: "internal" | "external";
+  supplier?: { nama: string; kode: string };
+  gudang_asal?: { nama_gudang: string };
   gudang_tujuan?: { nama_gudang: string };
 }
 
@@ -66,12 +76,23 @@ interface WarehouseOption {
   tipe?: string;
 }
 
+interface SupplierOption {
+  supplier_id: string | number;
+  nama: string;
+  kode: string;
+}
+
 interface ModalItemRow {
   id: string;
   barang_id: string;
-  qty: string;
+  kode_perangkat: string;
+  nama_barang: string;
+  qty: number;
   satuan_id: string;
   satuan_label: string;
+  catatan: string;
+  is_di_luar_boq: boolean;
+  catatanAutoFilled: boolean;
 }
 
 function Modal({
@@ -128,35 +149,43 @@ function Modal({
 }
 
 export default function InboundListPage() {
-  const { get, post } = useApi();
+  const { get, post, put } = useApi();
+  const { user } = useAuth();
   const [list, setList] = useState<InboundSuratJalan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [barangOptions, setBarangOptions] = useState<BarangOption[]>([]);
   const [warehouseOptions, setWarehouseOptions] = useState<WarehouseOption[]>([]);
-  const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
   const [vehicleOptions, setVehicleOptions] = useState<VehicleOption[]>([]);
   const [personnelOptions, setPersonnelOptions] = useState<PersonnelOption[]>([]);
+  const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
 
-  const [nomorTiket, setNomorTiket] = useState("");
+  const [selectedBoqId, setSelectedBoqId] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [boqItemsDetail, setBoqItemsDetail] = useState<Array<{ barang_id: string | number; itemCode?: string; itemName?: string }>>([]);
   const [nomorSuratJalan, setNomorSuratJalan] = useState("");
   const [selectedGudangTujuanId, setSelectedGudangTujuanId] = useState("");
   const [tanggalMasuk, setTanggalMasuk] = useState("");
-  const [selectedProjectId, setSelectedProjectId] = useState("");
-  const [asalPengiriman, setAsalPengiriman] = useState("");
   const [selectedKendaraanId, setSelectedKendaraanId] = useState("");
   const [selectedDriverId, setSelectedDriverId] = useState("");
+  const [selectedAsalTipe, setSelectedAsalTipe] = useState<"internal" | "external" | "">("");
+  const [selectedSupplierId, setSelectedSupplierId] = useState("");
+  const [selectedGudangAsalId, setSelectedGudangAsalId] = useState("");
+  const [isVendorManual, setIsVendorManual] = useState(false);
+  const [pengirimEksternalNama, setPengirimEksternalNama] = useState("");
   const [picPemohon, setPicPemohon] = useState("");
   const [modalItems, setModalItems] = useState<ModalItemRow[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [suratJalanPdf, setSuratJalanPdf] = useState<File | null>(null);
   const [suratJalanPdfUrl, setSuratJalanPdfUrl] = useState<string>("");
   const [uploadingPdf, setUploadingPdf] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const fetchList = async () => {
     setIsLoading(true);
@@ -178,6 +207,32 @@ export default function InboundListPage() {
     }
   };
 
+  const handleCancelDraft = async (suratJalanId: number) => {
+    const confirmed = window.confirm("Yakin ingin membatalkan draft ini? Aksi ini tidak dapat dibatalkan.");
+    if (!confirmed) return;
+
+    setCancellingId(suratJalanId);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const response = await put(`${baseUrl}/api/surat-jalan/${suratJalanId}/cancel-draft`, {});
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        throw new Error(err?.message || "Gagal membatalkan draft surat jalan.");
+      }
+
+      setToast({ message: "Draft surat jalan berhasil dibatalkan.", type: "success" });
+      fetchList();
+    } catch (err) {
+      setToast({
+        message: err instanceof Error ? err.message : "Terjadi kesalahan saat membatalkan draft.",
+        type: "error",
+      });
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
   useEffect(() => {
     fetchList();
   }, [get]);
@@ -186,33 +241,33 @@ export default function InboundListPage() {
     setLoadingOptions(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const [itemRes, warehouseRes, projectRes, vehicleRes, personnelRes] = await Promise.all([
+      const [itemRes, warehouseRes, vehicleRes, personnelRes, supplierRes] = await Promise.all([
         get(`${baseUrl}/api/items?limit=200`),
         get(`${baseUrl}/api/warehouses`),
-        get(`${baseUrl}/api/projects`),
         get(`${baseUrl}/api/vehicles`),
-        get(`${baseUrl}/api/personnels`),
+        get(`${baseUrl}/api/personnels?bisa_menyetir=true`),
+        get(`${baseUrl}/api/suppliers`),
       ]);
       if (!itemRes.ok) throw new Error("Gagal mengambil daftar barang.");
       if (!warehouseRes.ok) throw new Error("Gagal mengambil daftar gudang.");
-      if (!projectRes.ok) throw new Error("Gagal mengambil daftar project.");
       if (!vehicleRes.ok) throw new Error("Gagal mengambil daftar kendaraan.");
       if (!personnelRes.ok) throw new Error("Gagal mengambil daftar personil.");
+      if (!supplierRes.ok) throw new Error("Gagal mengambil daftar supplier.");
 
-      const [itemJson, warehouseJson, projectJson, vehicleJson, personnelJson] = await Promise.all([
+      const [itemJson, warehouseJson, vehicleJson, personnelJson, supplierJson] = await Promise.all([
         itemRes.json(),
         warehouseRes.json(),
-        projectRes.json(),
         vehicleRes.json(),
         personnelRes.json(),
+        supplierRes.json(),
       ]);
 
       const unwrap = (json: any) => Array.isArray(json?.data) ? json.data : json?.data?.data || [];
       setBarangOptions(unwrap(itemJson));
       setWarehouseOptions(unwrap(warehouseJson));
-      setProjectOptions(unwrap(projectJson));
       setVehicleOptions(unwrap(vehicleJson));
       setPersonnelOptions(unwrap(personnelJson));
+      setSupplierOptions(unwrap(supplierJson));
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Gagal memuat data master.");
     } finally {
@@ -221,22 +276,59 @@ export default function InboundListPage() {
   };
 
   const openModal = async () => {
-    setNomorTiket("");
+    setSelectedBoqId("");
+    setSelectedProjectId("");
     setNomorSuratJalan("");
     setSelectedGudangTujuanId("");
     setTanggalMasuk("");
-    setSelectedProjectId("");
-    setAsalPengiriman("");
     setSelectedKendaraanId("");
     setSelectedDriverId("");
+    setSelectedAsalTipe("");
+    setSelectedSupplierId("");
+    setSelectedGudangAsalId("");
+    setIsVendorManual(false);
+    setPengirimEksternalNama("");
     setPicPemohon("");
     setModalItems([]);
     setFormError(null);
     setSuratJalanPdf(null);
     setSuratJalanPdfUrl("");
+    setBoqItemsDetail([]);
     setModalOpen(true);
     await loadOptions();
   };
+
+  useEffect(() => {
+    if (!selectedBoqId) {
+      setBoqItemsDetail([]);
+      return;
+    }
+    let cancelled = false;
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    const fetchBoqDetail = async () => {
+      try {
+        const res = await get(`${baseUrl}/api/boqs/${selectedBoqId}`);
+        if (!res.ok) return;
+        const json = await res.json();
+        const boq = json?.data;
+        if (!boq || !Array.isArray(boq.items)) return;
+        if (cancelled) return;
+        setBoqItemsDetail(
+          boq.items.map((item: any) => ({
+            barang_id: String(item.barang_id || item.id || ""),
+            itemCode: item.itemCode || item.barang?.kode_perangkat || "",
+            itemName: item.itemName || item.barang?.nama_barang || "",
+          }))
+        );
+      } catch {
+        // ignore BOQ detail fetch error
+      }
+    };
+    fetchBoqDetail();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBoqId, get]);
 
   const handlePdfChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -283,7 +375,18 @@ export default function InboundListPage() {
   const addModalItem = () => {
     setModalItems((prev) => [
       ...prev,
-      { id: `${Date.now()}-${prev.length}`, barang_id: "", qty: "", satuan_id: "", satuan_label: "" },
+      {
+        id: `${Date.now()}-${prev.length}`,
+        barang_id: "",
+        kode_perangkat: "",
+        nama_barang: "",
+        qty: 1,
+        satuan_id: "",
+        satuan_label: "",
+        catatan: "",
+        is_di_luar_boq: true,
+        catatanAutoFilled: false,
+      },
     ]);
   };
 
@@ -291,21 +394,101 @@ export default function InboundListPage() {
     setModalItems((prev) => prev.filter((row) => row.id !== id));
   };
 
-  const updateModalItem = (id: string, field: keyof ModalItemRow, value: string) => {
+  const pickModalItem = (id: string, picked: BarangPickerItem) => {
     setModalItems((prev) =>
       prev.map((row) => {
         if (row.id !== id) return row;
-        if (field === "barang_id") {
-          const barang = barangOptions.find((b) => String(b.barang_id) === value);
+        if (!picked.id) {
           return {
             ...row,
-            barang_id: value,
-            satuan_id: barang?.satuan_default_id ? String(barang.satuan_default_id) : row.satuan_id,
-            satuan_label: String(barang?.satuan_default?.kode_satuan || barang?.satuan_default_id || ""),
+            barang_id: "",
+            kode_perangkat: picked.kode_perangkat,
+            nama_barang: "",
+            satuan_id: "",
+            satuan_label: "",
+            is_di_luar_boq: true,
+            catatan: row.catatan || "Di luar BOQ",
+            catatanAutoFilled: true,
           };
         }
-        return { ...row, [field]: value };
+        const satuanId = picked.satuan_default_id
+          ? String(picked.satuan_default_id)
+          : "";
+        const isInBoq = boqItemsDetail.some(
+          (boqItem) => String(boqItem.barang_id) === String(picked.id)
+        );
+        const catatan =
+          row.catatan && row.catatan !== "Di luar BOQ"
+            ? row.catatan
+            : isInBoq
+              ? ""
+              : "Di luar BOQ";
+        return {
+          ...row,
+          barang_id: picked.id,
+          kode_perangkat: picked.kode_perangkat,
+          nama_barang: picked.nama_barang,
+          satuan_id: satuanId,
+          satuan_label: picked.satuan_default_kode || "",
+          is_di_luar_boq: !isInBoq,
+          catatan,
+          catatanAutoFilled: true,
+        };
+      }),
+    );
+  };
+
+  const setModalItemQty = (id: string, value: number) => {
+    setModalItems((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, qty: Math.max(0, value) } : row)),
+    );
+  };
+
+  useEffect(() => {
+    if (!boqItemsDetail.length) {
+      setModalItems((prev) =>
+        prev.map((row) => {
+          const nextIsDiLuarBoq = row.barang_id ? true : row.is_di_luar_boq;
+          const nextCatatan =
+            row.catatanAutoFilled && row.catatan && row.catatan !== "Di luar BOQ"
+              ? row.catatan
+              : row.barang_id
+                ? "Di luar BOQ"
+                : "";
+          return {
+            ...row,
+            is_di_luar_boq: nextIsDiLuarBoq,
+            catatan: nextCatatan,
+            catatanAutoFilled: row.barang_id ? true : row.catatanAutoFilled,
+          };
+        })
+      );
+      return;
+    }
+    setModalItems((prev) =>
+      prev.map((row) => {
+        if (!row.barang_id) return row;
+        const isInBoq = boqItemsDetail.some(
+          (boqItem) => String(boqItem.barang_id) === String(row.barang_id)
+        );
+        const nextIsDiLuarBoq = !isInBoq;
+        const nextCatatan = row.catatanAutoFilled
+          ? isInBoq
+            ? ""
+            : "Di luar BOQ"
+          : row.catatan;
+        return {
+          ...row,
+          is_di_luar_boq: nextIsDiLuarBoq,
+          catatan: nextCatatan,
+        };
       })
+    );
+  }, [boqItemsDetail]);
+
+  const setModalItemCatatan = (id: string, value: string) => {
+    setModalItems((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, catatan: value, catatanAutoFilled: false } : row)),
     );
   };
 
@@ -316,10 +499,35 @@ export default function InboundListPage() {
     selectedGudangTujuanId &&
     tanggalMasuk &&
     selectedProjectId &&
+    selectedBoqId &&
+    selectedAsalTipe &&
+    (selectedAsalTipe === "internal"
+      ? selectedGudangAsalId
+      : selectedSupplierId || pengirimEksternalNama.trim()) &&
     modalItems.length > 0 &&
-    modalItems.every((row) => row.barang_id && Number(row.qty) > 0 && row.satuan_id);
+    modalItems.every((row) => row.barang_id && row.qty > 0 && row.satuan_id);
+
+  const validModalItems = useMemo(
+    () => modalItems.filter((row) => row.barang_id && row.qty > 0 && row.satuan_id),
+    [modalItems],
+  );
+
+  const totalModalQty = useMemo(
+    () => validModalItems.reduce((sum, row) => sum + row.qty, 0),
+    [validModalItems],
+  );
 
   const handleSubmitInbound = async () => {
+    if (!selectedBoqId) {
+      setFormError("Pilih BOQ terlebih dahulu.");
+      return;
+    }
+
+    if (!selectedGudangTujuanId) {
+      setFormError("Pilih gudang tujuan terlebih dahulu.");
+      return;
+    }
+
     if (!canSubmitModal) return;
     setFormError(null);
     setSubmitting(true);
@@ -331,31 +539,62 @@ export default function InboundListPage() {
         gudang_tujuan_id: selectedGudangTujuanId,
         tanggal: tanggalMasuk,
         project_id: selectedProjectId || null,
-        pengirim_or_vendor: asalPengiriman.trim() || null,
+        tujuan_tipe: "gudang",
+        tipe_pengirim: selectedAsalTipe || null,
+        supplier_id: selectedAsalTipe === "external" && !isVendorManual ? selectedSupplierId || null : null,
+        gudang_asal_id: selectedAsalTipe === "internal" ? selectedGudangAsalId || null : null,
+        pengirim_eksternal_nama: selectedAsalTipe === "external" && isVendorManual ? pengirimEksternalNama.trim() || null : null,
         kendaraan_id: selectedKendaraanId || null,
         personil_pengantar_id: selectedDriverId || null,
-        pic_pemohon_nama: picPemohon.trim() || null,
-        nomor_tiket: nomorTiket.trim() || null,
+pic_pemohon_nama: picPemohon.trim() || null,
+        boq_id: selectedBoqId ? String(selectedBoqId) : null,
         notes: null,
         kategori_approval: "manual_override",
         surat_jalan_url: suratJalanPdfUrl || null,
         items: modalItems.map((row) => ({
           barang_id: row.barang_id,
-          qty: Number(row.qty),
+          qty: row.qty,
           satuan_id: row.satuan_id,
           kondisi: "baik",
           is_kelebihan: false,
-          catatan: null,
+          is_di_luar_boq: row.is_di_luar_boq,
+          catatan: row.catatan?.trim() || null,
         })),
       };
 
       const response = await post(`${baseUrl}/api/surat-jalan/inbound/staff`, payload);
       if (!response.ok) {
-        const err = await response.json().catch(() => null);
-        throw new Error(err?.message || "Gagal membuat pengajuan inbound.");
+        let result: unknown = null;
+        let rawText: string | null = null;
+
+        try {
+          result = await response.json();
+        } catch {
+          try {
+            rawText = await response.text();
+          } catch {
+            rawText = null;
+          }
+          result = null;
+        }
+
+        const resultObj = result && typeof result === "object" ? result : null;
+        const message =
+          (resultObj as any)?.message ||
+          rawText ||
+          "Gagal membuat pengajuan inbound.";
+
+        const validationDetails =
+          (resultObj as any)?.errors || (resultObj as any)?.details || null;
+
+        const fullMessage = validationDetails
+          ? `${message} Detail: ${JSON.stringify(validationDetails)}`
+          : message;
+
+        throw new Error(fullMessage);
       }
 
-      setToast({ message: "Pengajuan Inbound berhasil dikirim, menunggu verifikasi Supervisor.", type: "success" });
+      setShowSuccessModal(true);
       setModalOpen(false);
       await fetchList();
     } catch (err) {
@@ -365,6 +604,10 @@ export default function InboundListPage() {
       setSubmitting(false);
     }
   };
+
+  function handleSuccessModalClose() {
+    setShowSuccessModal(false);
+  }
 
   useEffect(() => {
     if (!toast) return;
@@ -447,7 +690,13 @@ export default function InboundListPage() {
                         {sj.nomor_surat_jalan}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-gray-600">{sj.pengirim_or_vendor || "-"}</td>
+                    <td className="px-6 py-4 text-gray-600">
+                      {sj.tipe_pengirim === "external"
+                        ? `${sj.supplier?.kode ?? ""} - ${sj.supplier?.nama ?? "-"}`
+                        : sj.tipe_pengirim === "internal"
+                        ? sj.gudang_asal?.nama_gudang || "-"
+                        : "-"}
+                    </td>
                     <td className="px-6 py-4 text-gray-600">{tujuanText}</td>
                     <td className="px-6 py-4 text-gray-500">{tanggal}</td>
                     <td className="px-6 py-4 text-gray-600">{totalUnit} unit</td>
@@ -457,12 +706,34 @@ export default function InboundListPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <Link
-                        href={`/staff/inbound/${sj.surat_jalan_id}`}
-                        className="text-sm font-semibold text-[#E8632C] hover:underline"
-                      >
-                        Buka
-                      </Link>
+                      {sj.status === "diterima_didistribusikan" ? (
+                        <span className="text-sm font-semibold text-gray-400">Selesai</span>
+                      ) : sj.status === "ready_putaway" ? (
+                        <Link
+                          href={`/staff/putaway/${sj.surat_jalan_id}`}
+                          className="text-sm font-semibold text-[#E8632C] hover:underline"
+                        >
+                          Putaway
+                        </Link>
+                      ) : sj.status === "draft_diajukan" &&
+                        (String(user?.id) === String(sj.created_by || sj.creator?.user_id) ||
+                          user?.role === "supervisor" ||
+                          user?.role === "admin_general") ? (
+                        <button
+                          onClick={() => handleCancelDraft(sj.surat_jalan_id)}
+                          disabled={cancellingId === sj.surat_jalan_id}
+                          className="text-sm font-semibold text-rose-600 hover:underline disabled:opacity-60"
+                        >
+                          {cancellingId === sj.surat_jalan_id ? "Membatalkan..." : "Batalkan"}
+                        </button>
+                      ) : (
+                        <Link
+                          href={`/staff/inbound/${sj.surat_jalan_id}`}
+                          className="text-sm font-semibold text-[#E8632C] hover:underline"
+                        >
+                          Buka
+                        </Link>
+                      )}
                     </td>
                   </tr>
                 );
@@ -486,13 +757,17 @@ export default function InboundListPage() {
         )}
         <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Nomor Tiket Gudang</label>
-            <input
-              type="text"
-              value={nomorTiket}
-              onChange={(e) => setNomorTiket(e.target.value)}
-              placeholder="Contoh: TKT-2026-001"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+            <label className="mb-1 block text-xs font-medium text-gray-600">BOQ / Tiket <span className="text-rose-500">*</span></label>
+            <BoqPicker
+              value={selectedBoqId}
+              onSelect={(picked) => {
+                setSelectedBoqId(picked.boq_id);
+                if (picked.project_id) {
+                  setSelectedProjectId(String(picked.project_id));
+                }
+              }}
+              placeholder="Pilih BOQ / Tiket"
+              tipe="inbound"
             />
           </div>
           <div>
@@ -514,14 +789,12 @@ export default function InboundListPage() {
                 onChange={(e) => setSelectedGudangTujuanId(e.target.value)}
                 className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
               >
-                <option value="" disabled>
-                  Pilih Gudang Tujuan...
-                </option>
-                {warehouseOptions.map((w) => (
-                  <option key={w.gudang_id} value={String(w.gudang_id)}>
-                    {w.nama_gudang} {w.tipe ? `(${w.tipe})` : ""}
-                  </option>
-                ))}
+                  <option value="" disabled>Pilih Gudang Tujuan...</option>
+                  {warehouseOptions.map((w) => (
+                    <option key={w.gudang_id} value={String(w.gudang_id)}>
+                      {w.nama_gudang} {w.tipe === "dadakan" ? "(Dadakan)" : ""}
+                    </option>
+                  ))}
               </select>
               <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
             </div>
@@ -536,34 +809,88 @@ export default function InboundListPage() {
             />
           </div>
 
-          <div className="sm:col-span-2 border-t border-gray-100 pt-4 mt-2">
-            <label className="mb-1 block text-xs font-medium text-gray-600">Project <span className="text-rose-500">*</span></label>
-            <div className="relative">
-              <select
-                value={selectedProjectId}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
-                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Asal Pengiriman</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedAsalTipe("internal")}
+                className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                  selectedAsalTipe === "internal"
+                    ? "border-[#E8632C] bg-[#E8632C] text-white"
+                    : "border-gray-200 bg-white text-gray-700 hover:border-[#E8632C]"
+                }`}
               >
-                <option value="" disabled>Pilih Project...</option>
-                {projectOptions.map((p) => (
-                  <option key={p.project_id} value={String(p.project_id)}>
-                    {p.nama_project}
+                Internal
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedAsalTipe("external")}
+                className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                  selectedAsalTipe === "external"
+                    ? "border-[#E8632C] bg-[#E8632C] text-white"
+                    : "border-gray-200 bg-white text-gray-700 hover:border-[#E8632C]"
+                }`}
+              >
+                External
+              </button>
+            </div>
+            {selectedAsalTipe === "internal" && (
+              <select
+                value={selectedGudangAsalId}
+                onChange={(e) => setSelectedGudangAsalId(e.target.value)}
+                className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+              >
+                <option value="">Pilih gudang asal</option>
+                {warehouseOptions.map((w) => (
+                  <option key={w.gudang_id} value={String(w.gudang_id)}>
+                    {w.nama_gudang}
                   </option>
                 ))}
               </select>
-              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Asal Gudang / Pengirim</label>
-            <input
-              type="text"
-              value={asalPengiriman}
-              onChange={(e) => setAsalPengiriman(e.target.value)}
-              placeholder="Contoh: Gudang Pusat / Nama Vendor"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
-            />
+            )}
+            {selectedAsalTipe === "external" && (
+              <>
+                {!isVendorManual ? (
+                  <select
+                    value={selectedSupplierId}
+                    onChange={(e) => setSelectedSupplierId(e.target.value)}
+                    className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+                  >
+                    <option value="">Pilih supplier</option>
+                    {supplierOptions.map((s) => (
+                      <option key={s.supplier_id} value={s.supplier_id}>
+                        {s.kode} - {s.nama}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={pengirimEksternalNama}
+                    onChange={(e) => setPengirimEksternalNama(e.target.value)}
+                    placeholder="Nama vendor / pengirim eksternal"
+                    className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+                  />
+                )}
+                <label className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+                  <input
+                    type="checkbox"
+                    checked={isVendorManual}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setIsVendorManual(checked);
+                      if (checked) {
+                        setSelectedSupplierId("");
+                      } else {
+                        setPengirimEksternalNama("");
+                      }
+                    }}
+                  />
+                  Vendor belum terdaftar? Ketik manual
+                </label>
+              </>
+            )}
           </div>
 
           <div>
@@ -641,64 +968,108 @@ export default function InboundListPage() {
 
         <div className="mt-6">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-700">Daftar Barang</p>
-            <Button
-              variant="outline"
-              size="sm"
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Daftar Barang <span className="text-rose-500">*</span></p>
+            <button
+              type="button"
               onClick={addModalItem}
-              className="rounded-lg border-[#E8632C] text-[#E8632C] hover:bg-[#FDECE1]"
+              className="flex items-center gap-1 text-xs font-semibold text-orange-500 hover:text-orange-600"
             >
-              <Plus size={14} className="mr-1" />
-              Add Item
-            </Button>
+              <Plus size={14} />
+              Tambah Item
+            </button>
           </div>
 
           <div className="mt-3 space-y-2">
-            {modalItems.map((row) => {
-              const barang = barangOptions.find((b) => String(b.barang_id) === row.barang_id);
-              return (
-                <div
-                  key={row.id}
-                  className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-gray-50/50 p-3 sm:flex-row sm:items-center"
-                >
-                  <div className="flex-1">
-                    <select
-                      value={row.barang_id}
-                      onChange={(e) => updateModalItem(row.id, "barang_id", e.target.value)}
-                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+            {modalItems.map((row) => (
+              <div
+                key={row.id}
+                className="grid grid-cols-12 gap-2 rounded-xl border border-slate-100 p-3"
+              >
+                <div className="col-span-4">
+                  <BarangPicker
+                    value={row.kode_perangkat}
+                    onSelect={(picked) => pickModalItem(row.id, picked)}
+                    placeholder="Kode perangkat"
+                  />
+                </div>
+                <div className="col-span-4">
+                  <input
+                    type="text"
+                    value={row.nama_barang}
+                    readOnly
+                    placeholder="Nama barang"
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-700 outline-none"
+                  />
+                </div>
+                <div className="col-span-3">
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setModalItemQty(row.id, row.qty - 1)}
+                      className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50"
                     >
-                      <option value="">Pilih Barang / SKU...</option>
-                      {barangOptions.map((b) => (
-                        <option key={b.barang_id} value={String(b.barang_id)}>
-                          {b.kode_perangkat} — {b.nama_barang}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex items-center gap-2">
+                      −
+                    </button>
                     <input
                       type="number"
-                      min={0}
+                      min={1}
                       value={row.qty}
-                      onChange={(e) => updateModalItem(row.id, "qty", e.target.value)}
-                      placeholder="Qty"
-                      className="w-24 rounded-lg border border-gray-200 px-3 py-2 text-center text-sm focus:border-[#E8632C] focus:outline-none"
+                      onChange={(e) => setModalItemQty(row.id, Number(e.target.value))}
+                      className="w-16 rounded-md border border-slate-200 py-1 text-center text-xs text-slate-800 outline-none focus:border-orange-400"
                     />
-                    <span className="text-xs text-gray-500 w-16">{row.satuan_label || "UOM"}</span>
                     <button
-                      onClick={() => removeModalItem(row.id)}
-                      className="rounded-full p-1.5 text-gray-400 hover:bg-rose-50 hover:text-rose-600"
+                      type="button"
+                      onClick={() => setModalItemQty(row.id, row.qty + 1)}
+                      className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50"
                     >
-                      <X size={14} />
+                      +
                     </button>
                   </div>
                 </div>
-              );
-            })}
+                <div className="col-span-1 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={() => removeModalItem(row.id)}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+                <div className="col-span-12">
+                  <input
+                    type="text"
+                    value={row.catatan}
+                    onChange={(e) => setModalItemCatatan(row.id, e.target.value)}
+                    placeholder="Catatan (opsional)"
+                    className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
+                  />
+                  {row.is_di_luar_boq && (
+                    <span className="mt-1 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
+                      Di luar BOQ
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
             {modalItems.length === 0 && (
-              <p className="py-4 text-center text-xs text-gray-400">Belum ada barang. Klik Add Item untuk menambah.</p>
+              <div className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-xs text-slate-400">
+                Belum ada barang. Klik "Tambah Item" untuk menambah.
+              </div>
             )}
           </div>
+
+          {modalItems.length > 0 && (
+            <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5 text-xs text-slate-600">
+              <span>
+                Total Item:{" "}
+                <span className="font-semibold text-slate-800">{validModalItems.length}</span>
+              </span>
+              <span>
+                Total Qty:{" "}
+                <span className="font-semibold text-slate-800">{totalModalQty}</span>
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="mt-6 flex items-center justify-end gap-3">
@@ -714,6 +1085,37 @@ export default function InboundListPage() {
           </Button>
         </div>
       </Modal>
+
+      {showSuccessModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+          onClick={handleSuccessModalClose}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center px-6 py-8 text-center">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Surat Jalan Inbound Berhasil Diajukan</h3>
+              <p className="mt-2 text-sm text-gray-500">
+                Menunggu konfirmasi persetujuan dari supervisor.
+              </p>
+              <button
+                type="button"
+                onClick={handleSuccessModalClose}
+                className="mt-6 w-full rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F]"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div

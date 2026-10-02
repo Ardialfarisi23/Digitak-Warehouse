@@ -5,6 +5,8 @@ const toUserResponse = (user) => {
         email: user.email,
         role: user.role,
         is_aktif: user.is_aktif,
+        must_change_password: user.must_change_password || false,
+        avatar_url: user.personils?.foto || null,
         created_at: user.created_at ? user.created_at.toISOString() : null,
         updated_at: user.updated_at ? user.updated_at.toISOString() : null,
     };

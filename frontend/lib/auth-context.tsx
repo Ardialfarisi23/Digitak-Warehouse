@@ -14,6 +14,8 @@ interface User {
   email?: string;
   role: string;
   isActive?: boolean;
+  must_change_password?: boolean;
+  avatar_url?: string | null;
 }
 
 interface AuthContextType {
@@ -21,8 +23,10 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isLoggingOut: boolean;
   login: (user: User, token: string) => void;
   logout: () => void;
+  updateUser: (data: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -35,33 +39,60 @@ export function AuthProvider({
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // ============================================================
   // RESTORE SESSION
   // ============================================================
 
   useEffect(() => {
-    try {
-      const storedToken = localStorage.getItem("token");
-      const storedUser = localStorage.getItem("user");
+    const validateSession = async () => {
+      try {
+        const storedToken = localStorage.getItem("token");
+        const storedUser = localStorage.getItem("user");
 
-      if (storedToken && storedUser) {
-        const parsedUser: User = JSON.parse(storedUser);
+        if (storedToken && storedUser) {
+          const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-        setToken(storedToken);
-        setUser(parsedUser);
+          const res = await fetch(`${baseUrl}/api/auth/me`, {
+            headers: { Authorization: `Bearer ${storedToken}` },
+          });
+
+          if (!res.ok) {
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+            setToken(null);
+            setUser(null);
+            setIsLoading(false);
+            return;
+          }
+
+          const parsedUser: User = JSON.parse(storedUser);
+          let restoredUser = parsedUser;
+
+          try {
+            const responseData = await res.json();
+            if (responseData?.success && responseData?.data) {
+              restoredUser = { ...restoredUser, ...responseData.data };
+              localStorage.setItem("user", JSON.stringify(restoredUser));
+            }
+          } catch {}
+
+          setToken(storedToken);
+          setUser(restoredUser);
+        }
+      } catch (error) {
+        console.error("Gagal membaca session:", error);
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        setToken(null);
+        setUser(null);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error("Gagal membaca session:", error);
+    };
 
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
-
-      setToken(null);
-      setUser(null);
-    } finally {
-      setIsLoading(false);
-    }
+    validateSession();
   }, []);
 
   // ============================================================
@@ -69,6 +100,7 @@ export function AuthProvider({
   // ============================================================
 
   const login = (user: User, token: string) => {
+    setIsLoggingOut(false);
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(user));
 
@@ -81,11 +113,21 @@ export function AuthProvider({
   // ============================================================
 
   const logout = () => {
+    setIsLoggingOut(true);
     localStorage.removeItem("token");
     localStorage.removeItem("user");
 
     setToken(null);
     setUser(null);
+  };
+
+  const updateUser = (data: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, ...data };
+      localStorage.setItem("user", JSON.stringify(updated));
+      return updated;
+    });
   };
 
   // ============================================================
@@ -99,8 +141,10 @@ export function AuthProvider({
         token,
         isLoading,
         isAuthenticated: !!token && !!user,
+        isLoggingOut,
         login,
         logout,
+        updateUser,
       }}
     >
       {children}

@@ -2,7 +2,7 @@ const supplierRepository = require("./supplier.repository");
 const AppError = require("../../shared/errors");
 
 const create = async (data) => {
-  const existing = await supplierRepository.findByCode(data.code, { includeInactive: true });
+  const existing = await supplierRepository.findByCode(data.kode, { includeInactive: true });
 
   if (existing) {
     throw new AppError("Kode supplier sudah digunakan.", 400);
@@ -25,52 +25,52 @@ const findByCode = async (code) => {
   return record;
 };
 
-const update = async (code, data) => {
-  const record = await supplierRepository.findByCode(code, { includeInactive: true });
+const update = async (kode, data) => {
+  const record = await supplierRepository.findByCode(kode, { includeInactive: true });
 
   if (!record) {
     throw new AppError("Supplier tidak ditemukan.", 404);
   }
 
-  if (!record.isActive) {
+  if (!record.is_aktif) {
     throw new AppError("Supplier telah dinonaktifkan. Pulihkan untuk mengubah data.", 400);
   }
-  if (data.code && data.code !== code) {
-    const existing = await supplierRepository.findByCode(data.code, { includeInactive: true });
+  if (data.kode && data.kode !== kode) {
+    const existing = await supplierRepository.findByCode(data.kode, { includeInactive: true });
     if (existing) {
       throw new AppError("Kode supplier sudah digunakan.", 400);
     }
   }
 
-  return await supplierRepository.update(code, data);
+  return await supplierRepository.update(kode, data);
 };
 
-const softDelete = async (code) => {
-  const record = await supplierRepository.findByCode(code, { includeInactive: true });
+const softDelete = async (kode) => {
+  const record = await supplierRepository.findByCode(kode, { includeInactive: true });
 
   if (!record) {
     throw new AppError("Supplier tidak ditemukan.", 404);
   }
 
-  if (!record.isActive) {
+  if (!record.is_aktif) {
     throw new AppError("Supplier sudah dinonaktifkan.", 400);
   }
 
-  return await supplierRepository.softDelete(code);
+  return await supplierRepository.softDelete(kode);
 };
 
-const restore = async (code) => {
-  const record = await supplierRepository.findByCode(code, { includeInactive: true });
+const restore = async (kode) => {
+  const record = await supplierRepository.findByCode(kode, { includeInactive: true });
 
   if (!record) {
     throw new AppError("Supplier tidak ditemukan.", 404);
   }
 
-  if (record.isActive) {
+  if (record.is_aktif) {
     throw new AppError("Supplier sudah aktif.", 400);
   }
 
-  return await supplierRepository.restore(code);
+  return await supplierRepository.restore(kode);
 };
 
 module.exports = {

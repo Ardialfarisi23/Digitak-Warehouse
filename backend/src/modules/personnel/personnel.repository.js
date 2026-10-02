@@ -13,7 +13,13 @@ const ALLOWED_SORT_FIELDS = [
 
 const create = async (data) => {
   return await prisma.personil.create({
-    data,
+    data: {
+      ...data,
+      jenis: data.jenis ?? "admin_gudang",
+    },
+    include: {
+      gudang: true,
+    },
   });
 };
 
@@ -21,6 +27,7 @@ const findByPersonilId = async (personil_id, options = {}) => {
   if (options.includeInactive) {
     return await prisma.personil.findUnique({
       where: { personil_id: Number(personil_id) },
+      include: { gudang: true },
     });
   }
 
@@ -28,6 +35,7 @@ const findByPersonilId = async (personil_id, options = {}) => {
     where: {
       personil_id: Number(personil_id),
     },
+    include: { gudang: true },
   });
 };
 
@@ -35,6 +43,7 @@ const findById = async (id, options = {}) => {
   if (options.includeInactive) {
     return await prisma.personil.findUnique({
       where: { personil_id: Number(id) },
+      include: { gudang: true },
     });
   }
 
@@ -42,6 +51,7 @@ const findById = async (id, options = {}) => {
     where: {
       personil_id: Number(id),
     },
+    include: { gudang: true },
   });
 };
 
@@ -49,13 +59,21 @@ const findByEmail = async (email, options = {}) => {
   if (options.includeInactive) {
     return await prisma.personil.findFirst({
       where: { email },
+      include: { gudang: true },
     });
   }
 
   return await prisma.personil.findFirst({
-    where: {
-      email,
-    },
+    where: { email },
+    include: { gudang: true },
+  });
+};
+
+const findByNik = async (nik) => {
+  if (!nik) return null;
+  return await prisma.personil.findFirst({
+    where: { nik },
+    include: { gudang: true },
   });
 };
 
@@ -65,16 +83,21 @@ const findAll = async ({
   search,
   sortBy = "updated_at",
   sortOrder = "desc",
+  bisa_menyetir,
 } = {}) => {
+  const isDriverFilter = bisa_menyetir === true || bisa_menyetir === "true";
+
   const sanitizedPage = Math.max(
     parseInt(page, 10) || DEFAULT_PAGE,
     DEFAULT_PAGE
   );
 
-  const sanitizedLimit = Math.max(
-    parseInt(limit, 10) || DEFAULT_LIMIT,
-    1
-  );
+  const sanitizedLimit = isDriverFilter
+    ? 1000
+    : Math.max(
+        parseInt(limit, 10) || DEFAULT_LIMIT,
+        1
+      );
 
   const orderField = ALLOWED_SORT_FIELDS.includes(sortBy)
     ? sortBy
@@ -87,6 +110,10 @@ const findAll = async ({
     : "desc";
 
   const where = {};
+
+  if (isDriverFilter) {
+    where.bisa_menyetir = true;
+  }
 
   if (search) {
     where.OR = [
@@ -134,6 +161,9 @@ const findAll = async ({
     },
     skip: (sanitizedPage - 1) * sanitizedLimit,
     take: sanitizedLimit,
+    include: {
+      gudang: true,
+    },
   });
 
   return {
@@ -154,11 +184,30 @@ const update = async (personil_id, data) => {
   });
 };
 
+const remove = async (personil_id) => {
+  try {
+    return await prisma.personil.delete({
+      where: { personil_id: Number(personil_id) },
+    });
+  } catch (err) {
+    if (err && err.code === "P2003") {
+      return await prisma.personil.update({
+        where: { personil_id: Number(personil_id) },
+        data: { is_aktif: false },
+      });
+    }
+
+    throw err;
+  }
+};
+
 module.exports = {
   create,
   findByPersonilId,
   findById,
+  findByNik,
   findByEmail,
   findAll,
   update,
+  remove,
 };

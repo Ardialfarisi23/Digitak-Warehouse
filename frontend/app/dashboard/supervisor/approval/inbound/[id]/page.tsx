@@ -4,28 +4,16 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
-<<<<<<< Updated upstream
-import { CheckCircle2 } from "lucide-react";
-=======
-import { Printer, ArrowLeft } from "lucide-react";
->>>>>>> Stashed changes
+import { CheckCircle2, ArrowLeft, Printer, Eye, X, FileText } from "lucide-react";
+import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
+import { KondisiBadge } from "@/components/common/KondisiBadge";
+import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
+import dynamic from "next/dynamic";
 
-const STATUS_BADGES: Record<string, string> = {
-  draft_diajukan: "bg-slate-100 text-slate-700",
-  disetujui: "bg-emerald-100 text-emerald-700",
-  dikembalikan: "bg-amber-100 text-amber-700",
-  diterima: "bg-blue-100 text-blue-700",
-};
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid grid-cols-[130px_10px_1fr] items-start leading-snug">
-      <span className="text-gray-500">{label}</span>
-      <span className="text-gray-500">:</span>
-      <span className="font-semibold text-gray-900">{value}</span>
-    </div>
-  );
-}
+const PdfViewerComponent = dynamic(() => import("@/components/PdfViewerComponent"), {
+  ssr: false,
+  loading: () => <div className="p-4 text-xs text-slate-500">Memuat PDF...</div>,
+});
 
 export default function SupervisorApprovalInboundDetailPage() {
   const params = useParams<{ id: string }>();
@@ -36,6 +24,26 @@ export default function SupervisorApprovalInboundDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [notes, setNotes] = useState("");
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [showRejectConfirm, setShowRejectConfirm] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  const [isDocModalOpen, setIsDocModalOpen] = useState(false);
+  const [selectedDocItem, setSelectedDocItem] = useState<any>(null);
+
+  const [numPages, setNumPages] = useState<number>(0);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  const openDocModal = (item: any) => {
+    setSelectedDocItem(item);
+    setIsDocModalOpen(true);
+  };
+
+  const closeDocModal = () => {
+    setIsDocModalOpen(false);
+    setSelectedDocItem(null);
+  };
 
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
@@ -65,7 +73,22 @@ export default function SupervisorApprovalInboundDetailPage() {
     };
   }, [get, apiBase, params.id]);
 
-  const handleApprove = async () => {
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const openApproveConfirm = () => {
+    setShowConfirm(true);
+  };
+
+  const cancelApproveConfirm = () => {
+    setShowConfirm(false);
+  };
+
+  const executeApprove = async () => {
+    setShowConfirm(false);
     setActionLoading(true);
     try {
       const resp = await put(`${apiBase}/api/surat-jalan/${params.id}/approve-inbound`, {
@@ -77,9 +100,51 @@ export default function SupervisorApprovalInboundDetailPage() {
         throw new Error(err?.message || "Gagal approve inbound.");
       }
       setShowSuccessModal(true);
+      setToast({ message: "Inbound berhasil disetujui.", type: "success" });
     } catch (error) {
       console.error(error);
-      alert((error as Error).message || "Gagal approve inbound.");
+      setToast({
+        message: (error as Error)?.message || "Gagal approve inbound.",
+        type: "error",
+      });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleBack = () => {
+    router.push("/dashboard/supervisor/approval/inbound");
+  };
+
+  const openRejectConfirm = () => {
+    setShowRejectConfirm(true);
+  };
+
+  const cancelRejectConfirm = () => {
+    setShowRejectConfirm(false);
+    setRejectReason("");
+  };
+
+  const executeReject = async () => {
+    setShowRejectConfirm(false);
+    setActionLoading(true);
+    try {
+      const resp = await put(`${apiBase}/api/surat-jalan/${params.id}/reject-inbound`, {
+        catatan: rejectReason || null,
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => null);
+        throw new Error(err?.message || "Gagal menolak inbound.");
+      }
+      setRejectReason("");
+      setToast({ message: "Inbound berhasil ditolak.", type: "success" });
+      setTimeout(() => router.push("/dashboard/supervisor/approval/inbound"), 1500);
+    } catch (error) {
+      console.error(error);
+      setToast({
+        message: (error as Error)?.message || "Gagal menolak inbound.",
+        type: "error",
+      });
     } finally {
       setActionLoading(false);
     }
@@ -101,197 +166,182 @@ export default function SupervisorApprovalInboundDetailPage() {
     return (
       <div className="px-8 py-6">
         <p className="text-slate-500">Detail inbound tidak ditemukan.</p>
-        <Button onClick={() => router.back()} className="mt-4 rounded-xl bg-[#E8632C] px-4 py-2 text-sm text-white">
+        <Button onClick={() => router.push("/dashboard/supervisor/approval/inbound")} className="mt-4 rounded-xl bg-[#E8632C] px-4 py-2 text-sm text-white">
           Kembali
         </Button>
       </div>
     );
   }
 
-  const statusBadge = STATUS_BADGES[detail.status] ?? "bg-slate-100 text-slate-700";
-  const tanggal = detail.tanggal
-    ? new Date(detail.tanggal).toLocaleDateString("id-ID", {
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-      })
-    : "-";
-
   return (
     <div className="min-h-screen px-8 py-6">
       {/* Toolbar — hilang saat print */}
       <div className="mb-6 flex items-center justify-between print:hidden">
-        <button
-          onClick={() => router.push("/dashboard/supervisor/approval/inbound")}
-          className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-700"
-        >
+        <button onClick={() => router.push("/dashboard/supervisor/approval/inbound")} className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-700">
           <ArrowLeft size={16} />
           Kembali
         </button>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={handlePrint}
-            className="flex items-center gap-2 rounded-xl border-[#E8632C] px-4 py-2 text-sm font-semibold text-[#E8632C] hover:bg-[#E8632C] hover:text-white"
-          >
+          <Button variant="outline" onClick={handlePrint} className="flex items-center gap-2 rounded-xl border-[#E8632C] px-4 py-2 text-sm font-semibold text-[#E8632C] hover:bg-[#E8632C] hover:text-white">
             <Printer size={16} />
             Cetak / PDF
           </Button>
         </div>
       </div>
 
-      {/* Dokumen Surat Jalan — ini yang ke-print */}
-      <div
-        id="surat-jalan-document"
-        className="mx-auto max-w-3xl rounded-2xl border border-[#F3D9C7] bg-white p-10 print:rounded-none print:border-0 print:p-0"
-      >
-        {/* Kop surat dengan logo */}
-        <div className="mb-8 flex items-start justify-between border-b-2 border-[#E8632C] pb-6">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/logo digitak grdasi.png"
-            alt="Digitak Studio — PT Metanouva Informatika"
-            className="h-16 w-auto object-contain"
+      {/* Split View: 2 columns */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
+        {/* Kolom Kiri: Preview PDF Surat Jalan dari Staf */}
+        <div className="print:hidden">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm h-[850px] flex flex-col overflow-hidden">
+            <h3 className="text-sm font-semibold text-slate-700 mb-4">Dokumen Lampiran Staf (PDF)</h3>
+            {detail?.surat_jalan_url ? (
+              <PdfViewerComponent url={detail.surat_jalan_url} />
+            ) : (
+              <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50">
+                <div className="text-center">
+                  <FileText size={32} className="mx-auto text-slate-300" />
+                  <p className="mt-2 text-xs text-slate-400">Staf tidak mengunggah dokumen lampiran PDF.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Kolom Kanan: Surat Jalan System Generated */}
+        <div className="flex flex-col gap-6">
+          {/* Dokumen Surat Jalan — ini yang ke-print */}
+          <DetailSuratJalanDocument
+            data={detail}
+            variant="full"
+            hideTujuanBadge
+            renderItemAction={(item) => (
+              <button type="button" onClick={() => openDocModal(item)} className="p-1 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer flex items-center justify-center" title="Dokumentasi Barang">
+                <Eye size={16} />
+              </button>
+            )}
           />
-          <div className="flex flex-col items-end">
-            <h1 className="text-3xl font-bold tracking-wide text-gray-900">SURAT JALAN</h1>
-            <p className="mt-1 text-xs text-gray-500">Surat Jalan Inbound — Digitak Studio</p>
-            <div className="mt-2 text-right">
-              <p className="text-xs font-bold text-[#E8632C]">PT Metanouva Informatika</p>
-              <p className="text-[10px] text-gray-400">Digitak Studio</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Status badge */}
-        <div className="mb-6">
-          <span className={`rounded-full px-3 py-1 text-sm font-semibold ${statusBadge}`}>
-            {detail.status || "-"}
-          </span>
-        </div>
-
-        {/* Info grid — 2 kolom */}
-        <div className="mb-8 grid grid-cols-2 gap-x-12 gap-y-3 text-sm">
-          <div className="space-y-3">
-            <InfoRow label="No Surat Jalan" value={detail.nomor_surat_jalan || "-"} />
-            <InfoRow label="Tanggal" value={tanggal} />
-            <InfoRow label="Dari Gudang" value={detail.gudang_asal?.nama_gudang || "-"} />
-          </div>
-          <div className="space-y-3">
-            <InfoRow label="Ke Gudang" value={detail.gudang_tujuan?.nama_gudang || "-"} />
-            <InfoRow label="Pengirim" value={detail.personil_pengirim?.nama || "-"} />
-          </div>
-        </div>
-
-        {/* Ringkasan */}
-        <div className="mb-8 rounded-xl bg-slate-50 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Ringkasan Barang</p>
-          <div className="mt-2 grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-slate-500">Jumlah Item</span>
-              <p className="font-semibold text-slate-900">{detail.items?.length ?? 0}</p>
-            </div>
-            <div>
-              <span className="text-slate-500">Total Qty</span>
-              <p className="font-semibold text-slate-900">
-                {detail.items?.reduce((sum: number, item: any) => sum + Number(item.qty || 0), 0)}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Tabel item */}
-        <table className="mb-10 w-full border-collapse text-sm">
-          <thead>
-            <tr className="bg-[#FFF7ED]">
-              <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">No</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Kode Barang</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Nama Barang</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">QTY</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">Kondisi</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Serial Number</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Keterangan</th>
-            </tr>
-          </thead>
-          <tbody>
-            {detail.items?.map((item: any, i: number) => (
-              <tr key={`${item.barang_id}-${item.serial_number || item.id || i}`} className="even:bg-gray-50">
-                <td className="border border-gray-200 px-3 py-2.5">{i + 1}</td>
-                <td className="border border-gray-200 px-3 py-2.5 font-medium">
-                  {item.barang?.kode_perangkat || item.kode_perangkat || "-"}
-                </td>
-                <td className="border border-gray-200 px-3 py-2.5">
-                  {item.barang?.nama_barang || item.nama barang || "-"}
-                </td>
-                <td className="border border-gray-200 px-3 py-2.5 text-center font-semibold">{item.qty}</td>
-                <td className="border border-gray-200 px-3 py-2.5 text-center capitalize">{item.kondisi || "-"}</td>
-                <td className="border border-gray-200 px-3 py-2.5">{item.serial_number || "-"}</td>
-                <td className="border border-gray-200 px-3 py-2.5 text-gray-500">{item.catatan || "-"}</td>
-              </tr>
-            ))}
-            {Array.from({ length: Math.max(0, 3 - (detail.items?.length ?? 0)) }).map((_, i) => (
-              <tr key={`empty-${i}`}>
-                <td className="border border-gray-200 px-3 py-6" colSpan={7} />
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {/* Catatan Supervisor */}
-        <div className="mb-8 rounded-xl border border-slate-200 bg-slate-50 p-4 print:hidden">
-          <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider block mb-2">
-            Catatan Supervisor
-          </label>
-          <textarea
-            rows={3}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Tuliskan catatan selisih/kondisi di sini..."
-            className="w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none"
-          />
-        </div>
-
-        {/* Aksi Supervisor — hilang saat print */}
-        <div className="mb-8 print:hidden">
-          <Button
-            onClick={handleApprove}
-            disabled={actionLoading}
-            className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
-          >
-            {actionLoading ? "Memproses..." : "Setujui Inbound"}
-          </Button>
-        </div>
-
-        {/* Tanda tangan */}
-        <div className="mb-8 grid grid-cols-3 gap-6 text-center text-sm">
-          <div>
-            <p className="mb-16 font-medium text-gray-700">Pengirim</p>
-            <div className="border-t border-gray-400 pt-1">
-              <p className="font-semibold text-gray-900">{detail.personil_pengirim?.nama || "-"}</p>
-            </div>
-          </div>
-          <div>
-            <p className="mb-16 font-medium text-gray-700">Supervisor</p>
-            <div className="border-t border-gray-400 pt-1">
-              <p className="font-semibold text-gray-900">&nbsp;</p>
-            </div>
-          </div>
-          <div>
-            <p className="mb-16 font-medium text-gray-700">Penerima</p>
-            <div className="border-t border-gray-400 pt-1">
-              <p className="font-semibold text-gray-900">&nbsp;</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer dokumen */}
-        <div className="border-t border-gray-200 pt-3 flex items-center justify-between text-[10px] text-gray-400">
-          <span>Dokumen ini digenerate secara otomatis oleh sistem Digitak Studio.</span>
-          <span>{detail.nomor_surat_jalan} | {tanggal}</span>
         </div>
       </div>
 
-<<<<<<< Updated upstream
+      {/* 2. SECTION AKSI SUPERVISOR (RATA TENGAH DIBAWAH KEDUA SURAT) */}
+      <div className="w-full max-w-2xl mx-auto mt-8">
+        <div className="bg-slate-50/80 p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
+          <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full mb-2">AKSI SUPERVISOR</span>
+
+          <p className="text-xs text-slate-500 max-w-lg mb-4">Tinjau dan setujui surat jalan inbound di atas. Stok akan otomatis ditambahkan setelah persetujuan.</p>
+
+          <div className="w-full text-left mb-4">
+            <label className="block text-xs font-bold text-slate-600 mb-1">CATATAN SUPERVISOR</label>
+            <textarea
+              rows={3}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Tuliskan catatan selisih/kondisi di sini..."
+              className="w-full p-3 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+            />
+          </div>
+
+          <p className="text-xs font-medium text-slate-500 mb-3">Pilih aksi persetujuan untuk dokumen surat jalan inbound ini:</p>
+
+          <div className="flex items-center justify-center gap-3 w-full max-w-md">
+            <Button
+              onClick={openRejectConfirm}
+              disabled={actionLoading}
+              variant="outline"
+              className="flex-1 rounded-xl border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              Tolak / Revisi
+            </Button>
+            <Button
+              onClick={openApproveConfirm}
+              disabled={actionLoading}
+              className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {actionLoading ? "Memproses..." : "Setujui Inbound"}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal Konfirmasi Persetujuan — samakan pola dengan list page */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-base font-semibold text-slate-900">Setujui Inbound?</h3>
+            <p className="mt-1 text-sm text-slate-500">Apakah Anda yakin ingin menyetujui inbound ini? Aksi ini akan mengubah status surat jalan dan menambahkan stok barang ke gudang.</p>
+            <div className="mt-6 flex items-center justify-end gap-2">
+              <button type="button" onClick={cancelApproveConfirm} disabled={actionLoading} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60">
+                Batal
+              </button>
+              <button type="button" onClick={executeApprove} disabled={actionLoading} className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-emerald-600 disabled:opacity-60">
+                {actionLoading ? "Memproses..." : "Ya, Setujui"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Penolakan — samakan pola dengan approve */}
+      {showRejectConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-base font-semibold text-slate-900">Tolak Inbound?</h3>
+            <p className="mt-1 text-sm text-slate-500">Surat Jalan akan berstatus &quot;ditolak&quot; dan stok tidak akan ditambahkan. Staf Gudang perlu membuat pengajuan inbound baru untuk transaksi ini.</p>
+            <div className="mt-4">
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">Alasan Penolakan</label>
+              <textarea
+                rows={3}
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Tuliskan alasan penolakan/klarifikasi..."
+                className="w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-rose-500 focus:outline-none"
+              />
+            </div>
+            <div className="mt-6 flex items-center justify-end gap-2">
+              <button type="button" onClick={cancelRejectConfirm} disabled={actionLoading} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60">
+                Batal
+              </button>
+              <button type="button" onClick={executeReject} disabled={actionLoading} className="rounded-full bg-rose-600 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-rose-700 disabled:opacity-60">
+                {actionLoading ? "Memproses..." : "Ya, Tolak"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast — reuse pola BOQ (top-right, slide-in) */}
+      {toast && (
+        <div
+          className={[
+            "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
+            toast.type === "success" ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800" : "border-rose-200/80 bg-rose-50/95 text-rose-800",
+          ].join(" ")}
+        >
+          <div className={["flex h-8 w-8 shrink-0 items-center justify-center rounded-full", toast.type === "success" ? "bg-emerald-100" : "bg-rose-100"].join(" ")}>
+            {toast.type === "success" ? (
+              <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+          </div>
+          <p className="flex-1 leading-snug">{toast.message}</p>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className={["ml-2 shrink-0 rounded-full p-1 transition-colors", toast.type === "success" ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600" : "text-rose-400 hover:bg-rose-100 hover:text-rose-600"].join(" ")}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       {/* Pop-up Modal Sukses Custom */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm animate-in fade-in duration-200">
@@ -301,31 +351,95 @@ export default function SupervisorApprovalInboundDetailPage() {
             </div>
 
             <div className="space-y-1">
-              <h3 className="text-xl font-bold text-slate-900">Approval Berhasil!</h3>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Surat Jalan inbound berhasil disetujui dan stok barang telah ditambahkan.
-              </p>
+              <h3 className="text-xl font-bold text-slate-900">Persetujuan Berhasil!</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">Surat Jalan inbound berhasil disetujui dan stok barang telah ditambahkan.</p>
             </div>
 
-            <Button
-              onClick={handleBack}
-              className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white hover:bg-emerald-700 shadow-sm shadow-emerald-600/20"
-            >
+            <Button onClick={handleBack} className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white hover:bg-emerald-700 shadow-sm shadow-emerald-600/20">
               Kembali ke Daftar Antrean
             </Button>
           </div>
         </div>
       )}
-=======
-      <style jsx global>{`
-        @media print {
-          aside, header, nav { display: none !important; }
-          main { margin-left: 0 !important; margin-top: 0 !important; }
-          body { background: white !important; }
-          .print\\:hidden { display: none !important; }
-        }
-      `}</style>
->>>>>>> Stashed changes
+
+      {isDocModalOpen && selectedDocItem && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Dokumentasi Barang</h3>
+                <p className="text-xs text-slate-500">{selectedDocItem?.barang?.nama_barang || selectedDocItem?.barang?.kode_perangkat || "Item"}</p>
+              </div>
+              <button type="button" onClick={closeDocModal} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-xs text-slate-500">Kondisi</p>
+                  <p className="font-medium text-slate-900"><KondisiBadge value={selectedDocItem?.kondisi} /></p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">QTY</p>
+                  <p className="font-medium text-slate-900">{selectedDocItem?.qty || 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Diperiksa Oleh</p>
+                  <p className="font-medium text-slate-900">
+                    {(selectedDocItem as any)?.approval_verification?.approver_nama ||
+                      selectedDocItem?.diperiksa_oleh_user?.nama ||
+                      "-"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Waktu Verifikasi</p>
+                  <p className="font-medium text-slate-900">
+                    {(selectedDocItem as any)?.approval_verification?.waktu_verifikasi
+                      ? new Date((selectedDocItem as any).approval_verification.waktu_verifikasi).toLocaleString("id-ID")
+                      : (selectedDocItem as any)?.diperiksa_pada
+                        ? new Date((selectedDocItem as any).diperiksa_pada).toLocaleString("id-ID")
+                        : "-"}
+                  </p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-slate-500">Catatan</p>
+                  <p className="font-medium text-slate-900">{selectedDocItem?.catatan || "-"}</p>
+                </div>
+                {selectedDocItem?.is_di_luar_boq && (
+                  <div className="col-span-2">
+                    <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
+                      Di luar BOQ
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div>
+                <p className="mb-2 text-xs text-slate-500">Foto Dokumentasi</p>
+                {(() => {
+                  const item = selectedDocItem as any;
+                  const fotoUrls = getItemFotoUrls(item);
+                  if (fotoUrls.length === 0) {
+                    return <p className="text-xs text-slate-400">Belum ada foto dokumentasi untuk item ini.</p>;
+                  }
+                  return (
+                    <div className="grid grid-cols-3 gap-2">
+                      {fotoUrls.map((url, idx) => (
+                        <img key={idx} src={url} alt={url} className="h-24 w-full rounded-lg border border-slate-100 object-cover" />
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4">
+              <button type="button" onClick={closeDocModal} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
+                Kembali ke Detail
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

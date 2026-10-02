@@ -1,12 +1,14 @@
 const boqRepository = require("./boq.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
+const notificationService = require("../../modules/notifications/notifications.service");
 
 const normalizeStatus = (status) => {
   if (!status) return status;
   const map = {
     DRAFT: "draft",
     AKTIF: "aktif",
+    SELESAI: "selesai",
     DITOLAK: "ditolak",
   };
   return map[status.toUpperCase()] || status.toLowerCase();
@@ -37,21 +39,140 @@ const normalizeVerification = (status) => {
 
 const generateBoqNumber = async () => {
   const year = new Date().getFullYear();
-  const count = await prisma.boq.count({
+  const lastBoq = await prisma.boq.findFirst({
     where: {
       boq_number: {
         startsWith: `BOQ-${year}-`,
       },
     },
+    orderBy: { boq_id: 'desc' },
+    select: { boq_number: true },
   });
-  return `BOQ-${year}-${String(count + 1).padStart(4, "0")}`;
+
+  let nextNumber = 1;
+  if (lastBoq?.boq_number) {
+    const parts = String(lastBoq.boq_number).split('-');
+    const lastNum = parseInt(parts[parts.length - 1] || '0', 10);
+    nextNumber = lastNum + 1;
+  }
+
+  return `BOQ-${year}-${String(nextNumber).padStart(4, "0")}`;
+};
+
+const getBoqIdentifier = (boq) => boq.boq_number || `BOQ-${boq.boq_id}`;
+
+const getBoqProjectName = (boq) => boq?.tiket?.project?.nama_project || null;
+
+const getRelatedUserIdsByGudang = async (gudangIds, roles) => {
+  if (!Array.isArray(gudangIds) || gudangIds.length === 0 || !Array.isArray(roles) || roles.length === 0) {
+    return [];
+  }
+  const numericGudangIds = gudangIds.map(Number).filter((id) => !Number.isNaN(id));
+  if (numericGudangIds.length === 0) return [];
+
+  const personnel = await prisma.personil.findMany({
+    where: {
+      gudang_id: { in: numericGudangIds },
+      user: {
+        role: { in: roles },
+        is_aktif: true,
+      },
+    },
+    select: { user_id: true },
+  });
+
+  return personnel.map((p) => Number(p.user_id)).filter((id) => !Number.isNaN(id) && id > 0);
+};
+
+const getRelatedSupervisorIds = async (excludeUserId = null) => {
+  const supervisors = await prisma.user_account.findMany({
+    where: { role: "supervisor", is_aktif: true },
+    select: { user_id: true },
+  });
+  let ids = supervisors.map((s) => s.user_id).filter((id) => id != null);
+  if (excludeUserId != null) {
+    const numericExclude = Number(excludeUserId);
+    return ids.filter((id) => id !== numericExclude);
+  }
+  return ids;
+};
+
+const getRelatedStaffIds = async (gudangIds) => {
+  return await getRelatedUserIdsByGudang(gudangIds, ["staf_gudang"]);
+};
+
+const getAllAdminIds = async (excludeUserId = null) => {
+  const admins = await prisma.user_account.findMany({
+    where: { role: "admin_general", is_aktif: true },
+    select: { user_id: true },
+  });
+  let ids = admins.map((a) => Number(a.user_id)).filter((id) => !Number.isNaN(id) && id > 0);
+  if (excludeUserId != null) {
+    const numericExclude = Number(excludeUserId);
+    ids = ids.filter((id) => id !== numericExclude);
+  }
+  return ids;
+};
+
+const getAllSupervisorIds = async (excludeUserId = null) => {
+  const supervisors = await prisma.user_account.findMany({
+    where: { role: "supervisor", is_aktif: true },
+    select: { user_id: true },
+  });
+  let ids = supervisors.map((s) => Number(s.user_id)).filter((id) => !Number.isNaN(id) && id > 0);
+  if (excludeUserId != null) {
+    const numericExclude = Number(excludeUserId);
+    ids = ids.filter((id) => id !== numericExclude);
+  }
+  return ids;
+};
+
+const getAllStaffIds = async (excludeUserId = null) => {
+  const staff = await prisma.user_account.findMany({
+    where: { role: "staf_gudang", is_aktif: true },
+    select: { user_id: true },
+  });
+  let ids = staff.map((s) => Number(s.user_id)).filter((id) => !Number.isNaN(id) && id > 0);
+  if (excludeUserId != null) {
+    const numericExclude = Number(excludeUserId);
+    ids = ids.filter((id) => id !== numericExclude);
+  }
+  return ids;
+};
+
+const collectBoqGudangIds = (boq) => {
+  const ids = (boq?.items || []).map((item) => Number(item.gudang_tujuan_id)).filter((id) => !Number.isNaN(id) && id > 0);
+  return [...new Set(ids)];
 };
 
 const create = async (data, userId) => {
-  const { items, projectId, area, ticketNumber, notes, referenceFile, ...boqData } = data;
+  const { items, projectId, area, ticketNumber, notes, referenceFile, emailReference, clusterId, ...boqData } = data;
 
   if (!ticketNumber) {
     throw new AppError("Kode tiket wajib diisi.", 400);
+  }
+
+  if (!clusterId) {
+    throw new AppError("Cluster ID wajib dipilih.", 400);
+  }
+
+  const cluster = await prisma.cluster.findUnique({
+    where: { cluster_id: String(clusterId) },
+  });
+
+  if (!cluster) {
+    throw new AppError("Cluster tidak ditemukan.", 404);
+  }
+
+  const existingActiveBoqForCluster = await prisma.boq.findFirst({
+    where: {
+      cluster_id: String(clusterId),
+      status: "aktif",
+    },
+  });
+
+  if (existingActiveBoqForCluster) {
+    throw new AppError("Cluster ini sudah memiliki BOQ aktif.", 400);
   }
 
   const existingTiket = await prisma.tiket_material.findFirst({
@@ -78,6 +199,7 @@ const create = async (data, userId) => {
     ...boqData,
     boq_number: boqNumber,
     tiket_id: tiket.tiket_id,
+    cluster_id: String(clusterId),
     created_by: userId,
     updated_by: userId,
     status: normalizeStatus(boqData.status),
@@ -85,11 +207,13 @@ const create = async (data, userId) => {
     external_verification_status: normalizeVerification(boqData.external_verification_status),
     catatan: notes || boqData.notes || null,
     reference_file: referenceFile || null,
+    email_reference: emailReference || null,
   };
 
   delete boqDataWithMeta.externalVerificationStatus;
   delete boqDataWithMeta.notes;
   delete boqDataWithMeta.referenceFile;
+  delete boqDataWithMeta.emailReference;
 
   if (items && items.length > 0) {
     const barangMap = new Map();
@@ -128,7 +252,12 @@ const create = async (data, userId) => {
     });
 
     if (unresolvedItems.length > 0) {
-      throw new AppError(`Barang tidak ditemukan untuk: ${unresolvedItems.map((i) => i.itemCode).join(", ")}`, 400);
+      const kodes = unresolvedItems.map((i) => i.itemCode).join(", ");
+      throw new AppError(
+        `Item dengan kode "${kodes}" belum terdaftar di master barang. ` +
+        `Hubungi Admin untuk menambahkan item terlebih dahulu, atau pilih kode barang yang sudah ada.`,
+        400
+      );
     }
 
     boqDataWithMeta.items = {
@@ -147,6 +276,73 @@ const create = async (data, userId) => {
   }
 
   const result = await boqRepository.create(boqDataWithMeta);
+
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(userId) },
+    select: { nama: true, email: true, role: true },
+  });
+
+  const gudangIds = collectBoqGudangIds(result);
+
+  try {
+    if (actor?.role === "admin_general") {
+      const supervisorIds = await getAllSupervisorIds(Number(userId));
+      const staffIds = await getAllStaffIds(Number(userId));
+
+      if (supervisorIds.length > 0) {
+        await notificationService.create({
+          userId: supervisorIds,
+          type: "info",
+          title: "BOQ Baru Dibuat",
+          message: `${getBoqIdentifier(result)}${getBoqProjectName(result) ? ` untuk project ${getBoqProjectName(result)}` : ""} telah dibuat oleh ${actor?.nama || "Admin"}.`,
+          link: `/dashboard/boq?id=${result.boq_id}`,
+        });
+      }
+      if (staffIds.length > 0) {
+        await notificationService.create({
+          userId: staffIds,
+          type: "info",
+          title: "BOQ Baru Dibuat",
+          message: `${getBoqIdentifier(result)}${getBoqProjectName(result) ? ` untuk project ${getBoqProjectName(result)}` : ""} telah dibuat oleh ${actor?.nama || "Admin"}.`,
+          link: `/dashboard/boq?id=${result.boq_id}`,
+        });
+      }
+    } else if (actor?.role === "supervisor") {
+      const adminIds = await getAllAdminIds(Number(userId));
+      const supervisorIds = await getAllSupervisorIds(Number(userId));
+      const staffIds = await getAllStaffIds(Number(userId));
+
+      if (adminIds.length > 0) {
+        await notificationService.create({
+          userId: adminIds,
+          type: "info",
+          title: "BOQ Baru Dibuat",
+          message: `${getBoqIdentifier(result)}${getBoqProjectName(result) ? ` untuk project ${getBoqProjectName(result)}` : ""} telah dibuat oleh ${actor?.nama || "Supervisor"}.`,
+          link: `/dashboard/boq?id=${result.boq_id}`,
+        });
+      }
+      if (supervisorIds.length > 0) {
+        await notificationService.create({
+          userId: supervisorIds,
+          type: "info",
+          title: "BOQ Baru Dibuat",
+          message: `${getBoqIdentifier(result)}${getBoqProjectName(result) ? ` untuk project ${getBoqProjectName(result)}` : ""} telah dibuat oleh ${actor?.nama || "Supervisor"}.`,
+          link: `/dashboard/boq?id=${result.boq_id}`,
+        });
+      }
+      if (staffIds.length > 0) {
+        await notificationService.create({
+          userId: staffIds,
+          type: "info",
+          title: "BOQ Baru Dibuat",
+          message: `${getBoqIdentifier(result)}${getBoqProjectName(result) ? ` untuk project ${getBoqProjectName(result)}` : ""} telah dibuat oleh ${actor?.nama || "Supervisor"}.`,
+          link: `/dashboard/boq?id=${result.boq_id}`,
+        });
+      }
+    }
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi create BOQ:", notifErr);
+  }
 
   await prisma.audit_log.create({
     data: {
@@ -188,16 +384,17 @@ const update = async (id, data, userId) => {
     throw new AppError("BOQ tidak ditemukan.", 404);
   }
 
-  if (boq.status === "aktif") {
-    throw new AppError("BOQ yang sudah aktif tidak dapat diubah.", 400);
+  if (boq.status === "aktif" || boq.status === "selesai") {
+    throw new AppError("BOQ yang sudah aktif atau selesai tidak dapat diubah.", 400);
   }
 
-  const { items, projectId, area, ticketNumber, notes, referenceFile, ...boqData } = data;
+  const { items, projectId, area, ticketNumber, notes, referenceFile, emailReference, clusterId, ...boqData } = data;
 
   const updateData = {
     ...boqData,
     updated_by: userId,
     status: boqData.status ? normalizeStatus(boqData.status) : undefined,
+    source: boqData.source ? normalizeSource(boqData.source) : undefined,
   };
 
   if (boqData.externalVerificationStatus) {
@@ -213,6 +410,38 @@ const update = async (id, data, userId) => {
   if (referenceFile !== undefined) {
     updateData.reference_file = referenceFile || null;
     delete updateData.referenceFile;
+  }
+
+  if (emailReference !== undefined) {
+    updateData.email_reference = emailReference || null;
+    delete updateData.emailReference;
+  }
+
+  if (clusterId !== undefined) {
+    const newClusterId = String(clusterId);
+    if (newClusterId !== (boq.cluster_id || "")) {
+      const cluster = await prisma.cluster.findUnique({
+        where: { cluster_id: newClusterId },
+      });
+
+      if (!cluster) {
+        throw new AppError("Cluster tidak ditemukan.", 404);
+      }
+
+      const existingActiveBoqForCluster = await prisma.boq.findFirst({
+        where: {
+          cluster_id: newClusterId,
+          status: "aktif",
+          boq_id: Number(id),
+        },
+      });
+
+      if (existingActiveBoqForCluster) {
+        throw new AppError("Cluster ini sudah memiliki BOQ aktif.", 400);
+      }
+
+      updateData.cluster_id = newClusterId;
+    }
   }
 
   if (projectId || area || ticketNumber) {
@@ -264,7 +493,12 @@ const update = async (id, data, userId) => {
     });
 
     if (unresolvedItems.length > 0) {
-      throw new AppError(`Barang tidak ditemukan untuk: ${unresolvedItems.map((i) => i.itemCode).join(", ")}`, 400);
+      const kodes = unresolvedItems.map((i) => i.itemCode).join(", ");
+      throw new AppError(
+        `Item dengan kode "${kodes}" belum terdaftar di master barang. ` +
+        `Hubungi Admin untuk menambahkan item terlebih dahulu, atau pilih kode barang yang sudah ada.`,
+        400
+      );
     }
 
     updateData.items = {
@@ -303,6 +537,46 @@ const update = async (id, data, userId) => {
     },
   });
 
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(userId) },
+    select: { nama: true, email: true, role: true },
+  });
+
+  const gudangIds = collectBoqGudangIds(boq);
+  const targets = new Set();
+
+  if (boq.created_by && Number(boq.created_by) !== Number(userId)) {
+    targets.add(Number(boq.created_by));
+  }
+
+  if (actor?.role === "admin_general") {
+    const supervisorIds = await getRelatedSupervisorIds();
+    supervisorIds.forEach((id) => targets.add(id));
+    const staffIds = await getRelatedStaffIds(gudangIds);
+    staffIds.forEach((id) => targets.add(id));
+  } else if (actor?.role === "supervisor") {
+    const adminIds = await getAllAdminIds(Number(userId));
+    adminIds.forEach((id) => targets.add(id));
+    const supervisorIds = await getRelatedSupervisorIds(Number(userId));
+    supervisorIds.forEach((id) => targets.add(id));
+    const staffIds = await getRelatedStaffIds(gudangIds);
+    staffIds.forEach((id) => targets.add(id));
+  }
+
+  try {
+    if (targets.size > 0) {
+      await notificationService.create({
+        userId: Array.from(targets),
+        type: "info",
+        title: "BOQ Diperbarui",
+        message: `${getBoqIdentifier(boq)}${getBoqProjectName(boq) ? ` untuk project ${getBoqProjectName(boq)}` : ""} telah diperbarui oleh ${actor?.nama || "Admin/Supervisor"}.`,
+        link: `/dashboard/boq?id=${boq.boq_id}`,
+      });
+    }
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi update BOQ:", notifErr);
+  }
+
   await prisma.audit_log.create({
     data: {
       entity_type: "boq",
@@ -331,11 +605,81 @@ const updateStatus = async (id, status, userId) => {
 
   const normalizedStatus = normalizeStatus(status);
 
-  if (boq.status === "aktif" && normalizedStatus === "aktif") {
-    throw new AppError("BOQ sudah aktif.", 400);
+  if (boq.status === normalizedStatus) {
+    throw new AppError(`BOQ sudah berstatus ${boq.status}.`, 400);
   }
 
   const result = await boqRepository.updateStatus(id, normalizedStatus, userId);
+
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(userId) },
+    select: { nama: true, email: true, role: true },
+  });
+
+  const statusLabel =
+    normalizedStatus === "aktif"
+      ? "disetujui"
+      : normalizedStatus === "ditolak"
+        ? "ditolak"
+        : `diubah menjadi ${normalizedStatus}`;
+
+  const gudangIds = collectBoqGudangIds(boq);
+  const targets = new Set();
+
+  if (boq.created_by && Number(boq.created_by) !== Number(userId)) {
+    targets.add(Number(boq.created_by));
+  }
+
+  if (actor?.role === "admin_general") {
+    try {
+      await notificationService.create({
+        role: "supervisor",
+        type: normalizedStatus === "ditolak" ? "warning" : "success",
+        title: `BOQ ${statusLabel}`,
+        message: `${getBoqIdentifier(boq)}${getBoqProjectName(boq) ? ` untuk project ${getBoqProjectName(boq)}` : ""} telah ${statusLabel} oleh ${actor?.nama || "Admin"}.`,
+        link: `/dashboard/boq?id=${boq.boq_id}`,
+      });
+
+      await notificationService.create({
+        role: "staf_gudang",
+        type: normalizedStatus === "ditolak" ? "warning" : "success",
+        title: `BOQ ${statusLabel}`,
+        message: `${getBoqIdentifier(boq)}${getBoqProjectName(boq) ? ` untuk project ${getBoqProjectName(boq)}` : ""} telah ${statusLabel} oleh ${actor?.nama || "Admin"}.`,
+        link: `/dashboard/boq?id=${boq.boq_id}`,
+      });
+    } catch (notifErr) {
+      console.error("Gagal membuat notifikasi update status BOQ:", notifErr);
+    }
+  } else if (actor?.role === "supervisor") {
+    const adminIds = await getAllAdminIds(Number(userId));
+    adminIds.forEach((id) => targets.add(id));
+
+    if (normalizedStatus === "aktif") {
+      const supervisorIds = await getAllSupervisorIds(Number(userId));
+      supervisorIds.forEach((id) => targets.add(id));
+      const staffIds = await getAllStaffIds(Number(userId));
+      staffIds.forEach((id) => targets.add(id));
+    } else {
+      const supervisorIds = await getRelatedSupervisorIds(gudangIds, Number(userId));
+      supervisorIds.forEach((id) => targets.add(id));
+      const staffIds = await getRelatedStaffIds(gudangIds);
+      staffIds.forEach((id) => targets.add(id));
+    }
+
+    try {
+      if (targets.size > 0) {
+        await notificationService.create({
+          userId: Array.from(targets),
+          type: normalizedStatus === "ditolak" ? "warning" : "success",
+          title: `BOQ ${statusLabel}`,
+          message: `${getBoqIdentifier(boq)}${getBoqProjectName(boq) ? ` untuk project ${getBoqProjectName(boq)}` : ""} telah ${statusLabel} oleh ${actor?.nama || "Supervisor"}.`,
+          link: `/dashboard/boq?id=${boq.boq_id}`,
+        });
+      }
+    } catch (notifErr) {
+      console.error("Gagal membuat notifikasi update status BOQ:", notifErr);
+    }
+  }
 
   try {
     await prisma.audit_log.create({
@@ -355,22 +699,112 @@ const updateStatus = async (id, status, userId) => {
   return result;
 };
 
-const softDelete = async (id) => {
+const softDelete = async (id, userId) => {
   const boq = await boqRepository.findById(id);
 
   if (!boq) {
     throw new AppError("BOQ tidak ditemukan.", 404);
   }
 
-  if (boq.status === "aktif") {
-    throw new AppError("BOQ yang sudah aktif tidak dapat dihapus.", 400);
+  if (boq.status === "aktif" || boq.status === "selesai") {
+    throw new AppError("BOQ yang sudah aktif atau selesai tidak dapat dihapus.", 400);
   }
 
-  return await boqRepository.softDelete(id);
+  const result = await boqRepository.softDelete(id);
+
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(userId) },
+    select: { nama: true, email: true, role: true },
+  });
+
+  const gudangIds = collectBoqGudangIds(boq);
+  const targets = new Set();
+
+  if (boq.created_by && Number(boq.created_by) !== Number(userId)) {
+    targets.add(Number(boq.created_by));
+  }
+
+  if (actor?.role === "admin_general") {
+    const supervisorIds = await getRelatedSupervisorIds();
+    supervisorIds.forEach((id) => targets.add(id));
+    const staffIds = await getRelatedStaffIds(gudangIds);
+    staffIds.forEach((id) => targets.add(id));
+  } else if (actor?.role === "supervisor") {
+    const adminIds = await getAllAdminIds(Number(userId));
+    adminIds.forEach((id) => targets.add(id));
+    const supervisorIds = await getRelatedSupervisorIds(Number(userId));
+    supervisorIds.forEach((id) => targets.add(id));
+    const staffIds = await getRelatedStaffIds(gudangIds);
+    staffIds.forEach((id) => targets.add(id));
+  }
+
+  try {
+    if (targets.size > 0) {
+      await notificationService.create({
+        userId: Array.from(targets),
+        type: "warning",
+        title: "BOQ Diarsipkan",
+        message: `${getBoqIdentifier(boq)}${getBoqProjectName(boq) ? ` untuk project ${getBoqProjectName(boq)}` : ""} telah diarsipkan oleh ${actor?.nama || "Admin/Supervisor"}.`,
+        link: `/dashboard/boq?id=${boq.boq_id}`,
+      });
+    }
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi soft delete BOQ:", notifErr);
+  }
+
+  return result;
 };
 
-const restore = async (id) => {
-  return await boqRepository.restore(id);
+const restore = async (id, userId) => {
+  const boq = await boqRepository.findById(id);
+
+  if (!boq) {
+    throw new AppError("BOQ tidak ditemukan.", 404);
+  }
+
+  const result = await boqRepository.restore(id);
+
+  const actor = await prisma.user_account.findUnique({
+    where: { user_id: BigInt(userId) },
+    select: { nama: true, email: true, role: true },
+  });
+
+  const gudangIds = collectBoqGudangIds(boq);
+  const targets = new Set();
+
+  if (boq.created_by && Number(boq.created_by) !== Number(userId)) {
+    targets.add(Number(boq.created_by));
+  }
+
+  if (actor?.role === "admin_general") {
+    const supervisorIds = await getRelatedSupervisorIds();
+    supervisorIds.forEach((id) => targets.add(id));
+    const staffIds = await getRelatedStaffIds(gudangIds);
+    staffIds.forEach((id) => targets.add(id));
+  } else if (actor?.role === "supervisor") {
+    const adminIds = await getAllAdminIds(Number(userId));
+    adminIds.forEach((id) => targets.add(id));
+    const supervisorIds = await getRelatedSupervisorIds(Number(userId));
+    supervisorIds.forEach((id) => targets.add(id));
+    const staffIds = await getRelatedStaffIds(gudangIds);
+    staffIds.forEach((id) => targets.add(id));
+  }
+
+  try {
+    if (targets.size > 0) {
+      await notificationService.create({
+        userId: Array.from(targets),
+        type: "success",
+        title: "BOQ Dipulihkan",
+        message: `${getBoqIdentifier(boq)}${getBoqProjectName(boq) ? ` untuk project ${getBoqProjectName(boq)}` : ""} telah dipulihkan oleh ${actor?.nama || "Admin/Supervisor"}.`,
+        link: `/dashboard/boq?id=${boq.boq_id}`,
+      });
+    }
+  } catch (notifErr) {
+    console.error("Gagal membuat notifikasi restore BOQ:", notifErr);
+  }
+
+  return result;
 };
 
 const getSummary = async (id) => {
@@ -387,6 +821,10 @@ const getStats = async () => {
 
 const getAreas = async () => {
   return await boqRepository.getAreas();
+};
+
+const getExportMatrixData = async () => {
+  return await boqRepository.getExportMatrixData();
 };
 
 const getItems = async (projectId) => {
@@ -406,4 +844,5 @@ module.exports = {
   getStats,
   getAreas,
   getItems,
+  getExportMatrixData,
 };

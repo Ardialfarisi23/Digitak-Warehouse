@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { PackagePlus, AlertTriangle, ArrowLeft, FileDown, Loader2, AlertCircle } from "lucide-react";
+import { PackagePlus, AlertTriangle, ArrowLeft, FileDown, Loader2, AlertCircle, ExternalLink, Upload, X, Image as ImageIcon } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { downloadInboundPdf } from "@/lib/staff/inbound-pdf";
-import type { InboundSuratJalan as InboundPdfShape } from "@/lib/staff/inbound-store";
+import type { InboundSuratJalan as InboundPdfShape } from "@/lib/staff/inbound-pdf";
 
 // ---------------------------------------------------------------------------
 // Struktur respons API GET /api/surat-jalan/:id, sesuai `baseInclude` di
@@ -18,17 +18,32 @@ type ApiBarang = {
   barang_id: number;
   kode_perangkat?: string;
   nama_barang?: string;
+  wajib_sn?: boolean;
 };
 
 type ApiSuratJalanItem = {
   item_id: number;
   barang_id: number;
-  qty: number; // PENTING: field ini akan DITIMPA jadi qty aktual pas submit.
+  qty: number;
   kondisi?: string | null;
   serial_number?: string | null;
   catatan?: string | null;
   is_kelebihan?: boolean;
   barang?: ApiBarang;
+  zona?: {
+    zona_id: number;
+    kode_zona?: string;
+    nama_zona?: string;
+    tipe_zona?: string;
+  } | null;
+  fotos?: Array<{
+    foto_id: number;
+    url: string;
+    filename?: string;
+    mimetype?: string;
+    ukuran_bytes?: number;
+    created_at?: string;
+  }>;
 };
 
 type ApiSuratJalan = {
@@ -44,7 +59,17 @@ type ApiSuratJalan = {
   personil_pengantar?: { nama: string } | null;
   project?: { nama_project: string } | null;
   creator?: { nama?: string; name?: string } | null;
-};
+  boq_id?: number | string | null;
+  boq?: {
+    boq_id: number;
+    boq_number?: string;
+    tiket?: { kode_tiket: string };
+  } | null;
+  tujuan_tipe?: string | null;
+  titik_lapangan?: { nama_lokasi?: string } | null;
+  tipe_pengirim?: string | null;
+  pengirim_eksternal_nama?: string | null;
+}
 
 // Baris yang staf edit di layar — qtyRencana disnapshot SEKALI pas fetch,
 // sebelum staf mulai ubah qty (backend nggak nyimpen qty rencana terpisah,
@@ -59,6 +84,19 @@ type EditableItem = {
   serialNumber: string;
   isKelebihan: boolean;
   catatanKelebihan: string;
+  wajibSn: boolean;
+  zona?: {
+    zona_id: number;
+    kode_zona?: string;
+    nama_zona?: string;
+    tipe_zona?: string;
+    gudang?: { nama_gudang?: string } | null;
+  } | null;
+  fotos: Array<{
+    foto_id: number;
+    url: string;
+    filename?: string;
+  }>;
 };
 
 // ASUMSI: value kondisi dikirim sebagai string bebas (schema backend nggak
@@ -84,7 +122,7 @@ const KONDISI_TONE: Record<string, string> = {
 export default function InboundDetailPage() {
   const params = useParams<{ suratJalanId: string }>();
   const router = useRouter();
-  const { get, post } = useApi();
+  const { get, post, del } = useApi();
   const { user } = useAuth();
 
   const [data, setData] = useState<ApiSuratJalan | null | undefined>(undefined);
@@ -92,9 +130,21 @@ export default function InboundDetailPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [uploadingFoto, setUploadingFoto] = useState<Record<number, boolean>>({});
+  const [fotoErrors, setFotoErrors] = useState<Record<number, string | null>>({});
+  const [showFotoSuccessModal, setShowFotoSuccessModal] = useState(false);
+  const [showFotoErrorModal, setShowFotoErrorModal] = useState(false);
+  const [fotoModalMessage, setFotoModalMessage] = useState("");
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const [showExcessModal, setShowExcessModal] = useState(false);
   const [excessNotesDraft, setExcessNotesDraft] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   useEffect(() => {
     async function load() {
@@ -130,6 +180,12 @@ export default function InboundDetailPage() {
             serialNumber: it.serial_number || "",
             isKelebihan: false,
             catatanKelebihan: it.catatan || "",
+            wajibSn: Boolean(it.barang?.wajib_sn),
+            fotos: (it.fotos || []).map((f) => ({
+              foto_id: f.foto_id,
+              url: f.url,
+              filename: f.filename,
+            })),
           })),
         );
       } catch (err) {
@@ -189,16 +245,122 @@ export default function InboundDetailPage() {
     }
   }
 
+  async function handleFotoUpload(index: number, file: File) {
+    setFotoErrors((prev) => ({ ...prev, [index]: null }));
+    setUploadingFoto((prev) => ({ ...prev, [index]: true }));
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const uploadRes = await post(`${baseUrl}/api/upload`, formData);
+
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => null);
+        throw new Error(err?.message || "Gagal upload foto.");
+      }
+
+      const uploadData = await uploadRes.json();
+      const fotoUrl = uploadData?.data?.url;
+
+      if (!fotoUrl) {
+        throw new Error("URL foto tidak ditemukan.");
+      }
+
+      const saveRes = await post(
+        `${baseUrl}/api/surat-jalan/${params.suratJalanId}/items/${items[index].itemId}/fotos`,
+        {
+          url: fotoUrl,
+          filename: file.name,
+          mimetype: file.type,
+          ukuran_bytes: file.size,
+        }
+      );
+
+      if (!saveRes.ok) {
+        const err = await saveRes.json().catch(() => null);
+        throw new Error(err?.message || "Gagal menyimpan foto.");
+      }
+
+      const saveData = await saveRes.json();
+      const newFoto = saveData?.data;
+
+      if (newFoto) {
+        updateItem(index, {
+          fotos: [...(items[index].fotos || []), newFoto],
+        });
+      }
+
+      setFotoModalMessage("Foto berhasil diupload.");
+      setShowFotoSuccessModal(true);
+    } catch (err) {
+      setFotoErrors((prev) => ({
+        ...prev,
+        [index]: err instanceof Error ? err.message : "Gagal upload foto.",
+      }));
+      setFotoModalMessage(err instanceof Error ? err.message : "Upload foto gagal, silakan coba lagi.");
+      setShowFotoErrorModal(true);
+    } finally {
+      setUploadingFoto((prev) => ({ ...prev, [index]: false }));
+    }
+  }
+
+  async function handleFotoDelete(index: number, fotoId: number) {
+    setFotoErrors((prev) => ({ ...prev, [index]: null }));
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const res = await del(`${baseUrl}/api/surat-jalan/${params.suratJalanId}/items/${items[index].itemId}/fotos/${fotoId}`);
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.message || "Gagal menghapus foto.");
+      }
+
+      updateItem(index, {
+        fotos: items[index].fotos?.filter((f) => f.foto_id !== fotoId) || [],
+      });
+    } catch (err) {
+      setFotoErrors((prev) => ({
+        ...prev,
+        [index]: err instanceof Error ? err.message : "Gagal menghapus foto.",
+      }));
+    }
+  }
+
   const allKondisiFilled = items.every((i) => i.qtyDiterima === 0 || i.kondisi !== "");
   const unresolvedExcessIndexes = items
     .map((i, idx) => ({ i, idx }))
     .filter(({ i }) => i.qtyDiterima > i.qtyRencana && !i.isKelebihan)
     .map(({ idx }) => idx);
   const hasUnresolvedExcess = unresolvedExcessIndexes.length > 0;
-  const canSubmit = allKondisiFilled && items.some((i) => i.qtyDiterima > 0);
+  const serialRequiredMissing = items.some((i) => i.qtyDiterima > 0 && i.wajibSn && !i.serialNumber.trim());
+  const canSubmit = allKondisiFilled && items.some((i) => i.qtyDiterima > 0) && !serialRequiredMissing;
+
+  const tujuanLabel =
+    data?.tujuan_tipe === "lapangan"
+      ? data?.titik_lapangan?.nama_lokasi || "-"
+      : data?.tujuan_tipe === "gudang"
+        ? data?.gudang_tujuan?.nama_gudang || "-"
+        : data?.gudang_tujuan?.nama_gudang || "-";
+
+  const tujuanBadge =
+    data?.tujuan_tipe === "lapangan" ? (
+      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Lapangan</span>
+    ) : data?.tujuan_tipe === "gudang" ? (
+      <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Gudang</span>
+    ) : null;
 
   function handleSubmitClick() {
-    if (!canSubmit) return;
+    if (!canSubmit || !data) return;
+
+    if (serialRequiredMissing) {
+      const missing = items.find((i) => i.qtyDiterima > 0 && i.wajibSn && !i.serialNumber.trim());
+      setToast({ message: `Serial number wajib diisi untuk barang ${missing?.namaBarang || ""}.`, type: "error" });
+      return;
+    }
 
     if (hasUnresolvedExcess) {
       const defaults: Record<number, string> = {};
@@ -242,9 +404,6 @@ export default function InboundDetailPage() {
             kondisi: i.kondisi || null,
             serial_number: i.serialNumber || null,
             catatan: i.catatanKelebihan || null,
-            // TODO(backend): baris ini baru berfungsi setelah
-            // receiveInboundSchema & receiveInbound() di backend ditambah
-            // dukungan is_kelebihan (lihat catatan sebelumnya).
             is_kelebihan: i.isKelebihan,
           })),
       };
@@ -253,12 +412,20 @@ export default function InboundDetailPage() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => null);
-        throw new Error(err?.message || "Gagal menyimpan hasil pencocokan barang.");
+        const status = res.status;
+        const message = (err as any)?.message || "Gagal menyimpan hasil pencocokan barang.";
+        if (status === 400 || status === 404 || status === 409 || status === 422) {
+          setToast({ message, type: "error" });
+        } else {
+          console.error(String(message));
+          setToast({ message, type: "error" });
+        }
+        return;
       }
 
       router.push("/staff/inbound");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Terjadi kesalahan saat menyimpan.");
+      setToast({ message: err instanceof Error ? err.message : "Terjadi kesalahan saat menyimpan.", type: "error" });
     } finally {
       setSubmitting(false);
     }
@@ -268,6 +435,7 @@ export default function InboundDetailPage() {
     if (!data) return;
     setDownloadingPdf(true);
     try {
+      const { downloadInboundPdf } = await import("@/lib/staff/inbound-pdf");
       // Adaptasi bentuk data API -> tipe yang dipakai InboundPdfDocument
       // (masih sama dari versi localStorage). ASUMSI: "creator" (pembuat
       // record) dipakai sebagai PIC Pemohon — skema baru nggak punya field
@@ -276,9 +444,9 @@ export default function InboundDetailPage() {
         id: String(data.surat_jalan_id),
         nomor: data.nomor_surat_jalan,
         namaProject: data.project?.nama_project || "-",
-        asalGudang: data.gudang_asal?.nama_gudang || "-",
+        asalGudang: pengirimLabel,
         tujuanGudang: data.gudang_tujuan?.nama_gudang || "-",
-        kendaraan: data.kendaraan ? `${data.kendaraan.jenis_kendaraan}${data.kendaraan.merk ? " " + data.kendaraan.merk : ""}` : "-",
+        kendaraan: kendaraanLabel,
         noPolisi: data.kendaraan?.no_polisi || "-",
         namaDriver: data.personil_pengantar?.nama || "-",
         namaPicPemohon: data.creator?.nama || data.creator?.name || "-",
@@ -308,8 +476,39 @@ export default function InboundDetailPage() {
 
   const excessNoteFilled = unresolvedExcessIndexes.every((idx) => (excessNotesDraft[idx] || "").trim().length > 0);
 
+  // Helper untuk menentukan label pengirim (internal: gudang_asal, external: pengirim_eksternal_nama)
+  const pengirimLabel = data
+    ? data.tipe_pengirim === "internal"
+      ? data.gudang_asal?.nama_gudang || "-"
+      : data.tipe_pengirim === "external"
+        ? data.pengirim_eksternal_nama || "-"
+        : data.gudang_asal?.nama_gudang || "-"
+    : "-";
+
+  // Helper untuk format kendaraan: "Merk - Tipe Kendaraan"
+  const kendaraanLabel = data
+    ? data.kendaraan
+      ? data.kendaraan.merk && data.kendaraan.merk.trim()
+        ? `${data.kendaraan.merk} - ${data.kendaraan.jenis_kendaraan}`
+        : data.kendaraan.jenis_kendaraan
+      : "-"
+    : "-";
+
+  if (!data) {
+    return (
+      <div className="px-8 py-6 text-gray-500">
+        Memuat data Surat Jalan...
+      </div>
+    );
+  }
+
   return (
     <div className="px-8 py-6">
+      {toast && (
+        <div className={`mb-4 rounded-xl px-4 py-3 text-sm ${toast.type === "error" ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"}`}>
+          {toast.message}
+        </div>
+      )}
       <div className="mb-4 flex items-center justify-between">
         <button onClick={() => router.push("/staff/inbound")} className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-700">
           <ArrowLeft size={16} />
@@ -327,7 +526,12 @@ export default function InboundDetailPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">{data.nomor_surat_jalan}</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Dari {data.gudang_asal?.nama_gudang || "-"} • Tujuan: {data.gudang_tujuan?.nama_gudang || "-"} •{" "}
+            Dari {pengirimLabel} • Tujuan:{" "}
+            <span>
+              {tujuanLabel}
+              {tujuanBadge}
+            </span>{" "}
+            •{" "}
             {data.tanggal
               ? new Date(data.tanggal).toLocaleDateString("id-ID", {
                   day: "2-digit",
@@ -337,6 +541,27 @@ export default function InboundDetailPage() {
               : "-"}
           </p>
         </div>
+      </div>
+
+      {/* BOQ / Tiket info */}
+      <div className="mb-6 rounded-2xl border border-[#F3D9C7] bg-white p-4">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">BOQ / Tiket</p>
+        {data.boq_id ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <Link
+              href="/dashboard/boq"
+              className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
+            >
+              <ExternalLink size={12} />
+              {data.boq?.boq_number || `BOQ #${data.boq_id}`}
+            </Link>
+            <span className="text-xs text-slate-500">
+              Tiket: {data.boq?.tiket?.kode_tiket || "-"}
+            </span>
+          </div>
+        ) : (
+          <span className="text-xs text-slate-400">Tidak terhubung ke BOQ/Tiket</span>
+        )}
       </div>
 
       {/* Tabel pencocokan barang */}
@@ -350,7 +575,9 @@ export default function InboundDetailPage() {
               <th className="pb-3 pr-4 font-semibold text-right">Qty Rencana</th>
               <th className="pb-3 pr-6 font-semibold text-right">Qty Diterima</th>
               <th className="pb-3 pr-4 font-semibold">Kondisi</th>
+              <th className="pb-3 pr-4 font-semibold">Lokasi/Zona</th>
               <th className="pb-3 font-semibold">Serial Number</th>
+              <th className="pb-3 font-semibold">Foto</th>
             </tr>
           </thead>
           <tbody>
@@ -400,17 +627,75 @@ export default function InboundDetailPage() {
                       ))}
                      </select>
                   </td>
+                   <td className="py-3 pr-4 text-xs text-gray-600">
+                     {item.zona ? (
+                       <span className="font-medium text-gray-800">
+                         {item.zona.gudang?.nama_gudang ?? "-"} / {item.zona.nama_zona || item.zona.kode_zona}
+                         {item.zona.tipe_zona ? (
+                           <span className="ml-1 text-gray-400">— {item.zona.tipe_zona}</span>
+                         ) : null}
+                       </span>
+                     ) : (
+                       <span className="text-gray-500">Belum ditempatkan</span>
+                     )}
+                   </td>
+                   <td className="py-3">
+                     {item.qtyDiterima === 0 ? (
+                       <span className="text-xs text-gray-300">—</span>
+                     ) : (
+                       <div className="flex flex-col gap-1">
+                         <input
+                           value={item.serialNumber}
+                           onChange={(e) => updateItem(index, { serialNumber: e.target.value })}
+                           placeholder={item.wajibSn ? "Serial Number (wajib)" : "Serial Number (opsional)"}
+                           className="w-44 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
+                         />
+                         {item.wajibSn && !item.serialNumber.trim() && (
+                           <span className="text-[11px] font-medium text-rose-600">Serial number wajib diisi.</span>
+                         )}
+                       </div>
+                     )}
+                   </td>
                   <td className="py-3">
-                    {item.qtyDiterima === 0 ? (
-                      <span className="text-xs text-gray-300">—</span>
-                    ) : (
-                      <input
-                        value={item.serialNumber}
-                        onChange={(e) => updateItem(index, { serialNumber: e.target.value })}
-                        placeholder="Serial Number (opsional)"
-                        className="w-44 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
-                      />
-                    )}
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-wrap gap-1.5">
+                        {item.fotos?.map((foto) => (
+                          <div key={foto.foto_id} className="relative h-14 w-14 overflow-hidden rounded-lg border border-gray-200">
+                            <img src={foto.url} alt={foto.filename || "Foto barang"} className="h-full w-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => handleFotoDelete(index, foto.foto_id)}
+                              className="absolute right-0.5 top-0.5 rounded-full bg-white/90 p-0.5 text-gray-500 shadow-sm hover:text-rose-600"
+                              title="Hapus foto"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div>
+                        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:border-[#E8632C] hover:text-[#E8632C]">
+                          <Upload size={12} />
+                          {uploadingFoto[index] ? "Uploading..." : "Upload Foto"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={uploadingFoto[index]}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                handleFotoUpload(index, file);
+                              }
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
+                      {fotoErrors[index] && (
+                        <p className="text-[11px] text-rose-600">{fotoErrors[index]}</p>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -461,6 +746,64 @@ export default function InboundDetailPage() {
               <Button onClick={handleConfirmExcessAndSave} disabled={!excessNoteFilled || submitting} className="h-auto rounded-full bg-[#E8632C] px-5 py-2 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40">
                 {submitting ? "Menyimpan..." : "Simpan & Ajukan Verifikasi"}
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFotoSuccessModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+          onClick={() => setShowFotoSuccessModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center px-6 py-8 text-center">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Foto Berhasil Diupload</h3>
+              <p className="mt-2 text-sm text-gray-500">{fotoModalMessage}</p>
+              <button
+                type="button"
+                onClick={() => setShowFotoSuccessModal(false)}
+                className="mt-6 w-full rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F]"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFotoErrorModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+          onClick={() => setShowFotoErrorModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center px-6 py-8 text-center">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+                <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Upload Foto Gagal</h3>
+              <p className="mt-2 text-sm text-gray-500">{fotoModalMessage}</p>
+              <button
+                type="button"
+                onClick={() => setShowFotoErrorModal(false)}
+                className="mt-6 w-full rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F]"
+              >
+                OK
+              </button>
             </div>
           </div>
         </div>

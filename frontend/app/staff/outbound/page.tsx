@@ -5,28 +5,41 @@ import Link from "next/link";
 import { FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
+import { KRITIS_THRESHOLD, MENIPIS_THRESHOLD } from "@/lib/constants/stok";
 
-type SuratJalanStatus = "draft_diajukan" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "ditolak";
+type SuratJalanStatus = "draft_diajukan" | "menunggu_verifikasi" | "ready_putaway" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "sedang_dikirim" | "tiba_menunggu_konfirmasi" | "ditolak";
 
 const STATUS_META: Record<SuratJalanStatus, { label: string; tone: string }> = {
-  draft_diajukan: { label: "Menunggu Approval", tone: "bg-amber-50 text-amber-600" },
+  draft_diajukan: { label: "Menunggu Persetujuan", tone: "bg-amber-50 text-amber-600" },
+  menunggu_verifikasi: { label: "Menunggu Verifikasi", tone: "bg-amber-50 text-amber-600" },
+  ready_putaway: { label: "Siap Putaway", tone: "bg-blue-50 text-blue-600" },
   disetujui: { label: "Disetujui — Siap Picking", tone: "bg-emerald-50 text-emerald-600" },
   digenerate: { label: "Digenerate", tone: "bg-blue-50 text-blue-600" },
+  tiba_menunggu_konfirmasi: { label: "Menunggu Konfirmasi", tone: "bg-blue-50 text-blue-600" },
   diterima_didistribusikan: { label: "Terkirim", tone: "bg-gray-100 text-gray-500" },
+  sedang_dikirim: { label: "Sedang Dikirim", tone: "bg-amber-50 text-amber-600" },
   ditolak: { label: "Ditolak", tone: "bg-rose-50 text-rose-600" },
 };
 
 const FILTER_TABS: { key: "SEMUA" | SuratJalanStatus; label: string }[] = [
   { key: "SEMUA", label: "Semua" },
-  { key: "draft_diajukan", label: "Menunggu Approval" },
+  { key: "draft_diajukan", label: "Menunggu Persetujuan" },
+  { key: "disetujui", label: "Disetujui" },
   { key: "digenerate", label: "Siap Kirim" },
+  { key: "sedang_dikirim", label: "Sedang Dikirim" },
+  { key: "tiba_menunggu_konfirmasi", label: "Menunggu Konfirmasi" },
   { key: "diterima_didistribusikan", label: "Terkirim" },
+  { key: "ditolak", label: "Ditolak" },
 ];
 
 interface SuratJalanItem {
   item_id: number;
   nama_barang?: string;
   qty: number;
+  barang?: {
+    kategori?: { is_kritis?: boolean };
+    stok_gudangs?: { qty: number; gudang_id: number; zona_id: number | null; kondisi: string }[];
+  };
 }
 
 interface SuratJalan {
@@ -36,6 +49,7 @@ interface SuratJalan {
   status: SuratJalanStatus;
   created_at: string;
   items: SuratJalanItem[];
+  gudang_asal?: { gudang_id: number; nama_gudang: string };
   gudang_tujuan?: { nama_gudang: string };
   project?: { nama_project: string };
 }
@@ -156,6 +170,14 @@ export default function SuratJalanListPage() {
                   month: "long",
                   year: "numeric",
                 });
+                const gudangAsalId = sj.gudang_asal?.gudang_id;
+                const itemStokQtys = sj.items.map((item) =>
+                  (item.barang?.stok_gudangs || [])
+                    .filter((s) => s.gudang_id === gudangAsalId && s.kondisi === "baik")
+                    .reduce((sum, s) => sum + Number(s.qty || 0), 0)
+                );
+                const isKritis = itemStokQtys.some((qty) => qty < KRITIS_THRESHOLD);
+                const isMenipis = itemStokQtys.some((qty) => qty >= KRITIS_THRESHOLD && qty < MENIPIS_THRESHOLD);
 
                 return (
                   <tr
@@ -166,6 +188,16 @@ export default function SuratJalanListPage() {
                       <span className="flex items-center gap-2">
                         <FileText size={16} className="text-[#E8632C]" />
                         {sj.nomor_surat_jalan}
+                        {isKritis && (
+                          <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">
+                            Kritis
+                          </span>
+                        )}
+                        {isMenipis && !isKritis && (
+                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
+                            Menipis
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-gray-600">{tujuanText}</td>

@@ -8,12 +8,14 @@ export interface InboundRecord {
   nomor_surat_jalan: string;
   tanggal: string;
   project?: { nama_project: string };
-  pengirim_or_vendor?: string; // Asal Gudang/Pengirim
+  tipe_pengirim?: "internal" | "external";
+  supplier?: { nama: string; kode: string };
+  gudang_asal?: { nama_gudang: string };
   gudang_tujuan?: { nama_gudang: string };
-  personil_pengantar?: { nama: string }; // Driver
+  personil_pengantar?: { nama: string };
   kendaraan?: { jenis_kendaraan: string; merk?: string; no_polisi: string };
   pic_pemohon_nama?: string;
-  creator?: { nama: string }; // Staf yang menginput
+  creator?: { nama: string };
   items: {
     item_id: number;
     barang: {
@@ -102,7 +104,7 @@ export default function InboundDetailModal({
             <div className="mb-8 flex items-start justify-between border-b-2 border-[#E8632C] pb-6">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/logo digitak grdasi.png"
+                src="/logo-digitak-gradasi.png"
                 alt="Digitak Studio — PT Metanouva Informatika"
                 className="h-16 w-auto object-contain"
               />
@@ -121,7 +123,8 @@ export default function InboundDetailModal({
               <div className="space-y-3">
                 <InfoRow label="No Surat Jalan" value={record.nomor_surat_jalan} />
                 <InfoRow label="Project" value={record.project?.nama_project} />
-                <InfoRow label="Asal Pengiriman" value={record.pengirim_or_vendor} />
+                <InfoRow label="Asal Pengiriman" value={record.tipe_pengirim === "external" ? `${record.supplier?.kode} - ${record.supplier?.nama}` : record.gudang_asal?.nama_gudang} />
+                <InfoRow label="Tipe Pengirim" value={record.tipe_pengirim === "external" ? "External" : record.tipe_pengirim === "internal" ? "Internal" : "-"} />
                 <InfoRow label="PIC Pemohon" value={record.pic_pemohon_nama} />
               </div>
               <div className="space-y-3">
@@ -142,7 +145,7 @@ export default function InboundDetailModal({
                   <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Nama Barang</th>
                   <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">QTY</th>
                   <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">UOM</th>
-                  <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Keterangan</th>
+                  <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Kondisi</th>
                 </tr>
               </thead>
               <tbody>

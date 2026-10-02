@@ -1,486 +1,729 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
-import {
-  Search,
-  RefreshCw,
-  FileCheck,
-  AlertTriangle,
-  CheckCircle2,
-  Eye,
-  X,
-  ShieldAlert
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Plus_Jakarta_Sans } from "next/font/google";
+import { Search, PackageCheck, PackageMinus, Package, ClipboardCheck, X, AlertTriangle, Download, History, CheckCircle, Clock, AlertCircle } from "lucide-react";
 
-// ==========================================
-// 1. Tipe Data TypeScript
-// ==========================================
-export type StatusRekonsiliasi = "BERJALAN" | "PERHATIAN" | "SELESAI";
+import { useApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
-export interface ItemRekonsiliasi {
+const plusJakartaSans = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const RECONCILIATION_ENDPOINT = `${API_BASE}/api/reconciliation/inventory`;
+const HISTORY_ENDPOINT = `${API_BASE}/api/reports/reconciliation/history`;
+
+interface ReconciliationRecord {
   id: string;
-  project: string;
-  kodeTiket: string;
-  barang: string;
-  kodeBarang: string;
-  gudang: string;
+  project_id: string;
+  project_nama: string;
+  cluster_id: string;
+  area: string;
+  tiket_id: string;
+  kode_tiket: string;
+  barang_id: string;
+  kode_perangkat: string;
+  nama_barang: string;
+  gudang_nama: string;
+  satuan: string;
   boq: number;
   additional: number;
-  onSite: number;
+  mos: number;
   used: number;
+  approved_return_qty: number;
   remains: number;
-  status: StatusRekonsiliasi;
-  catatanStaf?: string;
+  status: "sesuai" | "perhatian" | "belum_ada_data";
 }
 
-// ==========================================
-// 2. Dummy Data Rekonsiliasi Supervisor
-// ==========================================
-const MOCK_REKONSILIASI: ItemRekonsiliasi[] = [
-  {
-    id: "REC-001",
-    project: "FTTH Ciamis Area Utara",
-    kodeTiket: "TKT-2026-002",
-    barang: "KABEL FO 24/2T ZTT 2024",
-    kodeBarang: "CBL-00461",
-    gudang: "Gudang Ciamis",
-    boq: 30,
-    additional: 0,
-    onSite: 0,
-    used: 100,
-    remains: -100,
-    status: "PERHATIAN",
-    catatanStaf: "Penggunaan membengkak di lapangan karena pengalihan jalur tiang listrik utama.",
-  },
-  {
-    id: "REC-002",
-    project: "FTTH Ciamis Area Utara",
-    kodeTiket: "TKT-2026-002",
-    barang: "PATCHCORD LC/UPC - SC/UPC 3 METER (Simplex)",
-    kodeBarang: "JTR-02242",
-    gudang: "Gudang Ciamis",
-    boq: 100,
-    additional: 0,
-    onSite: 0,
-    used: 0,
-    remains: 0,
-    status: "BERJALAN",
-  },
-  {
-    id: "REC-003",
-    project: "Backbone Garut Selatan",
-    kodeTiket: "TKT-2026-003",
-    barang: "PATCHCORD LC/UPC - SC/UPC 3 METER (Simplex)",
-    kodeBarang: "JTR-02242",
-    gudang: "Gudang Rancamanyar",
-    boq: 5,
-    additional: 0,
-    onSite: 0,
-    used: 0,
-    remains: 0,
-    status: "BERJALAN",
-  },
-  {
-    id: "REC-004",
-    project: "FTTH Rancamanyar Tahap 1",
-    kodeTiket: "TKT-2026-004",
-    barang: "ODP 10 PORT WITH 8PCS SC UPC ADAPTER AND OUTDOOR CONNECTOR",
-    kodeBarang: "NWK-00964",
-    gudang: "Gudang Rancamanyar",
-    boq: 25,
-    additional: 0,
-    onSite: 0,
-    used: 0,
-    remains: 0,
-    status: "BERJALAN",
-  },
-];
+interface HistoryRecord {
+  id: string;
+  filename: string;
+  actor_nama: string;
+  created_at: string;
+  total_items: number;
+  success_count: number;
+  failed_count: number;
+  status: "processed" | "pending" | "failed" | "completed" | "success";
+}
+
+const formatNumber = (value: number) => {
+  return new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(value);
+};
+
+function getStatusBadge(status: ReconciliationRecord["status"]) {
+  switch (status) {
+    case "sesuai":
+      return { label: "Sesuai", bg: "bg-emerald-50", text: "text-emerald-600", icon: PackageCheck };
+    case "perhatian":
+      return { label: "Perhatian", bg: "bg-amber-50", text: "text-amber-600", icon: AlertTriangle };
+    case "belum_ada_data":
+      return { label: "Belum Ada Data", bg: "bg-slate-50", text: "text-slate-500", icon: Package };
+    default:
+      return { label: status, bg: "bg-slate-100", text: "text-slate-600", icon: Package };
+  }
+}
+
+function getHistoryStatusBadge(status: HistoryRecord["status"]) {
+  switch (status) {
+    case "processed":
+    case "completed":
+    case "success":
+      return { label: "Selesai", bg: "bg-emerald-50", text: "text-emerald-600", icon: CheckCircle };
+    case "pending":
+      return { label: "Menunggu", bg: "bg-amber-50", text: "text-amber-600", icon: Clock };
+    case "failed":
+      return { label: "Gagal", bg: "bg-rose-50", text: "text-rose-600", icon: AlertCircle };
+    default:
+      return { label: status, bg: "bg-slate-100", text: "text-slate-600", icon: Clock };
+  }
+}
+
+function KpiCard({ title, value, description, icon: Icon, tone = "slate" }: { title: string; value: string; description: string; icon: any; tone?: "slate" | "rose" }) {
+  return (
+    <div className={`rounded-2xl border p-4 shadow-sm ${tone === "rose" ? "border-rose-200 bg-rose-50/50" : "border-slate-200 bg-white"}`}>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{title}</p>
+        <Icon size={18} className={tone === "rose" ? "text-rose-500" : "text-slate-400"} />
+      </div>
+      <p className={`mt-2 text-xl font-bold ${tone === "rose" ? "text-rose-700" : "text-slate-900"}`}>{value}</p>
+      <p className="mt-1 text-[11px] text-slate-400">{description}</p>
+    </div>
+  );
+}
+
+function DetailRow({ label, value, highlight = false }: { label: string; value: number; highlight?: boolean }) {
+  return (
+    <div className="flex items-center justify-between py-1 text-sm">
+      <span className={highlight ? "font-semibold text-slate-900" : "text-slate-500"}>{label}</span>
+      <span className={highlight ? "font-bold text-slate-900" : "font-medium text-slate-700"}>{formatNumber(value)}</span>
+    </div>
+  );
+}
 
 export default function SupervisorReconciliationPage() {
-  const [dataList, setDataList] = useState<ItemRekonsiliasi[]>(MOCK_REKONSILIASI);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedProject, setSelectedProject] = useState("SEMUA");
-  const [selectedStatus, setSelectedStatus] = useState("SEMUA");
-  const [activeTab, setActiveTab] = useState<"SEMUA" | "PERHATIAN" | "BERJALAN">("SEMUA");
+  const { user } = useAuth();
+  const { get } = useApi();
 
-  // State Modal Detail & Approval
-  const [selectedItem, setSelectedItem] = useState<ItemRekonsiliasi | null>(null);
+  // Tab Navigation State
+  const [activeTab, setActiveTab] = useState<"rekonsiliasi" | "riwayat">("rekonsiliasi");
 
-  // Filter Logic
-  const filteredData = useMemo(() => {
-    return dataList.filter((item) => {
-      const matchSearch =
-        item.project.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.kodeTiket.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.barang.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.kodeBarang.toLowerCase().includes(searchQuery.toLowerCase());
+  // State Rekonsiliasi
+  const [records, setRecords] = useState<ReconciliationRecord[]>([]);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [projectFilter, setProjectFilter] = useState("all");
+  const [warehouseFilter, setWarehouseFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [selectedRecord, setSelectedRecord] = useState<ReconciliationRecord | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-      if (!matchSearch) return false;
+  // State Riwayat Input Laporan Mitra
+  const [historyRecords, setHistoryRecords] = useState<HistoryRecord[]>([]);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
-      if (selectedProject !== "SEMUA" && item.project !== selectedProject) return false;
-      if (selectedStatus !== "SEMUA" && item.status !== selectedStatus) return false;
+  const fetchReconciliation = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (search.trim()) params.set("search", search.trim());
 
-      if (activeTab === "PERHATIAN") return item.status === "PERHATIAN";
-      if (activeTab === "BERJALAN") return item.status === "BERJALAN";
+      const response = await get(`${RECONCILIATION_ENDPOINT}?${params.toString()}`);
 
-      return true;
+      if (response.status === 403) {
+        setError("Anda tidak memiliki akses ke data rekonsiliasi ini.");
+        setRecords([]);
+        return;
+      }
+
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Endpoint Rekonsiliasi mengembalikan respons non-JSON (404/500).");
+      }
+
+      const json = await response.json();
+      if (!response.ok) {
+        throw new Error(json?.message || "Gagal mengambil data rekonsiliasi inventory.");
+      }
+
+      const payload = json?.data ?? [];
+      const list: any[] = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+
+      const mapped: ReconciliationRecord[] = list.map((item: any) => {
+        const boq = Number(item.boq ?? item.qty_boq ?? item.qty_rencana ?? 0);
+        const additional = Number(item.additional ?? item.qty_additional ?? 0);
+        const mos = Number(item.mos ?? item.hardware_on_site ?? item.qty_on_site ?? 0);
+        const used = Number(item.used ?? item.qty_used ?? 0);
+        const approvedReturnQty = Number(item.approved_return_qty ?? 0);
+        const remains = Number(item.remains ?? (mos - (boq + additional)));
+
+        const recStatus: ReconciliationRecord["status"] =
+          item.status === "sesuai" || item.status === "perhatian" || item.status === "belum_ada_data"
+            ? item.status
+            : Number(remains) === 0
+              ? "sesuai"
+              : "perhatian";
+
+        return {
+          id: String(item.id ?? ""),
+          project_id: String(item.project_id ?? ""),
+          project_nama: item.project_nama ?? "-",
+          cluster_id: item.cluster_id ?? "-",
+          area: item.area ?? "-",
+          tiket_id: String(item.tiket_id ?? ""),
+          kode_tiket: item.kode_tiket ?? "-",
+          barang_id: String(item.barang_id ?? ""),
+          kode_perangkat: item.kode_perangkat ?? "-",
+          nama_barang: item.nama_barang ?? "-",
+          gudang_nama: item.gudang_nama ?? "-",
+          satuan: item.satuan ?? "-",
+          boq,
+          additional,
+          mos,
+          used,
+          approved_return_qty: approvedReturnQty,
+          remains,
+          status: recStatus,
+        };
+      });
+
+      setRecords(mapped);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Terjadi kesalahan saat mengambil data rekonsiliasi.");
+      setRecords([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchHistory = async () => {
+    setIsHistoryLoading(true);
+    try {
+      const res = await get(HISTORY_ENDPOINT);
+
+      const contentType = res.headers.get("content-type");
+      if (!res.ok || !contentType || !contentType.includes("application/json")) {
+        setHistoryRecords([]);
+        return;
+      }
+
+      const json = await res.json();
+      const payload = json?.data ?? [];
+      const list: any[] = Array.isArray(payload) ? payload : [];
+      setHistoryRecords(
+        list.map((item: any) => ({
+          id: String(item.id ?? ""),
+          filename: item.filename ?? "laporan_mitra.xlsx",
+          actor_nama: item.actor_nama ?? item.actor?.name ?? "-",
+          created_at: item.created_at ?? new Date().toISOString(),
+          total_items: Number(item.total_items ?? item.total ?? 0),
+          success_count: Number(item.success_count ?? item.berhasil ?? item.total_items ?? 0),
+          failed_count: Number(item.failed_count ?? item.gagal ?? 0),
+          status: item.status ?? "processed",
+        })),
+      );
+    } catch (err) {
+      console.error("Gagal mengambil riwayat input mitra:", err);
+      setHistoryRecords([]);
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    fetchReconciliation();
+    fetchHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput.trim());
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
+    fetchReconciliation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, statusFilter]);
+
+  const projectOptions = useMemo(() => {
+    return Array.from(new Map(records.map((item) => [item.project_id, item.project_nama])).entries());
+  }, [records]);
+
+  const warehouseOptions = useMemo(() => {
+    return Array.from(new Set(records.map((item) => item.gudang_nama).filter(Boolean)));
+  }, [records]);
+
+  const filteredRecords = useMemo(() => {
+    return records.filter((record) => {
+      const matchesProject = projectFilter === "all" || record.project_id === projectFilter;
+      const matchesWarehouse = warehouseFilter === "all" || record.gudang_nama === warehouseFilter;
+      return matchesProject && matchesWarehouse;
     });
-  }, [dataList, searchQuery, selectedProject, selectedStatus, activeTab]);
+  }, [records, projectFilter, warehouseFilter]);
 
-  // Kalkulasi KPI Dynamic
-  const metrics = useMemo(() => {
-    const boq = dataList.reduce((acc, curr) => acc + curr.boq, 0);
-    const additional = dataList.reduce((acc, curr) => acc + curr.additional, 0);
-    const onSite = dataList.reduce((acc, curr) => acc + curr.onSite, 0);
-    const used = dataList.reduce((acc, curr) => acc + curr.used, 0);
-    const remains = dataList.reduce((acc, curr) => acc + curr.remains, 0);
-    const totalAnomali = dataList.filter((item) => item.status === "PERHATIAN").length;
+  const filteredHistoryRecords = useMemo(() => {
+    return historyRecords.filter((item) => {
+      if (!startDate && !endDate) return true;
+      const itemDate = new Date(item.created_at).getTime();
+      const start = startDate ? new Date(startDate).getTime() : 0;
+      const end = endDate ? new Date(endDate).setHours(23, 59, 59, 999) : Infinity;
+      return itemDate >= start && itemDate <= end;
+    });
+  }, [historyRecords, startDate, endDate]);
 
-    return { boq, additional, onSite, used, remains, totalAnomali };
-  }, [dataList]);
-
-  // Handler Approval Adjustment oleh Supervisor
-  const handleApproveAdjustment = (id: string) => {
-    if (!confirm("Apakah Anda yakin ingin menyetujui penyesuaian BOQ (Additional) untuk item ini?")) return;
-
-    setDataList((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          const diff = Math.abs(item.remains);
-          return {
-            ...item,
-            additional: item.additional + diff,
-            remains: 0,
-            status: "BERJALAN",
-          };
-        }
-        return item;
-      })
+  const summary = useMemo(() => {
+    return records.reduce(
+      (total, item) => {
+        total.boq += item.boq;
+        total.additional += item.additional;
+        total.mos += item.mos;
+        total.used += item.used;
+        total.remains += item.remains;
+        return total;
+      },
+      { boq: 0, additional: 0, mos: 0, used: 0, remains: 0 }
     );
+  }, [records]);
 
-    setSelectedItem(null);
-    alert("Penyesuaian BOQ berhasil disetujui!");
+  const totalPerhatian = useMemo(() => filteredRecords.filter((r) => r.status === "perhatian").length, [filteredRecords]);
+
+  const handleExportCSV = () => {
+    if (filteredRecords.length === 0) return;
+
+    const headers = ["Project", "Area", "Cluster", "Kode Tiket", "Kode Perangkat", "Nama Barang", "Gudang", "Satuan", "BOQ", "Additional", "MOS", "Used", "Remains", "Status"];
+
+    const csvRows = [
+      headers.join(","),
+      ...filteredRecords.map((r) =>
+        [
+          `"${r.project_nama}"`,
+          `"${r.area}"`,
+          `"${r.cluster_id}"`,
+          `"${r.kode_tiket}"`,
+          `"${r.kode_perangkat}"`,
+          `"${r.nama_barang}"`,
+          `"${r.gudang_nama}"`,
+          `"${r.satuan}"`,
+          r.boq,
+          r.additional,
+          r.mos,
+          r.used,
+          r.remains,
+          `"${r.status}"`,
+        ].join(","),
+      ),
+    ];
+
+    const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `rekonsiliasi_inventory_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
-    <div className="flex-1 p-4 md:p-8 bg-[#F8F6F0] min-h-screen text-slate-800 w-full overflow-x-hidden">
-      
-      {/* 1. HEADER TITLE */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Rekonsiliasi Inventory (Supervisor)
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Pantau kesesuaian BOQ, evaluasi selisih material, dan setujui penyesuaian stok project.
-          </p>
-        </div>
-
-        <button
-          onClick={() => alert("Refreshed!")}
-          className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-2xl border border-slate-200 text-sm font-semibold shadow-sm transition w-fit cursor-pointer"
-        >
-          <RefreshCw size={15} /> Refresh
-        </button>
-      </div>
-
-      {/* 2. FILTER BAR */}
-      <div className="bg-white p-4 rounded-3xl border border-stone-200/80 shadow-sm mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="relative w-full md:w-80">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input
-            type="text"
-            placeholder="Cari project, tiket, kode..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5500]/50 transition"
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          <select
-            value={selectedProject}
-            onChange={(e) => setSelectedProject(e.target.value)}
-            className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold text-slate-700 focus:outline-none"
-          >
-            <option value="SEMUA">Semua Project</option>
-            <option value="FTTH Ciamis Area Utara">FTTH Ciamis Area Utara</option>
-            <option value="Backbone Garut Selatan">Backbone Garut Selatan</option>
-            <option value="FTTH Rancamanyar Tahap 1">FTTH Rancamanyar Tahap 1</option>
-          </select>
-
-          <select
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
-            className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold text-slate-700 focus:outline-none"
-          >
-            <option value="SEMUA">Semua Status</option>
-            <option value="PERHATIAN">Perhatian (Selisih)</option>
-            <option value="BERJALAN">Berjalan (Normal)</option>
-          </select>
-        </div>
-      </div>
-
-      {/* 3. KPI METRICS CARDS */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5 mb-6">
-        <div className="bg-white p-4.5 rounded-3xl border border-stone-200/80 shadow-sm">
-          <span className="text-xs text-slate-400 font-medium">BOQ</span>
-          <p className="text-2xl font-black text-slate-900 mt-1">{metrics.boq}</p>
-          <span className="text-[11px] text-slate-400 block mt-0.5">Rencana awal</span>
-        </div>
-
-        <div className="bg-white p-4.5 rounded-3xl border border-stone-200/80 shadow-sm">
-          <span className="text-xs text-slate-400 font-medium">Additional</span>
-          <p className="text-2xl font-black text-slate-900 mt-1">{metrics.additional}</p>
-          <span className="text-[11px] text-slate-400 block mt-0.5">Tambahan di luar BOQ</span>
-        </div>
-
-        <div className="bg-white p-4.5 rounded-3xl border border-stone-200/80 shadow-sm">
-          <span className="text-xs text-slate-400 font-medium">Hardware on Site</span>
-          <p className="text-2xl font-black text-slate-900 mt-1">{metrics.onSite}</p>
-          <span className="text-[11px] text-slate-400 block mt-0.5">Sudah diterima</span>
-        </div>
-
-        <div className="bg-white p-4.5 rounded-3xl border border-stone-200/80 shadow-sm">
-          <span className="text-xs text-slate-400 font-medium">Used</span>
-          <p className="text-2xl font-black text-slate-900 mt-1">{metrics.used}</p>
-          <span className="text-[11px] text-slate-400 block mt-0.5">Sudah digunakan</span>
-        </div>
-
-        <div className={`p-4.5 rounded-3xl border shadow-sm ${metrics.remains < 0 ? "bg-rose-50/70 border-rose-200 text-rose-900" : "bg-white border-stone-200/80 text-slate-900"}`}>
-          <span className="text-xs font-medium opacity-80">Remains</span>
-          <p className={`text-2xl font-black mt-1 ${metrics.remains < 0 ? "text-rose-600" : "text-slate-900"}`}>
-            {metrics.remains}
-          </p>
-          <span className="text-[11px] opacity-70 block mt-0.5">Sisa perangkat</span>
-        </div>
-      </div>
-
-      {/* 4. BANNER INFO SUPERVISOR */}
-      <div className="bg-blue-50/80 border border-blue-200/80 rounded-2xl p-4 mb-6 flex items-start gap-3">
-        <ShieldAlert className="text-blue-600 shrink-0 mt-0.5" size={18} />
-        <div className="text-xs text-blue-900 leading-relaxed">
-          <span className="font-bold">Perhitungan Rekonsiliasi Supervisor:</span> Item berstatus{" "}
-          <span className="font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Perhatian</span> memerlukan tindakan verifikasi dan approval *Additional BOQ* agar stok fisik terbukti valid secara sistem.
-        </div>
-      </div>
-
-      {/* 5. TABEL REKONSILIASI */}
-      <div className="bg-white rounded-3xl border border-stone-200/80 shadow-sm overflow-hidden">
-        {/* Sub Header Table & Quick Tabs */}
-        <div className="p-5 border-b border-stone-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div className={`${plusJakartaSans.className}`}>
+      <div className="flex flex-1 flex-col p-6">
+        {/* Header */}
+        <header className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-base font-bold text-slate-900">Daftar Rekonsiliasi</h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Rekonsiliasi BOQ dan realisasi hardware per project/tiket.
-            </p>
+            <h1 className="text-2xl font-bold text-slate-900">Rekonsiliasi Inventory (Supervisor)</h1>
+            <p className="mt-1 text-sm text-slate-500">Pantau kesesuaian BOQ dengan realisasi hardware di gudang yang menjadi tanggung jawab Anda.</p>
           </div>
+        </header>
 
-          <div className="flex items-center gap-1.5 bg-stone-100 p-1 rounded-xl w-fit">
-            <button
-              onClick={() => setActiveTab("SEMUA")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                activeTab === "SEMUA" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
-              }`}
-            >
-              Semua ({dataList.length})
-            </button>
-            <button
-              onClick={() => setActiveTab("PERHATIAN")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 ${
-                activeTab === "PERHATIAN" ? "bg-amber-500 text-white shadow-sm" : "text-amber-700 hover:bg-amber-50"
-              }`}
-            >
-              <AlertTriangle size={12} /> Perhatian ({metrics.totalAnomali})
-            </button>
-          </div>
+        {/* Tab Navigation */}
+        <div className="mb-6 flex border-b border-slate-200">
+          <button
+            type="button"
+            onClick={() => setActiveTab("rekonsiliasi")}
+            className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
+              activeTab === "rekonsiliasi" ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700"
+            }`}
+          >
+            <ClipboardCheck size={16} />
+            Rekonsiliasi
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("riwayat")}
+            className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
+              activeTab === "riwayat" ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700"
+            }`}
+          >
+            <History size={16} />
+            Riwayat Input Laporan Mitra
+          </button>
         </div>
 
-        {/* Table Content */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse table-fixed min-w-[900px]">
-            <thead>
-              <tr className="border-b border-stone-100 bg-stone-50/50 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                <th className="py-3.5 px-4 w-[20%]">Project</th>
-                <th className="py-3.5 px-3 w-[12%]">Kode Tiket</th>
-                <th className="py-3.5 px-4 w-[24%]">Barang</th>
-                <th className="py-3.5 px-2 text-center w-[6%]">BOQ</th>
-                <th className="py-3.5 px-2 text-center w-[7%]">Additional</th>
-                <th className="py-3.5 px-2 text-center w-[7%]">On Site</th>
-                <th className="py-3.5 px-2 text-center w-[6%]">Used</th>
-                <th className="py-3.5 px-2 text-center w-[7%]">Remains</th>
-                <th className="py-3.5 px-3 text-center w-[11%]">Status</th>
-                <th className="py-3.5 px-3 text-center w-[8%]">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100 text-xs md:text-sm text-slate-700">
-              {filteredData.length > 0 ? (
-                filteredData.map((item) => (
-                  <tr key={item.id} className="hover:bg-stone-50/60 transition">
-                    
-                    {/* Project */}
-                    <td className="py-4 px-4 font-semibold text-slate-900 break-words">
-                      {item.project}
-                    </td>
+        {/* Tab Content 1: Rekonsiliasi Inventory */}
+        {activeTab === "rekonsiliasi" && (
+          <>
+            {error && <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
 
-                    {/* Kode Tiket */}
-                    <td className="py-4 px-3 font-mono text-xs text-slate-600">
-                      <span className="bg-slate-100 px-2 py-1 rounded-md border border-slate-200">
-                        {item.kodeTiket}
-                      </span>
-                    </td>
+            {/* KPI Cards */}
+            <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-7">
+              <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
+              <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
+              <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material on Site" icon={PackageCheck} tone="slate" />
+              <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan" icon={PackageMinus} tone="slate" />
+              <KpiCard title="Remains" value={formatNumber(summary.remains)} description="Sisa ketersediaan" icon={Package} tone={summary.remains < 0 ? "rose" : "slate"} />
+            </div>
 
-                    {/* Barang */}
-                    <td className="py-4 px-4 break-words">
-                      <span className="font-bold text-slate-800 block leading-tight">{item.barang}</span>
-                      <span className="text-xs text-slate-400 font-mono">{item.kodeBarang} • {item.gudang}</span>
-                    </td>
+            {/* Filters */}
+            <div className="mb-6 flex flex-wrap items-center gap-2">
+              <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+                <Search size={16} className="shrink-0 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Cari project, tiket, kode perangkat..."
+                  className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+                />
+              </div>
 
-                    {/* Numbers */}
-                    <td className="py-4 px-2 text-center font-medium text-slate-800">{item.boq}</td>
-                    <td className="py-4 px-2 text-center font-medium text-slate-800">{item.additional}</td>
-                    <td className="py-4 px-2 text-center font-semibold text-blue-600">{item.onSite}</td>
-                    <td className="py-4 px-2 text-center font-medium text-slate-800">{item.used}</td>
+              <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400">
+                <option value="all">Semua Project</option>
+                {projectOptions.map(([id, nama]) => (
+                  <option key={id} value={id}>
+                    {nama}
+                  </option>
+                ))}
+              </select>
 
-                    {/* Remains */}
-                    <td className="py-4 px-2 text-center font-bold">
-                      {item.remains < 0 ? (
-                        <span className="text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100">
-                          {item.remains}
-                        </span>
-                      ) : (
-                        <span className="text-emerald-600">{item.remains}</span>
-                      )}
-                    </td>
+              <select value={warehouseFilter} onChange={(e) => setWarehouseFilter(e.target.value)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400">
+                <option value="all">Semua Gudang</option>
+                {warehouseOptions.map((warehouse) => (
+                  <option key={warehouse} value={warehouse}>
+                    {warehouse}
+                  </option>
+                ))}
+              </select>
 
-                    {/* Status Badge */}
-                    <td className="py-4 px-3 text-center">
-                      {item.status === "PERHATIAN" ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100/80 px-2.5 py-1 rounded-full">
-                          Perhatian
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 bg-sky-50 px-2.5 py-1 rounded-full">
-                          Berjalan
-                        </span>
-                      )}
-                    </td>
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400">
+                <option value="all">Semua Status</option>
+                <option value="sesuai">Sesuai</option>
+                <option value="belum_ada_data">Belum Ada Data</option>
+                <option value="perhatian">Perhatian</option>
+              </select>
+            </div>
 
-                    {/* Aksi Button Supervisor */}
-                    <td className="py-4 px-3 text-center">
-                      <button
-                        onClick={() => setSelectedItem(item)}
-                        className={`inline-flex items-center justify-center p-2 rounded-xl transition shadow-sm cursor-pointer ${
-                          item.status === "PERHATIAN"
-                            ? "bg-amber-500 hover:bg-amber-600 text-white"
-                            : "bg-slate-100 hover:bg-slate-200 text-slate-700"
-                        }`}
-                        title={item.status === "PERHATIAN" ? "Tinjau & Disposisi Selisih" : "Lihat Detail"}
-                      >
-                        {item.status === "PERHATIAN" ? <FileCheck size={16} /> : <Eye size={16} />}
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-400 text-sm">
-                    Tidak ada data rekonsiliasi yang sesuai.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* 6. MODAL APPROVAL SUPERVISOR */}
-      {selectedItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="relative bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-stone-200 my-8">
-            
-            {/* Header Modal */}
-            <div className="flex items-center justify-between pb-4 border-b border-stone-100">
-              <div className="flex items-center gap-2.5">
-                <div className={`p-2 rounded-xl ${selectedItem.status === "PERHATIAN" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
-                  <ShieldAlert size={20} />
-                </div>
+            {/* Table */}
+            <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">
-                    {selectedItem.status === "PERHATIAN" ? "Tinjau Selisih BOQ" : "Detail Rekonsiliasi"}
-                  </h3>
-                  <p className="text-xs text-slate-400">{selectedItem.kodeTiket} • {selectedItem.project}</p>
+                  <h2 className="text-base font-semibold text-slate-900">Daftar Rekonsiliasi</h2>
+                  <p className="text-xs text-slate-400">
+                    {filteredRecords.length} data
+                    {totalPerhatian > 0 && <span className="ml-2 text-amber-600">{totalPerhatian} perhatian</span>}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleExportCSV}
+                    disabled={filteredRecords.length === 0}
+                    className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    <Download size={16} />
+                    Export
+                  </button>
                 </div>
               </div>
 
-              <button
-                onClick={() => setSelectedItem(null)}
-                className="p-2 rounded-full hover:bg-slate-100 text-slate-400 transition cursor-pointer"
-              >
-                <X size={18} />
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1100px] text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50">
+                      <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
+                      <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
+                      <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
+                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
+                       <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
+                       <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
+                       <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
+                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Remains</th>
+                      <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+                      <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-50">
+                    {isLoading ? (
+                      Array.from({ length: 7 }).map((_, rowIndex) => (
+                        <tr key={rowIndex}>
+                          {Array.from({ length: 12 }).map((_, colIndex) => (
+                            <td key={colIndex} className="px-6 py-4">
+                              <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    ) : filteredRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={12} className="px-6 py-16 text-center">
+                          <Package size={28} className="mx-auto text-slate-300" />
+                          <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data rekonsiliasi</p>
+                          <p className="mt-1 text-xs text-slate-400">Coba ubah filter, atau pastikan Anda sudah ditugaskan sebagai PIC gudang.</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredRecords.map((record) => {
+                        const statusBadge = getStatusBadge(record.status);
+                        return (
+                          <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
+                            <td className="px-6 py-4">
+                              <p className="font-medium text-slate-900">{record.project_nama}</p>
+                              <p className="text-xs text-slate-400">
+                                {record.area}
+                                {record.cluster_id !== "-" && ` • ${record.cluster_id}`}
+                              </p>
+                            </td>
+
+                            <td className="px-6 py-4">
+                              <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{record.kode_tiket}</span>
+                            </td>
+
+                            <td className="px-6 py-4">
+                              <p className="font-medium text-slate-800">{record.nama_barang}</p>
+                              <p className="text-xs text-slate-400">
+                                {record.kode_perangkat} • {record.gudang_nama}
+                              </p>
+                            </td>
+
+                            <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.boq)}</td>
+                            <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.additional)}</td>
+                            <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos)}</td>
+                            <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.used)}</td>
+
+                            <td className="px-6 py-4 text-right">
+                              <span className={record.remains < 0 ? "font-semibold text-rose-600" : "font-semibold text-emerald-700"}>{formatNumber(record.remains)}</span>
+                            </td>
+
+                            <td className="px-6 py-4">
+                              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
+                                <statusBadge.icon size={12} />
+                                {statusBadge.label}
+                              </span>
+                            </td>
+
+                            <td className="px-4 py-4">
+                              <div className="flex items-center justify-end gap-1">
+                                <button type="button" onClick={() => setSelectedRecord(record)} title="Lihat detail" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                                  <ClipboardCheck size={15} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Section Catatan & Rumus Kalkulasi */}
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">CATATAN & RUMUS KALKULASI</h3>
+              <p className="text-xs text-slate-500 mb-4">Penjelasan cara menghitung setiap kolom pada tabel rekonsiliasi.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
+                  <p className="text-xs font-bold text-slate-900">BOQ Plan</p>
+                  <p className="mt-2 text-xs leading-relaxed text-slate-800/90">Jumlah material yang direncanakan sejak awal untuk project ini.</p>
+                </div>
+                <div className="rounded-xl border border-indigo-200/80 bg-indigo-50/50 p-4">
+                  <p className="text-xs font-bold text-indigo-900">Additional</p>
+                   <p className="mt-2 text-xs leading-relaxed text-indigo-800/90">Tambahan material yang diajukan karena kekurangan dari rencana BOQ awal, setelah disetujui dan ditambahkan resmi ke sistem.</p>
+                </div>
+                <div className="rounded-xl border border-blue-200/80 bg-blue-50/50 p-4">
+                  <p className="text-xs font-bold text-blue-900">MOS</p>
+                   <p className="mt-2 text-xs leading-relaxed text-blue-800/90">Material yang sudah dikirim dan terkonfirmasi diterima di lapangan.</p>
+                </div>
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3">
+                  <p className="text-xs font-bold text-slate-900">Used</p>
+                   <p className="mt-2 text-xs leading-relaxed text-slate-800/90">Jumlah material yang sudah dipasang/digunakan di lapangan, berdasarkan laporan harian dari mitra.</p>
+                </div>
+                <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-4">
+                  <p className="text-xs font-bold text-emerald-900">Remains</p>
+                   <p className="mt-2 text-xs leading-relaxed text-emerald-800/90">Rumus: MOS − (BOQ Plan + Additional). Menghitung sisi pengiriman, bukan pemakaian di lapangan.</p>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Tab Content 2: Riwayat Input Laporan Mitra */}
+        {activeTab === "riwayat" && (
+          <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+            {/* Banner Informasi Oranye */}
+            <div className="border-b border-orange-100 bg-orange-50/60 px-6 py-3.5 text-xs text-orange-700">Tabel ini menampilkan histori upload laporan mitra. Setiap baris merepresentasikan 1 sesi upload file Excel.</div>
+
+            <div className="p-6">
+              {/* Date Filters */}
+              <div className="mb-6 flex items-center gap-3">
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    placeholder="dd/mm/yyyy"
+                    className="rounded-full border border-slate-200 bg-white px-5 py-2 text-xs text-slate-600 shadow-sm outline-none focus:border-orange-400"
+                  />
+                </div>
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    placeholder="dd/mm/yyyy"
+                    className="rounded-full border border-slate-200 bg-white px-5 py-2 text-xs text-slate-600 shadow-sm outline-none focus:border-orange-400"
+                  />
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] uppercase tracking-wider text-slate-400">
+                      <th className="py-3 px-4 font-semibold">Waktu Upload</th>
+                      <th className="py-3 px-4 font-semibold">Nama File</th>
+                      <th className="py-3 px-4 font-semibold">Diunggah Oleh</th>
+                      <th className="py-3 px-4 font-semibold">Total</th>
+                      <th className="py-3 px-4 font-semibold">Berhasil</th>
+                      <th className="py-3 px-4 font-semibold">Gagal</th>
+                      <th className="py-3 px-4 font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {isHistoryLoading ? (
+                      Array.from({ length: 4 }).map((_, idx) => (
+                        <tr key={idx}>
+                          {Array.from({ length: 7 }).map((_, cIdx) => (
+                            <td key={cIdx} className="p-4">
+                              <div className="h-4 animate-pulse rounded bg-slate-100" />
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    ) : filteredHistoryRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-20 text-center text-sm font-medium text-slate-400">
+                          Belum ada riwayat upload laporan mitra.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredHistoryRecords.map((item) => {
+                        const badge = getHistoryStatusBadge(item.status);
+                        return (
+                          <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3.5 px-4 text-slate-600">
+                              {new Date(item.created_at).toLocaleString("id-ID", {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              })}
+                            </td>
+                            <td className="py-3.5 px-4 font-medium text-slate-800">{item.filename}</td>
+                            <td className="py-3.5 px-4 text-slate-600">{item.actor_nama}</td>
+                            <td className="py-3.5 px-4 font-semibold text-slate-700">{item.total_items}</td>
+                            <td className="py-3.5 px-4 font-medium text-emerald-600">{item.success_count}</td>
+                            <td className="py-3.5 px-4 font-medium text-rose-500">{item.failed_count}</td>
+                            <td className="py-3.5 px-4">
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${badge.bg} ${badge.text}`}>
+                                <badge.icon size={11} />
+                                {badge.label}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Detail Modal Rekonsiliasi */}
+      {selectedRecord && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setSelectedRecord(null)}>
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Detail Rekonsiliasi</h2>
+                <p className="text-xs text-slate-500">Rincian BOQ dan realisasi hardware.</p>
+              </div>
+              <button type="button" onClick={() => setSelectedRecord(null)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <X size={16} />
               </button>
             </div>
 
-            {/* Content Modal */}
-            <div className="my-6 space-y-4">
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
-                <span className="text-xs text-slate-400 uppercase font-semibold">Perangkat / Material</span>
-                <p className="text-base font-bold text-slate-900 mt-0.5">{selectedItem.barang}</p>
-                <p className="text-xs text-slate-500 font-mono">{selectedItem.kodeBarang} ({selectedItem.gudang})</p>
-              </div>
-
-              {/* Rincian Angka */}
-              <div className="grid grid-cols-4 gap-2 text-center">
-                <div className="bg-stone-50 p-3 rounded-xl border border-stone-200">
-                  <span className="text-[11px] text-slate-400 block">BOQ Awal</span>
-                  <span className="font-bold text-slate-800 text-sm">{selectedItem.boq}</span>
-                </div>
-                <div className="bg-stone-50 p-3 rounded-xl border border-stone-200">
-                  <span className="text-[11px] text-slate-400 block">Terpakai</span>
-                  <span className="font-bold text-slate-800 text-sm">{selectedItem.used}</span>
-                </div>
-                <div className="bg-stone-50 p-3 rounded-xl border border-stone-200">
-                  <span className="text-[11px] text-slate-400 block">Additional</span>
-                  <span className="font-bold text-slate-800 text-sm">{selectedItem.additional}</span>
-                </div>
-                <div className="bg-rose-50 p-3 rounded-xl border border-rose-200">
-                  <span className="text-[11px] text-rose-600 block font-semibold">Remains</span>
-                  <span className="font-black text-rose-600 text-sm">{selectedItem.remains}</span>
+            <div className="space-y-5 px-6 py-5">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs font-medium text-slate-400">Project</p>
+                <p className="mt-1 font-semibold text-slate-900">{selectedRecord.project_nama}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="rounded-lg bg-white px-2.5 py-1 text-[11px] text-slate-500">Tiket: {selectedRecord.kode_tiket}</span>
+                  <span className="rounded-lg bg-white px-2.5 py-1 text-[11px] text-slate-500">Area: {selectedRecord.area}</span>
+                  <span className="rounded-lg bg-white px-2.5 py-1 text-[11px] text-slate-500">Gudang: {selectedRecord.gudang_nama}</span>
                 </div>
               </div>
 
-              {/* Catatan Lapangan Staf */}
-              {selectedItem.catatanStaf && (
-                <div className="bg-amber-50/70 border border-amber-200 p-4 rounded-2xl">
-                  <span className="text-xs font-bold text-amber-900 block mb-1">Catatan Staf Lapangan:</span>
-                  <p className="text-xs text-amber-800 leading-relaxed">{selectedItem.catatanStaf}</p>
-                </div>
-              )}
+              <div>
+                <p className="text-xs font-medium text-slate-400">Perangkat</p>
+                <p className="mt-1 font-semibold text-slate-900">{selectedRecord.nama_barang}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {selectedRecord.kode_perangkat} • Satuan: {selectedRecord.satuan}
+                </p>
+              </div>
+
+              <div>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Rekonsiliasi</p>
+                  <div className="space-y-2">
+                    <DetailRow label="BOQ" value={selectedRecord.boq} />
+                    <DetailRow label="Additional" value={selectedRecord.additional} />
+                    <DetailRow label="MOS" value={selectedRecord.mos} />
+                    <DetailRow label="Used" value={selectedRecord.used} />
+                    <div className="border-t border-slate-100 pt-2">
+                      <DetailRow label="Remains" value={selectedRecord.remains} highlight />
+                    </div>
+                  </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium text-slate-400">Status Rekonsiliasi</p>
+                <span className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${getStatusBadge(selectedRecord.status).bg} ${getStatusBadge(selectedRecord.status).text}`}>
+                  {getStatusBadge(selectedRecord.status).label}
+                </span>
+              </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-100">
-              <button
-                onClick={() => setSelectedItem(null)}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-50 transition cursor-pointer"
-              >
+            <div className="flex justify-end border-t border-slate-100 px-6 py-4">
+              <button type="button" onClick={() => setSelectedRecord(null)} className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
                 Tutup
               </button>
-
-              {selectedItem.status === "PERHATIAN" && (
-                <button
-                  onClick={() => handleApproveAdjustment(selectedItem.id)}
-                  className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-md transition cursor-pointer"
-                >
-                  <CheckCircle2 size={16} /> Disetujui (Adjustment BOQ)
-                </button>
-              )}
             </div>
-
           </div>
         </div>
       )}
-
     </div>
   );
 }

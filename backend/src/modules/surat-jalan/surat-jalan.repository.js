@@ -1,12 +1,35 @@
 const prisma = require("../../config/prisma");
 const AppError = require("../../shared/errors");
+const capacityService = require("../capacity/capacity.service");
 
 const baseInclude = {
   items: {
     include: {
+      // baseInclude TIDAK diubah — tetap dipakai inbound/verifikasi
+      fotos: true,
+      zona: {
+        select: {
+          zona_id: true,
+          kode_zona: true,
+          nama_zona: true,
+          tipe_zona: true,
+          gudang: {
+            select: {
+              nama_gudang: true,
+            },
+          },
+        },
+      },
       barang: {
         include: {
           satuan_default: true,
+          kategori: {
+            select: {
+              kategori_id: true,
+              nama_kategori: true,
+              is_kritis: true,
+            },
+          },
         },
       },
       satuan: {
@@ -25,6 +48,13 @@ const baseInclude = {
           barang: {
             include: {
               satuan_default: true,
+              kategori: {
+                select: {
+                  kategori_id: true,
+                  nama_kategori: true,
+                  is_kritis: true,
+                },
+              },
             },
           },
           satuan: {
@@ -42,11 +72,98 @@ const baseInclude = {
   kendaraan: true,
   personil_pengantar: true,
   project: true,
-   creator: true,
+  creator: true,
+  titik_lapangan: true,
+  supplier: true,
+  dilaporkan_tiba: {
+    select: {
+      user_id: true,
+      nama: true,
+    },
+  },
+  dikonfirmasi_tiba: {
+    select: {
+      user_id: true,
+      nama: true,
+    },
+  },
+};
+
+const findByIdInclude = {
+  ...baseInclude,
+  items: {
+    ...baseInclude.items,
+    include: {
+      ...baseInclude.items.include,
+      diperiksa_oleh_user: {
+        select: {
+          nama: true,
+        },
+      },
+    },
+  },
+};
+
+const stokKritisConfig = require("../../config/stok-kritis.config");
+
+const outboundInclude = {
+  ...baseInclude,
+  items: {
+    ...baseInclude.items,
+    include: {
+      ...baseInclude.items.include,
+      diperiksa_oleh_user: {
+        select: {
+          user_id: true,
+          nama: true,
+        },
+      },
+      barang: {
+        ...baseInclude.items.include.barang,
+        include: {
+          ...baseInclude.items.include.barang.include,
+          stok_gudangs: {
+            select: {
+              qty: true,
+              gudang_id: true,
+              zona_id: true,
+              kondisi: true,
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
+const modalListInclude = {
+  ...baseInclude,
+  items: {
+    ...baseInclude.items,
+    include: {
+      ...baseInclude.items.include,
+      diperiksa_oleh_user: {
+        select: {
+          user_id: true,
+          nama: true,
+        },
+      },
+    },
+  },
 };
 
 const APPROVAL_STATUS = "draft_diajukan";
-const DELIVERY_STATUSES = ["disetujui", "digenerate", "diterima_didistribusikan"];
+const DELIVERY_STATUSES = ["disetujui", "sedang_dikirim", "tiba_menunggu_konfirmasi", "diterima_didistribusikan"];
+
+const parseIdFilter = (value, fieldName) => {
+  if (value === undefined || value === null) return null;
+  const raw = String(value).trim();
+  if (!raw || raw === "all") return null;
+  if (!/^\d+$/.test(raw)) {
+    throw new AppError(`Parameter "${fieldName}" harus berupa ID numerik.`, 400);
+  }
+  return BigInt(raw);
+};
 
 function applyListFilters(where, params = {}) {
   const { kategori_approval, search, startDate, endDate } = params;
@@ -85,15 +202,15 @@ const buildListMeta = (total, { page, limit }) => ({
   totalPages: Math.ceil(total / limit),
 });
 
-const create = async (data, actorId) => {
-  const count = await prisma.surat_jalan.count();
+const create = async (data, actorId, tx = prisma) => {
+  const count = await tx.surat_jalan.count();
   const year = new Date().getFullYear();
   const nomor = data.nomor_surat_jalan?.trim() || `001/SJ/${data.tipe.toUpperCase()}/DIGITAK/${String(year).slice(-2)}/${String(count + 1).padStart(3, "0")}`;
 
   const status = data.status || (data.tipe === "inbound" ? "menunggu_verifikasi" : "draft_diajukan");
   const tanggal = data.tanggal ? new Date(data.tanggal) : new Date();
 
-  const suratJalan = await prisma.surat_jalan.create({
+  const suratJalan = await tx.surat_jalan.create({
     data: {
       nomor_surat_jalan: nomor,
       tipe: data.tipe,
@@ -104,11 +221,18 @@ const create = async (data, actorId) => {
       personil_pengantar_id: data.personil_pengantar_id ? Number(data.personil_pengantar_id) : null,
       status: status,
       kategori_approval: data.kategori_approval || null,
+      pic_pemohon_nama: data.pic_pemohon_nama || null,
       project_id: data.project_id ? Number(data.project_id) : null,
       surat_jalan_url: data.surat_jalan_url || null,
       tanggal: tanggal,
       created_by: Number(actorId),
       updated_by: Number(actorId),
+      titik_lapangan_id: data.titik_lapangan_id ? Number(data.titik_lapangan_id) : null,
+      tujuan_tipe: data.tujuan_tipe || null,
+      alamat_lapangan: data.alamat_lapangan || null,
+      tipe_pengirim: data.tipe_pengirim || null,
+      pengirim_eksternal_nama: data.pengirim_eksternal_nama || null,
+      supplier_id: data.supplier_id ? Number(data.supplier_id) : null,
       items: {
         create: data.items.map((item) => ({
           barang_id: Number(item.barang_id),
@@ -118,8 +242,9 @@ const create = async (data, actorId) => {
           serial_number: item.serial_number || null,
           foto_url: item.foto_url || null,
           is_kelebihan: Boolean(item.is_kelebihan),
+          is_di_luar_boq: Boolean(item.is_di_luar_boq),
           catatan: item.catatan || null,
-          bin_lokasi_id: item.bin_lokasi_id ? Number(item.bin_lokasi_id) : null,
+          zona_id: item.zona_id ? Number(item.zona_id) : null,
         })),
       },
     },
@@ -129,35 +254,122 @@ const create = async (data, actorId) => {
   return suratJalan;
 };
 
-const findOutboundQueue = async () => {
-  return await prisma.surat_jalan.findMany({
-    where: {
-      tipe: "outbound",
-      status: {
-        in: ["draft_diajukan", "disetujui", "digenerate"],
-      },
-    },
-    include: baseInclude,
+const findOutboundQueue = async (filters = {}) => {
+  const { gudangTujuanId, status, startDate, endDate, search } = filters;
+  const where = { tipe: "outbound" };
+
+  if (status && status !== "all") {
+    where.status = status;
+  }
+
+  const andConditions = [];
+
+  const gudangFilter = parseIdFilter(gudangTujuanId, "gudangTujuanId");
+  if (gudangFilter !== null) {
+    andConditions.push({
+      OR: [
+        { gudang_asal_id: gudangFilter },
+        { gudang_tujuan_id: gudangFilter },
+      ],
+    });
+  }
+
+  if (startDate || endDate) {
+    const dateCondition = {};
+    if (startDate) dateCondition.gte = new Date(startDate);
+    if (endDate) dateCondition.lte = new Date(endDate + "T23:59:59");
+    andConditions.push({ tanggal: dateCondition });
+  }
+
+  if (search && search.trim()) {
+    const s = search.trim();
+    andConditions.push({
+      OR: [
+        { nomor_surat_jalan: { contains: s, mode: "insensitive" } },
+        { project: { nama_project: { contains: s, mode: "insensitive" } } },
+        { gudang_asal: { nama_gudang: { contains: s, mode: "insensitive" } } },
+        { gudang_tujuan: { nama_gudang: { contains: s, mode: "insensitive" } } },
+      ],
+    });
+  }
+
+  if (andConditions.length > 0) {
+    where.AND = andConditions;
+  }
+
+  const data = await prisma.surat_jalan.findMany({
+    where,
+    include: modalListInclude,
     orderBy: [{ updated_at: "desc" }],
   });
+
+  const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
+
+  return data.map((item) => ({
+    ...item,
+    approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+  }));
 };
 
-const findInboundList = async () => {
-  return await prisma.surat_jalan.findMany({
-    where: {
-      tipe: "inbound",
-      status: {
-        // Ditambahkan "diterima_didistribusikan" — sebelumnya status ini
-        // dikecualikan dari list, jadi Surat Jalan yang udah selesai
-        // di-putaway (lihat fix putaway() di service.js) jadi nggak
-        // kelihatan sama sekali, termasuk di tab "Sudah Ditempatkan"
-        // halaman Putaway staf.
-        in: ["draft_diajukan", "menunggu_verifikasi", "ready_putaway", "disetujui", "digenerate", "diterima_didistribusikan"],
-      },
-    },
-    include: baseInclude,
+const findInboundList = async (filters = {}) => {
+  const { gudangTujuanId, status, startDate, endDate, search } = filters;
+  const where = { tipe: "inbound" };
+
+  if (status && status !== "all") {
+    where.status = status;
+  } else {
+    where.status = {
+      in: ["draft_diajukan", "menunggu_verifikasi", "ready_putaway", "disetujui", "digenerate", "diterima_didistribusikan"],
+    };
+  }
+
+  const andConditions = [];
+
+  const gudangFilter = parseIdFilter(gudangTujuanId, "gudangTujuanId");
+  if (gudangFilter !== null) {
+    andConditions.push({
+      OR: [
+        { gudang_asal_id: gudangFilter },
+        { gudang_tujuan_id: gudangFilter },
+      ],
+    });
+  }
+
+  if (startDate || endDate) {
+    const dateCondition = {};
+    if (startDate) dateCondition.gte = new Date(startDate);
+    if (endDate) dateCondition.lte = new Date(endDate + "T23:59:59");
+    andConditions.push({ tanggal: dateCondition });
+  }
+
+  if (search && search.trim()) {
+    const s = search.trim();
+    andConditions.push({
+      OR: [
+        { nomor_surat_jalan: { contains: s, mode: "insensitive" } },
+        { project: { nama_project: { contains: s, mode: "insensitive" } } },
+        { gudang_asal: { nama_gudang: { contains: s, mode: "insensitive" } } },
+        { gudang_tujuan: { nama_gudang: { contains: s, mode: "insensitive" } } },
+      ],
+    });
+  }
+
+  if (andConditions.length > 0) {
+    where.AND = andConditions;
+  }
+
+  const data = await prisma.surat_jalan.findMany({
+    where,
+    include: outboundInclude,
     orderBy: [{ updated_at: "desc" }],
   });
+
+  const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
+
+  return data.map((item) => ({
+    ...item,
+    approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+  }));
 };
 
 const findVerificationQueue = async ({ status, tipe, kategori_approval, search, startDate, endDate, page = 1, limit = 10 } = {}) => {
@@ -181,7 +393,7 @@ const findVerificationQueue = async ({ status, tipe, kategori_approval, search, 
     prisma.surat_jalan.count({ where }),
     prisma.surat_jalan.findMany({
       where,
-      include: baseInclude,
+      include: modalListInclude,
       orderBy: [{ created_at: "desc" }],
       skip: (sanitizedPage - 1) * sanitizedLimit,
       take: sanitizedLimit,
@@ -205,14 +417,22 @@ const findOutboundForApproval = async (params = {}) => {
     prisma.surat_jalan.count({ where }),
     prisma.surat_jalan.findMany({
       where,
-      include: baseInclude,
+      include: modalListInclude,
       orderBy: [{ created_at: "desc" }],
       skip: (sanitizedPage - 1) * sanitizedLimit,
       take: sanitizedLimit,
     }),
   ]);
 
-  return { data, meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }) };
+  const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
+
+  return {
+    data: data.map((item) => ({
+      ...item,
+      approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+    })),
+    meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }),
+  };
 };
 
 const findOutboundForDelivery = async (params = {}) => {
@@ -229,14 +449,22 @@ const findOutboundForDelivery = async (params = {}) => {
     prisma.surat_jalan.count({ where }),
     prisma.surat_jalan.findMany({
       where,
-      include: baseInclude,
-      orderBy: [{ updated_at: "desc" }],
+      include: modalListInclude,
+      orderBy: [{ created_at: "desc" }],
       skip: (sanitizedPage - 1) * sanitizedLimit,
       take: sanitizedLimit,
     }),
   ]);
 
-  return { data, meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }) };
+  const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
+
+  return {
+    data: data.map((item) => ({
+      ...item,
+      approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+    })),
+    meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }),
+  };
 };
 
 const findById = async (id) => {
@@ -244,11 +472,20 @@ const findById = async (id) => {
     where: {
       surat_jalan_id: Number(id),
     },
-    include: baseInclude,
+    include: findByIdInclude,
   });
 };
 
-const updateStatus = async (id, status, tx = prisma) => {
+const findOutboundDetail = async (id) => {
+  return await prisma.surat_jalan.findUnique({
+    where: {
+      surat_jalan_id: Number(id),
+    },
+    include: outboundInclude,
+  });
+};
+
+const updateStatus = async (id, status, options = {}, tx = prisma) => {
   const data = {
     status,
   };
@@ -261,12 +498,34 @@ const updateStatus = async (id, status, tx = prisma) => {
     data.tanggal_diterima = new Date();
   }
 
+  if (status === "ditolak" && options && options.catatan !== undefined) {
+    data.catatan = options.catatan || null;
+  }
+
+  if (options && options.picking_selesai !== undefined) {
+    data.picking_selesai = options.picking_selesai;
+  }
+
   return await tx.surat_jalan.update({
     where: {
       surat_jalan_id: Number(id),
     },
     data,
   });
+};
+
+const claimPicking = async (id, tx = prisma) => {
+  const result = await tx.surat_jalan.updateMany({
+    where: {
+      surat_jalan_id: Number(id),
+      picking_selesai: false,
+    },
+    data: {
+      picking_selesai: true,
+    },
+  });
+
+  return result.count === 1;
 };
 
 const updateInboundItems = async (adjustments) => {
@@ -300,8 +559,8 @@ const addInboundStock = async (suratJalan, tx = prisma) => {
       where: {
         gudang_id: gudangTujuanId,
         barang_id: item.barang_id,
-        kondisi: "baik",
-        bin_lokasi_id: null,
+        kondisi: item.kondisi || "baik",
+        zona_id: null,
         project_id: suratJalan.project_id,
       },
     });
@@ -334,9 +593,9 @@ const addInboundStock = async (suratJalan, tx = prisma) => {
           gudang_id: gudangTujuanId,
           barang_id: item.barang_id,
           project_id: suratJalan.project_id,
-          kondisi: "baik",
+          kondisi: item.kondisi || "baik",
           qty: qty,
-          bin_lokasi_id: null,
+          zona_id: null,
         },
       });
 
@@ -349,6 +608,13 @@ const addInboundStock = async (suratJalan, tx = prisma) => {
           saldo_setelah: Number(newStock.qty),
         },
       });
+    }
+
+    // Hook recalculateZonaStatus: addInboundStock selalu menulis ke zona_id=null
+    // (stok generic, belum di-putaway). Fungsi akan otomatis skip karena zonaId null.
+    // Dipanggil di sini supaya alur recalc terdokumentasi eksplisit untuk tahap audit.
+    for (const item of suratJalan.items) {
+      await capacityService.recalculateZonaStatus(tx, gudangTujuanId, null);
     }
   }
 };
@@ -364,6 +630,75 @@ const createApprovalLog = async (suratJalanId, approverId, tahap, approvalStatus
       catatan: catatan || null,
     },
   });
+};
+
+const getApprovalVerification = async (suratJalanId) => {
+  const log = await prisma.approval_log.findFirst({
+    where: {
+      entity_type: "surat_jalan",
+      entity_id: Number(suratJalanId),
+      tahap: "outbound_approval",
+      status: "disetujui",
+    },
+    orderBy: {
+      created_at: "desc",
+    },
+    include: {
+      approver: {
+        select: {
+          nama: true,
+        },
+      },
+    },
+  });
+
+  if (!log) {
+    return null;
+  }
+
+  return {
+    approver_nama: log.approver?.nama || null,
+    waktu_verifikasi: log.created_at,
+  };
+};
+
+const getBatchApprovalVerifications = async (suratJalanIds) => {
+  const numericIds = suratJalanIds.map(Number).filter((id) => Number.isFinite(id) && id > 0);
+  if (numericIds.length === 0) {
+    return {};
+  }
+
+  const logs = await prisma.approval_log.findMany({
+    where: {
+      entity_type: "surat_jalan",
+      entity_id: { in: numericIds },
+      tahap: "outbound_approval",
+      status: "disetujui",
+    },
+    orderBy: {
+      created_at: "desc",
+    },
+    include: {
+      approver: {
+        select: {
+          nama: true,
+        },
+      },
+    },
+  });
+
+  const latestById = new Map();
+  for (const log of logs) {
+    const key = String(log.entity_id);
+    if (!latestById.has(key)) {
+      latestById.set(key, {
+        approver_nama: log.approver?.nama || null,
+        waktu_verifikasi: log.created_at,
+      });
+    }
+  }
+
+  return latestById;
 };
 
 const deductOutboundStock = async (suratJalan, tx = prisma) => {
@@ -389,21 +724,21 @@ const deductOutboundStock = async (suratJalan, tx = prisma) => {
     const stockWhere = {
       gudang_id: gudangAsalId,
       barang_id: item.barang_id,
-      kondisi: "baik",
+      kondisi: item.kondisi || "baik",
     };
 
     if (suratJalan.project_id) {
       stockWhere.project_id = suratJalan.project_id;
     }
 
-    if (item.bin_lokasi_id) {
-      stockWhere.bin_lokasi_id = item.bin_lokasi_id;
+    if (item.zona_id) {
+      stockWhere.zona_id = item.zona_id;
     }
 
     let stockRecord = await tx.stok_gudang.findFirst({
       where: {
         ...stockWhere,
-        bin_lokasi_id: { not: null },
+        zona_id: { not: null },
       },
       orderBy: {
         qty: "desc",
@@ -455,6 +790,10 @@ const deductOutboundStock = async (suratJalan, tx = prisma) => {
         saldo_setelah: updatedQty,
       },
     });
+
+    // Hook recalculateZonaStatus: hanya zona yang baru saja ter-mutasi.
+    // Jika item.zona_id null (stok generic) → fungsi skip otomatis.
+    await capacityService.recalculateZonaStatus(tx, gudangAsalId, item.zona_id ?? null);
   }
 };
 
@@ -495,11 +834,340 @@ const reduceBoqAllocation = async (suratJalan, tx = prisma) => {
   }
 };
 
+const updateDeliveryStatus = async (id, updateData, tx = prisma) => {
+  return await tx.surat_jalan.update({
+    where: { surat_jalan_id: Number(id) },
+    data: updateData,
+  });
+};
+
+const addItemFoto = async (itemId, fotoData) => {
+  return await prisma.surat_jalan_item_foto.create({
+    data: {
+      item_id: Number(itemId),
+      url: fotoData.url,
+      filename: fotoData.filename || null,
+      mimetype: fotoData.mimetype || null,
+      ukuran_bytes: fotoData.ukuran_bytes,
+    },
+  });
+};
+
+const updateItemVerification = async (itemId, data) => {
+  return await prisma.surat_jalan_item.update({
+    where: { item_id: Number(itemId) },
+    data: {
+      diperiksa_oleh: data.diperiksa_oleh ? Number(data.diperiksa_oleh) : null,
+      diperiksa_pada: data.diperiksa_pada || new Date(),
+    },
+  });
+};
+
+const deleteItemFoto = async (fotoId) => {
+  return await prisma.surat_jalan_item_foto.delete({
+    where: { foto_id: Number(fotoId) },
+  });
+};
+
+const findInboundItemsBySerial = async (serials, { barangId, excludeItemIds = [], tx = prisma }) => {
+  if (!Array.isArray(serials) || serials.length === 0) {
+    return [];
+  }
+
+  const where = {
+    surat_jalan: {
+      tipe: "inbound",
+      status: { not: "ditolak" },
+    },
+    barang_id: Number(barangId),
+    serial_number: { in: serials, mode: "insensitive" },
+    ...(excludeItemIds.length > 0
+      ? { item_id: { notIn: excludeItemIds.map(Number) } }
+      : {}),
+  };
+
+  return await tx.surat_jalan_item.findMany({
+    where,
+    include: {
+      surat_jalan: {
+        select: {
+          nomor_surat_jalan: true,
+          tipe: true,
+          status: true,
+        },
+      },
+    },
+  });
+};
+
+const findOutboundApprovalHistory = async ({ search = "", keputusan, page = 1, limit = 10, startDate, endDate } = {}) => {
+  const approvalWhere = {
+    entity_type: "surat_jalan",
+    tahap: "outbound_approval",
+    status: { in: ["disetujui", "ditolak"] },
+  };
+
+  if (keputusan && ["disetujui", "ditolak"].includes(keputusan)) {
+    approvalWhere.status = keputusan;
+  }
+
+  if (startDate || endDate) {
+    const dateCondition = {};
+    if (startDate) dateCondition.gte = new Date(startDate);
+    if (endDate) dateCondition.lte = new Date(endDate + "T23:59:59");
+    approvalWhere.created_at = dateCondition;
+  }
+
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 50);
+  const sanitizedPage = Math.max(parseInt(page, 10) || 1, 1);
+
+  let sjIdFilter = null;
+  if (search && search.trim()) {
+    const s = search.trim();
+    const matchingSjs = await prisma.surat_jalan.findMany({
+      where: {
+        tipe: "outbound",
+        OR: [
+          { nomor_surat_jalan: { contains: s, mode: "insensitive" } },
+          { project: { nama_project: { contains: s, mode: "insensitive" } } },
+          { gudang_asal: { nama_gudang: { contains: s, mode: "insensitive" } } },
+          { gudang_tujuan: { nama_gudang: { contains: s, mode: "insensitive" } } },
+        ],
+      },
+      select: { surat_jalan_id: true },
+    });
+    sjIdFilter = matchingSjs.map((sj) => Number(sj.surat_jalan_id));
+    if (sjIdFilter.length === 0) {
+      return { data: [], meta: buildListMeta(0, { page: sanitizedPage, limit: safeLimit }) };
+    }
+    approvalWhere.entity_id = { in: sjIdFilter };
+  }
+
+  const [total, logs] = await Promise.all([
+    prisma.approval_log.count({ where: approvalWhere }),
+    prisma.approval_log.findMany({
+      where: approvalWhere,
+      orderBy: { created_at: "desc" },
+      skip: (sanitizedPage - 1) * safeLimit,
+      take: safeLimit,
+      include: {
+        approver: { select: { nama: true } },
+      },
+    }),
+  ]);
+
+  if (logs.length === 0) {
+    return { data: [], meta: buildListMeta(total, { page: sanitizedPage, limit: safeLimit }) };
+  }
+
+  const sjIds = logs.map((l) => Number(l.entity_id));
+  const suratJalans = await prisma.surat_jalan.findMany({
+    where: { surat_jalan_id: { in: sjIds } },
+    select: {
+      surat_jalan_id: true,
+      nomor_surat_jalan: true,
+      tipe: true,
+      status: true,
+      tanggal: true,
+      updated_at: true,
+      catatan: true,
+      kategori_approval: true,
+      pic_pemohon_nama: true,
+      project: { select: { project_id: true, nama_project: true } },
+      gudang_asal: { select: { gudang_id: true, nama_gudang: true } },
+      gudang_tujuan: { select: { gudang_id: true, nama_gudang: true } },
+    },
+  });
+
+  const sjMap = new Map(suratJalans.map((sj) => [String(sj.surat_jalan_id), sj]));
+
+  const data = logs.map((log) => {
+    const sj = sjMap.get(String(Number(log.entity_id)));
+    return {
+      surat_jalan_id: Number(log.entity_id),
+      nomor_surat_jalan: sj?.nomor_surat_jalan ?? null,
+      tanggal: sj?.tanggal ?? null,
+      gudang_asal: sj?.gudang_asal ?? null,
+      gudang_tujuan: sj?.gudang_tujuan ?? null,
+      keputusan: log.status,
+      catatan: log.catatan ?? sj?.catatan ?? null,
+      penyetuju: log.approver?.nama ?? null,
+      waktu_keputusan: log.created_at,
+      status_surat_jalan: sj?.status ?? null,
+    };
+  });
+
+  return { data, meta: buildListMeta(total, { page: sanitizedPage, limit: safeLimit }) };
+};
+
+const findRejectedList = async ({ tipe = "all", search = "", startDate, endDate, page = 1, limit = 10 } = {}) => {
+  const where = { status: "ditolak" };
+
+  if (tipe && tipe !== "all" && ["inbound", "outbound"].includes(tipe)) {
+    where.tipe = tipe;
+  }
+
+  if (search && search.trim()) {
+    const s = search.trim();
+    where.OR = [
+      { nomor_surat_jalan: { contains: s, mode: "insensitive" } },
+      { project: { nama_project: { contains: s, mode: "insensitive" } } },
+      { gudang_asal: { nama_gudang: { contains: s, mode: "insensitive" } } },
+      { gudang_tujuan: { nama_gudang: { contains: s, mode: "insensitive" } } },
+    ];
+  }
+
+  if (startDate || endDate) {
+    const dateCondition = {};
+    if (startDate) dateCondition.gte = new Date(startDate);
+    if (endDate) dateCondition.lte = new Date(endDate + "T23:59:59");
+    where.updated_at = dateCondition;
+  }
+
+  const { page: sanitizedPage, limit: sanitizedLimit } = sanitizePagination(page, limit);
+
+  const [total, rows] = await Promise.all([
+    prisma.surat_jalan.count({ where }),
+    prisma.surat_jalan.findMany({
+      where,
+      orderBy: [{ updated_at: "desc" }],
+      skip: (sanitizedPage - 1) * sanitizedLimit,
+      take: sanitizedLimit,
+      select: {
+        surat_jalan_id: true,
+        nomor_surat_jalan: true,
+        tipe: true,
+        status: true,
+        tanggal: true,
+        updated_at: true,
+        created_at: true,
+        catatan: true,
+        kategori_approval: true,
+        pic_pemohon_nama: true,
+        project: { select: { project_id: true, nama_project: true } },
+        gudang_asal: { select: { gudang_id: true, nama_gudang: true } },
+        gudang_tujuan: { select: { gudang_id: true, nama_gudang: true } },
+      },
+    }),
+  ]);
+
+  if (rows.length === 0) {
+    return { data: [], meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }) };
+  }
+
+  const ids = rows.map((r) => Number(r.surat_jalan_id));
+  const rejectLogs = await prisma.approval_log.findMany({
+    where: {
+      entity_type: "surat_jalan",
+      entity_id: { in: ids },
+      status: "ditolak",
+      tahap: { in: ["inbound_verifikasi", "outbound_approval"] },
+    },
+    orderBy: { created_at: "desc" },
+    include: {
+      approver: { select: { user_id: true, nama: true, email: true } },
+    },
+  });
+
+  const latestBySj = new Map();
+  for (const log of rejectLogs) {
+    const key = String(log.entity_id);
+    if (!latestBySj.has(key)) {
+      latestBySj.set(key, log);
+    }
+  }
+
+  const data = rows.map((r) => {
+    const log = latestBySj.get(String(Number(r.surat_jalan_id)));
+    return {
+      surat_jalan_id: Number(r.surat_jalan_id),
+      nomor_surat_jalan: r.nomor_surat_jalan,
+      tipe: r.tipe,
+      status: r.status,
+      tanggal: r.tanggal,
+      kategori_approval: r.kategori_approval,
+      pic_pemohon_nama: r.pic_pemohon_nama,
+      project: r.project,
+      gudang_asal: r.gudang_asal,
+      gudang_tujuan: r.gudang_tujuan,
+      catatan: r.catatan ?? log?.catatan ?? null,
+      ditolak_oleh: log?.approver
+        ? {
+            user_id: Number(log.approver.user_id),
+            nama: log.approver.nama,
+            email: log.approver.email,
+          }
+        : null,
+      ditolak_pada: log?.created_at ?? r.updated_at ?? null,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+    };
+  });
+
+  return { data, meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }) };
+};
+
+const findStaffHistory = async (userId, { page = 1, pageSize = 50 } = {}) => {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safePageSize = Math.min(200, Math.max(1, Number(pageSize) || 50));
+  const skip = (safePage - 1) * safePageSize;
+
+  const whereClause = {
+    actor_id: Number(userId),
+    entity_type: "surat_jalan",
+  };
+
+  const [logs, total] = await Promise.all([
+    prisma.audit_log.findMany({
+      where: whereClause,
+      orderBy: { created_at: "desc" },
+      skip,
+      take: safePageSize,
+      include: {
+        actor: { select: { user_id: true, nama: true, email: true } },
+      },
+    }),
+    prisma.audit_log.count({ where: whereClause }),
+  ]);
+
+  const suratJalanIds = logs
+    .map((log) => Number(log.entity_id))
+    .filter((id) => Number.isFinite(id) && id > 0);
+
+  const suratJalans = suratJalanIds.length
+    ? await prisma.surat_jalan.findMany({
+        where: { surat_jalan_id: { in: suratJalanIds } },
+        select: {
+          surat_jalan_id: true,
+          nomor_surat_jalan: true,
+          tipe: true,
+          status: true,
+          tanggal: true,
+        },
+      })
+    : [];
+
+  const sjMap = new Map(suratJalans.map((sj) => [String(sj.surat_jalan_id), sj]));
+
+  const items = logs.map((log) => {
+    const sj = sjMap.get(String(log.entity_id));
+    return {
+      audit_id: log.audit_id,
+      aksi: log.aksi,
+      created_at: log.created_at,
+      surat_jalan: sj || null,
+    };
+  });
+
+  return { items, total, page: safePage, pageSize: safePageSize };
+};
+
 module.exports = {
   create,
   findOutboundQueue,
   findInboundList,
   findById,
+  findOutboundDetail,
   findVerificationQueue,
   findOutboundForApproval,
   findOutboundForDelivery,
@@ -509,4 +1177,14 @@ module.exports = {
   addInboundStock,
   createApprovalLog,
   reduceBoqAllocation,
+  updateDeliveryStatus,
+  addItemFoto,
+  updateItemVerification,
+  deleteItemFoto,
+  findOutboundApprovalHistory,
+  findStaffHistory,
+  findRejectedList,
+  getApprovalVerification,
+  getBatchApprovalVerifications,
+  claimPicking,
 };

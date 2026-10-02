@@ -3,12 +3,23 @@ const express = require("express");
 const router = express.Router();
 
 const suratJalanController = require("./surat-jalan.controller");
-const { createSuratJalanSchema, receiveInboundSchema, approveInboundSchema, rejectInboundSchema, rejectOutboundSchema, putawaySchema, retrieveSchema } = require("./surat-jalan.validation");
+const {
+  createSuratJalanSchema,
+  receiveInboundSchema,
+  approveInboundSchema,
+  rejectInboundSchema,
+  rejectOutboundSchema,
+  cancelDraftSchema,
+  putawaySchema,
+  retrieveSchema,
+  deliveryStatusSchema,
+  itemFotoSchema
+} = require("./surat-jalan.validation");
 const validate = require("../../middlewares/validation.middleware");
 const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
 
-router.post("/", authenticate, validate(createSuratJalanSchema), suratJalanController.create);
+router.post("/", authenticate, authorize("ADMIN", "STAFF"), validate(createSuratJalanSchema), suratJalanController.create);
 router.post(
   "/inbound/staff",
   authenticate,
@@ -22,10 +33,15 @@ router.post(
   suratJalanController.receiveInbound
 );
 router.get("/outbound/queue", authenticate, suratJalanController.findOutboundQueue);
-router.get("/outbound/approval", authenticate, suratJalanController.findOutboundForApproval);
-router.get("/outbound/delivery", authenticate, suratJalanController.findOutboundForDelivery);
+router.get("/outbound/approval", authenticate, authorize("SUPERVISOR"), suratJalanController.findOutboundForApproval);
+router.get("/outbound/delivery", authenticate, authorize("SUPERVISOR"), suratJalanController.findOutboundForDelivery);
+router.get("/outbound/riwayat-approval", authenticate, authorize("SUPERVISOR"), suratJalanController.findOutboundApprovalHistory);
+router.get("/outbound/:id", authenticate, suratJalanController.findOutboundDetail);
+
 router.get("/inbound", authenticate, suratJalanController.findInboundList);
 router.get("/verification/queue", authenticate, suratJalanController.findVerificationQueue);
+router.get("/staff/history", authenticate, suratJalanController.findStaffHistory);
+router.get("/rejected", authenticate, authorize("SUPERVISOR"), suratJalanController.findRejectedList);
 router.get("/:id", authenticate, suratJalanController.findById);
 
 router.put(
@@ -59,6 +75,14 @@ router.put(
 );
 
 router.put(
+  "/:id/delivery-status",
+  authenticate,
+  authorize("STAFF", "SUPERVISOR"),
+  validate(deliveryStatusSchema),
+  suratJalanController.updateDeliveryStatus
+);
+
+router.put(
   "/:id/reject-inbound",
   authenticate,
   authorize("SUPERVISOR"),
@@ -72,6 +96,14 @@ router.put(
   authorize("SUPERVISOR"),
   validate(rejectOutboundSchema),
   suratJalanController.rejectOutbound
+);
+
+router.put(
+  "/:id/cancel-draft",
+  authenticate,
+  authorize("STAFF", "SUPERVISOR", "ADMIN"),
+  validate(cancelDraftSchema),
+  suratJalanController.cancelDraft
 );
 
 router.post(
@@ -88,6 +120,21 @@ router.post(
   authorize("STAFF", "SUPERVISOR"),
   validate(retrieveSchema),
   suratJalanController.retrieve
+);
+
+router.post(
+  "/:id/items/:itemId/fotos",
+  authenticate,
+  authorize("STAFF", "SUPERVISOR"),
+  validate(itemFotoSchema),
+  suratJalanController.addItemFoto
+);
+
+router.delete(
+  "/:id/items/:itemId/fotos/:fotoId",
+  authenticate,
+  authorize("STAFF", "SUPERVISOR"),
+  suratJalanController.deleteItemFoto
 );
 
 module.exports = router;

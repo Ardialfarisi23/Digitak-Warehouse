@@ -1,177 +1,260 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, X, Eye, ArrowUpRight, ArrowDownLeft } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Search, ChevronDown, Filter, X, Eye, CheckSquare, AlertTriangle, Clock, PackageCheck, Truck, XCircle } from "lucide-react";
 import { useApi } from "@/lib/api";
+import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
+import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
 
-type ActiveTab = "SEMUA" | "INBOUND" | "OUTBOUND";
-
-const STATUS_DELIVERY_LABEL: Record<string, string> = {
-  disetujui: "Disetujui",
-  digenerate: "Digenerate",
-  diterima_didistribusikan: "Diterima / Didistribusikan",
-  draft_diajukan: "Draft Diajukan",
+const STATUS_LABEL: Record<string, string> = {
+  stok_kurang: "Stok Tidak Cukup",
+  melewati_batas: "Melewati Limit Kuota",
+  manual_override: "Manual Outbound",
 };
 
-const STATUS_DELIVERY_BADGE: Record<string, string> = {
-  disetujui: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  digenerate: "bg-blue-50 text-blue-700 border-blue-200",
-  diterima_didistribusikan: "bg-indigo-50 text-indigo-700 border-indigo-200",
-  draft_diajukan: "bg-slate-100 text-slate-700 border-slate-200",
+const STATUS_BADGE: Record<string, string> = {
+  stok_kurang: "bg-amber-50 text-amber-700 border-amber-200",
+  melewati_batas: "bg-rose-50 text-rose-700 border-rose-200",
+  manual_override: "bg-slate-100 text-slate-700 border-slate-200",
 };
 
-interface BaseRow {
-  surat_jalan_id: number;
-  nomor_surat_jalan: string;
-  status: string;
-  tipe: "inbound" | "outbound";
-  personil_pengantar?: { nama?: string } | null;
-  kendaraan?: { jenis_kendaraan?: string; no_polisi?: string } | null;
-}
-
-interface DeliveryItem {
+interface OutboundItem {
   item_id: number;
   qty: number;
-  kondisi?: string | null;
   serial_number?: string | null;
+  kondisi?: string | null;
   catatan?: string | null;
-  barang?: { nama_barang?: string; kode_perangkat?: string; satuan_default?: { kode_satuan?: string } } | null;
+  barang?: { nama_barang?: string; kode_perangkat?: string; satuan_default?: { kode_satuan?: string }; kategori?: { is_kritis?: boolean } } | null;
   satuan?: { kode_satuan?: string } | null;
+  approval_verification?: {
+    approver_nama: string | null;
+    waktu_verifikasi: string | null;
+  } | null;
 }
 
-interface DeliveryDetail extends BaseRow {
+interface OutboundRow {
+  surat_jalan_id: number;
+  nomor_surat_jalan: string;
+  created_at: string;
   tanggal?: string;
-  tanggal_disetujui?: string;
-  tanggal_digenerate?: string;
-  tanggal_diterima?: string;
-  catatan?: string | null;
-  project?: { nama_project?: string; area?: string } | null;
+  kategori_approval?: string;
+  status?: string;
+  project?: { nama_project?: string } | null;
   gudang_asal?: { nama_gudang?: string } | null;
   gudang_tujuan?: { nama_gudang?: string } | null;
-  items?: DeliveryItem[];
+  personil_pengantar?: { nama?: string } | null;
+  kendaraan?: { jenis_kendaraan?: string; no_polisi?: string } | null;
+  creator?: { nama?: string } | null;
+  items?: OutboundItem[];
+  boq_id?: number | null;
+  boq?: { boq_number?: string; tiket?: { kode_tiket?: string } } | null;
+  tipe?: string;
+  pic_pemohon_nama?: string;
 }
 
-export default function SupervisorDeliveryPage() {
-  const { get } = useApi();
-  const [activeTab, setActiveTab] = useState<ActiveTab>("SEMUA");
-  const [dataList, setDataList] = useState<BaseRow[]>([]);
+interface HistoryRow {
+  surat_jalan_id: number;
+  nomor_surat_jalan: string;
+  tanggal: string | null;
+  gudang_asal: { nama_gudang?: string } | null;
+  gudang_tujuan: { nama_gudang?: string } | null;
+  keputusan: string;
+  catatan: string | null;
+  penyetuju: string | null;
+  waktu_keputusan: string | null;
+  status_surat_jalan: string | null;
+}
+
+export default function SupervisorApprovalOutboundPage() {
+  const router = useRouter();
+  const { get, put } = useApi();
+  const [requests, setRequests] = useState<OutboundRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedDetail, setSelectedDetail] = useState<DeliveryDetail | null>(null);
-  const [isDetailLoading, setIsDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const [query, setQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [confirmTargetId, setConfirmTargetId] = useState<number | null>(null);
+
+  const [showRejectDialog, setShowRejectDialog] = useState(false);
+  const [rejectTargetId, setRejectTargetId] = useState<number | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+
+  const [isDocModalOpen, setIsDocModalOpen] = useState(false);
+  const [selectedDocItem, setSelectedDocItem] = useState<any>(null);
+
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  const [activeTab, setActiveTab] = useState<"pending" | "history">("pending");
+
+  const [historyData, setHistoryData] = useState<HistoryRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
+  const [historyKeputusan, setHistoryKeputusan] = useState<string>("all");
+
+  const openDocModal = (item: any) => {
+    setSelectedDocItem(item);
+    setIsDocModalOpen(true);
+  };
+
+  const closeDocModal = () => {
+    setIsDocModalOpen(false);
+    setSelectedDocItem(null);
+  };
+
+  const openPreview = (url: string) => setPreviewImage(url);
+  const closePreview = () => setPreviewImage(null);
+
+  const fetchApprovalQueue = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
       const params = new URLSearchParams();
-      if (searchQuery.trim()) params.set("search", searchQuery.trim());
+      params.set("page", String(currentPage));
+      if (query.trim()) params.set("search", query.trim());
+      if (selectedCategory !== "all") params.set("kategori_approval", selectedCategory);
 
-      let outboundData: BaseRow[] = [];
-      let inboundData: BaseRow[] = [];
-
-      if (activeTab === "SEMUA" || activeTab === "OUTBOUND") {
-        const outboundRes = await get(`${baseUrl}/api/surat-jalan/outbound/delivery?${params.toString()}`);
-        if (!outboundRes.ok) {
-          throw new Error("Gagal mengambil data outbound delivery.");
-        }
-        const outboundJson = await outboundRes.json();
-        const outboundResult = outboundJson?.data ?? outboundJson ?? {};
-        const outboundList = Array.isArray(outboundResult.data)
-          ? outboundResult.data
-          : Array.isArray(outboundResult)
-            ? outboundResult
-            : [];
-        outboundData = outboundList.map((item) => ({ ...(item as BaseRow), tipe: "outbound" as const }));
+      const response = await get(`${baseUrl}/api/surat-jalan/outbound/approval?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error("Gagal mengambil daftar verifikasi surat jalan.");
       }
-
-      if (activeTab === "SEMUA" || activeTab === "INBOUND") {
-        const inboundRes = await get(`${baseUrl}/api/surat-jalan/inbound?${params.toString()}`);
-        if (!inboundRes.ok) {
-          throw new Error("Gagal mengambil data inbound.");
-        }
-        const inboundJson = await inboundRes.json();
-        const inboundResult = inboundJson?.data ?? inboundJson ?? {};
-        const inboundList = Array.isArray(inboundResult.data)
-          ? inboundResult.data
-          : Array.isArray(inboundResult)
-            ? inboundResult
-            : [];
-        inboundData = inboundList.map((item) => ({ ...(item as BaseRow), tipe: "inbound" as const }));
-      }
-
-      const combined = activeTab === "SEMUA" ? [...outboundData, ...inboundData] : activeTab === "OUTBOUND" ? outboundData : inboundData;
-      setDataList(combined);
+      const json = await response.json();
+      const result = json?.data ?? json ?? {};
+      const list = Array.isArray(result.data) ? result.data : Array.isArray(result) ? result : [];
+      setRequests(list as OutboundRow[]);
+      setTotalPages((result?.meta?.totalPages as number) || 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan saat memuat data.");
     } finally {
       setIsLoading(false);
     }
-  }, [get, activeTab, searchQuery]);
+  }, [get, currentPage, query, selectedCategory]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  const closeDetail = useCallback(() => {
-    setSelectedDetail(null);
-    setDetailError(null);
-  }, []);
-
-  // Shortcut tombol ESC untuk menutup Modal
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeDetail();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeDetail]);
-
-  const filteredData = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return dataList;
-    return dataList.filter((item) => {
-      return (
-        item.nomor_surat_jalan.toLowerCase().includes(q) ||
-        (item.personil_pengantar?.nama || "").toLowerCase().includes(q) ||
-        (item.kendaraan?.jenis_kendaraan || "").toLowerCase().includes(q) ||
-        (item.kendaraan?.no_polisi || "").toLowerCase().includes(q)
-      );
-    });
-  }, [dataList, searchQuery]);
-
-  const getStatusLabel = (status: string) => {
-    return STATUS_DELIVERY_LABEL[status] || status;
-  };
-
-  const getStatusBadge = (status: string) => {
-    return STATUS_DELIVERY_BADGE[status] || "bg-slate-100 text-slate-700 border-slate-200";
-  };
-
-  const openDetail = async (row: BaseRow) => {
-    setSelectedDetail(null);
-    setDetailError(null);
-    setIsDetailLoading(true);
+  const fetchHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const response = await get(`${baseUrl}/api/surat-jalan/${row.surat_jalan_id}`);
+      const params = new URLSearchParams();
+      params.set("page", String(historyPage));
+      params.set("limit", "10");
+      if (query.trim()) params.set("search", query.trim());
+      if (historyKeputusan !== "all") params.set("keputusan", historyKeputusan);
+
+      const response = await get(`${baseUrl}/api/surat-jalan/outbound/riwayat-approval?${params.toString()}`);
       if (!response.ok) {
-        throw new Error("Gagal mengambil detail surat jalan.");
+        throw new Error("Gagal mengambil riwayat approval outbound.");
       }
       const json = await response.json();
-      const data = json?.data ?? json ?? null;
-      setSelectedDetail({ ...(data as DeliveryDetail), tipe: row.tipe });
+      const result = json?.data ?? json ?? {};
+      const list = Array.isArray(result.data) ? result.data : Array.isArray(result) ? result : [];
+      setHistoryData(list as HistoryRow[]);
+      setHistoryTotalPages((result?.meta?.totalPages as number) || 1);
     } catch (err) {
-      setDetailError(err instanceof Error ? err.message : "Terjadi kesalahan saat memuat detail.");
+      setHistoryError(err instanceof Error ? err.message : "Terjadi kesalahan saat memuat riwayat.");
     } finally {
-      setIsDetailLoading(false);
+      setHistoryLoading(false);
     }
+  }, [get, historyPage, query, historyKeputusan]);
+
+  useEffect(() => {
+    fetchApprovalQueue();
+  }, [fetchApprovalQueue]);
+
+  useEffect(() => {
+    if (activeTab === "history") {
+      fetchHistory();
+    }
+  }, [activeTab, fetchHistory]);
+
+  const filteredRequests = useMemo(() => {
+    return requests.filter((r) => {
+      if (activeTab === "pending") {
+        return r.status === "draft_diajukan";
+      }
+      return ["disetujui", "ditolak"].includes(r.status || "");
+    }).filter((r) => {
+      const matchCat =
+        selectedCategory === "all" ||
+        (r.kategori_approval || "manual_override") === selectedCategory;
+      return matchCat;
+    });
+  }, [requests, selectedCategory, activeTab]);
+
+  const filteredHistory = useMemo(() => {
+    return historyData.filter((r) => {
+      if (historyKeputusan === "all") return true;
+      return r.keputusan === historyKeputusan;
+    });
+  }, [historyData, historyKeputusan]);
+
+  const formatDateTime = (value: string) => {
+    if (!value) return "-";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleString("id-ID", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
-  const formatDate = (value?: string) => {
+  const stats = useMemo(() => {
+    const tabRequests = requests.filter((r) => {
+      if (activeTab === "pending") {
+        return r.status === "draft_diajukan";
+      }
+      return ["disetujui", "ditolak"].includes(r.status || "");
+    });
+
+    const totalAntrean = tabRequests.length;
+    const stokTidakCukup = tabRequests.filter((r) => {
+      const item = r as any;
+      return (
+        (typeof item.stockAvailable === "number" && typeof item.requestedQty === "number" && item.stockAvailable < item.requestedQty) ||
+        item.isInsufficient === true ||
+        item.stockStatus === "INSUFFICIENT" ||
+        item.kategori_approval === "stok_kurang"
+      );
+    }).length;
+    const melewatiLimit = tabRequests.filter((r) => {
+      const item = r as any;
+      return (
+        item.exceedsLimit === true ||
+        (typeof item.qty === "number" && typeof item.maxLimit === "number" && item.qty > item.maxLimit) ||
+        item.limitStatus === "EXCEEDED" ||
+        item.kategori_approval === "melewati_batas"
+      );
+    }).length;
+    const manualOutbound = tabRequests.filter((r) => {
+      const item = r as any;
+      return (
+        item.isManual === true ||
+        item.statusType === "Manual Outbound" ||
+        item.tipe === "MANUAL" ||
+        item.status === "Manual Outbound" ||
+        item.kategori_approval === "manual_override"
+      );
+    }).length;
+
+    return { totalAntrean, stokTidakCukup, melewatiLimit, manualOutbound };
+  }, [requests, activeTab]);
+
+  const formatDate = (value: string) => {
     if (!value) return "-";
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return value;
@@ -182,651 +265,663 @@ export default function SupervisorDeliveryPage() {
     });
   };
 
+  const openConfirmDialog = (id: number) => {
+    setConfirmTargetId(id);
+    setShowConfirmDialog(true);
+  };
+
+  const closeConfirmDialog = () => {
+    setShowConfirmDialog(false);
+    setConfirmTargetId(null);
+  };
+
+  const executeApprove = async () => {
+    if (!confirmTargetId) return;
+    const id = confirmTargetId;
+    setActionLoading(String(id));
+    closeConfirmDialog();
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const response = await put(`${baseUrl}/api/surat-jalan/${id}/approve-outbound`, {});
+      if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        throw new Error(err?.message || "Gagal menyetujui outbound.");
+      }
+      setRequests((prev) => prev.map((r) => r.surat_jalan_id === id ? { ...r, status: "disetujui" } : r));
+      setToast({ message: "Surat Jalan berhasil diverifikasi dan disetujui.", type: "success" });
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Gagal menyetujui outbound.", type: "error" });
+    } finally {
+      setActionLoading(null);
+      setTimeout(() => setToast(null), 4000);
+    }
+  };
+
+  const openRejectDialog = (id: number) => {
+    setRejectTargetId(id);
+    setRejectReason("");
+    setShowRejectDialog(true);
+  };
+
+  const closeRejectDialog = () => {
+    setShowRejectDialog(false);
+    setRejectTargetId(null);
+    setRejectReason("");
+  };
+
+  const executeReject = async () => {
+    if (!rejectTargetId) return;
+    const id = rejectTargetId;
+    const alasan = rejectReason.trim();
+    if (alasan.length < 5) {
+      setToast({ message: "Alasan penolakan minimal 5 karakter.", type: "error" });
+      return;
+    }
+    setActionLoading(String(id));
+    closeRejectDialog();
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const response = await put(`${baseUrl}/api/surat-jalan/${id}/reject-outbound`, { catatan: alasan });
+      if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        throw new Error(err?.message || "Gagal menolak outbound.");
+      }
+      setRequests((prev) => prev.map((r) => r.surat_jalan_id === id ? { ...r, status: "ditolak" } : r));
+      setToast({ message: "Permintaan outbound berhasil ditolak.", type: "success" });
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Gagal menolak outbound.", type: "error" });
+    } finally {
+      setActionLoading(null);
+      setTimeout(() => setToast(null), 4000);
+    }
+  };
+
   return (
-    <div className="flex-1 p-4 md:p-8 bg-[#F8F6F0] min-h-screen text-slate-800 w-full overflow-x-hidden">
-      {/* HEADER SECTION */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-          Tracking Pengiriman Surat Jalan
-        </h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Monitoring Surat Jalan inbound dan outbound yang telah disetujui.
-        </p>
+    <div className="min-h-screen bg-slate-50/50 p-6 md:p-8 space-y-6">
+      <div className="flex items-center gap-4">
+        <Link
+          href="/dashboard/supervisor/approval"
+          className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-900"
+        >
+          <ArrowLeft size={18} />
+        </Link>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
+              Supervisor Portal
+            </span>
+            <span className="text-slate-300">•</span>
+            <span className="text-xs font-medium text-slate-500">
+              Otorisasi Barang Keluar
+            </span>
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900">
+            Form Persetujuan Pengeluaran Barang (Outbound)
+          </h1>
+        </div>
       </div>
 
-      {error && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 mb-6">
-          {error}
-          <button
-            onClick={fetchData}
-            className="ml-3 rounded-lg border border-rose-300 px-3 py-1 text-xs font-semibold text-rose-800 hover:bg-rose-100"
-          >
-            Coba Lagi
-          </button>
-        </div>
-      )}
-
-      {/* TABS & SEARCH BAR */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-        <div className="flex flex-wrap items-center gap-2 bg-stone-200/50 p-1.5 rounded-2xl w-fit">
-          {(["SEMUA", "INBOUND", "OUTBOUND"] as ActiveTab[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
-                activeTab === tab
-                  ? "bg-[#FF5500] text-white shadow-md shadow-orange-500/20"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-stone-200/60"
-              }`}
-            >
-              {tab === "SEMUA" ? "Semua" : tab === "INBOUND" ? "Inbound" : "Outbound"}
-            </button>
-          ))}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex justify-between items-start">
+          <div>
+            <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">Total Antrean</p>
+            <h3 className="text-3xl font-bold text-slate-900 mb-1">{stats.totalAntrean}</h3>
+            <p className="text-xs text-slate-400">Menunggu persetujuan</p>
+          </div>
+          <div className="p-2 bg-slate-50 rounded-lg text-slate-400">
+            <Clock className="w-5 h-5" />
+          </div>
         </div>
 
-        <div className="relative w-full md:w-80">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+        <div className="bg-rose-50/40 border border-rose-100 rounded-2xl p-5 shadow-sm flex justify-between items-start">
+          <div>
+            <p className="text-xs font-bold tracking-wider text-rose-600 uppercase mb-2">Stok Tidak Cukup</p>
+            <h3 className="text-3xl font-bold text-rose-600 mb-1">{stats.stokTidakCukup}</h3>
+            <p className="text-xs text-rose-500 font-medium">Perlu penyesuaian stok</p>
+          </div>
+          <div className="p-2 bg-rose-100/50 rounded-lg text-rose-500">
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-orange-50/40 border border-orange-100 rounded-2xl p-5 shadow-sm flex justify-between items-start">
+          <div>
+            <p className="text-xs font-bold tracking-wider text-orange-600 uppercase mb-2">Melewati Limit</p>
+            <h3 className="text-3xl font-bold text-orange-600 mb-1">{stats.melewatiLimit}</h3>
+            <p className="text-xs text-orange-500 font-medium">Melebihi kuota</p>
+          </div>
+          <div className="p-2 bg-orange-100/50 rounded-lg text-orange-500">
+            <Truck className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex justify-between items-start">
+          <div>
+            <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">Manual Outbound</p>
+            <h3 className="text-3xl font-bold text-slate-900 mb-1">{stats.manualOutbound}</h3>
+            <p className="text-xs text-slate-400">Tanpa persetujuan otomatis</p>
+          </div>
+          <div className="p-2 bg-slate-50 rounded-lg text-slate-400">
+            <PackageCheck className="w-5 h-5" />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-sm flex flex-col sm:flex-row gap-3 items-center justify-between">
+        <div className="relative w-full sm:w-96">
+          <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
-            type="text"
-            placeholder="Cari No. Surat Jalan / Driver / Kendaraan..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5500]/50 shadow-sm transition"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Cari No. SJ, Project, Gudang..."
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-50/60 border-none rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 placeholder-slate-400"
           />
         </div>
+
+        <div className="relative w-full sm:w-56">
+          <Filter className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="w-full pl-10 pr-8 py-2.5 bg-slate-50/60 border-none rounded-xl text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer appearance-none font-medium"
+          >
+            <option value="all">Semua Kategori</option>
+            <option value="stok_kurang">Stok Tidak Cukup</option>
+            <option value="melewati_batas">Melewati Limit Kuota</option>
+            <option value="manual_override">Manual</option>
+          </select>
+          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        </div>
+
+        {activeTab === "history" && (
+          <div className="relative w-full sm:w-56">
+            <Filter className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <select
+              value={historyKeputusan}
+              onChange={(e) => {
+                setHistoryKeputusan(e.target.value);
+                setHistoryPage(1);
+              }}
+              className="w-full pl-10 pr-8 py-2.5 bg-slate-50/60 border-none rounded-xl text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer appearance-none font-medium"
+            >
+              <option value="all">Semua Keputusan</option>
+              <option value="disetujui">Disetujui</option>
+              <option value="ditolak">Ditolak</option>
+            </select>
+            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+        )}
       </div>
 
-      {/* DATA TABLE */}
-      <div className="bg-white rounded-3xl border border-stone-200/80 shadow-sm w-full overflow-hidden">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab("pending")}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
+            activeTab === "pending"
+              ? "bg-indigo-600 text-white shadow-sm"
+              : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          Perlu Persetujuan
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("history")}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
+            activeTab === "history"
+              ? "bg-indigo-600 text-white shadow-sm"
+              : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          Riwayat Persetujuan
+        </button>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse table-fixed">
-            <thead>
-              <tr className="border-b border-stone-100 bg-stone-50/50 text-[11px] md:text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                <th className="py-4 px-3 md:px-4 w-[11%]">Tipe</th>
-                <th className="py-4 px-3 md:px-4 w-[24%]">No. Surat Jalan</th>
-                <th className="py-4 px-3 md:px-4 w-[18%]">Driver</th>
-                <th className="py-4 px-3 md:px-4 w-[18%]">Kendaraan</th>
-                <th className="py-4 px-3 md:px-4 w-[16%]">Status</th>
-                <th className="py-4 px-2 md:px-3 w-[13%] text-center">Detail</th>
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider text-xs border-b border-slate-200">
+              <tr>
+                <th className="px-4 py-3 break-all">No. Surat Jalan</th>
+                <th className="px-4 py-3">Tanggal</th>
+                {activeTab === "history" ? (
+                  <>
+                    <th className="px-4 py-3">Asal / Tujuan</th>
+                    <th className="px-4 py-3">Keputusan</th>
+                    <th className="px-4 py-3">Catatan</th>
+                    <th className="px-4 py-3">Oleh</th>
+                    <th className="px-4 py-3">Waktu Keputusan</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-4 py-3">Project</th>
+                    <th className="px-4 py-3">Gudang</th>
+                    <th className="px-4 py-3">Status</th>
+                  </>
+                )}
+                <th className="px-4 py-3 text-center">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-stone-100 text-xs md:text-sm text-slate-700">
-              {isLoading ? (
+            <tbody className="divide-y divide-slate-100">
+              {isLoading && activeTab === "pending" ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
                     <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
-                    <p className="mt-2 text-sm">Memuat data surat jalan...</p>
+                    <p className="mt-2 text-sm">Memuat data outbound...</p>
                   </td>
                 </tr>
-              ) : filteredData.length === 0 ? (
+              ) : historyLoading && activeTab === "history" ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400 text-sm">
-                    Tidak ada data Surat Jalan yang sesuai.
+                  <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                    <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
+                    <p className="mt-2 text-sm">Memuat riwayat...</p>
                   </td>
                 </tr>
+              ) : activeTab === "pending" && filteredRequests.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                    <p className="text-sm font-semibold text-slate-700">Tidak ada pengajuan outbound yang menunggu persetujuan</p>
+                    <p className="text-xs text-slate-400">Ganti kata kunci atau pilih filter lain.</p>
+                  </td>
+                </tr>
+              ) : activeTab === "history" && filteredHistory.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                    <p className="text-sm font-semibold text-slate-700">Tidak ada riwayat persetujuan outbound</p>
+                    <p className="text-xs text-slate-400">Setujui atau tolak pengajuan untuk melihat riwayat.</p>
+                  </td>
+                </tr>
+              ) : activeTab === "pending" ? (
+                filteredRequests.map((r) => {
+                  const kategori = r.kategori_approval || "manual_override";
+                  const badgeClass = STATUS_BADGE[kategori] || STATUS_BADGE.manual_override;
+                  const label = STATUS_LABEL[kategori] || "Manual Outbound";
+                  const isKritis = r.items?.some((item) => item.barang?.kategori?.is_kritis === true);
+
+                  return (
+                    <tr key={r.surat_jalan_id} className="hover:bg-slate-50/50 transition">
+                      <td className="px-4 py-3 font-mono font-bold text-slate-900 break-all">
+                        {r.nomor_surat_jalan}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {formatDate(r.created_at)}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {r.project?.nama_project || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {r.gudang_asal?.nama_gudang || "-"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badgeClass}`}>
+                          {label}
+                        </span>
+                        {isKritis && (
+                          <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">
+                            Kritis
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/dashboard/supervisor/approval/outbound/${r.surat_jalan_id}`)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
+                            title="Detail"
+                          >
+                            <Eye size={14} />
+                            <span className="hidden sm:inline">Detail</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openConfirmDialog(r.surat_jalan_id)}
+                            disabled={actionLoading === String(r.surat_jalan_id)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-100 disabled:opacity-50"
+                            title="Setujui"
+                          >
+                            <CheckSquare size={14} />
+                            <span className="hidden sm:inline">Setujui</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openRejectDialog(r.surat_jalan_id)}
+                            disabled={actionLoading === String(r.surat_jalan_id)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-100 disabled:opacity-50"
+                            title="Tolak"
+                          >
+                            <XCircle size={14} />
+                            <span className="hidden sm:inline">Tolak</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
-                filteredData.map((item) => (
-                  <tr key={item.surat_jalan_id} className="hover:bg-stone-50/60 transition cursor-pointer" onClick={() => openDetail(item)}>
-                    <td className="py-4 px-3 md:px-4">
-                      {item.tipe === "outbound" ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                          <ArrowUpRight size={12} /> Outbound
+                filteredHistory.map((r) => {
+                  const keputusanBadge =
+                    r.keputusan === "disetujui"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : r.keputusan === "ditolak"
+                        ? "bg-rose-50 text-rose-700 border-rose-200"
+                        : "bg-slate-100 text-slate-700 border-slate-200";
+                  const keputusanLabel =
+                    r.keputusan === "disetujui"
+                      ? "Disetujui"
+                      : r.keputusan === "ditolak"
+                        ? "Ditolak"
+                        : r.keputusan || "-";
+
+                  return (
+                    <tr key={`${r.surat_jalan_id}-${r.waktu_keputusan}`} className="hover:bg-slate-50/50 transition">
+                      <td className="px-4 py-3 font-mono font-bold text-slate-900 break-all">
+                        {r.nomor_surat_jalan || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {formatDate((r.tanggal || r.waktu_keputusan || "") as string)}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {(r.gudang_asal?.nama_gudang || "-") + " / " + (r.gudang_tujuan?.nama_gudang || "-")}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${keputusanBadge}`}>
+                          {keputusanLabel}
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                          <ArrowDownLeft size={12} /> Inbound
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-4 px-3 md:px-4 font-semibold text-slate-900 break-words">
-                      <div className="flex items-center gap-2">
-                        {item.nomor_surat_jalan}
-                        <Eye size={14} className="text-slate-400" />
-                      </div>
-                    </td>
-                    <td className="py-4 px-3 md:px-4">
-                      {item.personil_pengantar?.nama || "-"}
-                    </td>
-                    <td className="py-4 px-3 md:px-4">
-                      <div className="flex flex-col">
-                        <span className="font-medium text-slate-800">
-                          {item.kendaraan?.jenis_kendaraan || "-"}
-                        </span>
-                        <span className="text-xs text-slate-400">
-                          {item.kendaraan?.no_polisi || "-"}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="py-4 px-3 md:px-4">
-                      <span className={`inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-lg ${getStatusBadge(item.status)}`}>
-                        {getStatusLabel(item.status)}
-                      </span>
-                    </td>
-                    <td className="py-4 px-2 md:px-3 text-center">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openDetail(item);
-                        }}
-                        className="inline-flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-2.5 py-1.5 rounded-xl shadow-sm transition"
-                        title="Lihat Detail"
-                      >
-                        <Eye size={13} /> Detail
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {r.catatan || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {r.penyetuju || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {formatDateTime((r.waktu_keputusan || "") as string)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/dashboard/supervisor/approval/outbound/${r.surat_jalan_id}`)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
+                            title="Detail"
+                          >
+                            <Eye size={14} />
+                            <span className="hidden sm:inline">Detail</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* MODAL DETAIL TRACKING — Berbentuk Surat */}
-      {selectedDetail && (
-<<<<<<< Updated upstream
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 sm:p-6"
-          onClick={closeDetail}
-        >
-          <div
-            className="relative bg-[#F8F6F0] rounded-3xl max-w-3xl w-full max-h-[88vh] flex flex-col shadow-2xl border border-stone-200/80 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
+      {activeTab === "pending" && totalPages > 1 && (
+        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <button
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
           >
-            {/* MODAL HEADER (STICKY AT TOP) */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200/80 bg-[#F8F6F0] shrink-0 z-10">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                      selectedDetail.tipe?.toLowerCase() === "outbound"
-                        ? "bg-amber-100 text-amber-800 border border-amber-200"
-                        : "bg-blue-100 text-blue-800 border border-blue-200"
-                    }`}
-                  >
-                    {selectedDetail.tipe?.toLowerCase() === "outbound" ? (
-                      <>
-                        <ArrowUpRight size={12} /> Outbound
-                      </>
-                    ) : (
-                      <>
-                        <ArrowDownLeft size={12} /> Inbound
-                      </>
-                    )}
-                  </span>
-                  <span
-                    className={`inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full border ${getStatusBadge(
-                      selectedDetail.status
-                    )}`}
-                  >
-                    {getStatusLabel(selectedDetail.status)}
-                  </span>
-                </div>
-                <h2 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">
-                  {selectedDetail.nomor_surat_jalan}
-                </h2>
-              </div>
-              <button
-                onClick={closeDetail}
-                className="p-2 rounded-2xl bg-white border border-stone-200/80 hover:bg-stone-100 text-slate-500 hover:text-slate-800 transition shadow-sm"
-                title="Tutup Modal (ESC)"
-=======
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="relative w-full max-w-3xl max-h-[92vh] overflow-hidden rounded-3xl bg-white shadow-2xl flex flex-col my-8">
+            Sebelumnya
+          </button>
+          <span className="text-xs text-slate-500">
+            Halaman {currentPage} dari {totalPages}
+          </span>
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+          >
+            Selanjutnya
+          </button>
+        </div>
+      )}
 
-            {/* Toolbar */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 print:hidden">
+      {activeTab === "history" && historyTotalPages > 1 && (
+        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <button
+            onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+            disabled={historyPage === 1}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+          >
+            Sebelumnya
+          </button>
+          <span className="text-xs text-slate-500">
+            Halaman {historyPage} dari {historyTotalPages}
+          </span>
+          <button
+            onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}
+            disabled={historyPage === historyTotalPages}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+          >
+            Selanjutnya
+          </button>
+        </div>
+      )}
+
+      {isDocModalOpen && selectedDocItem && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">
-                  {selectedDetail.tipe.toLowerCase() === "outbound" ? "Surat Jalan" : "Bukti Penerimaan Barang"}
-                </h3>
-                <p className="text-xs text-slate-500">{selectedDetail.nomor_surat_jalan}</p>
+                <h3 className="text-base font-semibold text-slate-900">Dokumentasi Barang</h3>
+                <p className="text-xs text-slate-500">
+                  {selectedDocItem?.barang?.nama_barang || selectedDocItem?.barang?.kode_perangkat || "Item"}
+                </p>
               </div>
               <button
-                onClick={closeDetail}
+                type="button"
+                onClick={closeDocModal}
                 className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
->>>>>>> Stashed changes
               >
                 <X size={18} />
               </button>
             </div>
-
-<<<<<<< Updated upstream
-            {/* MODAL BODY (SCROLLABLE AREA) */}
-            <div className="p-6 overflow-y-auto space-y-6 flex-1">
-              {detailError && (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 flex items-center justify-between">
-                  <span>{detailError}</span>
-                  <button
-                    onClick={() => openDetail(selectedDetail)}
-                    className="rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 transition"
-                  >
-                    Coba Lagi
-                  </button>
-=======
-            {detailError && (
-              <div className="mx-6 mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 print:hidden">
-                {detailError}
-                <button
-                  onClick={() => openDetail(selectedDetail)}
-                  className="ml-3 rounded-lg border border-rose-300 px-3 py-1 text-xs font-semibold text-rose-800 hover:bg-rose-100"
-                >
-                  Coba Lagi
-                </button>
-              </div>
-            )}
-
-            {isDetailLoading ? (
-              <div className="py-12 text-center text-slate-500">
-                <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
-                <p className="mt-2 text-sm">Memuat detail...</p>
-              </div>
-            ) : (
-              <>
-                {/* Scrollable Body */}
-                <div className="overflow-y-auto p-6">
-                  {(() => {
-                    const isOutbound = selectedDetail.tipe.toLowerCase() === "outbound";
-                    const accentBorderTop = isOutbound ? "border-[#E8632C]" : "border-emerald-600";
-                    const docBorder = isOutbound ? "border-[#F3D9C7]" : "border-[#C7E8D9]";
-                    const headBg = isOutbound ? "bg-[#FFF7ED]" : "bg-emerald-50";
-                    const headBorder = isOutbound ? "border-[#F3D9C7]" : "border-[#C7E8D9]";
-                    const headText = isOutbound ? "text-[#9a3412]" : "text-emerald-900";
-                    const accentText = isOutbound ? "text-[#E8632C]" : "text-emerald-700";
-                    const titleDoc = isOutbound ? "SURAT JALAN" : "BUKTI PENERIMAAN BARANG";
-                    const subtitleDoc = isOutbound
-                      ? "Surat Jalan Internal — Digitak Studio"
-                      : "Inbound Receipt — Digitak Studio";
-
-                    return (
-                      <div
-                        id="delivery-document"
-                        className={`mx-auto max-w-3xl rounded-2xl border ${docBorder} bg-white p-10 print:rounded-none print:border-0 print:p-0`}
-                      >
-                        {/* Kop Surat */}
-                        <div className={`mb-8 flex items-start justify-between border-b-2 ${accentBorderTop} pb-6`}>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src="/logo digitak grdasi.png"
-                            alt="Digitak Studio — PT Metanouva Informatika"
-                            className="h-16 w-auto object-contain"
-                          />
-                          <div className="flex flex-col items-end">
-                            <h2 className="text-3xl font-bold tracking-wide text-gray-900">{titleDoc}</h2>
-                            <p className="mt-1 text-xs text-gray-500">{subtitleDoc}</p>
-                            <div className="mt-2 text-right">
-                              <p className={`text-xs font-bold ${accentText}`}>PT Metanouva Informatika</p>
-                              <p className="text-[10px] text-gray-400">Digitak Studio</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Info Grid — 2 kolom */}
-                        <div className="mb-8 grid grid-cols-2 gap-x-12 gap-y-3 text-sm">
-                          <div className="space-y-3">
-                            <div className="grid grid-cols-[140px_10px_1fr] items-start leading-snug">
-                              <span className="text-gray-500">No. Dokumen</span>
-                              <span className="text-gray-500">:</span>
-                              <span className="font-semibold text-gray-900">{selectedDetail.nomor_surat_jalan || "-"}</span>
-                            </div>
-                            <div className="grid grid-cols-[140px_10px_1fr] items-start leading-snug">
-                              <span className="text-gray-500">Tipe</span>
-                              <span className="text-gray-500">:</span>
-                              <span className="font-semibold text-gray-900">{isOutbound ? "Outbound" : "Inbound"}</span>
-                            </div>
-                            <div className="grid grid-cols-[140px_10px_1fr] items-start leading-snug">
-                              <span className="text-gray-500">Gudang Asal</span>
-                              <span className="text-gray-500">:</span>
-                              <span className="font-semibold text-gray-900">{selectedDetail.gudang_asal?.nama_gudang || "-"}</span>
-                            </div>
-                            <div className="grid grid-cols-[140px_10px_1fr] items-start leading-snug">
-                              <span className="text-gray-500">Gudang Tujuan</span>
-                              <span className="text-gray-500">:</span>
-                              <span className="font-semibold text-gray-900">{selectedDetail.gudang_tujuan?.nama_gudang || "-"}</span>
-                            </div>
-                          </div>
-                          <div className="space-y-3">
-                            <div className="grid grid-cols-[140px_10px_1fr] items-start leading-snug">
-                              <span className="text-gray-500">Tanggal</span>
-                              <span className="text-gray-500">:</span>
-                              <span className="font-semibold text-gray-900">{formatDate(selectedDetail.tanggal_disetujui || selectedDetail.tanggal)}</span>
-                            </div>
-                            <div className="grid grid-cols-[140px_10px_1fr] items-start leading-snug">
-                              <span className="text-gray-500">Project</span>
-                              <span className="text-gray-500">:</span>
-                              <span className="font-semibold text-gray-900">{selectedDetail.project?.nama_project || "-"}</span>
-                            </div>
-                            <div className="grid grid-cols-[140px_10px_1fr] items-start leading-snug">
-                              <span className="text-gray-500">Driver</span>
-                              <span className="text-gray-500">:</span>
-                              <span className="font-semibold text-gray-900">{selectedDetail.personil_pengantar?.nama || "-"}</span>
-                            </div>
-                            <div className="grid grid-cols-[140px_10px_1fr] items-start leading-snug">
-                              <span className="text-gray-500">Kendaraan</span>
-                              <span className="text-gray-500">:</span>
-                              <span className="font-semibold text-gray-900">
-                                {selectedDetail.kendaraan?.jenis_kendaraan || "-"}
-                                {selectedDetail.kendaraan?.no_polisi && (
-                                  <span className="ml-1 text-gray-400 font-normal">({selectedDetail.kendaraan.no_polisi})</span>
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Catatan */}
-                        {selectedDetail.catatan && (
-                          <div className="mb-6 rounded-xl bg-amber-50 border border-amber-200 p-4 flex gap-3">
-                            <div className="text-xs text-amber-900">
-                              <span className="font-semibold block mb-0.5">Catatan:</span>
-                              {selectedDetail.catatan}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Tabel Barang */}
-                        <table className="mb-10 w-full border-collapse text-sm">
-                          <thead>
-                            <tr className={headBg}>
-                              <th className={`border ${headBorder} px-3 py-2 text-left font-semibold ${headText}`}>No</th>
-                              <th className={`border ${headBorder} px-3 py-2 text-left font-semibold ${headText}`}>Kode Barang</th>
-                              <th className={`border ${headBorder} px-3 py-2 text-left font-semibold ${headText}`}>Nama Barang</th>
-                              <th className={`border ${headBorder} px-3 py-2 text-center font-semibold ${headText}`}>QTY</th>
-                              <th className={`border ${headBorder} px-3 py-2 text-center font-semibold ${headText}`}>UOM</th>
-                              <th className={`border ${headBorder} px-3 py-2 text-left font-semibold ${headText}`}>Serial Number</th>
-                              <th className={`border ${headBorder} px-3 py-2 text-left font-semibold ${headText}`}>Kondisi / Catatan</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {selectedDetail.items && selectedDetail.items.length > 0 ? (
-                              selectedDetail.items.map((it, idx) => (
-                                <tr key={it.item_id || idx} className="even:bg-gray-50">
-                                  <td className="border border-gray-200 px-3 py-2.5 text-gray-600">{idx + 1}</td>
-                                  <td className="border border-gray-200 px-3 py-2.5 font-medium text-gray-900">
-                                    {it.barang?.kode_perangkat || "-"}
-                                  </td>
-                                  <td className="border border-gray-200 px-3 py-2.5">{it.barang?.nama_barang || "-"}</td>
-                                  <td className="border border-gray-200 px-3 py-2.5 text-center font-semibold">{it.qty}</td>
-                                  <td className="border border-gray-200 px-3 py-2.5 text-center">
-                                    {it.satuan?.kode_satuan || it.barang?.satuan_default?.kode_satuan || "-"}
-                                  </td>
-                                  <td className="border border-gray-200 px-3 py-2.5 font-mono text-xs text-gray-500">
-                                    {it.serial_number || "-"}
-                                  </td>
-                                  <td className="border border-gray-200 px-3 py-2.5 text-gray-500">
-                                    {[it.kondisi, it.catatan].filter(Boolean).join(" / ") || "-"}
-                                  </td>
-                                </tr>
-                              ))
-                            ) : (
-                              <tr>
-                                <td colSpan={7} className="border border-gray-200 px-3 py-6 text-center text-gray-400">
-                                  Tidak ada rincian barang.
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-
-                        {/* Tanda Tangan */}
-                        <div className="mb-8 grid grid-cols-3 gap-6 text-center text-sm">
-                          <div>
-                            <p className="mb-16 font-medium text-gray-700">Material Handler</p>
-                            <div className="border-t border-gray-400 pt-1">
-                              <p className="font-semibold text-gray-900">-</p>
-                            </div>
-                          </div>
-                          <div>
-                            <p className="mb-16 font-medium text-gray-700">Driver</p>
-                            <div className="border-t border-gray-400 pt-1">
-                              <p className="font-semibold text-gray-900">
-                                {selectedDetail.personil_pengantar?.nama || "-"}
-                              </p>
-                            </div>
-                          </div>
-                          <div>
-                            <p className="mb-16 font-medium text-gray-700">Penerima</p>
-                            <div className="border-t border-gray-400 pt-1">
-                              <p className="font-semibold text-gray-900">-</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Footer Dokumen */}
-                        <div className="border-t border-gray-200 pt-3 flex items-center justify-between text-[10px] text-gray-400">
-                          <span>{selectedDetail.nomor_surat_jalan} | {formatDate(selectedDetail.tanggal_disetujui || selectedDetail.tanggal)}</span>
-                          <span>Sistem Manajemen Gudang — Digitak Studio</span>
-                        </div>
-                      </div>
-                    );
-                  })()}
->>>>>>> Stashed changes
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-xs text-slate-500">Kondisi</p>
+                  <p className="font-medium text-slate-900">{selectedDocItem?.kondisi || "-"}</p>
                 </div>
-              )}
-
-<<<<<<< Updated upstream
-              {isDetailLoading ? (
-                <div className="py-16 text-center text-slate-500">
-                  <div className="inline-block h-8 w-8 animate-spin rounded-full border-3 border-stone-300 border-t-[#FF5500]" />
-                  <p className="mt-3 text-sm font-medium">Memuat detail pengiriman...</p>
+                <div>
+                  <p className="text-xs text-slate-500">QTY</p>
+                  <p className="font-medium text-slate-900">{selectedDocItem?.qty || 0}</p>
                 </div>
-              ) : (
-                <>
-                  {/* INFORMASI PENGIRIMAN (GRID CARD) */}
-                  <div className="bg-white rounded-2xl border border-stone-200/80 p-5 shadow-sm">
-                    <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-3">
-                      Informasi Pengiriman
-                    </h3>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs sm:text-sm">
-                      {/* RUTE GUDANG */}
-                      <div className="md:col-span-3 bg-stone-50 border border-stone-200/60 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div>
-                          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
-                            Gudang Asal
-                          </span>
-                          <p className="font-semibold text-slate-900">
-                            {selectedDetail.gudang_asal?.nama_gudang || "-"}
-                          </p>
-                        </div>
-                        <div className="text-slate-400 font-bold hidden sm:block">→</div>
-                        <div>
-                          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
-                            Gudang Tujuan
-                          </span>
-                          <p className="font-semibold text-slate-900">
-                            {selectedDetail.gudang_tujuan?.nama_gudang || "-"}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* DETAILS ROW 1 */}
-                      <div className="space-y-0.5">
-                        <span className="text-xs text-slate-400">Driver / Logistik</span>
-                        <p className="font-semibold text-slate-800">
-                          {selectedDetail.personil_pengantar?.nama || "-"}
-                        </p>
-                      </div>
-
-                      <div className="space-y-0.5">
-                        <span className="text-xs text-slate-400">Armada / Plat</span>
-                        <p className="font-semibold text-slate-800">
-                          {selectedDetail.kendaraan?.jenis_kendaraan || "-"}
-                          {selectedDetail.kendaraan?.no_polisi && (
-                            <span className="text-xs font-normal text-slate-500 ml-1.5 bg-stone-100 px-2 py-0.5 rounded-md">
-                              {selectedDetail.kendaraan.no_polisi}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-
-                      <div className="space-y-0.5">
-                        <span className="text-xs text-slate-400">Project / Area</span>
-                        <p className="font-semibold text-slate-800">
-                          {selectedDetail.project?.nama_project || "-"}
-                          {selectedDetail.project?.area && (
-                            <span className="text-xs font-normal text-slate-500 block">
-                              Area: {selectedDetail.project.area}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-
-                      {/* DETAILS ROW 2 - TIMESTAMPS */}
-                      <div className="space-y-0.5 pt-2 border-t border-stone-100">
-                        <span className="text-xs text-slate-400">Tgl Disetujui</span>
-                        <p className="font-semibold text-slate-800">
-                          {formatDate(selectedDetail.tanggal_disetujui)}
-                        </p>
-                      </div>
-
-                      <div className="space-y-0.5 pt-2 border-t border-stone-100">
-                        <span className="text-xs text-slate-400">Tgl Digenerate</span>
-                        <p className="font-semibold text-slate-800">
-                          {formatDate(selectedDetail.tanggal_digenerate)}
-                        </p>
-                      </div>
-
-                      <div className="space-y-0.5 pt-2 border-t border-stone-100">
-                        <span className="text-xs text-slate-400">Tgl Diterima</span>
-                        <p className="font-semibold text-slate-800">
-                          {formatDate(selectedDetail.tanggal_diterima)}
-                        </p>
-                      </div>
-                    </div>
-
-                    {selectedDetail.catatan && (
-                      <div className="mt-4 rounded-xl bg-amber-50/70 border border-amber-200/60 p-3">
-                        <span className="text-xs font-bold text-amber-900 block mb-0.5">
-                          Catatan Pengiriman:
-                        </span>
-                        <p className="text-xs text-amber-800 leading-relaxed">
-                          {selectedDetail.catatan}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* BARANG YANG DIBAWA (TABLE CARD) */}
-                  <div className="bg-white rounded-2xl border border-stone-200/80 p-5 shadow-sm">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                        Barang yang Dibawa
-                      </h3>
-                      <span className="text-xs font-semibold text-slate-500 bg-stone-100 px-2.5 py-0.5 rounded-full">
-                        Total: {selectedDetail.items?.length || 0} Item
-                      </span>
-                    </div>
-
-                    <div className="overflow-hidden rounded-xl border border-stone-200/70">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs">
-                          <thead className="bg-stone-50 text-slate-500 font-semibold uppercase tracking-wider border-b border-stone-200/80">
-                            <tr>
-                              <th className="px-3.5 py-2.5">Kode</th>
-                              <th className="px-3.5 py-2.5">Nama Barang</th>
-                              <th className="px-3.5 py-2.5 text-center">Satuan</th>
-                              <th className="px-3.5 py-2.5 text-center">Qty</th>
-                              <th className="px-3.5 py-2.5">Kondisi</th>
-                              <th className="px-3.5 py-2.5">Serial Number</th>
-                              <th className="px-3.5 py-2.5">Catatan</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-stone-100 text-slate-700">
-                            {selectedDetail.items && selectedDetail.items.length > 0 ? (
-                              selectedDetail.items.map((it, idx) => (
-                                <tr key={it.item_id || idx} className="hover:bg-stone-50/60 transition">
-                                  <td className="px-3.5 py-3 font-semibold text-slate-900 whitespace-nowrap">
-                                    {it.barang?.kode_perangkat || "-"}
-                                  </td>
-                                  <td className="px-3.5 py-3 font-medium text-slate-800">
-                                    {it.barang?.nama_barang || `Item ${idx + 1}`}
-                                  </td>
-                                  <td className="px-3.5 py-3 text-center text-slate-500">
-                                    {it.satuan?.kode_satuan || it.barang?.satuan_default?.kode_satuan || "-"}
-                                  </td>
-                                  <td className="px-3.5 py-3 text-center font-bold text-slate-900 bg-stone-50/50">
-                                    {it.qty}
-                                  </td>
-                                  <td className="px-3.5 py-3">
-                                    {it.kondisi ? (
-                                      <span className="px-2 py-0.5 text-[10px] rounded-md font-medium bg-slate-100 text-slate-700 capitalize border border-slate-200">
-                                        {it.kondisi}
-                                      </span>
-                                    ) : (
-                                      "-"
-                                    )}
-                                  </td>
-                                  <td className="px-3.5 py-3 font-mono text-slate-600">
-                                    {it.serial_number || "-"}
-                                  </td>
-                                  <td className="px-3.5 py-3 text-slate-500 max-w-xs truncate">
-                                    {it.catatan || "-"}
-                                  </td>
-                                </tr>
-                              ))
-                            ) : (
-                              <tr>
-                                <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
-                                  Tidak ada rincian barang untuk surat jalan ini.
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
+                <div>
+                   <p className="text-xs text-slate-500">Diperiksa Oleh</p>
+                   <p className="font-medium text-slate-900">
+                     {(selectedDocItem as any)?.approval_verification?.approver_nama ||
+                       (selectedDocItem as any)?.diperiksa_oleh_user?.nama ||
+                       "-"}
+                   </p>
+                 </div>
+                 <div>
+                   <p className="text-xs text-slate-500">Waktu Verifikasi</p>
+                   <p className="font-medium text-slate-900">
+                     {(selectedDocItem as any)?.approval_verification?.waktu_verifikasi
+                       ? new Date((selectedDocItem as any).approval_verification.waktu_verifikasi).toLocaleString("id-ID")
+                       : (selectedDocItem as any)?.diperiksa_pada
+                         ? new Date((selectedDocItem as any).diperiksa_pada).toLocaleString("id-ID")
+                         : "-"}
+                   </p>
+                 </div>
+              </div>
+               <div>
+                   <p className="mb-2 text-xs text-slate-500">Foto Dokumentasi</p>
+                   {(() => {
+                     const item = selectedDocItem as any;
+                     const fotoUrls = getItemFotoUrls(item);
+                     if (fotoUrls.length === 0) {
+                       return <p className="text-xs text-slate-400">Belum ada foto dokumentasi untuk item ini.</p>;
+                     }
+                     return (
+                       <div className="grid grid-cols-3 gap-2">
+                         {fotoUrls.map((url, idx) => (
+                           <img
+                             key={idx}
+                             src={url}
+                             alt={`Foto ${idx + 1}`}
+                             className="h-24 w-full rounded-lg border border-slate-100 object-cover cursor-pointer"
+                             onClick={() => openPreview(url)}
+                           />
+                         ))}
+                       </div>
+                     );
+                   })()}
+                 </div>
             </div>
-
-            {/* MODAL FOOTER */}
-            <div className="px-6 py-3 border-t border-stone-200/80 bg-[#F8F6F0] flex justify-end shrink-0">
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4">
               <button
-                onClick={closeDetail}
-                className="px-4 py-2 bg-white hover:bg-stone-100 border border-stone-300 text-slate-700 font-semibold text-xs rounded-xl shadow-sm transition"
+                type="button"
+                onClick={closeDocModal}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
               >
-                Tutup
+                Kembali ke Detail
               </button>
             </div>
-=======
-                {/* Action Bar */}
-                <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3 print:hidden">
-                  <div className="flex items-center gap-2 text-xs text-slate-500">
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${getStatusBadge(selectedDetail.status)}`}>
-                      {getStatusLabel(selectedDetail.status)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => window.print()}
-                      className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-xs font-semibold shadow-sm transition ${
-                        selectedDetail.tipe.toLowerCase() === "outbound"
-                          ? "border-[#E8632C] bg-white text-[#E8632C] hover:bg-[#E8632C] hover:text-white"
-                          : "border-emerald-600 bg-white text-emerald-700 hover:bg-emerald-600 hover:text-white"
-                      }`}
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="6 9 6 2 18 2 18 9" />
-                        <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-                        <rect x="6" y="14" width="12" height="8" />
-                      </svg>
-                      Cetak / PDF
-                    </button>
-                    <button
-                      type="button"
-                      onClick={closeDetail}
-                      className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-                    >
-                      Tutup
-                    </button>
-                  </div>
-                </div>
-              </>
+          </div>
+        </div>
+      )}
+
+      {showConfirmDialog && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                <AlertTriangle size={24} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-slate-900">
+                  Konfirmasi Setujui Surat Jalan
+                </h3>
+                <p className="mt-2 text-sm text-slate-600">
+                  Apakah Anda yakin ingin menyetujui Surat Jalan ini? Tindakan ini akan mengurangi stok gudang dan tidak dapat dibatalkan.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeConfirmDialog}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={executeApprove}
+                disabled={actionLoading !== null}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+              >
+                 {actionLoading !== null ? "Memproses..." : "Ya, Setujui"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRejectDialog && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
+                <AlertTriangle size={24} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-slate-900">
+                  Tolak Permintaan Outbound
+                </h3>
+                <p className="mt-2 text-sm text-slate-600">
+                  Berikan alasan penolakan untuk permintaan ini. Minimal 5 karakter.
+                </p>
+                <textarea
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="Contoh: Stok barang tidak mencukupi untuk memenuhi permintaan ini."
+                  rows={4}
+                  className="mt-3 w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-800 focus:border-red-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeRejectDialog}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={executeReject}
+                disabled={actionLoading !== null || rejectReason.trim().length < 5}
+                className="rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-50"
+              >
+                {actionLoading !== null ? "Memproses..." : "Ya, Tolak"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div
+          className={[
+            "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
+            toast.type === "success"
+              ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
+              : "border-rose-200/80 bg-rose-50/95 text-rose-800",
+          ].join(" ")}
+        >
+          <div
+            className={[
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+              toast.type === "success" ? "bg-emerald-100" : "bg-rose-100",
+            ].join(" ")}
+          >
+            {toast.type === "success" ? (
+              <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6h12" />
+              </svg>
             )}
->>>>>>> Stashed changes
+          </div>
+          <p className="flex-1 leading-snug">{toast.message}</p>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className={[
+              "ml-2 shrink-0 rounded-full p-1 transition-colors",
+              toast.type === "success"
+                ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
+                : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
+            ].join(" ")}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6h12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {previewImage && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm" onClick={closePreview}>
+          <div className="relative max-w-4xl max-h-[90vh] w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <img src={previewImage} alt="Preview Dokumentasi" className="max-w-full max-h-[85vh] rounded-2xl border border-slate-200 shadow-2xl object-contain" />
+            <button type="button" onClick={closePreview} className="absolute -top-3 -right-3 rounded-full bg-white p-2 text-slate-500 shadow hover:text-slate-800">
+              <X size={18} />
+            </button>
           </div>
         </div>
       )}

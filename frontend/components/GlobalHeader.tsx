@@ -16,53 +16,27 @@ import {
   ExternalLink,
   ChevronDown,
   Menu,
+  Trash2,
 } from "lucide-react";
 
-interface NotificationItem {
-  id: string;
-  title: string;
-  message: string;
-  time: string;
-  read: boolean;
-}
-
-const dummyNotifications: NotificationItem[] = [
-  {
-    id: "1",
-    title: "Surat Jalan Baru",
-    message: "SJ-2024001 menunggu konfirmasi penerimaan.",
-    time: "10 menit lalu",
-    read: false,
-  },
-  {
-    id: "2",
-    title: "Stok Menipis",
-    message: "Barang dengan kode SW-024 hampir habis.",
-    time: "1 jam lalu",
-    read: false,
-  },
-  {
-    id: "3",
-    title: "Approval BOQ",
-    message: "BOQ Proyek RW 05 menunggu persetujuan Anda.",
-    time: "3 jam lalu",
-    read: true,
-  },
-];
+import { useNotifications } from "@/hooks/use-notifications";
+import { UserAvatar } from "@/components/UserAvatar";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 export function GlobalHeader() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const { width, isMobile, setMobileOpen } = useSidebar();
+  const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification, deleteAllNotifications, showDeactivatedModal, handleReturnToLogin } = useNotifications();
 
   const [notifOpen, setNotifOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
 
   const notifRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
-
-  const unreadCount = dummyNotifications.filter((n) => !n.read).length;
+  const accountRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -71,6 +45,9 @@ export function GlobalHeader() {
       }
       if (settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
         setSettingsOpen(false);
+      }
+      if (accountRef.current && !accountRef.current.contains(event.target as Node)) {
+        setAccountOpen(false);
       }
     }
 
@@ -83,10 +60,46 @@ export function GlobalHeader() {
     router.push("/");
   }
 
+  function timeAgo(dateString: string): string {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+
+    if (diffSec < 60) return "Baru saja";
+    if (diffMin < 60) return `${diffMin} menit lalu`;
+    if (diffHour < 24) return `${diffHour} jam lalu`;
+    if (diffDay < 7) return `${diffDay} hari lalu`;
+    return date.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+  }
+
+  async function handleNotificationClick(notif: { id: number; link: string | null; type?: string | null; title?: string | null; message?: string | null }) {
+    await markAsRead(notif.id);
+    setNotifOpen(false);
+
+    if (!notif.link) {
+      return;
+    }
+
+    const link = notif.link;
+
+    if (notif.type === "approval" || /outbound/i.test(notif.title || "") || /outbound/i.test(notif.message || "")) {
+      const match = link.match(/\/staff\/outbound\/(\d+)/);
+      if (match && match[1]) {
+        router.push(`/dashboard/supervisor/approval/outbound/${match[1]}`);
+        return;
+      }
+    }
+
+    router.push(link);
+  }
+
   if (!user) return null;
 
   const displayName = user.name || user.email || "User";
-  const initials = displayName.charAt(0).toUpperCase();
 
   return (
     <>
@@ -127,33 +140,62 @@ export function GlobalHeader() {
               <div className="absolute right-0 top-full mt-2 w-80 rounded-2xl border border-stone-200 bg-white shadow-xl shadow-stone-200/40 z-50">
                 <div className="flex items-center justify-between border-b border-stone-100 px-4 py-3">
                   <h3 className="text-sm font-bold text-slate-900">Notifikasi</h3>
-                  <button
-                    type="button"
-                    onClick={() => setNotifOpen(false)}
-                    className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                  >
-                    <ChevronDown size={14} className="rotate-180" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    {unreadCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          markAllAsRead();
+                        }}
+                        className="rounded-lg px-2 py-1 text-[11px] font-semibold text-orange-600 hover:bg-orange-50"
+                        title="Tandai semua dibaca"
+                      >
+                        Tandai dibaca
+                      </button>
+                    )}
+                    {notifications.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteAllNotifications();
+                        }}
+                        className="rounded-lg p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                        title="Bersihkan semua notifikasi"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setNotifOpen(false)}
+                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                    >
+                      <ChevronDown size={14} className="rotate-180" />
+                    </button>
+                  </div>
                 </div>
                 <div className="max-h-80 overflow-y-auto">
-                  {dummyNotifications.length === 0 ? (
+                  {notifications.length === 0 ? (
                     <p className="px-4 py-6 text-center text-xs text-slate-400">
                       Tidak ada notifikasi.
                     </p>
                   ) : (
                     <ul className="divide-y divide-stone-50">
-                      {dummyNotifications.map((notif) => (
+                      {notifications.map((notif) => (
                         <li
                           key={notif.id}
-                          className={`px-4 py-3 transition-colors hover:bg-slate-50 ${
-                            !notif.read ? "bg-orange-50/40" : ""
+                          className={`group px-4 py-3 transition-colors hover:bg-slate-50 cursor-pointer ${
+                            !notif.is_read ? "bg-orange-50/40" : ""
                           }`}
+                          onClick={() => handleNotificationClick(notif)}
                         >
-                          <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start justify-between gap-2">
                             <div className="flex-1">
                               <p
                                 className={`text-xs font-semibold ${
-                                  !notif.read ? "text-slate-900" : "text-slate-700"
+                                  !notif.is_read ? "text-slate-900" : "text-slate-700"
                                 }`}
                               >
                                 {notif.title}
@@ -161,11 +203,24 @@ export function GlobalHeader() {
                               <p className="mt-0.5 text-[11px] text-slate-500 leading-relaxed">
                                 {notif.message}
                               </p>
-                              <p className="mt-1 text-[10px] text-slate-400">{notif.time}</p>
+                              <p className="mt-1 text-[10px] text-slate-400">{timeAgo(notif.created_at)}</p>
                             </div>
-                            {!notif.read && (
-                              <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-orange-500" />
-                            )}
+                            <div className="flex items-center gap-1">
+                              {!notif.is_read && (
+                                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-orange-500" />
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteNotification(notif.id);
+                                }}
+                                className="rounded-lg p-1 text-slate-300 opacity-0 transition-all group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600"
+                                title="Hapus notifikasi"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
                           </div>
                         </li>
                       ))}
@@ -173,12 +228,13 @@ export function GlobalHeader() {
                   )}
                 </div>
                 <div className="border-t border-stone-100 px-4 py-2.5">
-                  <button
-                    type="button"
-                    className="w-full text-center text-xs font-semibold text-orange-500 hover:text-orange-600"
+                  <Link
+                    href="/notifications"
+                    className="block w-full text-center text-xs font-semibold text-orange-500 hover:text-orange-600"
+                    onClick={() => setNotifOpen(false)}
                   >
                     Lihat Semua Notifikasi
-                  </button>
+                  </Link>
                 </div>
               </div>
             )}
@@ -212,11 +268,6 @@ export function GlobalHeader() {
 
             {settingsOpen && (
               <div className="absolute right-0 top-full mt-2 w-56 rounded-2xl border border-stone-200 bg-white shadow-xl shadow-stone-200/40 z-50 py-1.5">
-                <div className="px-3 py-2 border-b border-stone-100 mb-1">
-                  <p className="text-xs font-semibold text-slate-900">{displayName}</p>
-                  <p className="text-[11px] text-slate-500 capitalize">{formatRole(user.role)}</p>
-                </div>
-
                 <Link
                   href="/dashboard"
                   className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
@@ -234,17 +285,6 @@ export function GlobalHeader() {
                   <Settings size={14} className="text-slate-400" />
                   Pengaturan
                 </Link>
-
-                <div className="my-1.5 border-t border-stone-100" />
-
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="flex w-full items-center gap-2.5 px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors"
-                >
-                  <LogOut size={14} />
-                  Keluar
-                </button>
               </div>
             )}
           </div>
@@ -253,14 +293,49 @@ export function GlobalHeader() {
           <div className="mx-1 h-6 w-[1px] bg-stone-200" />
 
           {/* User Profile */}
-          <div className="flex items-center gap-3 pl-1">
-            <div className="hidden text-right md:block">
-              <p className="text-sm font-bold text-slate-900 leading-tight">{displayName}</p>
-               <p className="text-[11px] text-slate-500 font-medium capitalize">{formatRole(user.role)}</p>
-            </div>
-            <div className="relative h-9 w-9 overflow-hidden rounded-full border-2 border-white shadow-sm bg-orange-100 flex items-center justify-center font-bold text-orange-700 text-sm">
-              {initials}
-            </div>
+          <div className="relative" ref={accountRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setAccountOpen(!accountOpen);
+                setNotifOpen(false);
+                setSettingsOpen(false);
+              }}
+              className="flex items-center gap-3 pl-1"
+            >
+              <div className="hidden text-right md:block">
+                <p className="text-sm font-bold text-slate-900 leading-tight">{displayName}</p>
+                <p className="text-[11px] text-slate-500 font-medium capitalize">{formatRole(user.role)}</p>
+              </div>
+              <UserAvatar src={user.avatar_url} name={displayName} size={36} />
+            </button>
+
+            {accountOpen && (
+              <div className="absolute right-0 top-full mt-2 w-56 rounded-2xl border border-stone-200 bg-white shadow-xl shadow-stone-200/40 z-50 py-1.5">
+                <Link
+                  href="/profile"
+                  className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                  onClick={() => setAccountOpen(false)}
+                >
+                  <LayoutDashboard size={14} className="text-slate-400" />
+                  Profil Saya
+                </Link>
+
+                <div className="my-1.5 border-t border-stone-100" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAccountOpen(false);
+                    handleLogout();
+                  }}
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors"
+                >
+                  <LogOut size={14} />
+                  Keluar
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -315,7 +390,7 @@ export function GlobalHeader() {
               <div className="flex items-center gap-2 rounded-xl border border-stone-200 bg-white p-3">
                 <ExternalLink size={14} className="text-slate-400 shrink-0" />
                 <a
-                  href="https://digitak.studio"
+                  href="https://digitak.id/"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs font-semibold text-orange-500 hover:text-orange-600"
@@ -331,6 +406,16 @@ export function GlobalHeader() {
           </div>
         </div>
       )}
+      <ConfirmModal
+        open={showDeactivatedModal}
+        onConfirm={handleReturnToLogin}
+        onClose={() => {}}
+        title="Akun Anda Dinonaktifkan"
+        description="Akun Anda telah dinonaktifkan oleh admin. Anda akan diarahkan ke halaman login."
+        confirmText="Kembali ke Login"
+        cancelText=""
+        dismissProof
+      />
     </>
   );
 }

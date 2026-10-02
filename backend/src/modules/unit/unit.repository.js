@@ -6,8 +6,6 @@ const DEFAULT_PAGE = 1;
 const ALLOWED_SORT_FIELDS = [
   "satuan_id",
   "kode_satuan",
-  "created_at",
-  "updated_at",
 ];
 
 const create = async (data) => {
@@ -34,7 +32,7 @@ const findAll = async ({
   page = DEFAULT_PAGE,
   limit = DEFAULT_LIMIT,
   search,
-  sortBy = "updated_at",
+  sortBy = "satuan_id",
   sortOrder = "desc",
 } = {}) => {
   const sanitizedPage = Math.max(
@@ -49,7 +47,7 @@ const findAll = async ({
 
   const orderField = ALLOWED_SORT_FIELDS.includes(sortBy)
     ? sortBy
-    : "updated_at";
+    : "satuan_id";
 
   const orderDirection = ["asc", "desc"].includes(
     (sortOrder || "").toLowerCase()

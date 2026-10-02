@@ -1,25 +1,27 @@
 const prisma = require("../../config/prisma");
+const returnRepository = require("../return/return.repository");
+const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
+const { computeRemains, computeReconciliationStatus, buildPickSummary, buildItemPickSummary } = require("./reconciliation.utils");
 
-const getInventory = async (filters = {}) => {
-  const {
-    search = "",
-    projectId = "all",
-    warehouseId = "all",
-    status = "all",
-  } = filters;
+// Stok sudah berkurang saat picking, jadi angka rekonsiliasi tidak boleh naik-turun saat barang di perjalanan.
+const RECONCILIATION_SHIPMENT_STATUSES = ["disetujui", "sedang_dikirim", "tiba_menunggu_konfirmasi", "diterima_didistribusikan"];
+
+const getInventory = async (filters = {}, actor = null) => {
+  const { search = "", projectId = "all", warehouseId = "all", status = "all" } = filters;
 
   const whereBoq = {
     boq: {
-      status: { in: ["draft", "aktif"] },
+      status: { in: ["draft", "aktif", "selesai"] },
+      source: "top_down",
     },
   };
 
-  if (projectId !== "all") {
-    whereBoq.boq.tiket = { project_id: BigInt(projectId) };
-  }
-
   if (warehouseId !== "all") {
     whereBoq.gudang_tujuan_id = BigInt(warehouseId);
+  }
+
+  if (projectId !== "all") {
+    whereBoq.boq.tiket = { project_id: BigInt(projectId) };
   }
 
   const boqItems = await prisma.boq_item.findMany({
@@ -31,12 +33,24 @@ const getInventory = async (filters = {}) => {
             select: {
               tiket_id: true,
               kode_tiket: true,
+              used: true,
               project: {
                 select: {
                   project_id: true,
                   nama_project: true,
                   area: true,
                   cluster_id: true,
+                },
+              },
+            },
+          },
+          cluster: {
+            include: {
+              project: {
+                select: {
+                  cluster_id: true,
+                  area: true,
+                  nama_project: true,
                 },
               },
             },
@@ -64,7 +78,7 @@ const getInventory = async (filters = {}) => {
 
   const shipmentWhere = {
     surat_jalan: {
-      status: { in: ["disetujui", "diterima_didistribusikan"] },
+      status: { in: RECONCILIATION_SHIPMENT_STATUSES },
     },
   };
 
@@ -80,14 +94,98 @@ const getInventory = async (filters = {}) => {
           tipe: true,
           project_id: true,
           boq_id: true,
+          tujuan_tipe: true,
         },
       },
     },
   });
 
+  const itemIdToProjectBarangKey = new Map();
+  for (const item of shipmentItems) {
+    const projectIdNum = Number(item.surat_jalan?.project_id);
+    const barangId = String(item.barang_id);
+    itemIdToProjectBarangKey.set(Number(item.item_id), `${projectIdNum}-${barangId}`);
+  }
+
+  const shipmentItemIds = shipmentItems.map((it) => Number(it.item_id)).filter((id) => !Number.isNaN(id) && id > 0);
+
+  const pickRows = shipmentItemIds.length > 0
+    ? await prisma.surat_jalan_item_pick.groupBy({
+        by: ["surat_jalan_item_id", "kondisi_diambil", "is_override"],
+        where: {
+          surat_jalan_item_id: { in: shipmentItemIds },
+        },
+        _sum: {
+          qty: true,
+        },
+      })
+    : [];
+
+  const pickByItemId = new Map();
+  for (const row of pickRows) {
+    const itemId = Number(row.surat_jalan_item_id);
+    if (!pickByItemId.has(itemId)) {
+      pickByItemId.set(itemId, []);
+    }
+    pickByItemId.get(itemId).push({
+      kondisi_diambil: row.kondisi_diambil,
+      is_override: row.is_override,
+      qty: row._sum.qty || 0,
+    });
+  }
+
+  const pickSummaryByItemId = buildItemPickSummary(
+    pickRows.map((r) => ({
+      surat_jalan_item_id: r.surat_jalan_item_id,
+      qty: r._sum.qty || 0,
+      kondisi_diambil: r.kondisi_diambil,
+    }))
+  );
+
+  const temuanPenerimaanByItem = new Map();
+  for (const item of shipmentItems) {
+    const itemId = Number(item.item_id);
+    const qtyDiterima = item.qty_diterima != null ? Number(item.qty_diterima) : null;
+    if (qtyDiterima === null) continue;
+
+    const summary = pickSummaryByItemId.get(itemId) || { totalQty: 0, kondisiList: [] };
+    const totalPick = summary.totalQty;
+    const kondisiList = summary.kondisiList || [];
+    const kondisiDiterima = item.kondisi_diterima || null;
+
+    const qtyMatch = qtyDiterima === totalPick;
+    const kondisiMatch = !kondisiDiterima || (kondisiList.length === 1 && kondisiList.some((k) => k.kondisi === kondisiDiterima));
+    const hasMismatch = !qtyMatch || !kondisiMatch;
+
+    temuanPenerimaanByItem.set(itemId, {
+      qty_dipick_total: totalPick,
+      qty_diterima,
+      selisih_qty: qtyMatch ? 0 : qtyDiterima - totalPick,
+      kondisi_diterima: kondisiDiterima,
+      kondisi_diambil_list: kondisiList,
+      is_kondisi_diambil: kondisiMatch,
+      has_mismatch: hasMismatch,
+      surat_jalan_status: item.surat_jalan?.status || null,
+    });
+  }
+
+  const temuanPenerimaanSummaryByKey = new Map();
+  for (const [itemId, temuan] of temuanPenerimaanByItem.entries()) {
+    const key = itemIdToProjectBarangKey.get(itemId);
+    if (!key) continue;
+    const current = temuanPenerimaanSummaryByKey.get(key) || { jumlah_item_bertemuan_selisih: 0, total_selisih_qty: 0 };
+    if (temuan.has_mismatch) {
+      current.jumlah_item_bertemuan_selisih += 1;
+      current.total_selisih_qty += Math.abs(temuan.selisih_qty || 0);
+    }
+    temuanPenerimaanSummaryByKey.set(key, current);
+  }
+
   const inboundByProjectBarang = new Map();
   const outboundByProjectBarang = new Map();
   const additionalByProjectBarang = new Map();
+  const mosByProjectBarang = new Map();
+  const usedByProjectBarang = new Map();
 
   for (const item of shipmentItems) {
     const projectIdNum = Number(item.surat_jalan?.project_id);
@@ -97,86 +195,224 @@ const getInventory = async (filters = {}) => {
 
     if (item.surat_jalan?.tipe === "inbound") {
       if (item.is_kelebihan) {
-        additionalByProjectBarang.set(
-          key,
-          (additionalByProjectBarang.get(key) || 0) + qty
-        );
+        additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + qty);
       } else {
-        inboundByProjectBarang.set(
-          key,
-          (inboundByProjectBarang.get(key) || 0) + qty
-        );
+        inboundByProjectBarang.set(key, (inboundByProjectBarang.get(key) || 0) + qty);
       }
     }
 
-    if (item.surat_jalan?.tipe === "outbound") {
-      outboundByProjectBarang.set(
-        key,
-        (outboundByProjectBarang.get(key) || 0) + qty
-      );
+    if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
+      outboundByProjectBarang.set(key, (outboundByProjectBarang.get(key) || 0) + qty);
+      mosByProjectBarang.set(key, (mosByProjectBarang.get(key) || 0) + qty);
     }
   }
 
-  let rows = boqItems.map((item) => {
+  const laporanWhere = { is_aktif: true };
+  if (projectId !== "all") {
+    laporanWhere.project_id = BigInt(projectId);
+  }
+
+  const activeLaporans = await prisma.laporan_mitra.findMany({
+    where: laporanWhere,
+    select: {
+      tiket_id: true,
+      project_id: true,
+      barang_id: true,
+      nama_barang: true,
+      used: true,
+    },
+  });
+
+  const barangLookupCache = new Map();
+  const laporanUsedByTicketBarang = new Map();
+  const ticketProjectMap = new Map();
+
+  for (const laporan of activeLaporans) {
+    let barangId = laporan.barang_id ? String(laporan.barang_id) : null;
+
+    if (!barangId && laporan.nama_barang) {
+      const namaTrimmed = String(laporan.nama_barang).trim();
+      if (barangLookupCache.has(namaTrimmed)) {
+        barangId = barangLookupCache.get(namaTrimmed);
+      } else {
+        const barang = await prisma.barang.findFirst({
+          where: { nama_barang: namaTrimmed },
+          select: { barang_id: true },
+        });
+        const resolved = barang ? String(barang.barang_id) : null;
+        barangLookupCache.set(namaTrimmed, resolved);
+        barangId = resolved;
+      }
+    }
+
+    if (!barangId) continue;
+
+    const ticketIdNum = String(laporan.tiket_id || 0);
+    const projectIdNum = String(laporan.project_id || 0);
+    const ticketBarangKey = `${ticketIdNum}-${barangId}`;
+    const usedVal = Number(laporan.used || 0);
+
+    laporanUsedByTicketBarang.set(ticketBarangKey, (laporanUsedByTicketBarang.get(ticketBarangKey) || 0) + usedVal);
+    ticketProjectMap.set(ticketBarangKey, projectIdNum);
+  }
+
+  const aggregatedMap = new Map();
+  const gudangByKey = new Map();
+  const satuanByKey = new Map();
+
+  for (const [ticketBarangKey, laporanUsed] of laporanUsedByTicketBarang.entries()) {
+    if (laporanUsed <= 0) continue;
+
+    const projectIdNum = ticketProjectMap.get(ticketBarangKey) || "0";
+    const [, barangId] = ticketBarangKey.split("-");
+    const projectBarangKey = `${projectIdNum}-${barangId}`;
+
+    usedByProjectBarang.set(projectBarangKey, (usedByProjectBarang.get(projectBarangKey) || 0) + laporanUsed);
+  }
+
+  for (const item of boqItems) {
     const tiket = item.boq?.tiket;
-    const project = tiket?.project;
-    const projectIdNum = Number(project?.project_id || 0);
+    const tiketProject = tiket?.project;
+    const clusterProject = item.boq?.cluster?.project;
+    const projectIdNum = Number(tiketProject?.project_id || 0);
     const barangId = String(item.barang_id);
     const key = `${projectIdNum}-${barangId}`;
 
-    const boq = Number(item.qty_rencana || 0);
-    const additional = Number(additionalByProjectBarang.get(key) || 0);
-    const mosSistem = Number(inboundByProjectBarang.get(key) || 0);
-    const mosMitra = Number(tiket?.mos || 0);
-    const used = Number(outboundByProjectBarang.get(key) || 0);
-    const remains = mosSistem - (boq + additional);
-    const selisih = mosMitra - mosSistem;
+    if (!aggregatedMap.has(key)) {
+      const clusterId = clusterProject?.cluster_id || tiketProject?.cluster_id || "-";
+      const area = clusterProject?.area || tiketProject?.area || "-";
 
-    let recStatus = "berjalan";
-    if (remains < 0) {
-      recStatus = "perhatian";
-    } else if (mosSistem >= boq + additional && boq > 0) {
-      recStatus = "sesuai";
+      aggregatedMap.set(key, {
+        project_id: String(projectIdNum),
+        project_nama: tiketProject?.nama_project || "-",
+        cluster_id: clusterId,
+        area: area,
+        barang_id: barangId,
+        kode_perangkat: item.barang?.kode_perangkat || "-",
+        nama_barang: item.barang?.nama_barang || "-",
+        satuan: item.satuan?.kode_satuan || "-",
+        boq: 0,
+        kode_tiket_list: [],
+      });
+      gudangByKey.set(key, new Set());
+      satuanByKey.set(key, new Set());
     }
 
+    const agg = aggregatedMap.get(key);
+    agg.boq += Number(item.qty_rencana || 0);
+    agg.kode_tiket_list.push(tiket?.kode_tiket);
+
+    if (item.gudang_tujuan?.nama_gudang) {
+      gudangByKey.get(key).add(item.gudang_tujuan.nama_gudang);
+    }
+    if (item.satuan?.kode_satuan) {
+      satuanByKey.get(key).add(item.satuan?.kode_satuan);
+    }
+  }
+
+  // Compute approved returns per project+barang from the Return module.
+  const approvedReturnByProjectBarang = new Map();
+
+  for (const agg of aggregatedMap.values()) {
+    const projectIdNum = Number(agg.project_id);
+    const barangId = String(agg.barang_id);
+    const key = `${agg.project_id}-${agg.barang_id}`;
+
+    const projectTickets = new Set();
+    for (const item of boqItems) {
+      const tiket = item.boq?.tiket;
+      const project = tiket?.project;
+      if (Number(project?.project_id || 0) === projectIdNum) {
+        projectTickets.add(tiket.tiket_id);
+      }
+    }
+
+    let totalApprovedQty = 0;
+    for (const tiketId of projectTickets) {
+      const { snapshot } = await getLatestPhysicalSnapshot(tiketId, barangId);
+      if (!snapshot) continue;
+
+      const qty = await getApprovedReturnsAfterSnapshot(tiketId, barangId, snapshot.tanggal_laporan);
+      totalApprovedQty += Number(qty);
+    }
+
+    approvedReturnByProjectBarang.set(key, totalApprovedQty);
+  }
+
+  let rows = Array.from(aggregatedMap.values()).map((agg) => {
+    const key = `${agg.project_id}-${agg.barang_id}`;
+    const additional = Number(additionalByProjectBarang.get(key) || 0);
+    const mos = Number(mosByProjectBarang.get(key) || 0);
+    const used = Number(usedByProjectBarang.get(key) || 0) > 0
+      ? Number(usedByProjectBarang.get(key) || 0)
+      : Number(outboundByProjectBarang.get(key) || 0);
+    const approvedReturnQty = Number(approvedReturnByProjectBarang.get(key) || 0);
+    const remains = computeRemains(mos, agg.boq, additional, used, approvedReturnQty);
+
+    const recStatus = computeReconciliationStatus(remains);
+
+    const uniqueTikets = [...new Set(agg.kode_tiket_list)].filter(Boolean);
+    const kodeTiketStr = uniqueTikets.join(", ") || "-";
+    const gudangList = [...(gudangByKey.get(key) || [])];
+    const gudangNama = gudangList.join(", ") || "-";
+    const satuanList = [...(satuanByKey.get(key) || [])];
+    const satuanStr = satuanList.join(", ") || "-";
+
+    const pickItemIds = [];
+    for (const [itemId, projectBarangKey] of itemIdToProjectBarangKey.entries()) {
+      if (projectBarangKey === key) {
+        pickItemIds.push(itemId);
+      }
+    }
+
+    const allPickRows = [];
+    for (const itemId of pickItemIds) {
+      const itemRows = pickByItemId.get(itemId) || [];
+      for (const r of itemRows) {
+        allPickRows.push({
+          surat_jalan_item_id: itemId,
+          kondisi_diambil: r.kondisi_diambil,
+          is_override: r.is_override,
+          qty: r.qty,
+        });
+      }
+    }
+
+    const sjQty = pickItemIds.reduce((sum, itemId) => {
+      const item = shipmentItems.find((si) => Number(si.item_id) === itemId);
+      return sum + Number(item?.qty || 0);
+    }, 0);
+
+    const pickSummary = buildPickSummary(allPickRows, sjQty);
+
     return {
-      id: String(item.boq_item_id),
-      project_id: String(projectIdNum),
-      project_nama: project?.nama_project || "-",
-      cluster_id: project?.cluster_id || "-",
-      area: project?.area || "-",
-      tiket_id: String(tiket?.tiket_id || ""),
-      kode_tiket: tiket?.kode_tiket || "-",
-      barang_id: barangId,
-      kode_perangkat: item.barang?.kode_perangkat || "-",
-      nama_barang: item.barang?.nama_barang || "-",
-      gudang_nama: item.gudang_tujuan?.nama_gudang || "-",
-      satuan: item.satuan?.kode_satuan || "-",
-      boq,
+      id: key,
+      project_id: agg.project_id,
+      project_nama: agg.project_nama,
+      cluster_id: agg.cluster_id,
+      area: agg.area,
+      tiket_id: "",
+      kode_tiket: kodeTiketStr,
+      barang_id: agg.barang_id,
+      kode_perangkat: agg.kode_perangkat,
+      nama_barang: agg.nama_barang,
+      gudang_nama: gudangNama,
+      satuan: satuanStr,
+      boq: agg.boq,
       additional,
-      mos_sistem: mosSistem,
-      mos_mitra: mosMitra,
-      selisih,
+      mos,
       used,
+      approved_return_qty: approvedReturnQty,
       remains,
       status: recStatus,
+      ...pickSummary,
+      temuan_penerimaan: (temuanPenerimaanSummaryByKey.get(key) || null),
     };
   });
 
   if (search.trim()) {
     const q = search.toLowerCase();
-    rows = rows.filter((row) =>
-      [
-        row.project_nama,
-        row.kode_tiket,
-        row.kode_perangkat,
-        row.nama_barang,
-        row.gudang_nama,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(q)
-    );
+    rows = rows.filter((row) => [row.project_nama, row.kode_tiket, row.kode_perangkat, row.nama_barang, row.gudang_nama].join(" ").toLowerCase().includes(q));
   }
 
   if (status !== "all") {

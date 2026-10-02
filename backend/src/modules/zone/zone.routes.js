@@ -7,6 +7,7 @@ const zoneController = require("./zone.controller");
 const {
   createZoneSchema,
   updateZoneSchema,
+  updateZoneUtilizationSchema,
 } = require("./zone.validation");
 
 const validate = require("../../middlewares/validation.middleware");
@@ -24,23 +25,24 @@ router.post(
 router.get("/", authenticate, zoneController.findAll);
 router.get("/:code", authenticate, zoneController.findByCode);
 router.put(
-  "/:code",
+  "/:zona_id",
   authenticate,
   authorize("ADMIN"),
   validate(updateZoneSchema),
-  zoneController.update
+  zoneController.updateById
 );
 router.delete(
-  "/:code",
+  "/:zona_id",
   authenticate,
   authorize("ADMIN"),
-  zoneController.softDelete
+  zoneController.deleteById
 );
 router.patch(
-  "/:code/restore",
+  "/:zona_id/utilization-status",
   authenticate,
-  authorize("ADMIN"),
-  zoneController.restore
+  authorize("ADMIN", "SUPERVISOR"),
+  validate(updateZoneUtilizationSchema),
+  zoneController.updateUtilizationStatus
 );
 
 module.exports = router;

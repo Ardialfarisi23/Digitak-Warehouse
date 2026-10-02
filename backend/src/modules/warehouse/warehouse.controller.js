@@ -3,7 +3,7 @@ const response = require("../../shared/response");
 
 const create = async (req, res, next) => {
   try {
-    const result = await warehouseService.create(req.body, req.user.id);
+    const result = await warehouseService.create(req.body, req.user.id, req.user.role);
     return response.success(res, "Warehouse berhasil dibuat.", result, 201);
   } catch (err) {
     next(err);
@@ -57,7 +57,7 @@ const restore = async (req, res, next) => {
 
 const getLayout = async (req, res, next) => {
   try {
-    const result = await warehouseService.getLayout(req.params.nama_gudang);
+    const result = await warehouseService.getLayout(req.params.gudang_id);
     return response.success(res, "Layout warehouse berhasil diambil.", result);
   } catch (err) {
     next(err);
@@ -67,11 +67,47 @@ const getLayout = async (req, res, next) => {
 const getZoneStockSnapshot = async (req, res, next) => {
   try {
     const result = await warehouseService.getZoneStockSnapshot(
-      req.params.nama_gudang,
+      req.params.gudang_id,
       req.params.zona_id,
       req.query
     );
     return response.success(res, "Snapshot stok zona berhasil diambil.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const getStockCheck = async (req, res, next) => {
+  try {
+    const result = await warehouseService.getStockCheck(
+      req.params.gudang_id,
+      req.query
+    );
+    return response.success(res, "Pengecekan ketersediaan stok berhasil.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const getPickingStockCheck = async (req, res, next) => {
+  try {
+    const result = await warehouseService.getPickingStockCheck(
+      req.params.gudang_id,
+      req.query
+    );
+    return response.success(res, "Pengecekan stok picking berhasil.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const getPickingAvailability = async (req, res, next) => {
+  try {
+    const result = await warehouseService.getPickingAvailability(
+      req.params.gudang_id,
+      req.query
+    );
+    return response.success(res, "Pengecekan ketersediaan picking berhasil.", result);
   } catch (err) {
     next(err);
   }
@@ -86,4 +122,7 @@ module.exports = {
   restore,
   getLayout,
   getZoneStockSnapshot,
+  getStockCheck,
+  getPickingStockCheck,
+  getPickingAvailability,
 };

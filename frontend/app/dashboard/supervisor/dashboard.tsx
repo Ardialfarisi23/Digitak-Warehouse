@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Plus_Jakarta_Sans } from "next/font/google";
+import Link from "next/link";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -30,13 +30,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole, formatRole } from "@/lib/navigation";
-
-// Konfigurasi Font Plus Jakarta Sans
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-plus-jakarta",
-});
+import { useSupervisorDashboard } from "@/hooks/use-supervisor-dashboard";
+import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity } from "@/lib/capacity";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 const summaryCards = [
   {
@@ -67,7 +63,7 @@ const summaryCards = [
 
 const approvalCards = [
   {
-    title: "Barang Masuk Menunggu Approval",
+    title: "Barang Masuk Menunggu Persetujuan",
     value: "14",
     badge: "Tertua: 1 hari",
     badgeTone: "bg-slate-100 text-slate-600",
@@ -75,7 +71,7 @@ const approvalCards = [
     icon: ArrowDownLeft,
   },
   {
-    title: "Barang Keluar Approval",
+    title: "Barang Keluar Menunggu Persetujuan",
     value: "8",
     badge: "Kritis!",
     badgeTone: "bg-rose-500 text-white font-bold",
@@ -145,7 +141,7 @@ const recentApprovals = [
 const latestActivities = [
   {
     time: "10:42 WIB",
-    activity: "Approve SJ-2024000",
+    activity: "Setujui SJ-2024000",
     actor: "Andi P.",
     result: "Sukses",
     resultTone: "bg-emerald-100 text-emerald-700",
@@ -202,7 +198,7 @@ export default function SupervisorDashboard() {
 
   if (isLoading || !user) {
     return (
-      <div className={`flex min-h-screen items-center justify-center bg-[#F8F6F0] ${plusJakartaSans.className}`}>
+      <div className={`flex min-h-screen items-center justify-center bg-[#F8F6F0]`}>
         <div className="text-center">
           <div className="inline-block h-12 w-12 animate-spin rounded-full border-b-2 border-orange-500" />
           <p className="mt-4 text-slate-600 font-medium">Memuat dashboard...</p>
@@ -211,14 +207,16 @@ export default function SupervisorDashboard() {
     );
   }
 
+  const { kapasitasPerGudang, showDeactivatedModal, handleReturnToLogin } = useSupervisorDashboard();
+
   return (
-    <div className={`flex min-h-screen bg-[#F8F6F0] text-slate-800 ${plusJakartaSans.className}`}>
+    <div className={`flex min-h-screen bg-[#F8F6F0] text-slate-800`}>
       {/* SIDEBAR */}
       <aside className="fixed inset-y-0 left-0 z-30 flex w-20 flex-col items-center justify-between border-r border-stone-200/60 bg-[#FAF8F3] py-6 shadow-sm">
         <div className="flex flex-col items-center gap-8 w-full">
           <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden p-0.5">
             <Image
-              src="/logo digitak grdasi.png"
+              src="/logo-digitak-gradasi.png"
               alt="Logo Digitak Studio"
               width={56}
               height={56}
@@ -552,7 +550,7 @@ export default function SupervisorDashboard() {
                   <div>
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-bold text-slate-900">
-                        Menunggu Approval
+                        Menunggu Persetujuan
                       </h3>
                       <button className="text-xs font-bold text-orange-500 hover:underline">
                         Lihat Semua
@@ -667,25 +665,44 @@ export default function SupervisorDashboard() {
                   </h3>
                 </div>
 
-                {/* Kecukupan Area Gauge */}
-                <div className="rounded-xl bg-[#FAF8F3] p-4 border border-stone-100">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500">
-                        Kecukupan Area
-                      </p>
-                      <div className="flex items-baseline gap-2 mt-1">
-                        <span className="text-3xl font-black text-slate-900 tracking-tight">
-                          75%
-                        </span>
-                        <span className="rounded-full bg-orange-100 px-2.5 py-0.5 text-[10px] font-bold text-orange-600">
-                          Mendekati Penuh
-                        </span>
-                      </div>
-                    </div>
-                    <div className="relative h-12 w-20 flex items-center justify-center">
-                      <div className="h-16 w-16 rounded-full border-4 border-stone-200 border-t-orange-500 border-r-orange-500 rotate-45" />
-                    </div>
+                {/* Kecukupan Area Gudang */}
+                <div className="rounded-xl bg-[#FAF8F3] p-4 border border-stone-100 space-y-2">
+                  <p className="text-xs font-semibold text-slate-500">Kecukupan Area Gudang</p>
+                  <div className="space-y-2">
+                    {kapasitasPerGudang.length === 0 && (
+                      <p className="text-[11px] text-slate-400">Belum ada data kapasitas.</p>
+                    )}
+                    {kapasitasPerGudang
+                      .slice()
+                      .sort((a, b) => {
+                        const order: Record<string, number> = {
+                          "TIDAK_CUKUP": 0,
+                          "MENDEKATI_PENUH": 1,
+                          "CUKUP": 2,
+                        };
+                        return (order[a.status] ?? 99) - (order[b.status] ?? 99);
+                      })
+                      .map((w) => {
+                        const badgeClass = getStatusBadgeClass(w.status);
+                        const label = getStatusLabel(w.status);
+                        const sisaText = formatSisaCapacity(w.sisa, w.kapasitas_maksimum);
+
+                        return (
+                          <Link
+                            href="/dashboard/supervisor/warehousespv"
+                            key={w.gudang_id}
+                            className="flex items-center justify-between rounded-lg border border-stone-100 bg-white px-3 py-2 transition hover:shadow-sm"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-900 truncate">{w.nama_gudang}</p>
+                              <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${badgeClass}`}>{label}</span>
+                              {sisaText && (
+                                <p className="mt-0.5 text-[10px] font-semibold text-slate-600">Sisa: {sisaText}</p>
+                              )}
+                            </div>
+                          </Link>
+                        );
+                      })}
                   </div>
                 </div>
 
@@ -766,6 +783,16 @@ export default function SupervisorDashboard() {
             </div>
           </div>
         </main>
+        <ConfirmModal
+          open={showDeactivatedModal}
+          onConfirm={handleReturnToLogin}
+          onClose={() => {}}
+          title="Akun Anda Dinonaktifkan"
+          description="Akun Anda telah dinonaktifkan oleh admin. Anda akan diarahkan ke halaman login."
+          confirmText="Kembali ke Login"
+          cancelText=""
+          dismissProof
+        />
       </div>
     </div>
   );

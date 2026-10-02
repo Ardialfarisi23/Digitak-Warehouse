@@ -4,7 +4,19 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const XLSX = require("xlsx");
+const ExcelJS = require("exceljs");
 const prisma = require("../../config/prisma");
+const reportsRepository = require("./reports.repository");
+const reconciliationService = require("../reconciliation/reconciliation.service");
+
+const RECONCILIATION_REQUIRED_COLUMNS = [
+  { name: "Kode Tiket", aliases: ["Kode Tiket", "kode_tiket", "KODE_TIKET"] },
+  { name: "Project", aliases: ["Project", "project", "Nama Project"] },
+  { name: "Nama Barang", aliases: ["Nama Barang", "nama_barang", "Barang"] },
+  { name: "Used", aliases: ["Used", "used"] },
+  { name: "Kondisi", aliases: ["Kondisi", "kondisi", "KONDISI"] },
+  { name: "Catatan", aliases: ["Catatan", "catatan", "Keterangan"] },
+];
 
 const getStockHistory = async (req, res, next) => {
   try {
@@ -24,10 +36,161 @@ const getAuditLogs = async (req, res, next) => {
   }
 };
 
-const getRackUtilization = async (req, res, next) => {
+const exportAuditLogExcel = async (req, res, next) => {
   try {
-    const result = await reportsService.getRackUtilization();
-    return response.success(res, "Utilisasi rak berhasil diambil.", result);
+    const result = await reportsService.exportAuditLog(req.query);
+    const rows = result.data;
+    const truncated = result.meta.truncated;
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Audit Log");
+
+    const headerFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4F46E5" } };
+    const headerFont = { bold: true, color: { argb: "FFFFFFFF" } };
+    const borderStyle = {
+      top: { style: "thin" },
+      left: { style: "thin" },
+      bottom: { style: "thin" },
+      right: { style: "thin" },
+    };
+
+    const headers = ["Waktu", "Pengguna", "Peran", "Aksi", "Entitas Terkait", "Referensi Tambahan"];
+    headers.forEach((header, index) => {
+      const cell = worksheet.getCell(1, index + 1);
+      cell.value = header;
+      cell.font = headerFont;
+      cell.fill = headerFill;
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.border = borderStyle;
+    });
+
+    rows.forEach((row, rowIndex) => {
+      const excelRow = rowIndex + 2;
+      const ds = row.data_sesudah || {};
+      const entityLabel = (() => {
+        const kode = ds.kode_tiket || row.data_sebelum?.kode_tiket;
+        if (kode) return kode;
+        if (row.entity_type && row.entity_id && row.entity_id !== "0") {
+          return `${row.entity_type} #${row.entity_id}`;
+        }
+        return row.entity_type || "-";
+      })();
+      const extraRef = (() => {
+        const parts = [];
+        if (ds.source_file || ds.filename || ds.nama_file) {
+          parts.push(ds.source_file || ds.filename || ds.nama_file);
+        }
+        if (ds.username_target || ds.target_user || ds.user_target) {
+          parts.push(`user: ${ds.username_target || ds.target_user || ds.user_target}`);
+        }
+        if (ds.catatan) {
+          parts.push(ds.catatan);
+        }
+        return parts.length > 0 ? parts.join(" | ") : "—";
+      })();
+
+      const values = [
+        row.created_at ? new Date(row.created_at).toLocaleString("id-ID") : "-",
+        row.actor_nama || "-",
+        row.actor_role || "-",
+        row.aksi || "-",
+        entityLabel,
+        extraRef,
+      ];
+
+      values.forEach((value, colIndex) => {
+        const cell = worksheet.getCell(excelRow, colIndex + 1);
+        cell.value = value;
+        cell.border = borderStyle;
+        cell.alignment = { vertical: "middle", wrapText: true };
+      });
+    });
+
+    worksheet.getRow(1).height = 22;
+    for (let i = 1; i <= headers.length; i++) {
+      worksheet.getColumn(i).width = 28;
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const filename = `Audit-Log-Export_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename=${encodeURIComponent(filename)}`);
+    if (truncated) {
+      res.setHeader("X-Export-Truncated", "true");
+      res.setHeader("X-Export-Truncated-Message", "Data melebihi batas 10.000 baris. Mohon persempit filter tanggal.");
+    }
+    return res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const exportStockHistoryExcel = async (req, res, next) => {
+  try {
+    const result = await reportsService.exportStockHistory(req.query);
+    const rows = result.data;
+    const truncated = result.meta.truncated;
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Riwayat Stok");
+
+    const headerFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4F46E5" } };
+    const headerFont = { bold: true, color: { argb: "FFFFFFFF" } };
+    const borderStyle = {
+      top: { style: "thin" },
+      left: { style: "thin" },
+      bottom: { style: "thin" },
+      right: { style: "thin" },
+    };
+
+    const headers = ["Tanggal", "Kode Tiket", "Jenis Transaksi", "Status", "Diproses Oleh", "Kode Perangkat", "Nama Barang", "Qty", "Zona", "Asal", "Tujuan"];
+    headers.forEach((header, index) => {
+      const cell = worksheet.getCell(1, index + 1);
+      cell.value = header;
+      cell.font = headerFont;
+      cell.fill = headerFill;
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.border = borderStyle;
+    });
+
+    rows.forEach((row, rowIndex) => {
+      const excelRow = rowIndex + 2;
+      const values = [
+        row.waktu_mutasi ? new Date(row.waktu_mutasi).toLocaleString("id-ID") : "-",
+        row.kode_tiket || "-",
+        row.tipe_surat_jalan || "-",
+        row.status_surat_jalan || "-",
+        row.diproses_oleh || "-",
+        row.kode_perangkat || "-",
+        row.nama_barang || "-",
+        `${row.qty}${row.satuan && row.satuan !== "-" ? ` ${row.satuan}` : ""}`,
+        row.zona_kode && row.zona_kode !== "-" ? `${row.zona_gudang} / ${row.zona_kode}` : "—",
+        row.gudang_asal || "-",
+        row.gudang_tujuan || "-",
+      ];
+
+      values.forEach((value, colIndex) => {
+        const cell = worksheet.getCell(excelRow, colIndex + 1);
+        cell.value = value;
+        cell.border = borderStyle;
+        cell.alignment = { vertical: "middle", wrapText: true };
+      });
+    });
+
+    worksheet.getRow(1).height = 22;
+    for (let i = 1; i <= headers.length; i++) {
+      worksheet.getColumn(i).width = 28;
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const filename = `Riwayat-Stok-Export_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename=${encodeURIComponent(filename)}`);
+    if (truncated) {
+      res.setHeader("X-Export-Truncated", "true");
+      res.setHeader("X-Export-Truncated-Message", "Data melebihi batas 10.000 baris. Mohon persempit filter tanggal.");
+    }
+    return res.send(buffer);
   } catch (err) {
     next(err);
   }
@@ -80,7 +243,7 @@ const getZoneUtilization = async (req, res, next) => {
 
 const backfillReconciliation = async (req, res, next) => {
   try {
-    const result = await reportsService.backfillReconciliation();
+    const result = await reportsService.backfillReconciliation(req.user?.user_id);
     return response.success(res, "Backfill rekonsiliasi berhasil.", result);
   } catch (err) {
     next(err);
@@ -104,14 +267,21 @@ const storage = multer.diskStorage({
 });
 
 const excelFileFilter = (req, file, cb) => {
-  const allowedTypes = /xlsx|xls/;
-  const ext = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mime = allowedTypes.test(file.mimetype);
+  const allowedExtensions = /\.(xlsx|xls)$/i;
+  const allowedMimeTypes = [
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
+    "application/octet-stream",
+  ];
+  const ext = allowedExtensions.test(path.extname(file.originalname));
+  const mime = allowedMimeTypes.includes(file.mimetype);
+  const looseMime = !file.mimetype || file.mimetype === "application/octet-stream";
 
-  if (ext && mime) {
+  if (ext && (mime || looseMime)) {
     cb(null, true);
   } else {
-    cb(new Error("Only Excel files are allowed (xlsx, xls)."), false);
+    const received = `${path.extname(file.originalname) || "(tanpa ekstensi)"} / ${file.mimetype || "(tanpa mimetype)"}`;
+    cb(new Error(`File harus berformat .xlsx atau .xls (yang Anda upload: ${received}).`), false);
   }
 };
 
@@ -147,6 +317,17 @@ const uploadReconciliationFile = async (req, res, next) => {
         return response.error(res, "File Excel kosong.", 400);
       }
 
+      const firstRowKeys = Object.keys(jsonData[0] || {});
+      const missingColumns = RECONCILIATION_REQUIRED_COLUMNS
+        .filter((col) => !col.aliases.some((alias) => firstRowKeys.includes(alias)))
+        .map((col) => col.name);
+
+      if (missingColumns.length > 0) {
+        fs.unlinkSync(req.file.path);
+        const missingText = missingColumns.join(", ");
+        return response.error(res, `Kolom ${missingText} tidak ditemukan. Gunakan template resmi.`, 400);
+      }
+
       const tikets = await prisma.tiket_material.findMany({
         select: {
           kode_tiket: true,
@@ -159,10 +340,21 @@ const uploadReconciliationFile = async (req, res, next) => {
               area: true,
             },
           },
+          boq: {
+            where: { status: { in: ["draft", "aktif", "selesai"] } },
+            include: {
+              cluster: {
+                select: {
+                  cluster_id: true,
+                },
+              },
+            },
+          },
         },
       });
 
       const tiketMap = new Map(tikets.map((t) => [t.kode_tiket, t]));
+      const barangLookupCache = new Map();
 
       const preview = [];
       const failed = [];
@@ -170,28 +362,58 @@ const uploadReconciliationFile = async (req, res, next) => {
       for (let i = 0; i < jsonData.length; i++) {
         const row = jsonData[i];
         const kodeTiket = row["Kode Tiket"] || row["kode_tiket"] || row["KODE_TIKET"];
-        const mos = Number(row["MOS"] || row["mos"] || row["Material on Site"] || 0);
+        const projectName = row["Project"] || row["project"] || row["Nama Project"] || null;
         const used = Number(row["Used"] || row["used"] || 0);
+        const namaBarang = row["Nama Barang"] || row["nama_barang"] || row["Barang"] || null;
+        const kondisi = row["Kondisi"] || row["kondisi"] || row["KONDISI"] || null;
 
         if (!kodeTiket) {
-          failed.push({ row: i + 2, reason: "Kode Tiket tidak ditemukan" });
+          failed.push({ row: i + 2, used, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak ditemukan" });
           continue;
         }
 
         const tiket = tiketMap.get(String(kodeTiket).trim());
         if (!tiket) {
-          failed.push({ row: i + 2, kode_tiket: kodeTiket, reason: "Kode Tiket tidak terdaftar" });
+          failed.push({ row: i + 2, kode_tiket: kodeTiket, used, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak terdaftar" });
           continue;
+        }
+
+        let barangId = null;
+        const namaBarangTrimmed = namaBarang ? String(namaBarang).trim() : "";
+        if (namaBarangTrimmed) {
+          if (barangLookupCache.has(namaBarangTrimmed)) {
+            barangId = barangLookupCache.get(namaBarangTrimmed);
+          } else {
+            const barang = await prisma.barang.findFirst({
+              where: { nama_barang: namaBarangTrimmed },
+              select: { barang_id: true },
+            });
+            barangId = barang ? String(barang.barang_id) : null;
+            barangLookupCache.set(namaBarangTrimmed, barangId);
+          }
+        }
+
+        if (barangId) {
+          const boq = await prisma.boq.findFirst({
+            where: { tiket_id: BigInt(tiketId), status: { in: ["draft", "aktif", "selesai"] } },
+            include: { items: { where: { barang_id: BigInt(barangId) } } },
+          });
+          if (!boq || !boq.items.length) {
+            failed.push({ row: i + 2, kode_tiket, used, nama_barang: namaBarang, kondisi, reason: `Barang "${namaBarangTrimmed}" tidak terdaftar di BOQ tiket ${tiket.kode_tiket}` });
+            continue;
+          }
         }
 
         preview.push({
           tiket_id: tiket.tiket_id,
           kode_tiket: tiket.kode_tiket,
-          project_nama: tiket.project?.nama_project || "-",
-          cluster_id: tiket.project?.cluster_id || "-",
+          project_nama: projectName || tiket.project?.nama_project || "-",
+          cluster_id: tiket.boq?.cluster?.cluster_id || tiket.project?.cluster_id || "-",
           area: tiket.project?.area || "-",
-          mos,
+          nama_barang: namaBarang,
+          barang_id: barangId,
           used,
+          kondisi,
         });
       }
 
@@ -215,7 +437,17 @@ const uploadReconciliationFile = async (req, res, next) => {
 
 const confirmReconciliationUpload = async (req, res, next) => {
   try {
-    const { filename, preview, actorId } = req.body;
+    const {
+      filename,
+      preview,
+      failed,
+      actorId,
+      tanggal_laporan,
+      pic_mitra,
+      nama_barang,
+      catatan,
+      kondisi,
+    } = req.body;
 
     if (!filename || !Array.isArray(preview) || !actorId) {
       return response.error(res, "Data tidak lengkap untuk konfirmasi.", 400);
@@ -230,55 +462,231 @@ const confirmReconciliationUpload = async (req, res, next) => {
       return response.error(res, "Pengguna tidak ditemukan.", 404);
     }
 
+    const jenisLaporan = filename === "manual-input" ? "manual" : "excel";
+
+    const uploadLog = await prisma.reconciliation_upload_log.create({
+      data: {
+        filename,
+        file_url: `/uploads/reconciliation/${filename}`,
+        uploaded_by: BigInt(actorId),
+        total_rows: preview.length + failed.length,
+        success_rows: 0,
+        failed_rows: 0,
+      },
+    });
+
+    let successCount = 0;
+    let failedCount = 0;
+    let replacedCount = 0;
     const updatedTikets = [];
-    for (const item of preview) {
-      const tiket = await prisma.tiket_material.findUnique({
-        where: { tiket_id: BigInt(item.tiket_id) },
-        include: {
-          boq: true,
-        },
-      });
+    const affectedTiketIds = new Set();
 
-      if (!tiket) continue;
+    await prisma.$transaction(async (tx) => {
+      for (const item of preview) {
+        let tiketId = item.tiket_id;
+        let kodeTiket = item.kode_tiket;
 
-      const dataSebelum = {
-        mos: tiket.mos ? Number(tiket.mos) : null,
-        used: tiket.used ? Number(tiket.used) : null,
-      };
+        if (!tiketId && kodeTiket) {
+          const tiket = await tx.tiket_material.findUnique({
+            where: { kode_tiket: kodeTiket },
+            select: { tiket_id: true, kode_tiket: true, project_id: true },
+          });
+          if (tiket) {
+            tiketId = tiket.tiket_id;
+            kodeTiket = tiket.kode_tiket;
+          }
+        }
 
-      await prisma.tiket_material.update({
-        where: { tiket_id: BigInt(item.tiket_id) },
-        data: {
-          mos: item.mos,
-          used: item.used,
-        },
-      });
+        if (!tiketId) {
+          await tx.reconciliation_upload_detail.create({
+            data: {
+              upload_id: uploadLog.upload_id,
+              kode_tiket: kodeTiket || "-",
+              mos: 0,
+              remains_lapangan: 0,
+              used: Number(item.used || 0),
+              status: "gagal",
+              reason: "Tiket tidak terdaftar",
+            },
+          });
+          failedCount++;
+          continue;
+        }
 
-      await prisma.audit_log.create({
-        data: {
-          entity_type: "reconciliation",
-          entity_id: BigInt(item.tiket_id),
-          aksi: "update",
-          actor_id: BigInt(actorId),
-          data_sebelum: dataSebelum,
-          data_sesudah: {
-            mos: item.mos,
-            used: item.used,
-            source_file: filename,
+        const tiket = await tx.tiket_material.findUnique({
+          where: { tiket_id: BigInt(tiketId) },
+          select: {
+            tiket_id: true,
+            kode_tiket: true,
+            project_id: true,
+            mos: true,
+            used: true,
           },
-        },
-      });
+        });
 
-      updatedTikets.push({
-        tiket_id: item.tiket_id,
-        kode_tiket: item.kode_tiket,
-        mos: item.mos,
-        used: item.used,
-      });
-    }
+        if (!tiket) {
+          await tx.reconciliation_upload_detail.create({
+            data: {
+              upload_id: uploadLog.upload_id,
+              kode_tiket: kodeTiket || "-",
+              mos: 0,
+              remains_lapangan: 0,
+              used: Number(item.used || 0),
+              status: "gagal",
+              reason: "Tiket tidak terdaftar",
+            },
+          });
+          failedCount++;
+          continue;
+        }
+
+        const dataSebelum = {
+          mos: tiket.mos ? Number(tiket.mos) : null,
+          used: tiket.used ? Number(tiket.used) : null,
+        };
+
+        if (item.barang_id) {
+          const boq = await tx.boq.findFirst({
+            where: { tiket_id: BigInt(tiketId), status: { in: ["draft", "aktif", "selesai"] } },
+            include: { items: { where: { barang_id: BigInt(item.barang_id) } } },
+          });
+          if (!boq || !boq.items.length) {
+            await tx.reconciliation_upload_detail.create({
+              data: {
+                upload_id: uploadLog.upload_id,
+                kode_tiket: tiket.kode_tiket,
+                mos: 0,
+                remains_lapangan: 0,
+                used: Number(item.used || 0),
+                status: "gagal",
+                reason: `Barang tidak terdaftar di BOQ tiket ${tiket.kode_tiket}`,
+              },
+            });
+            failedCount++;
+            continue;
+          }
+        }
+
+        const existingLaporans = await tx.laporan_mitra.findMany({
+          where: {
+            tiket_id: BigInt(tiketId),
+            tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+            pic_mitra: pic_mitra || null,
+            is_aktif: true,
+          },
+        });
+
+        for (const existing of existingLaporans) {
+          await tx.laporan_mitra.update({
+            where: { laporan_id: existing.laporan_id },
+            data: { is_aktif: false },
+          });
+        }
+        replacedCount += existingLaporans.length;
+
+        try {
+          await tx.laporan_mitra.create({
+            data: {
+              tiket_id: BigInt(tiketId),
+              kode_tiket: tiket.kode_tiket,
+              project_id: tiket.project_id,
+              jenis_laporan: jenisLaporan,
+              tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+              pic_mitra: pic_mitra || null,
+              nama_barang: nama_barang || item.nama_barang || null,
+              barang_id: item.barang_id ? BigInt(item.barang_id) : null,
+              mos: 0,
+              remains_lapangan: 0,
+              used: Number(item.used || 0),
+              catatan: catatan || null,
+              kondisi: kondisi || null,
+              uploaded_by: BigInt(actorId),
+              is_aktif: true,
+            },
+          });
+
+          await tx.reconciliation_upload_detail.create({
+            data: {
+              upload_id: uploadLog.upload_id,
+              kode_tiket: tiket.kode_tiket,
+              mos: 0,
+              remains_lapangan: 0,
+              used: Number(item.used || 0),
+              status: "berhasil",
+              reason: null,
+            },
+          });
+          successCount++;
+          affectedTiketIds.add(String(tiketId));
+          updatedTikets.push({
+            tiket_id: tiketId,
+            kode_tiket: tiket.kode_tiket,
+            remains_lapangan: 0,
+            used: item.used,
+          });
+        } catch (insertErr) {
+          await tx.reconciliation_upload_detail.create({
+            data: {
+              upload_id: uploadLog.upload_id,
+              kode_tiket: tiket.kode_tiket,
+              mos: 0,
+              remains_lapangan: 0,
+              used: Number(item.used || 0),
+              status: "gagal",
+              reason: insertErr.message || "Gagal menyimpan laporan mitra",
+            },
+          });
+          failedCount++;
+        }
+
+        await tx.audit_log.create({
+          data: {
+            entity_type: "reconciliation",
+            entity_id: BigInt(tiketId),
+            aksi: "update",
+            actor_id: BigInt(actorId),
+            data_sebelum: dataSebelum,
+            data_sesudah: {
+              remains_lapangan: 0,
+              used: item.used,
+              source_file: filename,
+              jenis_laporan: jenisLaporan,
+            },
+          },
+        });
+      }
+
+        for (const item of failed) {
+          await tx.reconciliation_upload_detail.create({
+            data: {
+              upload_id: uploadLog.upload_id,
+              kode_tiket: item.kode_tiket || "-",
+              mos: 0,
+              remains_lapangan: 0,
+              used: Number(item.used || 0),
+              status: "gagal",
+              reason: item.reason || "Gagal memproses baris",
+            },
+          });
+        failedCount++;
+      }
+
+      for (const tiketId of affectedTiketIds) {
+        await reconciliationService.refreshTiketMosUsed(tiketId, tx);
+      }
+    });
+
+    await prisma.reconciliation_upload_log.update({
+      where: { upload_id: uploadLog.upload_id },
+      data: {
+        success_rows: successCount,
+        failed_rows: failedCount,
+      },
+    });
 
     return response.success(res, "Rekonsiliasi berhasil disimpan.", {
       updatedCount: updatedTikets.length,
+      replacedCount,
       updatedTikets,
       uploadedBy: actor.nama,
       filename,
@@ -288,10 +696,76 @@ const confirmReconciliationUpload = async (req, res, next) => {
   }
 };
 
+const downloadReconciliationTemplate = async (req, res, next) => {
+  try {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Template");
+
+    const headerFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4F46E5" } };
+    const headerFont = { bold: true, color: { argb: "FFFFFFFF" } };
+    const borderStyle = {
+      top: { style: "thin" },
+      left: { style: "thin" },
+      bottom: { style: "thin" },
+      right: { style: "thin" },
+    };
+
+    const headers = ["Kode Tiket", "Project", "Nama Barang", "Used", "Kondisi", "Catatan"];
+    headers.forEach((header, index) => {
+      const cell = worksheet.getCell(1, index + 1);
+      cell.value = header;
+      cell.font = headerFont;
+      cell.fill = headerFill;
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.border = borderStyle;
+    });
+
+    const exampleRow = ["TIKET-001", "Project A", "Kabel Fiber Optik", 3, "Baik", "Contoh catatan opsional"];
+    exampleRow.forEach((value, colIndex) => {
+      const cell = worksheet.getCell(2, colIndex + 1);
+      cell.value = value;
+      cell.border = borderStyle;
+      cell.alignment = { vertical: "middle" };
+    });
+
+    worksheet.getRow(1).height = 22;
+    for (let i = 1; i <= headers.length; i++) {
+      worksheet.getColumn(i).width = 28;
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const filename = "Template_Rekonsiliasi.xlsx";
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename=${encodeURIComponent(filename)}`);
+    return res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const getReconciliationUploadLogs = async (req, res, next) => {
+  try {
+    const filters = {
+      search: req.query.search || "",
+      actorId: req.query.actorId || "all",
+      startDate: req.query.startDate || "",
+      endDate: req.query.endDate || "",
+      page: req.query.page || 1,
+      limit: req.query.limit || 20,
+    };
+
+    const result = await reportsRepository.getReconciliationUploadLogs(filters);
+    return response.success(res, "Data riwayat upload berhasil diambil.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getStockHistory,
+  exportStockHistoryExcel,
   getAuditLogs,
-  getRackUtilization,
+  exportAuditLogExcel,
   getHardwareReconciliation,
   getHardwareReconciliationPerTiket,
   getHardwareReconciliationDetailed,
@@ -300,4 +774,6 @@ module.exports = {
   backfillReconciliation,
   uploadReconciliationFile,
   confirmReconciliationUpload,
+  getReconciliationUploadLogs,
+  downloadReconciliationTemplate,
 };

@@ -11,7 +11,7 @@ const boqItemSchema = z.object({
 
 const normalizeStatus = (val) => {
   if (!val) return undefined;
-  const map = { DRAFT: "DRAFT", AKTIF: "AKTIF", DITOLAK: "DITOLAK", draft: "DRAFT", aktif: "AKTIF", ditolak: "DITOLAK" };
+  const map = { DRAFT: "DRAFT", AKTIF: "AKTIF", SELESAI: "SELESAI", DITOLAK: "DITOLAK", draft: "DRAFT", aktif: "AKTIF", selesai: "SELESAI", ditolak: "DITOLAK" };
   return map[val.toUpperCase()] || map[val] || val;
 };
 
@@ -29,25 +29,29 @@ const normalizeVerification = (val) => {
 
 const createBoqSchema = z.object({
   projectId: z.string().min(1, "Project wajib dipilih."),
+  clusterId: z.string().min(1, "Cluster wajib dipilih."),
   area: z.string().min(1, "Area wajib diisi."),
   ticketNumber: z.string().min(1, "Kode tiket wajib diisi."),
-  status: z.enum(["DRAFT", "AKTIF", "DITOLAK"]).optional().default("DRAFT"),
+  status: z.enum(["DRAFT", "AKTIF", "SELESAI", "DITOLAK"]).optional().default("DRAFT"),
   source: z.enum(["TOP_DOWN", "BOTTOM_UP", "EMAIL_PO", "SUPERVISOR_REQUEST"]).optional().default("TOP_DOWN"),
   externalVerificationStatus: z.enum(["TERVERIFIKASI", "MENUNGGU", "VERIFIED", "PENDING"]).optional().default("MENUNGGU"),
   notes: z.string().optional().nullable(),
   referenceFile: z.string().optional().nullable(),
+  emailReference: z.string().optional().nullable(),
   items: z.array(boqItemSchema).min(1, "Minimal satu item harus diisi."),
 });
 
 const updateBoqSchema = z.object({
   projectId: z.string().optional().nullable(),
+  clusterId: z.string().optional().nullable(),
   area: z.string().optional().nullable(),
   ticketNumber: z.string().optional().nullable(),
-  status: z.enum(["DRAFT", "AKTIF", "DITOLAK", "draft", "aktif", "ditolak"]).optional().nullable(),
+  status: z.enum(["DRAFT", "AKTIF", "SELESAI", "DITOLAK", "draft", "aktif", "selesai", "ditolak"]).optional().nullable(),
   source: z.enum(["TOP_DOWN", "BOTTOM_UP", "EMAIL_PO", "SUPERVISOR_REQUEST", "top_down", "bottom_up"]).optional().nullable(),
   externalVerificationStatus: z.enum(["TERVERIFIKASI", "MENUNGGU", "VERIFIED", "PENDING", "terverifikasi", "menunggu", "tidak_berlaku"]).optional().nullable(),
   notes: z.string().optional().nullable(),
   referenceFile: z.string().optional().nullable(),
+  emailReference: z.string().optional().nullable(),
   items: z.array(boqItemSchema).optional().nullable(),
 }).refine(
   (data) => Object.keys(data).length > 0,
@@ -57,7 +61,7 @@ const updateBoqSchema = z.object({
 );
 
 const updateBoqStatusSchema = z.object({
-  status: z.enum(["DRAFT", "AKTIF", "DITOLAK", "draft", "aktif", "ditolak"]),
+  status: z.enum(["DRAFT", "AKTIF", "SELESAI", "DITOLAK", "draft", "aktif", "selesai", "ditolak"]),
 });
 
 module.exports = {

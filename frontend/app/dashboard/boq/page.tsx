@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import {
   ClipboardList,
+  ClipboardCheck,
   Plus,
   Eye,
   Pencil,
@@ -12,6 +13,7 @@ import {
   X,
   Loader2,
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   Clock,
   XCircle,
@@ -24,7 +26,6 @@ import {
   Mail,
   ShieldCheck,
   ShieldAlert,
-  ThumbsUp,
   ThumbsDown,
   ExternalLink,
   History,
@@ -32,13 +33,15 @@ import {
   Download,
   Lock,
   Building2,
-  ClipboardList as RequestIcon,
   ChevronDown,
+  Info,
 } from "lucide-react";
 
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
+import BarangPicker, { type BarangPickerItem } from "@/components/BarangPicker";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import Image from "next/image";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -53,7 +56,7 @@ const API_BASE =
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
 
-type BoqStatus = "draft" | "aktif" | "ditolak";
+type BoqStatus = "draft" | "aktif" | "selesai" | "ditolak";
 type BoqSource = "top_down" | "bottom_up";
 type ExternalVerificationStatus = "terverifikasi" | "menunggu" | "tidak_berlaku";
 
@@ -67,6 +70,7 @@ interface Project {
   desa_kelurahan?: string;
   kota_kabupaten?: string;
   provinsi?: string;
+  status_aktif?: boolean;
 }
 
 interface Warehouse {
@@ -108,7 +112,10 @@ interface ReconciliationSummary {
   boqQty: number;
   hardwareOnSite: number;
   used: number;
+  approved_return_qty?: number;
   remains: number;
+  additional?: number;
+  mosSistem?: number;
 }
 
 interface Boq {
@@ -136,11 +143,12 @@ interface Boq {
 interface SummaryCounts {
   aktif: number;
   draft: number;
+  selesai: number;
   proyekBerjalan: number;
 }
 
-type TabType = "aktif" | "draft" | "ditolak";
-type SectionType = TabType | "permintaan";
+type TabType = "aktif" | "draft" | "selesai" | "ditolak";
+type SectionType = TabType;
 
 /* ------------------------------------------------------------------ */
 /* Role helpers                                                        */
@@ -166,6 +174,8 @@ function getStatusBadge(status: BoqStatus) {
       return { label: "Draft", bg: "bg-amber-50", text: "text-amber-600", icon: Clock };
     case "aktif":
       return { label: "Aktif", bg: "bg-emerald-50", text: "text-emerald-600", icon: CheckCircle2 };
+    case "selesai":
+      return { label: "Selesai", bg: "bg-slate-100", text: "text-slate-700", icon: ClipboardCheck };
     case "ditolak":
       return { label: "Ditolak", bg: "bg-rose-50", text: "text-rose-600", icon: XCircle };
     default:
@@ -176,7 +186,7 @@ function getStatusBadge(status: BoqStatus) {
 function getSourceBadge(source: BoqSource) {
   switch (source) {
     case "top_down":
-      return { label: "Top Down", bg: "bg-sky-50", text: "text-sky-600", icon: Mail };
+      return { label: "PO Internal", bg: "bg-sky-50", text: "text-sky-600", icon: Mail };
     case "bottom_up":
       return { label: "Bottom Up", bg: "bg-violet-50", text: "text-violet-600", icon: ClipboardList };
     default:
@@ -198,6 +208,7 @@ function getVerificationBadge(status: ExternalVerificationStatus) {
 const TABS: { key: TabType; label: string; icon: React.ElementType }[] = [
   { key: "aktif", label: "BOQ Aktif", icon: CheckCircle2 },
   { key: "draft", label: "BOQ Draft", icon: Clock },
+  { key: "selesai", label: "Selesai", icon: ClipboardCheck },
   { key: "ditolak", label: "Ditolak", icon: XCircle },
 ];
 
@@ -220,6 +231,7 @@ export default function BoqPage() {
   const [summary, setSummary] = useState<SummaryCounts>({
     aktif: 0,
     draft: 0,
+    selesai: 0,
     proyekBerjalan: 0,
   });
 
@@ -228,21 +240,21 @@ export default function BoqPage() {
   const [searchInput, setSearchInput] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
   const [areaFilter, setAreaFilter] = useState("");
-  const [warehouseFilter, setWarehouseFilter] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
   const [selectedBoq, setSelectedBoq] = useState<Boq | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailBoq, setDetailBoq] = useState<Boq | null>(null);
+  const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
+  const [confirmSelesaiOpen, setConfirmSelesaiOpen] = useState(false);
+  const [confirmSelesaiBoq, setConfirmSelesaiBoq] = useState<Boq | null>(null);
 
   const [projects, setProjects] = useState<Project[]>([]);
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [areas, setAreas] = useState<string[]>([]);
   const [items, setItems] = useState<{ id: string; kode_perangkat: string; nama_barang: string; satuan?: { kode_satuan: string } }[]>([]);
   const [itemSearch, setItemSearch] = useState("");
-  const [itemPickerIndex, setItemPickerIndex] = useState<number | null>(null);
-  const [itemPickerSearch, setItemPickerSearch] = useState("");
+  const [itemErrors, setItemErrors] = useState<Record<number, string>>({});
 
   const [form, setForm] = useState({
     projectId: "",
@@ -262,20 +274,23 @@ export default function BoqPage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [uploadingRef, setUploadingRef] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
-  // Permintaan BOQ state
-  const [permintaanBoqs, setPermintaanBoqs] = useState<any[]>([]);
-  const [permintaanLoading, setPermintaanLoading] = useState(false);
-  const [permintaanModalOpen, setPermintaanModalOpen] = useState(false);
-  const [permintaanForm, setPermintaanForm] = useState({
-    projectId: "",
-    barangId: "",
-    quantity: 1,
-    alasan: "",
-    referenceTicket: "",
-  });
-  const [permintaanSubmitting, setPermintaanSubmitting] = useState(false);
-  const [permintaanFormError, setPermintaanFormError] = useState<string | null>(null);
+  const [clusters, setClusters] = useState<{ cluster_id: string; nama_cluster: string }[]>([]);
+  const [clusterModalOpen, setClusterModalOpen] = useState(false);
+  const [clusterForm, setClusterForm] = useState({ cluster_id: "", nama_cluster: "", cluster_type: "", project_type: "", kso_partner: "", kso_contact: "", no_tiket_release: "", vendor: "", alamat_lengkap: "" });
+  const [clusterSubmitting, setClusterSubmitting] = useState(false);
+  const [clusterError, setClusterError] = useState<string | null>(null);
+
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [confirmReopenOpen, setConfirmReopenOpen] = useState(false);
+  const [boqToReopen, setBoqToReopen] = useState<Boq | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   /* ---------------------------------------------------------------- */
   /* Data fetching                                                      */
@@ -294,7 +309,6 @@ export default function BoqPage() {
 
       if (projectFilter) params.set("projectId", projectFilter);
       if (areaFilter) params.set("area", areaFilter);
-      if (warehouseFilter) params.set("warehouseId", warehouseFilter);
       if (search.trim()) params.set("search", search.trim());
 
       const res = await get(`${API_BASE}/api/boqs?${params.toString()}`);
@@ -312,7 +326,7 @@ export default function BoqPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, projectFilter, areaFilter, warehouseFilter, search, get]);
+  }, [activeTab, projectFilter, areaFilter, search, get]);
 
   const fetchSummary = useCallback(async () => {
     try {
@@ -322,6 +336,7 @@ export default function BoqPage() {
         setSummary({
           aktif: json.data.aktif || 0,
           draft: json.data.draft || 0,
+          selesai: json.data.selesai || 0,
           proyekBerjalan: json.data.proyekBerjalan || 0,
         });
       }
@@ -332,14 +347,12 @@ export default function BoqPage() {
 
   const fetchMasterData = useCallback(async () => {
     try {
-      const [projectsRes, warehousesRes, itemsRes] = await Promise.all([
+      const [projectsRes, itemsRes] = await Promise.all([
         get(`${API_BASE}/api/projects?all=true`),
-        get(`${API_BASE}/api/warehouses`),
         get(`${API_BASE}/api/items?limit=100`),
       ]);
 
       const projectsJson = await projectsRes.json();
-      const warehousesJson = await warehousesRes.json();
       const itemsJson = await itemsRes.json();
 
       if (projectsRes.ok) {
@@ -360,16 +373,6 @@ export default function BoqPage() {
           provinsi: p.provinsi || "",
         }));
         setProjects(list);
-      }
-
-      if (warehousesRes.ok) {
-        const rawList = Array.isArray(warehousesJson?.data) ? warehousesJson.data : [];
-        const list = rawList.map((w: any) => ({
-          id: String(w.gudang_id || w.id || ""),
-          name: w.nama_gudang || w.name || "",
-          code: w.kode_gudang || w.code || "",
-        }));
-        setWarehouses(list);
       }
 
       if (itemsRes.ok) {
@@ -403,85 +406,6 @@ export default function BoqPage() {
     }
   }, [get]);
 
-  const fetchPermintaanBoqs = useCallback(async () => {
-    setPermintaanLoading(true);
-    try {
-      const res = await get(`${API_BASE}/api/permintaan-boqs?limit=50`);
-      const json = await res.json();
-      if (res.ok && Array.isArray(json?.data?.data)) {
-        setPermintaanBoqs(json.data.data);
-      } else if (res.ok && Array.isArray(json?.data)) {
-        setPermintaanBoqs(json.data);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setPermintaanLoading(false);
-    }
-  }, [get]);
-
-  async function handlePermintaanSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setPermintaanFormError(null);
-
-    if (!permintaanForm.projectId) {
-      setPermintaanFormError("Project wajib dipilih.");
-      return;
-    }
-    if (!permintaanForm.barangId) {
-      setPermintaanFormError("Barang wajib dipilih.");
-      return;
-    }
-    if (!permintaanForm.quantity || permintaanForm.quantity < 1) {
-      setPermintaanFormError("Qty harus lebih dari 0.");
-      return;
-    }
-
-    setPermintaanSubmitting(true);
-    try {
-      const selectedItem = items.find((it) => it.id === permintaanForm.barangId);
-      const payload = {
-        projectId: permintaanForm.projectId,
-        barangId: permintaanForm.barangId,
-        qty: permintaanForm.quantity,
-        alasan: permintaanForm.alasan || null,
-        referenceTicket: permintaanForm.referenceTicket || null,
-        itemCode: selectedItem?.kode_perangkat || "",
-        itemName: selectedItem?.nama_barang || "",
-        unit: selectedItem?.satuan?.kode_satuan || "Unit",
-      };
-
-      const res = await post(`${API_BASE}/api/permintaan-boqs`, payload);
-      if (!res.ok) {
-        const json = await res.json().catch(() => null);
-        throw new Error(json?.message || "Gagal mengajukan permintaan BOQ.");
-      }
-
-      setPermintaanModalOpen(false);
-      setPermintaanForm({ projectId: "", barangId: "", quantity: 1, alasan: "", referenceTicket: "" });
-      fetchPermintaanBoqs();
-    } catch (err) {
-      setPermintaanFormError(err instanceof Error ? err.message : "Terjadi kesalahan.");
-    } finally {
-      setPermintaanSubmitting(false);
-    }
-  }
-
-  async function handleApprovePermintaan(record: any) {
-    try {
-      const res = await put(`${API_BASE}/api/permintaan-boqs/${record.permintaan_id}/status`, {
-        status: "DISETUJUI",
-      });
-      if (!res.ok) {
-        const json = await res.json().catch(() => null);
-        throw new Error(json?.message || "Gagal menyetujui permintaan.");
-      }
-      fetchPermintaanBoqs();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Gagal menyetujui permintaan.");
-    }
-  }
-
   async function handleRestoreBoq(boq: Boq) {
     try {
       const res = await put(`${API_BASE}/api/boqs/${boq.id}/status`, { status: "DRAFT" });
@@ -491,8 +415,9 @@ export default function BoqPage() {
       }
       fetchBoqs();
       fetchSummary();
+      setToast({ message: "BOQ berhasil dipulihkan ke draft.", type: "success" });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Gagal memulihkan BOQ.");
+      setToast({ message: err instanceof Error ? err.message : "Gagal memulihkan BOQ.", type: "error" });
     }
   }
 
@@ -505,23 +430,67 @@ export default function BoqPage() {
       }
       fetchBoqs();
       fetchSummary();
+      setToast({ message: "BOQ berhasil ditolak.", type: "success" });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Gagal menolak BOQ.");
+      setToast({ message: err instanceof Error ? err.message : "Gagal menolak BOQ.", type: "error" });
     }
   }
 
-  async function handleRejectPermintaan(record: any) {
+  async function handleMarkSelesai(boq: Boq) {
+    setConfirmSelesaiBoq(boq);
+    setConfirmSelesaiOpen(true);
+  }
+
+  async function handleConfirmSelesai() {
+    if (!confirmSelesaiBoq) return;
+
+    const boq = confirmSelesaiBoq;
+    setConfirmSelesaiOpen(false);
+    setConfirmSelesaiBoq(null);
+
     try {
-      const res = await put(`${API_BASE}/api/permintaan-boqs/${record.permintaan_id}/status`, {
-        status: "DITOLAK",
-      });
+      const res = await put(`${API_BASE}/api/boqs/${boq.id}/status`, { status: "SELESAI" });
       if (!res.ok) {
         const json = await res.json().catch(() => null);
-        throw new Error(json?.message || "Gagal menolak permintaan.");
+        throw new Error(json?.message || "Gagal menandai BOQ sebagai Selesai.");
       }
-      fetchPermintaanBoqs();
+      setDetailOpen(false);
+      fetchBoqs();
+      fetchSummary();
+      setToast({ message: "BOQ berhasil ditandai sebagai Selesai.", type: "success" });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Gagal menolak permintaan.");
+      setToast({ message: err instanceof Error ? err.message : "Gagal menandai Selesai.", type: "error" });
+    }
+  }
+
+  function handleCancelSelesai() {
+    setConfirmSelesaiOpen(false);
+    setConfirmSelesaiBoq(null);
+  }
+
+  function openReopenConfirm(boq: Boq) {
+    setBoqToReopen(boq);
+    setConfirmReopenOpen(true);
+  }
+
+  async function doReopenBoq() {
+    if (!boqToReopen) return;
+    const boq = boqToReopen;
+    setConfirmReopenOpen(false);
+    setBoqToReopen(null);
+
+    try {
+      const res = await put(`${API_BASE}/api/boqs/${boq.id}/status`, { status: "AKTIF" });
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        throw new Error(json?.message || "Gagal membuka kembali BOQ.");
+      }
+      setDetailOpen(false);
+      fetchBoqs();
+      fetchSummary();
+      setToast({ message: "BOQ berhasil dibuka kembali ke Aktif.", type: "success" });
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Gagal membuka kembali BOQ.", type: "error" });
     }
   }
 
@@ -533,9 +502,7 @@ export default function BoqPage() {
   }, [isStaffGudang, activeTab]);
 
   useEffect(() => {
-    if (activeTab !== "permintaan") {
-      fetchBoqs();
-    }
+    fetchBoqs();
   }, [fetchBoqs, activeTab]);
 
   useEffect(() => {
@@ -554,38 +521,6 @@ export default function BoqPage() {
 
     return () => clearTimeout(timer);
   }, [searchInput]);
-
-  useEffect(() => {
-    fetchPermintaanBoqs();
-  }, [fetchPermintaanBoqs]);
-
-  useEffect(() => {
-    if (itemPickerIndex === null) return;
-
-    function handleClick(e: MouseEvent) {
-      const target = e.target as HTMLElement;
-      if (!target.closest('[data-item-picker]')) {
-        setItemPickerIndex(null);
-      }
-    }
-
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [itemPickerIndex]);
-
-  useEffect(() => {
-    if (itemPickerIndex === null) return;
-
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        setItemPickerIndex(null);
-        setItemPickerSearch('');
-      }
-    }
-
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [itemPickerIndex]);
 
   /* ---------------------------------------------------------------- */
   /* Modal handlers                                                     */
@@ -609,8 +544,6 @@ export default function BoqPage() {
       referenceFile: "",
       items: [{ itemCode: "", itemName: "", quantity: 1, unit: "", destinationWarehouseId: "", notes: "" }],
     });
-    setItemPickerIndex(null);
-    setItemPickerSearch("");
     setFormError(null);
     setModalOpen(true);
   }
@@ -641,8 +574,6 @@ export default function BoqPage() {
         notes: item.notes || "",
       })),
     });
-    setItemPickerIndex(null);
-    setItemPickerSearch("");
     setFormError(null);
     setModalOpen(true);
   }
@@ -652,8 +583,8 @@ export default function BoqPage() {
     setDetailOpen(true);
   }
 
-  function handleProjectChange(projectId: string) {
-    setForm((prev) => ({ ...prev, projectId }));
+  async function handleProjectChange(projectId: string) {
+    setForm((prev) => ({ ...prev, projectId, cluster_id: "" }));
 
     const selected = projects.find((p) => p.projectId === projectId);
     if (!selected) return;
@@ -661,12 +592,24 @@ export default function BoqPage() {
     setForm((prev) => ({
       ...prev,
       area: selected.area || prev.area,
-      cluster_id: selected.cluster_id || "",
+      cluster_id: "",
       kecamatan: selected.kecamatan || "",
       desa_kelurahan: selected.desa_kelurahan || "",
       kota_kabupaten: selected.kota_kabupaten || "",
       provinsi: selected.provinsi || "",
     }));
+
+    try {
+      const res = await get(`${API_BASE}/api/clusters?project_id=${projectId}`);
+      const json = await res.json();
+      if (res.ok && Array.isArray(json?.data)) {
+        setClusters(json.data);
+      } else {
+        setClusters([]);
+      }
+    } catch {
+      setClusters([]);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -674,6 +617,10 @@ export default function BoqPage() {
 
     if (!form.projectId.trim()) {
       setFormError("Project wajib dipilih.");
+      return;
+    }
+    if (!form.cluster_id.trim()) {
+      setFormError("Cluster wajib dipilih.");
       return;
     }
     if (!form.area.trim()) {
@@ -694,6 +641,12 @@ export default function BoqPage() {
       return;
     }
 
+    const itemErrorMessages = Object.values(itemErrors);
+    if (itemErrorMessages.length > 0) {
+      setFormError(itemErrorMessages[0]);
+      return;
+    }
+
     setSubmitting(true);
     setFormError(null);
 
@@ -702,6 +655,7 @@ export default function BoqPage() {
 
       const payload = {
         projectId: form.projectId,
+        clusterId: form.cluster_id,
         area: form.area,
         ticketNumber: form.ticketNumber,
         status: "DRAFT",
@@ -709,6 +663,7 @@ export default function BoqPage() {
         externalVerificationStatus: "MENUNGGU",
         notes: form.notes || null,
         referenceFile: form.referenceFile || null,
+        emailReference: form.emailReference || null,
         items: validItems.map((item) => ({
           itemCode: item.itemCode,
           itemName: item.itemName,
@@ -729,10 +684,51 @@ export default function BoqPage() {
       setModalOpen(false);
       fetchBoqs();
       fetchSummary();
+      if (modalMode === "create") {
+        setToast({ message: "BOQ berhasil disimpan sebagai Draft.", type: "success" });
+      } else {
+        setToast({ message: "Perubahan BOQ berhasil disimpan.", type: "success" });
+      }
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleCreateCluster(e: React.FormEvent) {
+    e.preventDefault();
+    setClusterSubmitting(true);
+    setClusterError(null);
+
+    try {
+      const res = await post(`${API_BASE}/api/clusters`, {
+        cluster_id: clusterForm.cluster_id,
+        project_id: form.projectId,
+        nama_cluster: clusterForm.nama_cluster,
+        cluster_type: clusterForm.cluster_type || null,
+        project_type: clusterForm.project_type || null,
+        kso_partner: clusterForm.kso_partner || null,
+        kso_contact: clusterForm.kso_contact || null,
+        no_tiket_release: clusterForm.no_tiket_release || null,
+        vendor: clusterForm.vendor || null,
+        alamat_lengkap: clusterForm.alamat_lengkap || null,
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json?.message || "Gagal membuat cluster.");
+      }
+
+      const newCluster = json.data;
+      setClusters((prev) => [...prev, newCluster]);
+      setForm((prev) => ({ ...prev, cluster_id: newCluster.cluster_id }));
+      setClusterModalOpen(false);
+      setClusterForm({ cluster_id: "", nama_cluster: "", cluster_type: "", project_type: "", kso_partner: "", kso_contact: "", no_tiket_release: "", vendor: "", alamat_lengkap: "" });
+    } catch (err) {
+      setClusterError(err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.");
+    } finally {
+      setClusterSubmitting(false);
     }
   }
 
@@ -767,9 +763,10 @@ export default function BoqPage() {
 
   async function handleActivate(boq: Boq) {
     if (boq.source === "top_down" && boq.externalVerificationStatus !== "terverifikasi") {
-      alert(
-        "BOQ ini belum ditandai terverifikasi oleh tim eksternal gudang. Konfirmasikan verifikasinya terlebih dahulu sebelum diaktifkan."
-      );
+      setToast({
+        message: "BOQ ini belum ditandai terverifikasi oleh tim eksternal gudang. Konfirmasikan verifikasinya terlebih dahulu sebelum diaktifkan.",
+        type: "error",
+      });
       return;
     }
 
@@ -783,8 +780,9 @@ export default function BoqPage() {
 
       fetchBoqs();
       fetchSummary();
+      setToast({ message: "BOQ berhasil diaktifkan.", type: "success" });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Gagal mengaktifkan BOQ.");
+      setToast({ message: err instanceof Error ? err.message : "Gagal mengaktifkan BOQ.", type: "error" });
     }
   }
 
@@ -803,33 +801,32 @@ export default function BoqPage() {
       if (detailBoq?.id === boq.id) {
         setDetailBoq({ ...detailBoq, externalVerificationStatus: "terverifikasi" });
       }
+      setToast({ message: "BOQ berhasil ditandai terverifikasi.", type: "success" });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Gagal menandai verifikasi.");
+      setToast({ message: err instanceof Error ? err.message : "Gagal menandai verifikasi.", type: "error" });
     }
   }
 
   async function handleExport() {
+    setExporting(true);
     try {
-      const params = new URLSearchParams();
-      params.set("status", activeTab);
-      if (projectFilter) params.set("projectId", projectFilter);
-      if (areaFilter) params.set("area", areaFilter);
-      if (warehouseFilter) params.set("warehouseId", warehouseFilter);
-
-      const res = await get(`${API_BASE}/api/boqs/export?${params.toString()}`);
+      const res = await get(`${API_BASE}/api/boqs/export-matrix`);
       if (!res.ok) throw new Error("Gagal mengekspor laporan BOQ.");
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `laporan-boq-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `BOQ-Export-Matrix_${new Date().toISOString().slice(0, 10)}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+      setToast({ message: "Laporan BOQ berhasil diekspor.", type: "success" });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Gagal mengekspor laporan BOQ.");
+      setToast({ message: err instanceof Error ? err.message : "Gagal mengekspor BOQ.", type: "error" });
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -865,15 +862,37 @@ export default function BoqPage() {
       ...prev,
       items: prev.items.map((item, i) => (i === index ? { ...item, [field]: value } : item)),
     }));
+
+    if (field === "itemCode") {
+      const code = String(value || "");
+      if (!code.trim()) {
+        setItemErrors((prev) => {
+          const next = { ...prev };
+          delete next[index];
+          return next;
+        });
+        return;
+      }
+      const exists = items.some(
+        (it) => it.kode_perangkat.toLowerCase() === code.trim().toLowerCase()
+      );
+      if (!exists) {
+        setItemErrors((prev) => ({
+          ...prev,
+          [index]: `Kode barang "${code}" belum terdaftar di master data. Hubungi Admin untuk menambahkan.`,
+        }));
+      } else {
+        setItemErrors((prev) => {
+          const next = { ...prev };
+          delete next[index];
+          return next;
+        });
+      }
+    }
   }
 
   const totalQty = useMemo(() => {
     return form.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
-  }, [form.items]);
-
-  const warehouseCount = useMemo(() => {
-    const set = new Set(form.items.map((item) => item.destinationWarehouseId).filter(Boolean));
-    return set.size;
   }, [form.items]);
 
   const filteredItems = useMemo(() => {
@@ -906,10 +925,11 @@ export default function BoqPage() {
             <button
               type="button"
               onClick={handleExport}
-              className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50"
+              disabled={exporting}
+              className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <Download size={16} />
-              Ekspor
+              {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+              {exporting ? "Mengekspor..." : "Ekspor"}
             </button>
 
             {canManage && (
@@ -943,7 +963,10 @@ export default function BoqPage() {
             <p className="mt-1 text-2xl font-bold text-slate-900">{summary.draft}</p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-xs font-medium text-slate-400">Proyek Berjalan</p>
+            <p className="text-xs font-medium text-slate-400 flex items-center gap-1">
+              Proyek Berjalan
+              <Info size={12} className="text-slate-400" />
+            </p>
             <p className="mt-1 text-2xl font-bold text-slate-900">{summary.proyekBerjalan}</p>
           </div>
         </div>
@@ -952,7 +975,7 @@ export default function BoqPage() {
         <div className="mb-6 flex items-center gap-2 border-b border-slate-100">
           {TABS.map((tab) => {
             const Icon = tab.icon;
-            const count = tab.key === "draft" ? summary.draft : tab.key === "ditolak" ? undefined : null;
+            const count = tab.key === "draft" ? summary.draft : tab.key === "selesai" ? summary.selesai : tab.key === "ditolak" ? undefined : null;
 
             return (
               <button
@@ -975,20 +998,6 @@ export default function BoqPage() {
               </button>
             );
           })}
-          {canManage && (
-            <button
-              type="button"
-              onClick={() => setActiveTab("permintaan")}
-              className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
-                activeTab === "permintaan"
-                  ? "border-orange-500 text-orange-600"
-                  : "border-transparent text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              <RequestIcon size={16} />
-              Permintaan BOQ
-            </button>
-          )}
         </div>
 
         {/* 3. Filter & pencarian */}
@@ -1030,18 +1039,6 @@ export default function BoqPage() {
             ))}
           </select>
 
-          <select
-            value={warehouseFilter}
-            onChange={(e) => setWarehouseFilter(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
-          >
-            <option value="">Semua Gudang Tujuan</option>
-            {warehouses.map((wh) => (
-              <option key={wh.id} value={wh.id}>
-                {wh.name}
-              </option>
-            ))}
-          </select>
         </div>
 
         {/* 5. Tabel BOQ */}
@@ -1134,7 +1131,15 @@ export default function BoqPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-slate-700">
-                          <div>{boq.project?.projectName || boq.project?.title || "-"}</div>
+                          <div className="flex items-center gap-2">
+                            <span>{boq.project?.projectName || boq.project?.title || "-"}</span>
+                            {boq.project?.status_aktif === false && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
+                                <AlertCircle size={10} />
+                                Project Nonaktif
+                              </span>
+                            )}
+                          </div>
                           <div className="text-xs text-slate-400">{boq.area}</div>
                         </td>
                         <td className="px-6 py-4">
@@ -1188,7 +1193,7 @@ export default function BoqPage() {
                               <Eye size={15} />
                             </button>
 
-                            {canManage && boq.status !== "aktif" && boq.status !== "ditolak" && (
+                             {canManage && boq.status !== "aktif" && boq.status !== "selesai" && boq.status !== "ditolak" && (
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -1247,271 +1252,6 @@ export default function BoqPage() {
             </table>
           </div>
         </div>
-
-        {/* Permintaan BOQ Section */}
-        {activeTab === "permintaan" && canManage && (
-          <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">Permintaan BOQ</h3>
-                <p className="text-xs text-slate-500">
-                  Permintaan tambahan barang dari lapangan yang perlu disetujui Admin General.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPermintaanModalOpen(true)}
-                className="flex items-center gap-2 rounded-full bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600"
-              >
-                <Plus size={16} />
-                Ajukan Permintaan
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50">
-                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      Nomor Permintaan
-                    </th>
-                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      Project
-                    </th>
-                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      Barang
-                    </th>
-                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      Qty Usulan
-                    </th>
-                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      Status
-                    </th>
-                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      Tiket Rujukan
-                    </th>
-                    <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      Aksi
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {permintaanLoading ? (
-                    Array.from({ length: 3 }).map((_, rowIndex) => (
-                      <tr key={rowIndex}>
-                        {Array.from({ length: 6 }).map((_, colIndex) => (
-                          <td key={colIndex} className="px-6 py-4">
-                            <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
-                          </td>
-                        ))}
-                      </tr>
-                    ))
-                  ) : permintaanBoqs.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-6 py-16 text-center text-sm text-slate-400">
-                        Belum ada permintaan BOQ.
-                      </td>
-                    </tr>
-                  ) : (
-                    permintaanBoqs.map((record) => {
-                      const statusKey = String(record.status).toUpperCase();
-                      const statusLabel = {
-                        DIAJUKAN: "Diajukan",
-                        DITINJAU: "Ditinjau",
-                        DISETUJUI: "Disetujui",
-                        DITOLAK: "Ditolak",
-                      }[statusKey] || record.status;
-                      const statusColor = {
-                        DIAJUKAN: "bg-amber-50 text-amber-600",
-                        DITINJAU: "bg-sky-50 text-sky-600",
-                        DISETUJUI: "bg-emerald-50 text-emerald-600",
-                        DITOLAK: "bg-rose-50 text-rose-600",
-                      }[statusKey] || "bg-slate-100 text-slate-600";
-                      const canProcess = statusKey === "DIAJUKAN" || statusKey === "DITINJAU";
-
-                      return (
-                        <tr key={record.permintaan_id} className="group transition-colors hover:bg-slate-50">
-                          <td className="px-6 py-4">
-                            <div className="font-semibold text-orange-500">{record.requestNumber || `REQ-${record.permintaan_id}`}</div>
-                            <div className="text-xs text-slate-400">{record.alasan || "-"}</div>
-                          </td>
-                          <td className="px-6 py-4 text-slate-700">
-                            {record.project?.nama_project || "-"}
-                          </td>
-                          <td className="px-6 py-4 text-slate-700">
-                            <div className="font-medium">{record.itemName || record.barang?.nama_barang || "-"}</div>
-                            <div className="text-xs text-slate-400">{record.itemCode || record.barang?.kode_perangkat || "-"}</div>
-                          </td>
-                          <td className="px-6 py-4 text-right font-semibold text-slate-800">
-                            {Number(record.qty_usulan || record.quantity || 0)}
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${statusColor}`}>
-                              {statusLabel}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-slate-500">
-                            {record.referenceTicket || record.tiket_id || "-"}
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="flex items-center justify-end gap-1">
-                              {canProcess && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleApprovePermintaan(record)}
-                                    title="Setujui"
-                                    className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
-                                  >
-                                    <ThumbsUp size={15} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRejectPermintaan(record)}
-                                    title="Tolak"
-                                    className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                                  >
-                                    <ThumbsDown size={15} />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Permintaan BOQ Modal */}
-        {permintaanModalOpen && canManage && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-            onClick={() => setPermintaanModalOpen(false)}
-          >
-            <div
-              className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-                <div>
-                  <h3 className="text-base font-semibold text-slate-900">Ajukan Permintaan BOQ</h3>
-                  <p className="text-xs text-slate-500">
-                    Usulkan penambahan barang yang dibutuhkan di lapangan.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPermintaanModalOpen(false)}
-                  className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <form onSubmit={handlePermintaanSubmit} className="p-6 space-y-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
-                    Project <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={permintaanForm.projectId}
-                    onChange={(e) => setPermintaanForm((prev) => ({ ...prev, projectId: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
-                  >
-                    <option value="">Pilih project</option>
-                    {projects.map((project) => (
-                      <option key={project.projectId} value={project.projectId}>
-                        {project.projectName || project.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
-                    Barang <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={permintaanForm.barangId}
-                    onChange={(e) => setPermintaanForm((prev) => ({ ...prev, barangId: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
-                  >
-                    <option value="">Pilih barang</option>
-                    {items.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.kode_perangkat} - {item.nama_barang}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
-                    Qty <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={permintaanForm.quantity}
-                    onChange={(e) => setPermintaanForm((prev) => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">Alasan / Justifikasi</label>
-                  <textarea
-                    value={permintaanForm.alasan}
-                    onChange={(e) => setPermintaanForm((prev) => ({ ...prev, alasan: e.target.value }))}
-                    placeholder="Jelaskan alasan permintaan tambahan ini..."
-                    rows={3}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">Tiket Rujukan (Opsional)</label>
-                  <input
-                    type="text"
-                    value={permintaanForm.referenceTicket}
-                    onChange={(e) => setPermintaanForm((prev) => ({ ...prev, referenceTicket: e.target.value }))}
-                    placeholder="Nomor tiket material terkait"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
-                  />
-                </div>
-
-                {permintaanFormError && (
-                  <div className="flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-600">
-                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                    {permintaanFormError}
-                  </div>
-                )}
-
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setPermintaanModalOpen(false)}
-                    className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={permintaanSubmitting}
-                    className="flex items-center gap-2 rounded-full bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:opacity-60"
-                  >
-                    {permintaanSubmitting && <Loader2 size={14} className="animate-spin" />}
-                    Ajukan Permintaan
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
 
         {/* Create/Edit Modal — "Input BOQ dari Email" */}
         {modalOpen && canManage && (
@@ -1578,70 +1318,90 @@ export default function BoqPage() {
 
                   {form.projectId && (
                     <>
-                       <div>
-                         <label className="mb-1.5 block text-xs font-medium text-slate-400">
-                           Cluster ID
-                         </label>
-                         <input
-                           type="text"
-                           value={form.cluster_id}
-                           disabled
-                           placeholder="Otomatis dari project"
-                           className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-orange-400 cursor-not-allowed"
-                         />
-                       </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-slate-500">
+                          Cluster <span className="text-rose-500">*</span>
+                        </label>
+                        <select
+                          value={form.cluster_id}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === "__new__") {
+                              setClusterModalOpen(true);
+                            } else {
+                              setForm((prev) => ({ ...prev, cluster_id: value }));
+                              const selected = clusters.find((c) => c.cluster_id === value);
+                              if (selected) {
+                                setForm((prev) => ({
+                                  ...prev,
+                                  cluster_id: value,
+                                }));
+                              }
+                            }
+                          }}
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                        >
+                          <option value="">Pilih Cluster</option>
+                          {clusters.map((cluster) => (
+                            <option key={cluster.cluster_id} value={cluster.cluster_id}>
+                              {cluster.nama_cluster}
+                            </option>
+                          ))}
+                          <option value="__new__">+ Tambah Cluster Baru</option>
+                        </select>
+                      </div>
 
-                       <div>
-                         <label className="mb-1.5 block text-xs font-medium text-slate-400">
-                           Kecamatan
-                         </label>
-                         <input
-                           type="text"
-                           value={form.kecamatan}
-                           disabled
-                           placeholder="Otomatis dari project"
-                           className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-orange-400 cursor-not-allowed"
-                         />
-                       </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-slate-400">
+                          Kecamatan
+                        </label>
+                        <input
+                          type="text"
+                          value={form.kecamatan}
+                          disabled
+                          placeholder="Otomatis dari cluster"
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-orange-400 cursor-not-allowed"
+                        />
+                      </div>
 
-                       <div>
-                         <label className="mb-1.5 block text-xs font-medium text-slate-400">
-                           Desa/Kelurahan
-                         </label>
-                         <input
-                           type="text"
-                           value={form.desa_kelurahan}
-                           disabled
-                           placeholder="Otomatis dari project"
-                           className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-orange-400 cursor-not-allowed"
-                         />
-                       </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-slate-400">
+                          Desa/Kelurahan
+                        </label>
+                        <input
+                          type="text"
+                          value={form.desa_kelurahan}
+                          disabled
+                          placeholder="Otomatis dari cluster"
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-orange-400 cursor-not-allowed"
+                        />
+                      </div>
 
-                       <div>
-                         <label className="mb-1.5 block text-xs font-medium text-slate-400">
-                           Kota/Kabupaten
-                         </label>
-                         <input
-                           type="text"
-                           value={form.kota_kabupaten}
-                           disabled
-                           placeholder="Otomatis dari project"
-                           className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-orange-400 cursor-not-allowed"
-                         />
-                       </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-slate-400">
+                          Kota/Kabupaten
+                        </label>
+                        <input
+                          type="text"
+                          value={form.kota_kabupaten}
+                          disabled
+                          placeholder="Otomatis dari cluster"
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-orange-400 cursor-not-allowed"
+                        />
+                      </div>
 
-                       <div>
-                         <label className="mb-1.5 block text-xs font-medium text-slate-400">
-                           Provinsi
-                         </label>
-                         <input
-                           type="text"
-                           value={form.provinsi}
-                           disabled
-                           placeholder="Otomatis dari project"
-                           className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-orange-400 cursor-not-allowed"
-                         />
-                       </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-slate-400">
+                          Provinsi
+                        </label>
+                        <input
+                          type="text"
+                          value={form.provinsi}
+                          disabled
+                          placeholder="Otomatis dari cluster"
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-orange-400 cursor-not-allowed"
+                        />
+                      </div>
                     </>
                   )}
 
@@ -1749,12 +1509,6 @@ export default function BoqPage() {
                   </div>
                 </div>
 
-                <datalist id="boq-item-codes">
-                  {items.map((item) => (
-                    <option key={item.id} value={item.kode_perangkat} />
-                  ))}
-                </datalist>
-
                 {/* Items */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -1805,92 +1559,28 @@ export default function BoqPage() {
                    <div className="space-y-2">
                      {form.items.map((item, index) => (
                        <div key={index} className="grid grid-cols-12 gap-2 rounded-xl border border-slate-100 p-3">
-                          <div className="col-span-3 relative">
-                            <input
-                              type="text"
-                              value={item.itemCode}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                updateItem(index, "itemCode", val);
-                                const matched = items.find((it) => it.kode_perangkat === val);
-                                if (matched) {
-                                  updateItem(index, "itemName", matched.nama_barang);
-                                  updateItem(index, "unit", matched.satuan?.kode_satuan || "");
-                                }
-                              }}
-                              onFocus={() => {
-                                setItemPickerIndex(null);
-                                setItemPickerSearch("");
-                              }}
-                              placeholder="Kode perangkat"
-                              list="boq-item-codes"
-                              className="w-full rounded-lg border border-slate-200 pl-2 pr-8 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
-                            />
-                            <button
-                              type="button"
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                              }}
-                              onClick={() => {
-                                setItemPickerIndex(itemPickerIndex === index ? null : index);
-                                setItemPickerSearch("");
-                              }}
-                              className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-slate-600"
-                            >
-                              <ChevronDown size={12} />
-                            </button>
-
-                            {itemPickerIndex === index && (
-                              <div
-                                data-item-picker
-                                className="absolute left-0 top-full z-[60] mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg"
-                              >
-                                <div className="p-1">
-                                  <input
-                                    type="text"
-                                    value={itemPickerSearch}
-                                    onChange={(e) => setItemPickerSearch(e.target.value)}
-                                    placeholder="Cari barang..."
-                                    className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs outline-none focus:border-orange-400"
-                                    autoFocus
-                                  />
-                                </div>
-                                <div className="max-h-32 overflow-y-auto">
-                                  {items
-                                    .filter((it) => {
-                                      const q = itemPickerSearch.toLowerCase();
-                                      return (
-                                        !q ||
-                                        it.kode_perangkat.toLowerCase().includes(q) ||
-                                        it.nama_barang.toLowerCase().includes(q)
-                                      );
-                                    })
-                                    .map((it) => (
-                                      <button
-                                        key={it.id}
-                                        type="button"
-                                        onMouseDown={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                        }}
-                                        onClick={() => {
-                                          updateItem(index, "itemCode", it.kode_perangkat);
-                                          updateItem(index, "itemName", it.nama_barang);
-                                          updateItem(index, "unit", it.satuan?.kode_satuan || "");
-                                          setItemPickerIndex(null);
-                                          setItemPickerSearch("");
-                                        }}
-                                        className="flex w-full items-center justify-between px-2 py-1.5 text-left text-xs hover:bg-slate-50"
-                                      >
-                                        <span className="font-medium text-slate-700">{it.kode_perangkat}</span>
-                                        <span className="truncate text-slate-500">{it.nama_barang}</span>
-                                      </button>
-                                    ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
+                           <div className="col-span-3">
+                             <BarangPicker
+                               value={item.itemCode}
+                               onSelect={(picked: BarangPickerItem) => {
+                                 if (picked.id) {
+                                   updateItem(index, "itemCode", picked.kode_perangkat);
+                                   updateItem(index, "itemName", picked.nama_barang);
+                                   updateItem(
+                                     index,
+                                     "unit",
+                                     picked.satuan_default_kode || "",
+                                   );
+                                 } else {
+                                   updateItem(index, "itemCode", picked.kode_perangkat);
+                                 }
+                               }}
+                               placeholder="Kode perangkat"
+                             />
+                             {itemErrors[index] && (
+                               <p className="mt-1 text-[10px] text-rose-600">{itemErrors[index]}</p>
+                             )}
+                           </div>
                         <div className="col-span-3">
                           <input
                             type="text"
@@ -1910,30 +1600,16 @@ export default function BoqPage() {
                             className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
                           />
                         </div>
-                        <div className="col-span-2">
-                          <input
-                            type="text"
-                            value={item.unit}
-                            onChange={(e) => updateItem(index, "unit", e.target.value)}
-                            placeholder="Satuan"
-                            className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
-                          />
-                        </div>
-                         <div className="col-span-2">
-                           <select
-                            value={item.destinationWarehouseId}
-                            onChange={(e) => updateItem(index, "destinationWarehouseId", e.target.value)}
-                            className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
-                          >
-                            <option value="">Gudang</option>
-                            {warehouses.map((wh) => (
-                              <option key={wh.id} value={wh.id}>
-                                {wh.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="col-span-1 flex items-center justify-end">
+                         <div className="col-span-3">
+                           <input
+                             type="text"
+                             value={item.unit}
+                             onChange={(e) => updateItem(index, "unit", e.target.value)}
+                             placeholder="Satuan"
+                             className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
+                           />
+                         </div>
+                         <div className="col-span-1 flex items-center justify-end">
                           <button
                             type="button"
                             onClick={() => removeItem(index)}
@@ -1955,7 +1631,6 @@ export default function BoqPage() {
                           {form.items.filter((i) => i.itemCode && i.itemName && i.quantity > 0).length}
                         </span>
                         <span>Total Qty: {totalQty}</span>
-                        <span>Gudang Tujuan: {warehouseCount}</span>
                       </div>
                     </div>
                   )}
@@ -2022,9 +1697,17 @@ export default function BoqPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs font-medium text-slate-400">Project</p>
-                    <p className="text-sm font-medium text-slate-800">
-                      {detailBoq.project?.projectName || detailBoq.project?.title || "-"}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-slate-800">
+                        {detailBoq.project?.projectName || detailBoq.project?.title || "-"}
+                      </span>
+                      {detailBoq.project?.status_aktif === false && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
+                          <AlertCircle size={10} />
+                          Project Nonaktif
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-slate-400">Area</p>
@@ -2087,30 +1770,6 @@ export default function BoqPage() {
                         </button>
                       )}
                     </div>
-
-                    {(() => {
-                      let attachment: { url?: string; filename?: string } | null = null;
-                      try {
-                        const parsed = JSON.parse(detailBoq.notes || "{}");
-                        if (parsed.url || parsed.filename) attachment = parsed;
-                      } catch {
-                        if (detailBoq.referenceFile) attachment = { url: detailBoq.referenceFile };
-                      }
-                      if (!attachment) return null;
-                      return (
-                        <div className="mt-2 flex items-center gap-2">
-                          <FileText size={14} className="text-slate-400" />
-                          <a
-                            href={attachment.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs font-medium text-orange-600 hover:text-orange-700"
-                          >
-                            {attachment.filename || "Lihat file referensi"}
-                          </a>
-                        </div>
-                      );
-                    })()}
                   </div>
                 )}
 
@@ -2151,17 +1810,15 @@ export default function BoqPage() {
 
                 {/* Daftar barang */}
                 <div>
-                  <p className="text-xs font-medium text-slate-400 mb-2">Daftar Barang (Master Data)</p>
+                  <p className="text-xs font-medium text-slate-400 mb-2">Daftar Barang</p>
                   <div className="rounded-xl border border-slate-100 overflow-hidden">
                     <table className="w-full text-left text-sm">
                       <thead>
                         <tr className="border-b border-slate-100 bg-slate-50">
                           <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Kode</th>
                           <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Nama</th>
-                          <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Kategori</th>
                           <th className="px-4 py-2 text-[11px] font-semibold text-slate-400 text-right">Qty</th>
                           <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Satuan</th>
-                          <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Gudang Tujuan</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
@@ -2170,13 +1827,17 @@ export default function BoqPage() {
                             <td className="px-4 py-2.5 text-slate-700">{item.itemCode}</td>
                             <td className="px-4 py-2.5 font-medium text-slate-800">
                               <div className="flex items-center gap-2">
-                                {item.barang?.foto && (
+                                {item.barang?.foto && !brokenImages.has(item.barang.foto) && (
                                   <Image
                                     src={item.barang.foto}
                                     alt={item.itemName}
                                     width={32}
                                     height={32}
                                     className="h-8 w-8 rounded-lg border border-slate-100 object-contain"
+                                    onError={() => {
+                                      const fotoUrl = item.barang?.foto;
+                                      if (fotoUrl) setBrokenImages((prev) => new Set(prev).add(fotoUrl));
+                                    }}
                                   />
                                 )}
                                 <span>{item.itemName}</span>
@@ -2187,16 +1848,10 @@ export default function BoqPage() {
                                 )}
                               </div>
                             </td>
-                            <td className="px-4 py-2.5 text-slate-500">
-                              {item.barang?.kategori?.nama_kategori || "-"}
-                            </td>
                             <td className="px-4 py-2.5 text-right font-semibold text-slate-800">
                               {item.quantity}
                             </td>
                             <td className="px-4 py-2.5 text-slate-500">{item.unit || "-"}</td>
-                            <td className="px-4 py-2.5 text-slate-500">
-                              {item.destinationWarehouse?.name || "-"}
-                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -2248,7 +1903,7 @@ export default function BoqPage() {
                         <p className="text-sm font-semibold text-slate-800">{detailBoq.reconciliation.boqQty}</p>
                       </div>
                       <div>
-                        <p className="text-[11px] text-slate-400">Hardware on Site</p>
+                        <p className="text-[11px] text-slate-400">MOS (Sistem)</p>
                         <p className="text-sm font-semibold text-slate-800">
                           {detailBoq.reconciliation.hardwareOnSite}
                         </p>
@@ -2321,7 +1976,29 @@ export default function BoqPage() {
                     </button>
                   )}
 
-                  {canManage && detailBoq.status === "ditolak" && (
+                   {canManage && detailBoq.status === "aktif" && (
+                     <button
+                       type="button"
+                       onClick={() => handleMarkSelesai(detailBoq)}
+                       className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                     >
+                       <ClipboardCheck size={16} />
+                       Tandai Selesai
+                     </button>
+                   )}
+
+                    {canManage && detailBoq.status === "selesai" && (
+                      <button
+                        type="button"
+                        onClick={() => openReopenConfirm(detailBoq)}
+                        className="flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-emerald-600"
+                      >
+                        <CheckCircle2 size={16} />
+                        Buka Kembali ke Aktif
+                      </button>
+                    )}
+
+                   {canManage && detailBoq.status === "ditolak" && (
                     <button
                       type="button"
                       onClick={() => {
@@ -2340,6 +2017,209 @@ export default function BoqPage() {
           </div>
         )}
       </div>
-    </div>
-  );
-}
+
+      {confirmSelesaiOpen && confirmSelesaiBoq && (() => {
+        const boq = confirmSelesaiBoq;
+        const totalBoq = boq.items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
+        const totalAdditional = boq.reconciliation?.additional || 0;
+        const mosSistem = boq.reconciliation?.mosSistem || 0;
+        const used = boq.reconciliation?.used || 0;
+        const approvedReturnQty = boq.reconciliation?.approved_return_qty || 0;
+        const remains = mosSistem - (totalBoq + totalAdditional) - used - approvedReturnQty;
+        const hasWarning = remains !== 0;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+              <h3 className="text-base font-semibold text-slate-900">Tandai BOQ sebagai Selesai?</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                BOQ <span className="font-semibold text-slate-700">{boq.boqNumber || boq.id}</span> akan diubah menjadi status Selesai.
+              </p>
+
+              {hasWarning && (
+                <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-semibold">Perhatian: BOQ ini masih memiliki sisa material.</p>
+                     <p className="mt-0.5 text-xs">
+                       Remains = <span className="font-semibold">{remains}</span> (MOS Sistem: {mosSistem}, BOQ: {totalBoq}, Additional: {totalAdditional}, Used: {used}, Return: {approvedReturnQty})
+                     </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-6 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleCancelSelesai}
+                  className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSelesai}
+                  className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-emerald-600"
+                >
+                  Ya, Tandai Selesai
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {toast && (
+        <div
+          className={[
+            "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
+            toast.type === "success"
+              ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
+              : "border-rose-200/80 bg-rose-50/95 text-rose-800",
+          ].join(" ")}
+        >
+          <div
+            className={[
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+              toast.type === "success" ? "bg-emerald-100" : "bg-rose-100",
+            ].join(" ")}
+          >
+            {toast.type === "success" ? (
+              <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+          </div>
+          <p className="flex-1 leading-snug">{toast.message}</p>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className={[
+              "ml-2 shrink-0 rounded-full p-1 transition-colors",
+              toast.type === "success"
+                ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
+                : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
+            ].join(" ")}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+      
+       <ConfirmModal
+         open={confirmReopenOpen}
+         onClose={() => setConfirmReopenOpen(false)}
+         onConfirm={doReopenBoq}
+         title="Buka Kembali ke Aktif"
+         description="Yakin ingin membuka kembali BOQ ini ke status Aktif?"
+         confirmText="Ya, Buka Kembali"
+         cancelText="Batal"
+         variant="default"
+       />
+
+       {clusterModalOpen && (
+         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop:blur-sm p-4">
+           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+               <h3 className="text-base font-semibold text-slate-900">Tambah Cluster Baru</h3>
+               <button
+                 type="button"
+                 onClick={() => setClusterModalOpen(false)}
+                 className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+               >
+                 <X size={16} />
+               </button>
+             </div>
+
+              <form onSubmit={handleCreateCluster} className="space-y-3">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
+                    Cluster ID <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={clusterForm.cluster_id}
+                    onChange={(e) => setClusterForm((prev) => ({ ...prev, cluster_id: e.target.value.toUpperCase() }))}
+                    placeholder="Contoh: CL001, NET-H-005502"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
+                    Nama Cluster <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={clusterForm.nama_cluster}
+                    onChange={(e) => setClusterForm((prev) => ({ ...prev, nama_cluster: e.target.value }))}
+                    placeholder="Contoh: RW 05, Cluster A"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-400">
+                    Tipe Cluster
+                  </label>
+                  <input
+                    type="text"
+                    value={clusterForm.cluster_type}
+                    onChange={(e) => setClusterForm((prev) => ({ ...prev, cluster_type: e.target.value }))}
+                    placeholder="Opsional"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-400">
+                    Alamat Lengkap
+                  </label>
+                  <textarea
+                    value={clusterForm.alamat_lengkap}
+                    onChange={(e) => setClusterForm((prev) => ({ ...prev, alamat_lengkap: e.target.value }))}
+                    placeholder="Opsional"
+                    rows={3}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                  />
+                </div>
+
+                {clusterError && (
+                  <div className="flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-600">
+                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                    {clusterError}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setClusterModalOpen(false)}
+                    className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={clusterSubmitting}
+                    className="flex items-center gap-2 rounded-full bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:opacity-60"
+                  >
+                    {clusterSubmitting && <Loader2 size={14} className="animate-spin" />}
+                    Buat Cluster
+                  </button>
+                </div>
+              </form>
+           </div>
+         </div>
+       )}
+     </div>
+   );
+ }

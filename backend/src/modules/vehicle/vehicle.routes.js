@@ -16,7 +16,7 @@ const authorize = require("../../middlewares/role.middleware");
 router.post(
   "/",
   authenticate,
-  authorize("ADMIN", "SUPERVISOR"),
+  authorize("ADMIN"),
   validate(createVehicleSchema),
   vehicleController.create
 );
@@ -26,9 +26,16 @@ router.get("/:no_polisi", authenticate, vehicleController.findByNoPolisi);
 router.put(
   "/:no_polisi",
   authenticate,
-  authorize("ADMIN"),
+  authorize("ADMIN", "SUPERVISOR"),
   validate(updateVehicleSchema),
   vehicleController.update
+);
+
+router.delete(
+  "/:kendaraan_id",
+  authenticate,
+  authorize("ADMIN", "SUPERVISOR"),
+  vehicleController.remove
 );
 
 module.exports = router;

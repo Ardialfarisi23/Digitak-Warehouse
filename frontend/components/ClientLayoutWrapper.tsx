@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { GlobalHeader } from "@/components/GlobalHeader";
+import { AccountDeactivatedListener } from "@/components/AccountDeactivatedListener";
 
 const AUTH_PATHS = ["/", "/forgot-password"];
 
@@ -16,6 +17,7 @@ export function ClientLayoutWrapper({
   return (
     <>
       {!isAuthPage && <GlobalHeader />}
+      <AccountDeactivatedListener />
       {children}
     </>
   );

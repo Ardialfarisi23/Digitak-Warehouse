@@ -48,6 +48,20 @@ const createPersonnelSchema = z.object({
     .optional()
     .nullable(),
 
+  gudang_id: z
+    .union([z.number().int().positive(), z.string()])
+    .optional()
+    .nullable()
+    .transform((val) => {
+      if (val === null || val === undefined || val === "") return null;
+      const num = Number(val);
+      return Number.isFinite(num) && num > 0 ? num : null;
+    }),
+
+  is_aktif: z
+    .boolean()
+    .optional()
+    .nullable(),
 });
 
 const updatePersonnelSchema =

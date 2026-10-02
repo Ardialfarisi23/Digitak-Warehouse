@@ -1,8 +1,23 @@
 module.exports = (err, req, res, next) => {
   console.error(err);
 
-  res.status(err.statusCode || 500).json({
+  if (err && err.code === "P2002") {
+    return res.status(409).json({
+      success: false,
+      message: "Data sudah digunakan (duplikat).",
+      field: err?.meta?.target || null,
+    });
+  }
+
+  const statusCode = err?.statusCode || 500;
+  const message =
+    (err?.message && String(err.message).trim()) ||
+    "Internal Server Error";
+  const code = err?.code || null;
+
+  res.status(statusCode).json({
     success: false,
-    message: err.message || "Internal Server Error",
+    message,
+    ...(code ? { code } : {}),
   });
 };

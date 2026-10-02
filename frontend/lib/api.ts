@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./auth-context";
+
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 interface FetchOptions extends RequestInit {
   skipAuth?: boolean;
@@ -10,7 +12,12 @@ interface FetchOptions extends RequestInit {
 
 export function useApi() {
   const router = useRouter();
-  const { token, logout } = useAuth();
+  const { token, logout, isLoggingOut } = useAuth();
+
+  const isLoggingOutRef = useRef(isLoggingOut);
+  useEffect(() => {
+    isLoggingOutRef.current = isLoggingOut;
+  }, [isLoggingOut]);
 
   const request = useCallback(
     async (url: string, options: FetchOptions = {}) => {
@@ -36,24 +43,42 @@ export function useApi() {
 
       // 1. Sesi kadaluarsa / Token invalid -> Redirect ke login
       if (response.status === 401) {
+        const err = await response.clone().json().catch(() => null);
+
+        if (err?.code === "ACCOUNT_DEACTIVATED") {
+          window.dispatchEvent(new CustomEvent("app:account-deactivated"));
+          return response;
+        }
+
         logout();
-        sessionStorage.setItem(
-          "flash:session_expired",
-          "Sesi Anda telah berakhir, silakan login kembali."
-        );
-        router.replace("/");
-        throw new Error("Sesi berakhir. Silakan login kembali.");
+        if (!isLoggingOutRef.current) {
+          sessionStorage.setItem(
+            "flash:session_expired",
+            "Sesi Anda telah berakhir, silakan login kembali."
+          );
+          router.replace("/");
+          throw new Error("Sesi berakhir. Silakan login kembali.");
+        } else {
+          router.replace("/");
+        }
       }
 
       // 2. Akses ditolak (Role tidak diizinkan) -> Jangan logout, biarkan UI menangani
       if (response.status === 403) {
         console.warn(`[403 Forbidden] Akses ditolak untuk endpoint: ${url}`);
+        try {
+          const cloned = response.clone();
+          const data = await cloned.json();
+          if (data?.code === "MUST_CHANGE_PASSWORD") {
+            router.replace("/dashboard/change-password");
+          }
+        } catch {}
         return response;
       }
 
       return response;
     },
-    [token, logout, router]
+    [token, logout, isLoggingOut, router]
   );
 
   const get = useCallback(
@@ -90,5 +115,11 @@ export function useApi() {
     [request]
   );
 
-  return { request, get, post, put, del };
+  const patch = useCallback(
+    (url: string, options?: FetchOptions) =>
+      request(url, { ...options, method: "PATCH" }),
+    [request]
+  );
+
+  return { request, get, post, put, patch, del };
 }

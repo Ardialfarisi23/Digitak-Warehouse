@@ -24,11 +24,7 @@ const findByKode = async (kode_zona, options = {}) => {
       where: { kode_zona },
       include: {
         gudang: true,
-        raks: {
-          include: {
-            bins: true,
-          },
-        },
+        dinilai_oleh_user: true,
       },
     });
   }
@@ -39,11 +35,22 @@ const findByKode = async (kode_zona, options = {}) => {
     },
     include: {
       gudang: true,
-      raks: {
-        include: {
-          bins: true,
-        },
-      },
+      dinilai_oleh_user: true,
+    },
+  });
+};
+
+const findByKodeAndGudangId = async (kode_zona, gudang_id, options = {}) => {
+  const where = {
+    kode_zona,
+    gudang_id: Number(gudang_id),
+  };
+
+  return await prisma.zona_gudang.findFirst({
+    where,
+    include: {
+      gudang: true,
+      dinilai_oleh_user: true,
     },
   });
 };
@@ -83,11 +90,7 @@ const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sor
     take: sanitizedLimit,
     include: {
       gudang: true,
-      raks: {
-        include: {
-          bins: true,
-        },
-      },
+      dinilai_oleh_user: true,
     },
   });
 
@@ -106,12 +109,25 @@ const update = async (zona_id, data) => {
   return await prisma.zona_gudang.update({
     where: { zona_id: Number(zona_id) },
     data,
+    include: { gudang: true },
+  });
+};
+
+const findById = async (zona_id) => {
+  return await prisma.zona_gudang.findUnique({
+    where: { zona_id: Number(zona_id) },
+    include: {
+      gudang: true,
+      dinilai_oleh_user: true,
+    },
   });
 };
 
 module.exports = {
   create,
   findByKode,
+  findByKodeAndGudangId,
+  findById,
   findAll,
   update,
 };

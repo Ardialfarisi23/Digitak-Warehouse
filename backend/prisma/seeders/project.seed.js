@@ -74,8 +74,28 @@ async function seedProjects(prisma) {
     },
   ];
 
+  // Idempotent: project tidak punya unique constraint di schema, jadi dedup manual
+  // berdasarkan nama_project. Baris yang sudah ada di-update (tidak dihapus) supaya
+  // project_id existing tetap stabil dan referensi tiket/surat_jalan tidak putus.
+  // Ini yang mencegah project duplikat menumpuk setiap kali seeder dijalankan ulang.
   for (const item of data) {
-    await prisma.project.create({ data: item });
+    const existing = await prisma.project.findFirst({
+      where: { nama_project: item.nama_project },
+      orderBy: { project_id: "asc" },
+      select: { project_id: true },
+    });
+
+    if (existing) {
+      const { created_by, ...updatable } = item;
+      await prisma.project.update({
+        where: { project_id: existing.project_id },
+        data: updatable,
+      });
+      console.log(`↻ Project "${item.nama_project}" (id=${existing.project_id}) diperbarui.`);
+    } else {
+      const created = await prisma.project.create({ data: item });
+      console.log(`✔ Project "${item.nama_project}" (id=${created.project_id}) dibuat.`);
+    }
   }
 
   console.log(`✔ Seeded ${data.length} project records`);

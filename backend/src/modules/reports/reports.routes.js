@@ -7,13 +7,17 @@ const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
 
 router.get("/stock-history", authenticate, authorize("ADMIN"), reportsController.getStockHistory);
+router.get("/stock-history/export", authenticate, authorize("ADMIN"), reportsController.exportStockHistoryExcel);
 router.get("/audit-log", authenticate, authorize("ADMIN"), reportsController.getAuditLogs);
-router.get("/rack-utilization", authenticate, authorize("ADMIN"), reportsController.getRackUtilization);
+router.get("/audit-log/export", authenticate, authorize("ADMIN"), reportsController.exportAuditLogExcel);
+router.get("/reconciliation-upload-logs", authenticate, authorize("ADMIN"), reportsController.getReconciliationUploadLogs);
 router.get("/hardware-reconciliation", authenticate, authorize("ADMIN"), reportsController.getHardwareReconciliation);
 router.get("/hardware-reconciliation/per-tiket", authenticate, authorize("ADMIN"), reportsController.getHardwareReconciliationPerTiket);
 router.get("/hardware-reconciliation/detailed", authenticate, authorize("ADMIN"), reportsController.getHardwareReconciliationDetailed);
 router.get("/zone-utilization-history", authenticate, authorize("ADMIN"), reportsController.getZoneUtilizationHistory);
 router.get("/zone-utilization", authenticate, authorize("ADMIN"), reportsController.getZoneUtilization);
+router.get("/reconciliation/template", authenticate, authorize("ADMIN", "SUPERVISOR"), reportsController.downloadReconciliationTemplate);
+
 router.post("/reconciliation/backfill", authenticate, authorize("ADMIN"), reportsController.backfillReconciliation);
 
 router.post("/reconciliation/upload", authenticate, authorize("ADMIN", "SUPERVISOR"), reportsController.uploadReconciliationFile);

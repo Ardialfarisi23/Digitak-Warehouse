@@ -1,4 +1,5 @@
-const AppError = require("../shared/errors");
+﻿const AppError = require("../shared/errors");
+const prisma = require("../config/prisma");
 
 const ROLE_ALIASES = {
   admin_general: "ADMIN",
@@ -9,29 +10,45 @@ const ROLE_ALIASES = {
 const normalizeRole = (role) => ROLE_ALIASES[role] || role;
 
 const authorize = (...roles) => {
-    return (req, res, next) => {
-        try {
-            if (!req.user) {
-                throw new AppError(
-                    "Unauthorized.",
-                    401
-                );
-            }
+  return (req, res, next) => {
+    try {
+      if (!req.user) {
+        throw new AppError("Unauthorized.", 401);
+      }
 
-            const userRole = normalizeRole(req.user.role);
+      const userRole = normalizeRole(req.user.role);
 
-            if (!roles.includes(userRole)) {
-                throw new AppError(
-                    "Anda tidak memiliki hak akses.",
-                    403
-                );
-            }
-
-            next();
-        } catch (err) {
-            next(err);
+      if (!roles.includes(userRole)) {
+        const actorId = req.user.id || req.user.user_id;
+        if (actorId) {
+          prisma.audit_log
+            .create({
+              data: {
+                entity_type: "access_attempt",
+                entity_id: BigInt(actorId),
+                aksi: "update",
+                actor_id: BigInt(actorId),
+                data_sebelum: null,
+                data_sesudah: {
+                  method: req.method,
+                  url: req.originalUrl,
+                  user_role: req.user.role,
+                  required_roles: roles,
+                  reason: "role_mismatch",
+                },
+              },
+            })
+            .catch(() => {});
         }
-    };
+
+        throw new AppError("Anda tidak memiliki hak akses.", 403);
+      }
+
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
 };
 
 module.exports = authorize;

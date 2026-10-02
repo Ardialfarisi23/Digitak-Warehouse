@@ -1,48 +1,176 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { Plus_Jakarta_Sans } from "next/font/google";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   Search,
   ChevronDown,
   FileClock,
   PackageSearch,
   BarChart3,
-  Circle,
   Eye,
   X,
+  Plus,
+  Pencil,
+  Trash2,
+  CheckCircle,
+  PackageCheck,
+  ArrowDownToLine,
+  ArrowUpRight,
+  XCircle,
+  Upload,
+  Download,
+  Loader2,
+  RotateCcw,
 } from "lucide-react";
 import { useApi } from "@/lib/api";
 
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
-
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-const statusColor = {
+const statusColor: Record<string, { fg: string; bg: string }> = {
   draft_diajukan: { fg: "#6B7280", bg: "#F3F4F6" },
+  menunggu_verifikasi: { fg: "#92400E", bg: "#FEF3C7" },
+  ready_putaway: { fg: "#1E40AF", bg: "#DBEAFE" },
   disetujui: { fg: "#1E7A4C", bg: "#E4F5EC" },
   digenerate: { fg: "#6B7280", bg: "#F3F4F6" },
+  tiba_menunggu_konfirmasi: { fg: "#1E40AF", bg: "#DBEAFE" },
   diterima_didistribusikan: { fg: "#2E9E6D", bg: "#E4F5EC" },
+  sedang_dikirim: { fg: "#92400E", bg: "#FEF3C7" },
+  ditolak: { fg: "#991B1B", bg: "#FEE2E2" },
 };
 
-function Badge({ children, color }) {
+type BadgeVariant = "green" | "blue" | "red" | "purple" | "orange" | "gray" | "outline-green" | "outline-blue" | "outline-red" | "outline-purple" | "outline-orange" | "outline-gray";
+
+const badgeStyles: Record<BadgeVariant, string> = {
+  green: "bg-emerald-50 text-emerald-700",
+  blue: "bg-blue-50 text-blue-700",
+  red: "bg-rose-50 text-rose-700",
+  purple: "bg-purple-50 text-purple-700",
+  orange: "bg-orange-50 text-orange-700",
+  gray: "bg-slate-100 text-slate-700",
+  "outline-green": "bg-transparent border border-emerald-200 text-emerald-700",
+  "outline-blue": "bg-transparent border border-blue-200 text-blue-700",
+  "outline-red": "bg-transparent border border-rose-200 text-rose-700",
+  "outline-purple": "bg-transparent border border-purple-200 text-purple-700",
+  "outline-orange": "bg-transparent border border-orange-200 text-orange-700",
+  "outline-gray": "bg-transparent border border-slate-200 text-slate-600",
+};
+
+function Badge({ label, icon: Icon, variant = "gray" }: { label: string; icon?: React.ComponentType<{ size?: number; className?: string }>; variant?: BadgeVariant }) {
   return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap"
-      style={{ color, backgroundColor: color + "18" }}
-    >
-      <Circle size={12} fill={color} stroke="none" />
-      {children}
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${badgeStyles[variant]}`}>
+      {Icon && <Icon size={14} />}
+      {label}
     </span>
   );
 }
 
-function Modal({ open, onClose, title, children }) {
+const aksiMap: Record<string, { label: string; icon: React.ComponentType<{ size?: number; className?: string }>; variant: BadgeVariant }> = {
+  create: { label: "Dibuat", icon: Plus, variant: "green" },
+  update: { label: "Diperbarui", icon: Pencil, variant: "blue" },
+  delete: { label: "Dihapus", icon: Trash2, variant: "red" },
+  approve: { label: "Disetujui", icon: CheckCircle, variant: "green" },
+  receive_inbound: { label: "Terima Inbound", icon: ArrowDownToLine, variant: "purple" },
+  approve_inbound: { label: "Setujui Inbound", icon: CheckCircle, variant: "green" },
+  approve_outbound: { label: "Setujui Outbound", icon: CheckCircle, variant: "green" },
+  confirm_distributed: { label: "Dikonfirmasi", icon: PackageCheck, variant: "purple" },
+  reject_inbound: { label: "Tolak Inbound", icon: XCircle, variant: "red" },
+  reject_outbound: { label: "Tolak Outbound", icon: XCircle, variant: "red" },
+  putaway: { label: "Penyimpanan", icon: PackageCheck, variant: "purple" },
+  retrieve: { label: "Pengambilan Stok", icon: PackageSearch, variant: "blue" },
+  create_inbound: { label: "Buat Inbound", icon: Plus, variant: "green" },
+  create_outbound: { label: "Buat Outbound", icon: Plus, variant: "green" },
+  nonaktifkan_project: { label: "Project Dinonaktifkan", icon: XCircle, variant: "red" },
+  aktifkan_project: { label: "Project Diaktifkan", icon: CheckCircle, variant: "green" },
+  soft_delete: { label: "Dihapus (Soft)", icon: Trash2, variant: "red" },
+  restore: { label: "Dipulihkan", icon: RotateCcw, variant: "green" },
+  start_delivery: { label: "Mulai Pengiriman", icon: ArrowDownToLine, variant: "purple" },
+};
+
+const roleMap: Record<string, { label: string; variant: BadgeVariant }> = {
+  admin_general: { label: "Admin General", variant: "outline-orange" },
+  supervisor: { label: "Supervisor", variant: "outline-blue" },
+  staf_gudang: { label: "Staf Gudang", variant: "outline-gray" },
+};
+
+interface AuditLogEntry {
+  audit_id: number | string;
+  created_at: string;
+  actor_nama: string;
+  actor_role: string;
+  aksi: string;
+  entity_type?: string;
+  entity_id?: string | number;
+  entity_name?: string | null;
+  entity_refs_resolved?: Record<string, string | null>;
+  data_sebelum?: Record<string, unknown>;
+  data_sesudah?: Record<string, unknown>;
+  details?: Array<{
+    detail_id: number | string;
+    kode_tiket: string;
+    mos?: number | string;
+    remains_lapangan?: number | string;
+    used: number | string;
+    status: string;
+    reason?: string | null;
+    [key: string]: unknown;
+  }>;
+  [key: string]: unknown;
+}
+
+interface StockHistoryEntry {
+  ledger_id: number | string;
+  waktu_mutasi: string;
+  jenis_mutasi: string;
+  kode_tiket: string;
+  tipe_surat_jalan: string;
+  status_surat_jalan: string;
+  diproses_oleh: string;
+  diproses_oleh_role?: string;
+  kode_perangkat: string;
+  nama_barang: string;
+  qty: number;
+  satuan: string;
+  zona_kode: string;
+  zona_gudang: string;
+  gudang_asal: string;
+  gudang_tujuan: string;
+  nomor_surat_jalan?: string;
+  kondisi?: string;
+  is_kelebihan?: boolean;
+  saldo_setelah?: number;
+  project_nama?: string;
+  area?: string;
+  zona_nama?: string;
+  zona_tipe?: string;
+  [key: string]: unknown;
+}
+
+interface ReconciliationUploadLogEntry {
+  upload_id: number | string;
+  uploaded_at: string;
+  filename: string;
+  uploaded_by_nama: string;
+  uploaded_by_role: string;
+  total_rows: number;
+  success_rows: number;
+  failed_rows: number;
+  details?: Array<{
+    detail_id: number | string;
+    kode_tiket?: string;
+    mos?: string;
+    remains_lapangan?: string;
+    used?: string;
+    status?: string;
+    alasan_gagal?: string;
+    reason?: string;
+    [key: string]: unknown;
+  }>;
+  [key: string]: unknown;
+}
+
+function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
   useEffect(() => {
-    const handleKey = (e) => {
+    const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     if (open) {
@@ -80,10 +208,10 @@ function Modal({ open, onClose, title, children }) {
   );
 }
 
-function TabAuditLog({ get }) {
-  const [data, setData] = useState([]);
+function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
+  const [data, setData] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [actorRole, setActorRole] = useState("");
   const [aksi, setAksi] = useState("");
@@ -92,8 +220,16 @@ function TabAuditLog({ get }) {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [detailRow, setDetailRow] = useState(null);
+  const [detailRow, setDetailRow] = useState<AuditLogEntry | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "warning" } | null>(null);
   const limit = 20;
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -102,7 +238,6 @@ function TabAuditLog({ get }) {
     try {
       const params = new URLSearchParams();
       if (q.trim()) params.set("search", q.trim());
-      if (q.trim()) params.set("kodeTiket", q.trim());
       if (actorRole) params.set("actorRole", actorRole);
       if (aksi) params.set("action", aksi);
       if (startDate) params.set("startDate", startDate);
@@ -133,9 +268,51 @@ function TabAuditLog({ get }) {
     fetchData();
   }, [fetchData]);
 
-  const aksiList = ["create", "update", "delete", "approve"];
+  const handleExportAuditLog = async () => {
+    setExporting(true);
+    setToast(null);
+    try {
+      const params = new URLSearchParams();
+      if (q.trim()) params.set("search", q.trim());
+      if (actorRole) params.set("actorRole", actorRole);
+      if (aksi) params.set("action", aksi);
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
 
-  const formatDateTime = (iso) => {
+      const res = await get(`${API_BASE}/api/reports/audit-log/export?${params.toString()}`);
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json?.message || "Gagal mengekspor audit log.");
+      }
+
+      const truncated = res.headers.get("X-Export-Truncated") === "true";
+      const truncatedMessage = res.headers.get("X-Export-Truncated-Message");
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Audit-Log-Export_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      if (truncated && truncatedMessage) {
+        setToast({ message: truncatedMessage, type: "warning" });
+      } else {
+        setToast({ message: "Audit Log berhasil diekspor.", type: "success" });
+      }
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Gagal mengekspor Audit Log.", type: "error" });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const aksiList = ["create", "update", "delete", "approve", "receive_inbound", "approve_inbound", "approve_outbound", "confirm_distributed", "reject_inbound", "reject_outbound", "putaway", "retrieve", "create_inbound", "create_outbound", "nonaktifkan_project", "aktifkan_project", "soft_delete", "restore", "start_delivery"];
+
+  const formatDateTime = (iso: string) => {
     const d = new Date(iso);
     const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
     const day = d.getDate();
@@ -145,31 +322,54 @@ function TabAuditLog({ get }) {
     return `${day} ${mon}, ${hh}:${mm}`;
   };
 
-  const getEntityLabel = (row) => {
+  const getEntityLabel = (row: AuditLogEntry): string => {
     const kode = row.data_sesudah?.kode_tiket || row.data_sebelum?.kode_tiket;
-    if (kode) return kode;
-    if (row.entity_type && row.entity_id && row.entity_id !== "0") {
-      return `${row.entity_type} #${row.entity_id}`;
+    if (kode) return String(kode);
+
+    const entityTypeLabels: Record<string, string> = {
+      boq: "BOQ",
+      surat_jalan: "Surat Jalan",
+      project: "Project",
+      titik_lapangan: "Titik Lapangan",
+      user_account: "User",
+    };
+
+    if (row.entity_name) {
+      const label = entityTypeLabels[row.entity_type || ""] || row.entity_type || "Entitas";
+      return `${label}: ${row.entity_name}`;
     }
+
+    if (row.entity_type === "reconciliation") {
+      return "Reconciliation";
+    }
+
+    if (row.entity_type && row.entity_id && row.entity_id !== "0") {
+      return `${row.entity_type} #${row.entity_id} (data mungkin telah dihapus)`;
+    }
+
     return row.entity_type || "-";
   };
 
-  const getExtraRef = (row) => {
+  const getExtraRef = (row: AuditLogEntry) => {
     const ds = row.data_sesudah || {};
-    const parts = [];
-    if (ds.source_file || ds.filename || ds.nama_file) {
-      parts.push(ds.source_file || ds.filename || ds.nama_file);
+    const parts: string[] = [];
+    const getString = (obj: Record<string, unknown>, key: string): string | undefined =>
+      typeof obj[key] === "string" ? (obj[key] as string) : undefined;
+
+    if (getString(ds, "source_file") || getString(ds, "filename") || getString(ds, "nama_file")) {
+      parts.push(getString(ds, "source_file") || getString(ds, "filename") || getString(ds, "nama_file") || "");
     }
-    if (ds.username_target || ds.target_user || ds.user_target) {
-      parts.push(`user: ${ds.username_target || ds.target_user || ds.user_target}`);
+    if (getString(ds, "username_target") || getString(ds, "target_user") || getString(ds, "user_target")) {
+      parts.push(`user: ${getString(ds, "username_target") || getString(ds, "target_user") || getString(ds, "user_target") || ""}`);
     }
-    if (ds.catatan) {
-      parts.push(ds.catatan);
+    const catatan = getString(ds, "catatan");
+    if (catatan) {
+      parts.push(catatan);
     }
     return parts.length > 0 ? parts.join(" | ") : "—";
   };
 
-  const renderStructuredData = (label, data) => {
+  const renderStructuredData = (label: string, data: Record<string, unknown>, resolvedRefs: Record<string, string | null> = {}) => {
     if (!data || typeof data !== "object") {
       return <p className="text-sm text-slate-500">-</p>;
     }
@@ -179,8 +379,9 @@ function TabAuditLog({ get }) {
       return <p className="text-sm text-slate-500">-</p>;
     }
 
-    const labelMap = {
-      mos: "MOS",
+    const labelMap: Record<string, string> = {
+      mos: "MOS (arsip)",
+      remains_lapangan: "Remains di Lapangan",
       used: "Used",
       source_file: "File Sumber",
       filename: "Nama File",
@@ -193,13 +394,50 @@ function TabAuditLog({ get }) {
       username_target: "Username Target",
       target_user: "Username Target",
       user_target: "Username Target",
+      tiket_id: "Tiket",
+      surat_jalan_id: "Surat Jalan",
+      gudang_asal_id: "Gudang Asal",
+      gudang_tujuan_id: "Gudang Tujuan",
+      project_id: "Project",
+      boq_id: "BOQ",
+      zona_id: "Zona",
+      barang_id: "Barang",
+      surat_jalan_item_id: "Item Surat Jalan",
+      override: "Override Kondisi",
+      kondisi_diminta: "Kondisi Diminta",
+      kondisi_diambil: "Kondisi Diambil",
+      catatan_kondisi: "Catatan Override",
     };
+
+    const idRefKeys = new Set([
+      "tiket_id",
+      "surat_jalan_id",
+      "gudang_asal_id",
+      "gudang_tujuan_id",
+      "project_id",
+      "boq_id",
+      "zona_id",
+      "barang_id",
+      "surat_jalan_item_id",
+    ]);
 
     return (
       <div className="space-y-2">
         {entries.map(([key, value]) => {
           const displayKey = labelMap[key] || key;
-          const displayValue = typeof value === "object" ? JSON.stringify(value) : String(value);
+          let displayValue: string;
+          if (idRefKeys.has(key)) {
+            const resolved = resolvedRefs[key];
+            if (resolved === null) {
+              displayValue = "(data telah dihapus)";
+            } else if (resolved === undefined) {
+              displayValue = typeof value === "object" ? JSON.stringify(value) : String(value);
+            } else {
+              displayValue = resolved;
+            }
+          } else {
+            displayValue = typeof value === "object" ? JSON.stringify(value) : String(value);
+          }
           return (
             <div key={key} className="flex items-start justify-between gap-4 rounded-lg bg-slate-50 px-3 py-2">
               <span className="text-xs font-medium text-slate-500">{displayKey}</span>
@@ -273,7 +511,81 @@ function TabAuditLog({ get }) {
             className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
           />
         </div>
+
+        <button
+          type="button"
+          onClick={handleExportAuditLog}
+          disabled={exporting}
+          className="flex items-center gap-2 rounded-full bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {exporting ? (
+            <span className="flex items-center gap-2">
+              <Loader2 size={16} className="animate-spin" />
+              Mengekspor...
+            </span>
+          ) : (
+            <span className="flex items-center gap-2">
+              <Download size={16} />
+              Ekspor
+            </span>
+          )}
+        </button>
       </div>
+
+      {toast && (
+        <div
+          className={[
+            "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
+            toast.type === "success"
+              ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
+              : toast.type === "warning"
+                ? "border-amber-200/80 bg-amber-50/95 text-amber-800"
+                : "border-rose-200/80 bg-rose-50/95 text-rose-800",
+          ].join(" ")}
+        >
+          <div
+            className={[
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+              toast.type === "success"
+                ? "bg-emerald-100"
+                : toast.type === "warning"
+                  ? "bg-amber-100"
+                  : "bg-rose-100",
+            ].join(" ")}
+          >
+            {toast.type === "success" ? (
+              <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : toast.type === "warning" ? (
+              <svg className="h-5 w-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+          </div>
+          <p className="flex-1 leading-snug">{toast.message}</p>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className={[
+              "ml-2 shrink-0 rounded-full p-1 transition-colors",
+              toast.type === "success"
+                ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
+                : toast.type === "warning"
+                  ? "text-amber-400 hover:bg-amber-100 hover:text-amber-600"
+                  : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
+            ].join(" ")}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
@@ -323,14 +635,24 @@ function TabAuditLog({ get }) {
                       <td className="px-6 py-4">
                         <div className="font-semibold text-slate-900">{r.actor_nama}</div>
                       </td>
-                      <td className="px-6 py-4 text-xs text-slate-500">{r.actor_role}</td>
                       <td className="px-6 py-4">
-                        <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                          {r.aksi}
-                        </span>
+                        {roleMap[r.actor_role] ? (
+                          <Badge label={roleMap[r.actor_role].label} variant={roleMap[r.actor_role].variant} />
+                        ) : (
+                          <span className="text-xs text-slate-500">{r.actor_role}</span>
+                        )}
                       </td>
-                      <td className="px-6 py-4 text-xs text-slate-600">
-                        {getEntityLabel(r)}
+                      <td className="px-6 py-4">
+                        {aksiMap[r.aksi] ? (
+                          <Badge label={aksiMap[r.aksi].label} icon={aksiMap[r.aksi].icon} variant={aksiMap[r.aksi].variant} />
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                            {r.aksi}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <Badge label={getEntityLabel(r)} variant="gray" />
                       </td>
                       <td className="px-6 py-4 text-xs text-slate-500">
                         {extraRef !== "—" ? (
@@ -410,7 +732,9 @@ function TabAuditLog({ get }) {
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-400">Aksi</p>
-                <p className="text-sm text-slate-800">{detailRow.aksi}</p>
+                <p className="text-sm text-slate-800">
+                  {aksiMap[detailRow.aksi] ? aksiMap[detailRow.aksi].label : detailRow.aksi}
+                </p>
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-400">Entitas Terkait</p>
@@ -428,13 +752,13 @@ function TabAuditLog({ get }) {
                   {detailRow.data_sebelum && (
                     <div>
                       <p className="text-xs font-medium text-slate-400 mb-2">Data Sebelum</p>
-                      {renderStructuredData("Sebelum", detailRow.data_sebelum)}
+                      {renderStructuredData("Sebelum", detailRow.data_sebelum, detailRow.entity_refs_resolved)}
                     </div>
                   )}
                   {detailRow.data_sesudah && (
                     <div>
                       <p className="text-xs font-medium text-slate-400 mb-2">Data Sesudah</p>
-                      {renderStructuredData("Sesudah", detailRow.data_sesudah)}
+                      {renderStructuredData("Sesudah", detailRow.data_sesudah, detailRow.entity_refs_resolved)}
                     </div>
                   )}
                 </div>
@@ -449,21 +773,150 @@ function TabAuditLog({ get }) {
   );
 }
 
-function TabRiwayatStok({ get }) {
-  const [data, setData] = useState([]);
+function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
+  const [data, setData] = useState<StockHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [gudang, setGudang] = useState("");
+  const [zona, setZona] = useState("");
+  const [project, setProject] = useState("");
+  const [kategori, setKategori] = useState("");
   const [jenis, setJenis] = useState("");
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [warehouses, setWarehouses] = useState([]);
-  const [detailTiket, setDetailTiket] = useState(null);
+  const [warehouses, setWarehouses] = useState<{ id: string; nama: string; tipe?: string }[]>([]);
+  const [zonas, setZonas] = useState<{ id: string; gudangId: string; label: string }[]>([]);
+  const [projects, setProjects] = useState<{ id: string; label: string }[]>([]);
+  const [kategoris, setKategoris] = useState<{ id: string; nama: string }[]>([]);
+  const [detailTiket, setDetailTiket] = useState<StockHistoryEntry | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const warehouseId = params.get("warehouseId");
+    if (warehouseId) {
+      setGudang(warehouseId);
+    }
+  }, []);
 
   const jenisList = ["inbound", "outbound"];
-  const statusList = ["draft_diajukan", "disetujui", "digenerate", "diterima_didistribusikan"];
+  const statusList = ["draft_diajukan", "menunggu_verifikasi", "ready_putaway", "disetujui", "digenerate", "diterima_didistribusikan", "sedang_dikirim", "tiba_menunggu_konfirmasi", "ditolak"];
+
+  // Semua dropdown filter diisi dari master data supaya value-nya berupa ID
+  // numerik (backend memfilter pakai ID, bukan nama). Limit dikirim eksplisit
+  // karena endpoint master default-nya limit=10.
+  useEffect(() => {
+    let cancelled = false;
+
+    const readList = (json: unknown): Record<string, unknown>[] =>
+      Array.isArray((json as { data?: { data?: unknown[] } })?.data?.data)
+        ? ((json as { data: { data: unknown[] } }).data.data as Record<string, unknown>[])
+        : Array.isArray((json as { data?: unknown[] })?.data)
+        ? ((json as { data: unknown[] }).data as Record<string, unknown>[])
+        : [];
+
+    (async () => {
+      try {
+        const [whRes, zonaRes, projRes, katRes] = await Promise.all([
+          get(`${API_BASE}/api/warehouses`),
+          get(`${API_BASE}/api/zones?limit=500`),
+          get(`${API_BASE}/api/projects?all=true`),
+          get(`${API_BASE}/api/categories?limit=500`),
+        ]);
+
+        const [whJson, zonaJson, projJson, katJson] = await Promise.all([
+          whRes.json(),
+          zonaRes.json(),
+          projRes.json(),
+          katRes.json(),
+        ]);
+
+        if (cancelled) return;
+
+        if (whRes.ok) {
+          setWarehouses(
+            readList(whJson).map((w: Record<string, unknown>) => ({ id: String(w.gudang_id), nama: (w.nama_gudang as string) + (w.tipe === "dadakan" ? " (Dadakan)" : ""), tipe: w.tipe as string }))
+          );
+        }
+
+        if (zonaRes.ok) {
+          // Label selalu menyertakan nama gudang: kode_zona hanya unik per gudang
+          // (@@unique([gudang_id, kode_zona])), jadi "Zona A" ada di >1 gudang.
+          // Value tetap zona_id (PK) supaya filter tidak pernah ambigu.
+          setZonas(
+            readList(zonaJson)
+              .map((z: Record<string, unknown>) => ({
+                id: String(z.zona_id),
+                gudangId: String((z.gudang_id ?? (z.gudang as Record<string, unknown>)?.gudang_id) ?? ""),
+                label: `${(z.gudang as Record<string, unknown>)?.nama_gudang || "Gudang ?"} — ${z.nama_zona || `Zona ${z.kode_zona}`}`,
+              }))
+              .sort((a, b) => a.label.localeCompare(b.label))
+          );
+        }
+
+        if (projRes.ok) {
+          // Master project punya baris duplikat (nama+cluster sama). Dedup di UI
+          // saja, ambil project_id terkecil; database tidak disentuh.
+          const seen = new Set();
+          const list = [];
+          for (const p of readList(projJson).sort(
+            (a: Record<string, unknown>, b: Record<string, unknown>) => Number(a.project_id) - Number(b.project_id)
+          )) {
+            const cluster = p.cluster_id || "";
+            const key = `${p.nama_project}||${cluster}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            list.push({
+              id: String(p.project_id),
+              label: cluster ? `${String(p.nama_project)} (${cluster})` : String(p.nama_project),
+            });
+          }
+          setProjects(list);
+        }
+
+        if (katRes.ok) {
+          setKategoris(
+            readList(katJson).map((k: Record<string, unknown>) => ({
+              id: String(k.kategori_id),
+              nama: k.nama_kategori as string,
+            }))
+          );
+        }
+      } catch {
+        // Dropdown filter bersifat opsional: kegagalan load tidak boleh mematikan tabel.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [get]);
+
+  // Jaga-jaga untuk deep-link ?warehouseId=<id> yang tiba sebelum master data selesai load.
+  const warehouseOptions = useMemo(() => {
+    if (gudang && !warehouses.some((w) => w.id === gudang)) {
+      return [...warehouses, { id: gudang, nama: `Gudang #${gudang}` }];
+    }
+    return warehouses;
+  }, [warehouses, gudang]);
+
+  // Auto-narrow: kalau Gudang sudah dipilih, opsi Zona menyempit ke gudang itu
+  // saja supaya user tidak bisa memilih kombinasi mustahil (Gudang A + Zona
+  // milik Gudang B) yang selalu menghasilkan 0 baris.
+  const zonaOptions = useMemo(() => {
+    if (!gudang) return zonas;
+    return zonas.filter((z) => z.gudangId === gudang);
+  }, [zonas, gudang]);
+
+  // Kalau zona terpilih tidak lagi valid setelah Gudang berubah, reset supaya
+  // tidak ada filter tersembunyi yang bikin tabel kosong tanpa sebab jelas.
+  useEffect(() => {
+    if (zona && !zonaOptions.some((z) => z.id === zona)) {
+      setZona("");
+    }
+  }, [zonaOptions, zona]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -472,6 +925,9 @@ function TabRiwayatStok({ get }) {
       const params = new URLSearchParams();
       if (q.trim()) params.set("search", q.trim());
       if (gudang) params.set("warehouseId", gudang);
+      if (zona) params.set("zonaId", zona);
+      if (project) params.set("projectId", project);
+      if (kategori) params.set("kategoriId", kategori);
       if (jenis) params.set("type", jenis);
       if (status) params.set("status", status);
       if (startDate) params.set("startDate", startDate);
@@ -488,31 +944,88 @@ function TabRiwayatStok({ get }) {
 
       const rows = Array.isArray(json?.data?.data) ? json.data.data : [];
       setData(rows);
-
-      const gudangSet = [...new Set(rows.map((r) => r.gudang).filter(Boolean))];
-      setWarehouses(gudangSet);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan.");
       setData([]);
     } finally {
       setLoading(false);
     }
-  }, [get, gudang, jenis, status, q, startDate, endDate]);
+  }, [get, gudang, zona, project, kategori, jenis, status, q, startDate, endDate]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  const jenisLabel = {
+  const [exporting, setExporting] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "warning" } | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  const handleExportRiwayatStok = async () => {
+    setExporting(true);
+    setToast(null);
+    try {
+      const params = new URLSearchParams();
+      if (q.trim()) params.set("search", q.trim());
+      if (gudang) params.set("warehouseId", gudang);
+      if (zona) params.set("zonaId", zona);
+      if (project) params.set("projectId", project);
+      if (kategori) params.set("kategoriId", kategori);
+      if (jenis) params.set("type", jenis);
+      if (status) params.set("status", status);
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
+
+      const res = await get(`${API_BASE}/api/reports/stock-history/export?${params.toString()}`);
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json?.message || "Gagal mengekspor riwayat stok.");
+      }
+
+      const truncated = res.headers.get("X-Export-Truncated") === "true";
+      const truncatedMessage = res.headers.get("X-Export-Truncated-Message");
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Riwayat-Stok-Export_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      if (truncated && truncatedMessage) {
+        setToast({ message: truncatedMessage, type: "warning" });
+      } else {
+        setToast({ message: "Riwayat Stok berhasil diekspor.", type: "success" });
+      }
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Gagal mengekspor Riwayat Stok.", type: "error" });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const jenisLabel: Record<string, string> = {
     inbound: "Inbound",
     outbound: "Outbound",
   };
 
-  const statusLabel = {
+  const statusLabel: Record<string, string> = {
     draft_diajukan: "Draft",
+    menunggu_verifikasi: "Menunggu Verifikasi",
+    ready_putaway: "Siap Putaway",
     disetujui: "Disetujui",
     digenerate: "Digenerate",
+    tiba_menunggu_konfirmasi: "Menunggu Konfirmasi",
     diterima_didistribusikan: "Diterima/Didistribusikan",
+    sedang_dikirim: "Sedang Dikirim",
+    ditolak: "Ditolak",
   };
 
   return (
@@ -535,8 +1048,50 @@ function TabRiwayatStok({ get }) {
             className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
           >
             <option value="">Semua gudang</option>
-            {warehouses.map((o) => (
-              <option key={o} value={o}>{o}</option>
+            {warehouseOptions.map((o) => (
+              <option key={o.id} value={o.id}>{o.nama}</option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        </div>
+
+        <div className="relative">
+          <select
+            value={zona}
+            onChange={(e) => setZona(e.target.value)}
+            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+          >
+            <option value="">{gudang ? "Semua zona di gudang ini" : "Semua zona"}</option>
+            {zonaOptions.map((o) => (
+              <option key={o.id} value={o.id}>{o.label}</option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        </div>
+
+        <div className="relative">
+          <select
+            value={project}
+            onChange={(e) => setProject(e.target.value)}
+            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+          >
+            <option value="">Semua project/cluster</option>
+            {projects.map((o) => (
+              <option key={o.id} value={o.id}>{o.label}</option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        </div>
+
+        <div className="relative">
+          <select
+            value={kategori}
+            onChange={(e) => setKategori(e.target.value)}
+            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+          >
+            <option value="">Semua kategori perangkat</option>
+            {kategoris.map((o) => (
+              <option key={o.id} value={o.id}>{o.nama}</option>
             ))}
           </select>
           <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -587,7 +1142,81 @@ function TabRiwayatStok({ get }) {
             className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
           />
         </div>
+
+        <button
+          type="button"
+          onClick={handleExportRiwayatStok}
+          disabled={exporting}
+          className="flex items-center gap-2 rounded-full bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {exporting ? (
+            <span className="flex items-center gap-2">
+              <Loader2 size={16} className="animate-spin" />
+              Mengekspor...
+            </span>
+          ) : (
+            <span className="flex items-center gap-2">
+              <Download size={16} />
+              Ekspor
+            </span>
+          )}
+        </button>
       </div>
+
+      {toast && (
+        <div
+          className={[
+            "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
+            toast.type === "success"
+              ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
+              : toast.type === "warning"
+                ? "border-amber-200/80 bg-amber-50/95 text-amber-800"
+                : "border-rose-200/80 bg-rose-50/95 text-rose-800",
+          ].join(" ")}
+        >
+          <div
+            className={[
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+              toast.type === "success"
+                ? "bg-emerald-100"
+                : toast.type === "warning"
+                  ? "bg-amber-100"
+                  : "bg-rose-100",
+            ].join(" ")}
+          >
+            {toast.type === "success" ? (
+              <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : toast.type === "warning" ? (
+              <svg className="h-5 w-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+          </div>
+          <p className="flex-1 leading-snug">{toast.message}</p>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className={[
+              "ml-2 shrink-0 rounded-full p-1 transition-colors",
+              toast.type === "success"
+                ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
+                : toast.type === "warning"
+                  ? "text-amber-400 hover:bg-amber-100 hover:text-amber-600"
+                  : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
+            ].join(" ")}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
@@ -595,11 +1224,16 @@ function TabRiwayatStok({ get }) {
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50">
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tanggal</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Arah Mutasi</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Jenis Transaksi</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gudang</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diproses Oleh</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Perangkat</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
+                <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Qty</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Zona</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Asal → Tujuan</th>
                 <th className="px-6 py-4 w-10"></th>
               </tr>
             </thead>
@@ -607,18 +1241,18 @@ function TabRiwayatStok({ get }) {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4" colSpan={7}>
+                    <td className="px-6 py-4" colSpan={12}>
                       <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                     </td>
                   </tr>
                 ))
               ) : error ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={7}>{error}</td>
+                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={12}>{error}</td>
                 </tr>
               ) : data.length === 0 ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={7}>
+                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={12}>
                     Tidak ada pergerakan stok yang cocok dengan filter ini.
                   </td>
                 </tr>
@@ -627,20 +1261,23 @@ function TabRiwayatStok({ get }) {
                   <tr
                     key={r.ledger_id}
                     className="group cursor-pointer transition-colors hover:bg-slate-50"
-                    onClick={() => r.kode_tiket && r.kode_tiket !== "-" && setDetailTiket(r)}
+                    onClick={() => setDetailTiket(r)}
                   >
                     <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400">
-                      {new Date(r.waktu_mutasi).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}
+                      {new Date(r.waktu_mutasi).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "medium" })}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-xs font-medium text-slate-600">
+                      {r.jenis_mutasi === "in" ? "masuk" : r.jenis_mutasi === "out" ? "keluar" : r.jenis_mutasi || "-"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap font-mono font-semibold text-orange-500">
                       {r.kode_tiket || "-"}
                     </td>
                     <td className="px-6 py-4">
-                      <Badge color={r.tipe_surat_jalan === "inbound" ? "#2E9E6D" : r.tipe_surat_jalan === "outbound" ? "#D9822B" : "#7C8698"}>
-                        {r.tipe_surat_jalan === "inbound" ? "Inbound" : r.tipe_surat_jalan === "outbound" ? "Outbound" : r.tipe_surat_jalan || "-"}
-                      </Badge>
+                      <Badge
+                        label={r.tipe_surat_jalan === "inbound" ? "Inbound" : r.tipe_surat_jalan === "outbound" ? "Outbound" : r.tipe_surat_jalan || "-"}
+                        variant={r.tipe_surat_jalan === "inbound" ? "green" : r.tipe_surat_jalan === "outbound" ? "orange" : "gray"}
+                      />
                     </td>
-                    <td className="px-6 py-4 text-slate-700">{r.gudang}</td>
                     <td className="px-6 py-4">
                       <span
                         className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold"
@@ -653,11 +1290,39 @@ function TabRiwayatStok({ get }) {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-slate-600">{r.diproses_oleh || "-"}</td>
+                    <td className="px-6 py-4 whitespace-nowrap font-mono text-xs font-semibold text-slate-700">
+                      {r.kode_perangkat || "-"}
+                    </td>
+                    <td className="px-6 py-4 max-w-[260px] truncate text-slate-700" title={r.nama_barang || "-"}>
+                      {r.nama_barang || "-"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-slate-900">
+                      <span className="font-semibold">{r.qty}</span>
+                      {r.satuan && r.satuan !== "-" && (
+                        <span className="ml-1 text-xs font-normal text-slate-400">{r.satuan}</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-700">
+                      {r.zona_kode && r.zona_kode !== "-" ? (
+                        <span>
+                          <span className="text-slate-500">{r.zona_gudang}</span>
+                          <span className="mx-1 text-slate-300">/</span>
+                          <span className="font-mono font-semibold text-slate-800">{r.zona_kode}</span>
+                        </span>
+                      ) : (
+                        <span className="text-slate-300" title="Zona baru terisi setelah item melewati proses putaway">—</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-700">
+                      <span className={r.gudang_asal === "-" ? "text-slate-300" : ""}>{r.gudang_asal}</span>
+                      <span className="mx-1.5 text-slate-400">→</span>
+                      <span className={r.gudang_tujuan === "-" ? "text-slate-300" : ""}>{r.gudang_tujuan}</span>
+                    </td>
                     <td className="px-6 py-4 text-right">
                       <button
                         type="button"
                         className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                        onClick={(e) => { e.stopPropagation(); r.kode_tiket && r.kode_tiket !== "-" && setDetailTiket(r); }}
+                        onClick={(e) => { e.stopPropagation(); setDetailTiket(r); }}
                       >
                         <Eye size={16} />
                       </button>
@@ -674,38 +1339,137 @@ function TabRiwayatStok({ get }) {
         <Modal
           open={!!detailTiket}
           onClose={() => setDetailTiket(null)}
-          title="Detail Tiket Gudang"
+          title="Detail Pergerakan Stok"
         >
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs font-medium text-slate-400">Kode Tiket</p>
-                <p className="text-sm font-semibold text-slate-800">{detailTiket.kode_tiket}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-400">Project</p>
-                <p className="text-sm text-slate-800">{detailTiket.project_nama}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-400">Area</p>
-                <p className="text-sm text-slate-800">{detailTiket.area}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-400">Gudang</p>
-                <p className="text-sm text-slate-800">{detailTiket.gudang}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-400">Jenis Transaksi</p>
-                <p className="text-sm text-slate-800">{detailTiket.tipe_surat_jalan}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-400">Status</p>
-                <p className="text-sm text-slate-800">{detailTiket.status_surat_jalan}</p>
+          <div className="space-y-5">
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tiket &amp; Project</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Kode Tiket</p>
+                  <p className="text-sm font-mono font-semibold text-orange-600">{detailTiket.kode_tiket}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Project</p>
+                  <p className="text-sm text-slate-800">{detailTiket.project_nama}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Area</p>
+                  <p className="text-sm text-slate-800">{detailTiket.area}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Waktu Mutasi</p>
+                  <p className="text-sm font-mono text-slate-700">
+                    {new Date(detailTiket.waktu_mutasi).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}
+                  </p>
+                </div>
               </div>
             </div>
-            <div className="border-t border-slate-100 pt-3">
-              <p className="text-xs font-medium text-slate-400">Surat Jalan</p>
-              <p className="text-sm font-mono text-slate-700">{detailTiket.nomor_surat_jalan}</p>
+
+            <div className="border-t border-slate-100 pt-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Kode Perangkat</p>
+                  <p className="text-sm font-mono font-semibold text-slate-800">{detailTiket.kode_perangkat}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Nama Barang</p>
+                  <p className="text-sm text-slate-800">{detailTiket.nama_barang}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Qty</p>
+                  <p className="text-sm font-mono text-slate-800">
+                    <span className="font-semibold">{detailTiket.qty}</span>
+                    {detailTiket.satuan && detailTiket.satuan !== "-" && (
+                      <span className="ml-1 text-slate-400">{detailTiket.satuan}</span>
+                    )}
+                    <span className="ml-2 text-xs text-slate-400">
+                      ({detailTiket.jenis_mutasi === "in" ? "masuk" : "keluar"})
+                    </span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Saldo Setelah Mutasi</p>
+                  <p className="text-sm font-mono text-slate-800">{detailTiket.saldo_setelah}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Kondisi</p>
+                  <p className="text-sm text-slate-800">{detailTiket.kondisi}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Kelebihan Kirim</p>
+                  <p className="text-sm text-slate-800">{detailTiket.is_kelebihan ? "Ya" : "Tidak"}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Lokasi</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Gudang Asal</p>
+                  <p className={`text-sm ${detailTiket.gudang_asal === "-" ? "text-slate-300" : "text-slate-800"}`}>
+                    {detailTiket.gudang_asal}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Gudang Tujuan</p>
+                  <p className={`text-sm ${detailTiket.gudang_tujuan === "-" ? "text-slate-300" : "text-slate-800"}`}>
+                    {detailTiket.gudang_tujuan}
+                  </p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs font-medium text-slate-400">Zona Penempatan</p>
+                  {detailTiket.zona_kode && detailTiket.zona_kode !== "-" ? (
+                    <p className="text-sm text-slate-800">
+                      <span className="text-slate-500">{detailTiket.zona_gudang}</span>
+                      <span className="mx-1 text-slate-300">/</span>
+                      <span className="font-mono font-semibold">{detailTiket.zona_kode}</span>
+                      {detailTiket.zona_nama && detailTiket.zona_nama !== "-" && (
+                        <span className="ml-2 text-slate-500">{detailTiket.zona_nama}</span>
+                      )}
+                      {detailTiket.zona_tipe && detailTiket.zona_tipe !== "-" && (
+                        <span className="ml-2 text-xs text-slate-400">({detailTiket.zona_tipe})</span>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-slate-400">
+                      Belum ditempatkan — zona terisi setelah item melewati proses putaway.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <p className="mt-2 text-[11px] text-slate-400">
+                Gudang Asal/Tujuan menunjukkan pergerakan antar gudang; Zona adalah sub-lokasi di dalam gudang.
+              </p>
+            </div>
+
+            <div className="border-t border-slate-100 pt-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Dokumen</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-medium text-slate-400">No. Surat Jalan</p>
+                  <p className="text-sm font-mono text-slate-700">{detailTiket.nomor_surat_jalan}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Jenis Transaksi</p>
+                  <p className="text-sm text-slate-800">{jenisLabel[detailTiket.tipe_surat_jalan] || detailTiket.tipe_surat_jalan}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Status</p>
+                  <p className="text-sm text-slate-800">{statusLabel[detailTiket.status_surat_jalan] || detailTiket.status_surat_jalan}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Diproses Oleh</p>
+                  <p className="text-sm text-slate-800">
+                    {detailTiket.diproses_oleh}
+                    {detailTiket.diproses_oleh_role && detailTiket.diproses_oleh_role !== "-" && (
+                      <span className="ml-1 text-xs text-slate-400">({detailTiket.diproses_oleh_role})</span>
+                    )}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </Modal>
@@ -714,60 +1478,140 @@ function TabRiwayatStok({ get }) {
   );
 }
 
-function TabUtilisasi({ get }) {
-  const [data, setData] = useState([]);
+// Dihilangkan - tab Utilisasi dipindah/dihapus sesuai PRD 7.12
+// function TabUtilisasi({ get }) { ... } // seluruh komponen tab Utilisasi dihapus dari UI
+
+function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response> }) {
+  const [data, setData] = useState<ReconciliationUploadLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [gudang, setGudang] = useState("");
-  const [gudangs, setGudangs] = useState([]);
+  const [error, setError] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [actorId, setActorId] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [detailRow, setDetailRow] = useState<ReconciliationUploadLogEntry | null>(null);
+  const [actors, setActors] = useState<{ user_id: number | string; nama: string }[]>([]);
+  const limit = 20;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await get(`${API_BASE}/api/users?role=admin_general&limit=100`);
+        const json = await res.json();
+        if (!cancelled && res.ok) {
+          const list = Array.isArray(json?.data?.data) ? json.data.data : Array.isArray(json?.data) ? json.data : [];
+          setActors(list);
+        }
+      } catch {
+        // ignore actor fetch error
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [get]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setDetailRow(null);
     try {
-      const res = await get(`${API_BASE}/api/reports/zone-utilization`);
+      const params = new URLSearchParams();
+      if (q.trim()) params.set("search", q.trim());
+      if (actorId) params.set("actorId", actorId);
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
+      params.set("page", String(page));
+      params.set("limit", String(limit));
+
+      const res = await get(`${API_BASE}/api/reports/reconciliation-upload-logs?${params.toString()}`);
       const json = await res.json();
 
       if (!res.ok) {
-        throw new Error(json?.message || "Gagal mengambil data utilisasi zona.");
+        throw new Error(json?.message || "Gagal mengambil riwayat upload.");
       }
 
-      const rows = Array.isArray(json?.data) ? json.data : [];
-      let filtered = rows;
-      if (gudang) {
-        filtered = rows.filter((r) => r.gudang_nama === gudang);
-      }
-      setData(filtered);
-
-      const gudangSet = [...new Set(rows.map((r) => r.gudang_nama).filter(Boolean))];
-      setGudangs(gudangSet);
+      const rows = Array.isArray(json?.data?.data) ? json.data.data : [];
+      setData(rows);
+      setTotal(json?.data?.meta?.total || 0);
+      setTotalPages(json?.data?.meta?.totalPages || 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan.");
       setData([]);
     } finally {
       setLoading(false);
     }
-  }, [get, gudang]);
+  }, [get, q, actorId, startDate, endDate, page]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
+  const formatDateTime = (iso: string) => {
+    const d = new Date(iso);
+    const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+    const day = d.getDate();
+    const mon = months[d.getMonth()];
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${day} ${mon}, ${hh}:${mm}`;
+  };
+
+  const statusBadge = (status: string) => {
+    if (status === "berhasil") return <Badge label="Berhasil" variant="green" />;
+    if (status === "gagal") return <Badge label="Gagal" variant="red" />;
+    return <Badge label={status} variant="gray" />;
+  };
+
   return (
     <div>
+      <div className="mb-4 rounded-xl border border-orange-100 bg-orange-50 px-4 py-2 text-xs text-orange-700">
+        Tabel ini menampilkan histori upload laporan mitra. Setiap baris merepresentasikan 1 sesi upload file Excel.
+      </div>
+
       <div className="mb-6 flex flex-wrap items-center gap-2">
+        <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+          <Search size={16} className="shrink-0 text-slate-400" />
+          <input
+            value={q}
+            onChange={(e) => { setQ(e.target.value); setPage(1); }}
+            placeholder="Cari nama file atau pengguna…"
+            className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-300"
+          />
+        </div>
+
         <div className="relative">
           <select
-            value={gudang}
-            onChange={(e) => setGudang(e.target.value)}
+            value={actorId}
+            onChange={(e) => { setActorId(e.target.value); setPage(1); }}
             className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
           >
-            <option value="">Semua gudang</option>
-            {gudangs.map((o) => (
-              <option key={o} value={o}>{o}</option>
+            <option value="">Semua pengguna</option>
+            {actors.map((a) => (
+              <option key={a.user_id} value={String(a.user_id)}>{a.nama}</option>
             ))}
           </select>
           <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        </div>
+
+        <div className="relative">
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+          />
+        </div>
+
+        <div className="relative">
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+          />
         </div>
       </div>
 
@@ -776,47 +1620,175 @@ function TabUtilisasi({ get }) {
           <table className="min-w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gudang</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Zona</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tipe Zona</th>
-                <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Utilisasi (%)</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Waktu Upload</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama File</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diunggah Oleh</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Total</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Berhasil</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gagal</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+                <th className="px-6 py-4 w-10"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4" colSpan={4}>
+                    <td className="px-6 py-4" colSpan={8}>
                       <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                     </td>
                   </tr>
                 ))
               ) : error ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={4}>{error}</td>
+                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={8}>{error}</td>
                 </tr>
               ) : data.length === 0 ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={4}>
-                    Tidak ada data utilisasi untuk filter ini.
+                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={8}>
+                    Belum ada riwayat upload laporan mitra.
                   </td>
                 </tr>
               ) : (
-                data.map((r) => (
-                  <tr key={r.zona_id} className="group transition-colors hover:bg-slate-50">
-                    <td className="px-6 py-4 text-slate-700">{r.gudang_nama}</td>
-                    <td className="px-6 py-4 whitespace-nowrap font-mono font-semibold text-orange-600">{r.zona_kode}</td>
-                    <td className="px-6 py-4 text-slate-700">{r.gudang_tipe === "tetap" ? "Indoor" : "Outdoor"}</td>
-                    <td className="px-6 py-4 text-right font-mono font-semibold text-slate-900">
-                      {r.utilisasi_persen !== null && r.utilisasi_persen !== undefined ? `${r.utilisasi_persen}%` : "—"}
-                    </td>
-                  </tr>
-                ))
+                data.map((r) => {
+                  const allSuccess = r.failed_rows === 0 && r.success_rows > 0;
+                  const hasFailed = r.failed_rows > 0;
+                  const overallStatus = allSuccess ? "berhasil" : hasFailed ? "sebagian_gagal" : "draft";
+                  return (
+                    <tr
+                      key={r.upload_id}
+                      className="group cursor-pointer transition-colors hover:bg-slate-50"
+                      onClick={() => setDetailRow(r)}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400">
+                        {formatDateTime(r.uploaded_at)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-semibold text-slate-900">{r.filename}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-semibold text-slate-900">{r.uploaded_by_nama}</div>
+                        <div className="text-xs text-slate-500">{r.uploaded_by_role}</div>
+                      </td>
+                      <td className="px-6 py-4 text-center font-mono text-xs text-slate-600">{r.total_rows}</td>
+                      <td className="px-6 py-4 text-center font-mono text-xs text-emerald-600">{r.success_rows}</td>
+                      <td className="px-6 py-4 text-center font-mono text-xs text-rose-600">{r.failed_rows}</td>
+                      <td className="px-6 py-4">
+                        {overallStatus === "berhasil" && <Badge label="Berhasil" variant="green" />}
+                        {overallStatus === "sebagian_gagal" && <Badge label="Sebagian Gagal" variant="orange" />}
+                        {overallStatus === "draft" && <Badge label="Draft" variant="gray" />}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          type="button"
+                          className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                          onClick={(e) => { e.stopPropagation(); setDetailRow(r); }}
+                        >
+                          <Eye size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {totalPages > 1 && (
+        <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
+          <span>
+            Menampilkan {((page - 1) * limit) + 1}–{Math.min(page * limit, total)} dari {total} entri
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1 || loading}
+              className="rounded-full border border-slate-200 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-50"
+            >
+              Sebelumnya
+            </button>
+            <span className="font-mono">
+              {page} / {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages || loading}
+              className="rounded-full border border-slate-200 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-50"
+            >
+              Selanjutnya
+            </button>
+          </div>
+        </div>
+      )}
+
+      <Modal
+        open={!!detailRow}
+        onClose={() => setDetailRow(null)}
+        title="Detail Upload Laporan Mitra"
+      >
+        {detailRow && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs font-medium text-slate-400">Nama File</p>
+                <p className="text-sm font-semibold text-slate-800">{detailRow.filename}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-slate-400">Waktu Upload</p>
+                <p className="text-sm font-semibold text-slate-800">{formatDateTime(detailRow.uploaded_at)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-slate-400">Diunggah Oleh</p>
+                <p className="text-sm font-semibold text-slate-800">{detailRow.uploaded_by_nama}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-slate-400">Total / Berhasil / Gagal</p>
+                <p className="text-sm font-semibold text-slate-800">
+                  {detailRow.total_rows} / {detailRow.success_rows} / {detailRow.failed_rows}
+                </p>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-4">
+              <p className="text-xs font-medium text-slate-400 mb-3">Detail Baris</p>
+              {detailRow.details && detailRow.details.length > 0 ? (
+                <div className="overflow-x-auto rounded-lg border border-slate-100">
+                  <table className="min-w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-100 bg-slate-50">
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">MOS (arsip)</th>
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">Remains di Lapangan</th>
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">Used</th>
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+                          <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Alasan Gagal</th>
+                        </tr>
+                      </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {detailRow.details.map((d) => (
+                            <tr key={d.detail_id} className="hover:bg-slate-50">
+                              <td className="px-3 py-2 font-mono font-semibold text-slate-700">{d.kode_tiket}</td>
+                              <td className="px-3 py-2 text-right font-mono text-slate-600">{d.mos ?? "-"}</td>
+                              <td className="px-3 py-2 text-right font-mono text-slate-600">{d.remains_lapangan ?? "-"}</td>
+                              <td className="px-3 py-2 text-right font-mono text-slate-600">{d.used}</td>
+                           <td className="px-3 py-2">{statusBadge(d.status || "-")}</td>
+                          <td className="px-3 py-2 text-slate-500">{d.reason || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">Tidak ada detail baris untuk upload ini.</p>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -825,15 +1797,24 @@ export default function LaporanAuditPage() {
   const [tab, setTab] = useState("audit");
   const { get } = useApi();
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get("tab");
+    if (tabParam && ["audit", "stok", "reconciliation"].includes(tabParam)) {
+      setTab(tabParam);
+    }
+  }, []);
+
   const tabs = [
     { key: "audit", label: "Audit Log", icon: FileClock },
     { key: "stok", label: "Riwayat Stok", icon: PackageSearch },
-    { key: "utilisasi", label: "Utilisasi", icon: BarChart3 },
+    { key: "reconciliation", label: "Riwayat Input Laporan Mitra", icon: Upload },
   ];
 
   return (
-    <div className={`${plusJakartaSans.className} flex flex-1 flex-col p-6`}>
-      <div className="mx-auto w-full max-w-6xl">
+    <div className="flex flex-1 flex-col">
+      <div className="w-full">
         <div className="mb-6">
           <div className="text-xs font-semibold uppercase tracking-wide text-orange-500">Admin General</div>
           <h1 className="mt-1 text-2xl font-bold text-slate-900">Laporan &amp; Audit Menyeluruh</h1>
@@ -864,7 +1845,7 @@ export default function LaporanAuditPage() {
         <div className="mt-6">
           {tab === "audit" && <TabAuditLog get={get} />}
           {tab === "stok" && <TabRiwayatStok get={get} />}
-          {tab === "utilisasi" && <TabUtilisasi get={get} />}
+          {tab === "reconciliation" && <TabRiwayatInputMitra get={get} />}
         </div>
 
         <div className="mt-6 text-center text-xs text-slate-400">
