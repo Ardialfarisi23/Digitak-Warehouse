@@ -11,6 +11,7 @@ const seedVehicles = require("./seeders/vehicle.seed");
 const seedItems = require("./seeders/item.seed");
 const seedBoq = require("./seeders/boq.seed");
 const seedSuratJalan = require("./seeders/surat-jalan.seed");
+const seedStokGudang = require("./seeders/stok-gudang.seed");
 
 async function main() {
     console.log("========== START SEED ==========");
@@ -24,6 +25,7 @@ async function main() {
     await seedItems(prisma);
     await seedBoq(prisma);
     await seedSuratJalan(prisma);
+    await seedStokGudang(prisma);
 
     console.log("========== SEED SUCCESS ==========");
 }

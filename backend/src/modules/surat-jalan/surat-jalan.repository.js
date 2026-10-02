@@ -101,12 +101,6 @@ const findByIdInclude = {
         },
       },
     },
-    select: {
-      ...(baseInclude.items.select || {}),
-      qty_diterima: true,
-      kondisi_diterima: true,
-      catatan_penerimaan: true,
-    },
   },
 };
 
