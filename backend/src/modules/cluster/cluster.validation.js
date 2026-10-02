@@ -11,12 +11,14 @@ const createClusterSchema = z.object({
   no_tiket_release: z.string().optional().nullable(),
   vendor: z.string().optional().nullable(),
   alamat_lengkap: z.string().optional().nullable(),
+  pic_id: z.string().optional().nullable(),
 });
 
 const updateClusterSchema = z.object({
   nama_cluster: z.string().min(1, "Nama cluster wajib diisi.").optional(),
   cluster_type: z.string().optional().nullable(),
   alamat_lengkap: z.string().optional().nullable(),
+  pic_id: z.string().optional().nullable(),
 });
 
 module.exports = {

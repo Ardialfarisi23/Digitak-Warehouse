@@ -274,6 +274,7 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
     { key: "nama_cluster", label: "Nama Cluster", type: "text", required: true },
     { key: "cluster_type", label: "Tipe Cluster", type: "text" },
     { key: "alamat_lengkap", label: "Alamat Lengkap", type: "textarea" },
+    { key: "pic_id", label: "PIC", type: "select", options: [] },
     { key: "cluster_id", label: "Cluster ID", type: "text" },
     { key: "status_aktif", label: "Status Aktif", type: "checkbox" },
   ],
@@ -673,6 +674,7 @@ function FormModal({
   const [unitOptions, setUnitOptions] = useState<Array<{ value: number; label: string }>>([]);
   const [warehouseOptions, setWarehouseOptions] = useState<Array<{ value: number; label: string; tipe?: string }>>([]);
   const [projectOptions, setProjectOptions] = useState<Array<{ value: number; label: string }>>([]);
+  const [personnelOptions, setPersonnelOptions] = useState<Array<{ value: number; label: string }>>([]);
 
   useEffect(() => {
     if (open && tab === "items") {
@@ -782,6 +784,17 @@ function FormModal({
           if (!cancelled) setProjectOptions([]);
         });
 
+      get(`${baseUrl}/api/personnels`)
+        .then((res) => res.json())
+        .then((result) => {
+          if (cancelled) return;
+          const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+          setPersonnelOptions(list.map((p: any) => ({ value: Number(p.personil_id), label: p.nama || `Personil ${p.personil_id}` })));
+        })
+        .catch(() => {
+          if (!cancelled) setPersonnelOptions([]);
+        });
+
       return () => {
         cancelled = true;
       };
@@ -821,6 +834,7 @@ function FormModal({
     if (tab === "clusters") {
       return fields.map((field) => {
         if (field.key === "project_id") return { ...field, options: projectOptions };
+        if (field.key === "pic_id") return { ...field, options: personnelOptions };
         if (field.key === "cluster_id") return { ...field, type: "text" as const, required: false };
         return field;
       });
@@ -1249,6 +1263,10 @@ function DeleteConfirmModal({
     <Modal open={open} onClose={onClose} title={`Hapus ${tabLabel}`} widthClass="max-w-sm">
       {isActivePersonnel ? (
         <div className="rounded-xl bg-amber-50 px-3 py-2.5 text-xs text-amber-700">Personil masih aktif! Harap nonaktifkan terlebih dahulu di Halaman Operasional sebelum menghapus.</div>
+      ) : tabLabel.toLowerCase() === "cluster" ? (
+        <p className="text-sm text-slate-600">
+          Hapus cluster <span className="font-semibold text-slate-800">{record ? String(record.nama_cluster || record.cluster_id || record.id) : ""}</span> secara permanen? Tindakan ini tidak dapat dibatalkan. Cluster yang masih dipakai tidak dapat dihapus, gunakan tombol Nonaktifkan.
+        </p>
       ) : (
         <p className="text-sm text-slate-600">Yakin ingin menghapus ? Tindakan ini tidak dapat dibatalkan.</p>
       )}
@@ -1435,7 +1453,7 @@ function SupplierNonaktifModal({
   onSuccess: () => void;
   onShowToast: (message: string, type: "success" | "error") => void;
 }) {
-  const { put } = useApi();
+  const { del } = useApi();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1450,7 +1468,7 @@ function SupplierNonaktifModal({
       const supplierKode = record.kode ?? record.id;
       const url = new URL(`/api/suppliers/${supplierKode}`, baseUrl).toString();
 
-      const response = await put(url, { is_aktif: false });
+      const response = await del(url);
 
       if (!response.ok) {
         const result = await response.json().catch(() => null);
@@ -1513,7 +1531,7 @@ function SupplierAktifModal({
   onSuccess: () => void;
   onShowToast: (message: string, type: "success" | "error") => void;
 }) {
-  const { put } = useApi();
+  const { patch } = useApi();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1526,9 +1544,9 @@ function SupplierAktifModal({
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
       const supplierKode = record.kode ?? record.id;
-      const url = new URL(`/api/suppliers/${supplierKode}`, baseUrl).toString();
+      const url = new URL(`/api/suppliers/${supplierKode}/restore`, baseUrl).toString();
 
-      const response = await put(url, { is_aktif: true });
+      const response = await patch(url);
 
       if (!response.ok) {
         const result = await response.json().catch(() => null);
@@ -1908,6 +1926,7 @@ function MasterDataPageContent() {
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(1);
+  const [supplierStatusFilter, setSupplierStatusFilter] = useState<string>("Aktif");
 
   // Modal state
   const [formModal, setFormModal] = useState<{
@@ -1916,6 +1935,8 @@ function MasterDataPageContent() {
   } | null>(null);
   const [detailRecord, setDetailRecord] = useState<GenericRecord | null>(null);
   const detailRecordRef = useRef(detailRecord);
+  const fetchSeqRef = useRef(0);
+
   useEffect(() => {
     detailRecordRef.current = detailRecord;
   }, [detailRecord]);
@@ -2019,9 +2040,11 @@ function MasterDataPageContent() {
   // -------------------------------------------------------------------------
 
   const fetchMasterData = useCallback(async () => {
+    const seq = ++fetchSeqRef.current;
     const config = MASTER_DATA_TABS.find((tab) => tab.key === activeTab);
 
     if (!config) {
+      if (seq !== fetchSeqRef.current) return;
       setLoading(false);
       return;
     }
@@ -2043,8 +2066,14 @@ function MasterDataPageContent() {
         url.searchParams.set("search", trimmedSearch);
       }
 
+      if (activeTab === "suppliers" && supplierStatusFilter !== "Semua") {
+        url.searchParams.set("is_aktif", supplierStatusFilter === "Aktif" ? "true" : "false");
+      }
+
       const response = await get(url.toString());
+      if (seq !== fetchSeqRef.current) return;
       const result = await response.json();
+      if (seq !== fetchSeqRef.current) return;
 
       if (!response.ok) {
         const message = result?.message || `Gagal mengambil data ${config.label}.`;
@@ -2076,6 +2105,7 @@ function MasterDataPageContent() {
         totalPages: Math.max(1, Math.ceil(dataArr.length / ITEMS_PER_PAGE)),
       };
 
+      if (seq !== fetchSeqRef.current) return;
       setData(dataArr);
       setMeta({
         total: Number(metaObj.total ?? dataArr.length),
@@ -2088,10 +2118,12 @@ function MasterDataPageContent() {
         const idField = config.idField;
         const updated = dataArr.find((item) => String(item[idField]) === String((detailRecordRef.current as any)[idField]));
         if (updated) {
+          if (seq !== fetchSeqRef.current) return;
           setDetailRecord(updated);
         }
       }
     } catch (err) {
+      if (seq !== fetchSeqRef.current) return;
       setError(err instanceof Error ? err.message : "Terjadi kesalahan saat mengambil data.");
 
       setData([]);
@@ -2103,9 +2135,10 @@ function MasterDataPageContent() {
         totalPages: 1,
       });
     } finally {
+      if (seq !== fetchSeqRef.current) return;
       setLoading(false);
     }
-  }, [activeTab, page, search]);
+  }, [activeTab, page, search, supplierStatusFilter]);
 
   useEffect(() => {
     fetchMasterData();
@@ -2130,6 +2163,11 @@ function MasterDataPageContent() {
     setSearch("");
     setSearchInput("");
     setError(null);
+  }
+
+  function handleSupplierStatusFilterChange(value: string) {
+    setSupplierStatusFilter(value);
+    setPage(1);
   }
 
   // -------------------------------------------------------------------------
@@ -2198,16 +2236,29 @@ function MasterDataPageContent() {
             <p className="mt-0.5 text-xs text-slate-400">{meta.total} data</p>
           </div>
 
-           {canCreate && activeTab !== "personnel" && activeTab !== "clusters" && (
-            <button
-              type="button"
-              onClick={() => setFormModal({ mode: "create", record: null })}
-              className="flex items-center gap-2 rounded-full bg-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 transition-colors hover:bg-orange-600"
-            >
-              <Plus size={16} />
-              Tambah
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {activeTab === "suppliers" && (
+              <select
+                value={supplierStatusFilter}
+                onChange={(e) => handleSupplierStatusFilterChange(e.target.value)}
+                className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 outline-none focus:border-orange-400"
+              >
+                <option value="Aktif">Aktif</option>
+                <option value="Nonaktif">Nonaktif</option>
+              </select>
+            )}
+
+            {canCreate && activeTab !== "personnel" && activeTab !== "clusters" && (
+              <button
+                type="button"
+                onClick={() => setFormModal({ mode: "create", record: null })}
+                className="flex items-center gap-2 rounded-full bg-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 transition-colors hover:bg-orange-600"
+              >
+                <Plus size={16} />
+                Tambah
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Table */}

@@ -147,6 +147,7 @@ interface StockHistoryEntry {
   zona_tipe?: string;
   asal_label?: string | null;
   asal_tipe?: string | null;
+  is_putaway?: boolean;
   [key: string]: unknown;
 }
 
@@ -344,6 +345,12 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
       project: "Project",
       titik_lapangan: "Titik Lapangan",
       user_account: "User",
+      item: "Barang",
+      personil: "Personil",
+      vehicle: "Kendaraan",
+      supplier: "Supplier",
+      warehouse: "Gudang",
+      cluster: "Cluster",
     };
 
     if (row.entity_name) {
@@ -353,6 +360,22 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
 
     if (row.entity_type === "reconciliation") {
       return "Reconciliation";
+    }
+
+    const snapshot = row.data_sesudah || row.data_sebelum || {};
+    const fallbackName =
+      (row.entity_type === "item" && (snapshot.nama_barang || snapshot.kode_perangkat)) ||
+      (row.entity_type === "project" && snapshot.nama_project) ||
+      (row.entity_type === "personil" && snapshot.nama) ||
+      (row.entity_type === "vehicle" && (snapshot.no_polisi || snapshot.jenis_kendaraan)) ||
+      (row.entity_type === "supplier" && (snapshot.nama || snapshot.kode)) ||
+      (row.entity_type === "warehouse" && snapshot.nama_gudang) ||
+      (row.entity_type === "cluster" && (snapshot.nama_cluster || snapshot.cluster_id)) ||
+      null;
+
+    if (fallbackName) {
+      const label = entityTypeLabels[row.entity_type || ""] || row.entity_type || "Entitas";
+      return `${label}: ${fallbackName}`;
     }
 
     if (row.entity_type && row.entity_id && row.entity_id !== "0") {
@@ -381,12 +404,24 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
     return parts.length > 0 ? parts.join(" | ") : "—";
   };
 
+  const HIDDEN_AUDIT_FIELDS = new Set([
+    "foto",
+    "foto_url",
+    "foto_path",
+    "kategori_id",
+    "wajib_sn",
+  ]);
+
   const renderStructuredData = (label: string, data: Record<string, unknown>, resolvedRefs: Record<string, string | null> = {}) => {
     if (!data || typeof data !== "object") {
       return <p className="text-sm text-slate-500">-</p>;
     }
 
-    const entries = Object.entries(data).filter(([, v]) => v !== null && v !== undefined && v !== "");
+    const entries = Object.entries(data).filter(([k, v]) => {
+      if (v === null || v === undefined || v === "") return false;
+      if (HIDDEN_AUDIT_FIELDS.has(k)) return false;
+      return true;
+    });
     if (entries.length === 0) {
       return <p className="text-sm text-slate-500">-</p>;
     }
@@ -401,17 +436,25 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
       "zona_id",
       "barang_id",
       "surat_jalan_item_id",
+      "created_by",
+      "updated_by",
+      "kategori_id",
+      "satuan_default_id",
+      "gudang_id",
+      "personil_id",
+      "kendaraan_id",
+      "supplier_id",
+      "user_id",
+      "pic_id",
     ]);
 
     const renderValue = (key: string, value: unknown): React.ReactNode => {
       if (idRefKeys.has(key)) {
         const resolved = resolvedRefs[key];
-        if (resolved === null) {
-          return "(data telah dihapus)";
+        if (resolved === null || resolved === undefined) {
+          return "-";
         }
-        if (resolved !== undefined) {
-          return resolved;
-        }
+        return resolved;
       }
 
       if (Array.isArray(value)) {
@@ -743,7 +786,9 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-400">Peran</p>
-                <p className="text-sm text-slate-800">{detailRow.actor_role}</p>
+                <p className="text-sm text-slate-800">
+                  {roleMap[detailRow.actor_role] ? roleMap[detailRow.actor_role].label : detailRow.actor_role}
+                </p>
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-400">Aksi</p>
@@ -798,7 +843,12 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
   const [kategori, setKategori] = useState("");
   const [jenis, setJenis] = useState("");
   const [status, setStatus] = useState("");
+  const [includePutaway, setIncludePutaway] = useState(false);
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const limit = 100;
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [warehouses, setWarehouses] = useState<{ id: string; nama: string; tipe?: string }[]>([]);
@@ -806,6 +856,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
   const [projects, setProjects] = useState<{ id: string; label: string }[]>([]);
   const [kategoris, setKategoris] = useState<{ id: string; nama: string }[]>([]);
   const [detailTiket, setDetailTiket] = useState<StockHistoryEntry | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState<boolean>(() => !!(zona || project || kategori));
 
   const ASAL_TIPE_LABEL: Record<string, string> = {
     gudang: "Gudang",
@@ -849,7 +900,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
     if (lapangan && lapangan !== "-") {
       return (
         <span className="inline-flex items-center gap-1.5">
-          <span className="truncate block" title={lapangan}>
+          <span className="truncate block max-w-[220px]" title={lapangan}>
             {lapangan}
           </span>
           <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-600 bg-slate-100 whitespace-nowrap">
@@ -963,6 +1014,10 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
     };
   }, [get]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [gudang, zona, project, kategori, jenis, status, includePutaway, q, startDate, endDate]);
+
   // Jaga-jaga untuk deep-link ?warehouseId=<id> yang tiba sebelum master data selesai load.
   const warehouseOptions = useMemo(() => {
     if (gudang && !warehouses.some((w) => w.id === gudang)) {
@@ -999,10 +1054,11 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
       if (kategori) params.set("kategoriId", kategori);
       if (jenis) params.set("type", jenis);
       if (status) params.set("status", status);
+      if (includePutaway) params.set("include_putaway", "true");
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
-      params.set("page", "1");
-      params.set("limit", "100");
+      params.set("page", String(page));
+      params.set("limit", String(limit));
 
       const res = await get(`${API_BASE}/api/reports/stock-history?${params.toString()}`);
       const json = await res.json();
@@ -1013,13 +1069,15 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
 
       const rows = Array.isArray(json?.data?.data) ? json.data.data : [];
       setData(rows);
+      setTotal(json?.data?.meta?.total || 0);
+      setTotalPages(json?.data?.meta?.totalPages || 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan.");
       setData([]);
     } finally {
       setLoading(false);
     }
-  }, [get, gudang, zona, project, kategori, jenis, status, q, startDate, endDate]);
+  }, [get, gudang, zona, project, kategori, jenis, status, includePutaway, q, startDate, endDate, page]);
 
   useEffect(() => {
     fetchData();
@@ -1046,6 +1104,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
       if (kategori) params.set("kategoriId", kategori);
       if (jenis) params.set("type", jenis);
       if (status) params.set("status", status);
+      if (includePutaway) params.set("include_putaway", "true");
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
 
@@ -1104,111 +1163,9 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
           <Search size={16} className="shrink-0 text-slate-400" />
           <input
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => { setQ(e.target.value); setPage(1); }}
             placeholder="Cari Kode Tiket…"
             className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-300"
-          />
-        </div>
-
-        <div className="relative">
-          <select
-            value={gudang}
-            onChange={(e) => setGudang(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
-          >
-            <option value="">Semua gudang</option>
-            {warehouseOptions.map((o) => (
-              <option key={o.id} value={o.id}>{o.nama}</option>
-            ))}
-          </select>
-          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        </div>
-
-        <div className="relative">
-          <select
-            value={zona}
-            onChange={(e) => setZona(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
-          >
-            <option value="">{gudang ? "Semua zona di gudang ini" : "Semua zona"}</option>
-            {zonaOptions.map((o) => (
-              <option key={o.id} value={o.id}>{o.label}</option>
-            ))}
-          </select>
-          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        </div>
-
-        <div className="relative">
-          <select
-            value={project}
-            onChange={(e) => setProject(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
-          >
-            <option value="">Semua project/cluster</option>
-            {projects.map((o) => (
-              <option key={o.id} value={o.id}>{o.label}</option>
-            ))}
-          </select>
-          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        </div>
-
-        <div className="relative">
-          <select
-            value={kategori}
-            onChange={(e) => setKategori(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
-          >
-            <option value="">Semua kategori perangkat</option>
-            {kategoris.map((o) => (
-              <option key={o.id} value={o.id}>{o.nama}</option>
-            ))}
-          </select>
-          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        </div>
-
-        <div className="relative">
-          <select
-            value={jenis}
-            onChange={(e) => setJenis(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
-          >
-            <option value="">Semua jenis transaksi</option>
-            {jenisList.map((o) => (
-              <option key={o} value={o}>{jenisLabel[o] || o}</option>
-            ))}
-          </select>
-          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        </div>
-
-        <div className="relative">
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
-          >
-            <option value="">Semua status</option>
-            {statusList.map((o) => (
-              <option key={o} value={o}>{statusLabel[o] || o}</option>
-            ))}
-          </select>
-          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        </div>
-
-        <div className="relative">
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
-          />
-        </div>
-
-        <div className="relative">
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
           />
         </div>
 
@@ -1231,6 +1188,167 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
           )}
         </button>
       </div>
+
+      <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2">
+        <div>
+          <label className="mb-1 block text-[11px] font-medium text-slate-400">Gudang</label>
+          <div className="relative">
+            <select
+              value={gudang}
+              onChange={(e) => { setGudang(e.target.value); setPage(1); }}
+              className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+            >
+              <option value="">Semua gudang</option>
+              {warehouseOptions.map((o) => (
+                <option key={o.id} value={o.id}>{o.nama}</option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-[11px] font-medium text-slate-400">Jenis transaksi</label>
+          <div className="relative">
+            <select
+              value={jenis}
+              onChange={(e) => { setJenis(e.target.value); setPage(1); }}
+              className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+            >
+              <option value="">Semua jenis transaksi</option>
+              {jenisList.map((o) => (
+                <option key={o} value={o}>{jenisLabel[o] || o}</option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-[11px] font-medium text-slate-400">Status</label>
+          <div className="relative">
+            <select
+              value={status}
+              onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+              className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+            >
+              <option value="">Semua status</option>
+              {statusList.map((o) => (
+                <option key={o} value={o}>{statusLabel[o] || o}</option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="startDate" className="mb-1 block text-[11px] font-medium text-slate-400">Dari</label>
+          <input
+            id="startDate"
+            type="date"
+            value={startDate}
+            onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="endDate" className="mb-1 block text-[11px] font-medium text-slate-400">Sampai</label>
+          <input
+            id="endDate"
+            type="date"
+            value={endDate}
+            onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+          />
+        </div>
+      </div>
+
+      <div className="mb-4 flex items-center justify-between gap-2 flex-wrap">
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen((v) => !v)}
+          aria-expanded={advancedOpen}
+          className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+        >
+          <span style={{ display: 'inline-block', transition: 'transform 0.2s', transform: advancedOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+            <ChevronDown size={16} />
+          </span>
+          Filter lanjutan
+          {(() => {
+            const count = [zona, project, kategori].filter((v) => v && v !== "").length;
+            return count > 0 ? (
+              <span className="ml-1 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-orange-100 px-1.5 text-xs font-semibold text-orange-700">
+                {count}
+              </span>
+            ) : null;
+          })()}
+        </button>
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={includePutaway}
+            onChange={(e) => { setIncludePutaway(e.target.checked); setPage(1); }}
+            className="h-4 w-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500"
+          />
+          Tampilkan perpindahan internal (putaway)
+        </label>
+      </div>
+
+      {advancedOpen && (
+        <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-slate-400">Zona</label>
+            <div className="relative">
+              <select
+                value={zona}
+                onChange={(e) => { setZona(e.target.value); setPage(1); }}
+                className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+              >
+                <option value="">{gudang ? "Semua zona di gudang ini" : "Semua zona"}</option>
+                {zonaOptions.map((o) => (
+                  <option key={o.id} value={o.id}>{o.label}</option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-slate-400">Project/cluster</label>
+            <div className="relative">
+              <select
+                value={project}
+                onChange={(e) => { setProject(e.target.value); setPage(1); }}
+                className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+              >
+                <option value="">Semua project/cluster</option>
+                {projects.map((o) => (
+                  <option key={o.id} value={o.id}>{o.label}</option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-slate-400">Kategori perangkat</label>
+            <div className="relative">
+              <select
+                value={kategori}
+                onChange={(e) => { setKategori(e.target.value); setPage(1); }}
+                className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+              >
+                <option value="">Semua kategori perangkat</option>
+                {kategoris.map((o) => (
+                  <option key={o.id} value={o.id}>{o.nama}</option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div
@@ -1293,7 +1411,6 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50">
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tanggal</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Arah Mutasi</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Jenis Transaksi</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
@@ -1310,18 +1427,18 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4" colSpan={12}>
+                    <td className="px-6 py-4" colSpan={11}>
                       <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                     </td>
                   </tr>
                 ))
               ) : error ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={12}>{error}</td>
+                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={11}>{error}</td>
                 </tr>
               ) : data.length === 0 ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={12}>
+                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={11}>
                     Tidak ada pergerakan stok yang cocok dengan filter ini.
                   </td>
                 </tr>
@@ -1335,17 +1452,25 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                     <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400">
                       {new Date(r.waktu_mutasi).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "medium" })}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-medium text-slate-600">
-                      {r.jenis_mutasi === "in" ? "masuk" : r.jenis_mutasi === "out" ? "keluar" : r.jenis_mutasi || "-"}
-                    </td>
                     <td className="px-6 py-4 whitespace-nowrap font-mono font-semibold text-orange-500">
                       {r.kode_tiket || "-"}
                     </td>
                     <td className="px-6 py-4">
-                      <Badge
-                        label={r.tipe_surat_jalan === "inbound" ? "Inbound" : r.tipe_surat_jalan === "outbound" ? "Outbound" : r.tipe_surat_jalan || "-"}
-                        variant={r.tipe_surat_jalan === "inbound" ? "green" : r.tipe_surat_jalan === "outbound" ? "orange" : "gray"}
-                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          label={r.tipe_surat_jalan === "inbound" ? "Inbound" : r.tipe_surat_jalan === "outbound" ? "Outbound" : r.tipe_surat_jalan || "-"}
+                          variant={r.tipe_surat_jalan === "inbound" ? "green" : r.tipe_surat_jalan === "outbound" ? "orange" : "gray"}
+                        />
+                        {r.is_putaway && (
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                            {r.jenis_mutasi === "out"
+                              ? "Putaway · keluar (Generic)"
+                              : r.jenis_mutasi === "in"
+                                ? "Putaway · masuk (Zona)"
+                                : "Perpindahan Internal (Putaway)"}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <span
@@ -1404,6 +1529,35 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
         </div>
       </div>
 
+      {totalPages > 1 && (
+        <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
+          <span>
+            Menampilkan {total > 0 ? ((page - 1) * limit) + 1 : 0}–{Math.min(page * limit, total)} dari {total} data
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1 || loading}
+              className="rounded-full border border-slate-200 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-50"
+            >
+              Sebelumnya
+            </button>
+            <span className="font-mono">
+              {page} / {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages || loading}
+              className="rounded-full border border-slate-200 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-50"
+            >
+              Berikutnya
+            </button>
+          </div>
+        </div>
+      )}
+
       {detailTiket && (
         <Modal
           open={!!detailTiket}
@@ -1453,9 +1607,19 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                     {detailTiket.satuan && detailTiket.satuan !== "-" && (
                       <span className="ml-1 text-slate-400">{detailTiket.satuan}</span>
                     )}
-                    <span className="ml-2 text-xs text-slate-400">
-                      ({detailTiket.jenis_mutasi === "in" ? "masuk" : "keluar"})
-                    </span>
+                    {detailTiket.is_putaway ? (
+                      <span className="ml-2 inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                        {detailTiket.jenis_mutasi === "out"
+                          ? "Putaway · keluar (Generic)"
+                          : detailTiket.jenis_mutasi === "in"
+                            ? "Putaway · masuk (Zona)"
+                            : "Perpindahan Internal (Putaway)"}
+                      </span>
+                    ) : (
+                      <span className="ml-2 text-xs text-slate-400">
+                        ({detailTiket.jenis_mutasi === "in" ? "masuk" : "keluar"})
+                      </span>
+                    )}
                   </p>
                 </div>
                 <div>

@@ -2,6 +2,7 @@ const itemRepository = require("./item.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
 const notificationService = require("../../modules/notifications/notifications.service");
+const { createAuditLog } = require("../../utils/audit-log");
 
 const create = async (data, userId) => {
   const existing = await itemRepository.findByKode(data.kode_perangkat, { includeInactive: true });
@@ -16,7 +17,23 @@ const create = async (data, userId) => {
     updated_by: Number(userId),
   };
 
-  const result = await itemRepository.create(createData);
+  const result = await prisma.$transaction(async (tx) => {
+    const item = await tx.barang.create({ data: createData });
+
+    await createAuditLog(
+      {
+        entityType: "item",
+        entityId: item.barang_id,
+        aksi: "create",
+        actorId: userId,
+        dataSebelum: null,
+        dataSesudah: item,
+      },
+      tx
+    );
+
+    return item;
+  });
 
   const actor = await prisma.user_account.findUnique({
     where: { user_id: BigInt(userId) },

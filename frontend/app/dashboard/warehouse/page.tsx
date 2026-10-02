@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Warehouse as WarehouseIcon,
@@ -54,6 +54,102 @@ type Zona = {
   sisa?: number | null;
   kapasitas_belum_diatur?: boolean;
 };
+
+function getCleanZoneCode(zone: Zona) {
+  return zone.kode_zona || "";
+}
+
+function StatusInputModal({ open, onClose, zone, value, onChange, onSave, saving, kapasitasMaksimum, onKapasitasChange }: { open: boolean; onClose: () => void; zone: Zona | null; value: string; onChange: (v: string) => void; onSave: () => void; saving: boolean; kapasitasMaksimum: string; onKapasitasChange: (v: string) => void }) {
+  useEffect(() => {
+    if (!open) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
+  if (!open || !zone) return null;
+
+  const options = [
+    { value: "CUKUP", label: "Cukup", color: "bg-green-500" },
+    { value: "MENDEKATI_PENUH", label: "Mendekati Penuh", color: "bg-orange-500" },
+    { value: "TIDAK_CUKUP", label: "Tidak Cukup", color: "bg-red-500" },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
+      <div className="w-full max-w-[420px] rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="border-b border-[#edf0f2] px-6 py-4">
+          <h3 className="text-[17px] font-bold text-[#111827]">
+            Input Status Zona {getCleanZoneCode(zone)}
+          </h3>
+          <p className="mt-1 text-[12px] text-[#6b7280]">
+            Pilih status kecukupan untuk zona ini.
+          </p>
+        </div>
+
+        <div className="px-6 py-5">
+          <div className="mb-4">
+            <label className="mb-1 block text-[12px] font-semibold text-[#344054]">
+              Kapasitas Maksimum (unit)
+            </label>
+            <input
+              type="number"
+              min={1}
+              placeholder="Contoh: 1000"
+              value={kapasitasMaksimum}
+              onChange={(e) => onKapasitasChange(e.target.value)}
+              className="h-[38px] w-full rounded-xl border border-[#d0d5dd] bg-white px-3 text-[13px] text-[#111827] outline-none transition focus:border-[#111827]"
+            />
+            <p className="mt-1 text-[10px] text-[#9ca3af]">
+              Kosongkan jika tidak diubah. Hanya angka bulat lebih dari 0.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            {options.map((opt) => (
+              <label
+                key={opt.value}
+                className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition ${value === opt.value ? "border-[#111827] bg-[#f7f8fa]" : "border-[#e5e7eb] hover:border-[#d0d5dd]"}`}
+              >
+                <input
+                  type="radio"
+                  name="status_kecukupan"
+                  value={opt.value}
+                  checked={value === opt.value}
+                  onChange={(e) => onChange(e.target.value)}
+                  className="h-4 w-4 accent-[#111827]"
+                />
+                <span className={`inline-block h-2.5 w-2.5 rounded-full ${opt.color}`} />
+                <span className="text-[13px] font-semibold text-[#111827]">{opt.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-[#edf0f2] px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-lg border border-[#d0d5dd] px-4 py-2 text-[13px] font-semibold text-[#344054] transition hover:bg-[#f7f8fa] disabled:opacity-60"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="rounded-lg bg-[#111827] px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-black disabled:opacity-60"
+          >
+            {saving ? "Menyimpan..." : "Simpan"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ZoneDetailModal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
   useEffect(() => {
@@ -121,6 +217,8 @@ export default function WarehouseLayoutPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  const canEditStatus = mapRole(user?.role) === "admin" || mapRole(user?.role) === "supervisor";
 
   /* =========================================================
      AUTH
@@ -288,16 +386,6 @@ export default function WarehouseLayoutPage() {
 
     return "Indoor";
   }
-
-  /* =========================================================
-     CLEAN ZONE CODE
-  ========================================================= */
-
-  function getCleanZoneCode(zone: Zona) {
-    return zone.kode_zona || "";
-  }
-
-  const canEditStatus = mapRole(user?.role) === "admin" || mapRole(user?.role) === "supervisor";
 
   /* =========================================================
      ZONE ORDER (kode_zona A-Z)
@@ -525,7 +613,7 @@ export default function WarehouseLayoutPage() {
     }
   }
 
-  async function fetchZoneStock(zone: Zona) {
+  const fetchZoneStock = useCallback(async (zone: Zona) => {
     if (!selectedWarehouseId || !zone) return;
 
     setPanelLoading(true);
@@ -558,7 +646,7 @@ export default function WarehouseLayoutPage() {
     } finally {
       setPanelLoading(false);
     }
-  }
+  }, [selectedWarehouseId, selectedZone, get]);
 
   const zoneStockPollRef = useRef<number | null>(null);
 
@@ -878,100 +966,8 @@ export default function WarehouseLayoutPage() {
     );
   }
 
-  function StatusInputModal({ open, onClose, zone, value, onChange, onSave, saving, kapasitasMaksimum, onKapasitasChange }: { open: boolean; onClose: () => void; zone: Zona | null; value: string; onChange: (v: string) => void; onSave: () => void; saving: boolean; kapasitasMaksimum: string; onKapasitasChange: (v: string) => void }) {
-    useEffect(() => {
-      if (!open) return;
-      function handleKey(e: KeyboardEvent) {
-        if (e.key === "Escape") onClose();
-      }
-      document.addEventListener("keydown", handleKey);
-      return () => document.removeEventListener("keydown", handleKey);
-    }, [open, onClose]);
-
-    if (!open || !zone) return null;
-
-    const options = [
-      { value: "CUKUP", label: "Cukup", color: "bg-green-500" },
-      { value: "MENDEKATI_PENUH", label: "Mendekati Penuh", color: "bg-orange-500" },
-      { value: "TIDAK_CUKUP", label: "Tidak Cukup", color: "bg-red-500" },
-    ];
-
-    return (
-      <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
-        <div className="w-full max-w-[420px] rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
-          <div className="border-b border-[#edf0f2] px-6 py-4">
-            <h3 className="text-[17px] font-bold text-[#111827]">
-              Input Status Zona {getCleanZoneCode(zone)}
-            </h3>
-            <p className="mt-1 text-[12px] text-[#6b7280]">
-              Pilih status kecukupan untuk zona ini.
-            </p>
-          </div>
-
-          <div className="px-6 py-5">
-            <div className="mb-4">
-              <label className="mb-1 block text-[12px] font-semibold text-[#344054]">
-                Kapasitas Maksimum (unit)
-              </label>
-              <input
-                type="number"
-                min={1}
-                placeholder="Contoh: 1000"
-                value={kapasitasMaksimum}
-                onChange={(e) => onKapasitasChange(e.target.value)}
-                className="h-[38px] w-full rounded-xl border border-[#d0d5dd] bg-white px-3 text-[13px] text-[#111827] outline-none transition focus:border-[#111827]"
-              />
-              <p className="mt-1 text-[10px] text-[#9ca3af]">
-                Kosongkan jika tidak diubah. Hanya angka bulat lebih dari 0.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              {options.map((opt) => (
-                <label
-                  key={opt.value}
-                  className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition ${value === opt.value ? "border-[#111827] bg-[#f7f8fa]" : "border-[#e5e7eb] hover:border-[#d0d5dd]"}`}
-                >
-                  <input
-                    type="radio"
-                    name="status_kecukupan"
-                    value={opt.value}
-                    checked={value === opt.value}
-                    onChange={(e) => onChange(e.target.value)}
-                    className="h-4 w-4 accent-[#111827]"
-                  />
-                  <span className={`inline-block h-2.5 w-2.5 rounded-full ${opt.color}`} />
-                  <span className="text-[13px] font-semibold text-[#111827]">{opt.label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-2 border-t border-[#edf0f2] px-6 py-4">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={saving}
-              className="rounded-lg border border-[#d0d5dd] px-4 py-2 text-[13px] font-semibold text-[#344054] transition hover:bg-[#f7f8fa] disabled:opacity-60"
-            >
-              Batal
-            </button>
-            <button
-              type="button"
-              onClick={onSave}
-              disabled={saving}
-              className="rounded-lg bg-[#111827] px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-black disabled:opacity-60"
-            >
-              {saving ? "Menyimpan..." : "Simpan"}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   /* =========================================================
-     LOADING
+     FLOOR PLAN
   ========================================================= */
 
   if (loading) {

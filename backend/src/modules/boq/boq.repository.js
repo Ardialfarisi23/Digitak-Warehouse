@@ -124,26 +124,28 @@ if (search) {
      },
      skip: (sanitizedPage - 1) * sanitizedLimit,
      take: sanitizedLimit,
-     include: {
-       tiket: {
-         include: {
-           project: true,
-         },
-       },
-       cluster: {
-         include: {
-           project: true,
-         },
-       },
-       items: {
-         include: {
-           barang: true,
-           satuan: true,
-           gudang_tujuan: true,
-         },
-       },
-       diaktifkan_user: true,
-     },
+      include: {
+        creator: { select: { nama: true } },
+        updater: { select: { nama: true } },
+        tiket: {
+          include: {
+            project: true,
+          },
+        },
+        cluster: {
+          include: {
+            project: true,
+          },
+        },
+        items: {
+          include: {
+            barang: true,
+            satuan: true,
+            gudang_tujuan: true,
+          },
+        },
+        diaktifkan_user: true,
+      },
    });
 
   return {
@@ -158,7 +160,7 @@ if (search) {
 };
 
 const update = async (boq_id, data) => {
-  const { items, ...boqData } = data;
+  const { items, created_at, updated_at, ...boqData } = data;
 
   if (items) {
     await prisma.boq_item.deleteMany({
@@ -177,8 +179,13 @@ const update = async (boq_id, data) => {
 
   return await prisma.boq.update({
     where: { boq_id: Number(boq_id) },
-    data: boqData,
+    data: {
+      ...boqData,
+      updated_at: new Date(),
+    },
     include: {
+      creator: { select: { nama: true } },
+      updater: { select: { nama: true } },
       tiket: {
         include: {
           project: true,

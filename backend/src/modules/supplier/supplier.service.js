@@ -1,14 +1,34 @@
 const supplierRepository = require("./supplier.repository");
 const AppError = require("../../shared/errors");
+const prisma = require("../../config/prisma");
+const { createAuditLog } = require("../../utils/audit-log");
 
-const create = async (data) => {
+const create = async (data, userId) => {
   const existing = await supplierRepository.findByCode(data.kode, { includeInactive: true });
 
   if (existing) {
     throw new AppError("Kode supplier sudah digunakan.", 400);
   }
 
-  return await supplierRepository.create(data);
+  const result = await prisma.$transaction(async (tx) => {
+    const supplier = await tx.supplier.create({ data });
+
+    await createAuditLog(
+      {
+        entityType: "supplier",
+        entityId: supplier.supplier_id,
+        aksi: "create",
+        actorId: userId,
+        dataSebelum: null,
+        dataSesudah: supplier,
+      },
+      tx
+    );
+
+    return supplier;
+  });
+
+  return result;
 };
 
 const findAll = async (query) => {

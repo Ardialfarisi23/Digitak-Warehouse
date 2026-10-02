@@ -3,7 +3,7 @@ const response = require("../../shared/response");
 
 const create = async (req, res, next) => {
   try {
-    const result = await supplierService.create(req.body);
+    const result = await supplierService.create(req.body, req.user.id);
     return response.success(res, "Supplier berhasil dibuat.", result, 201);
   } catch (err) {
     next(err);

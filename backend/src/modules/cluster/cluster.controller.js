@@ -13,7 +13,7 @@ const listByProject = async (req, res, next) => {
 
 const listAll = async (req, res, next) => {
   try {
-    const result = await clusterService.findAll();
+    const result = await clusterService.findAll(req.query);
     return response.success(res, "Daftar semua cluster berhasil diambil.", result);
   } catch (err) {
     next(err);
@@ -47,10 +47,20 @@ const toggleStatus = async (req, res, next) => {
   }
 };
 
+const remove = async (req, res, next) => {
+  try {
+    const result = await clusterService.remove(req.params.clusterId, req.user.id);
+    return response.success(res, "Cluster berhasil dihapus.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   listByProject,
   listAll,
   create,
   update,
   toggleStatus,
+  remove,
 };

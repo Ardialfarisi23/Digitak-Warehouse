@@ -37,8 +37,8 @@ const transformBoq = (boq) => {
     emailReference: boq.email_reference || "",
     createdAt: boq.created_at,
     updatedAt: boq.updated_at,
-    createdBy: boq.creator?.nama || boq.created_by ? String(boq.created_by) : "",
-    updatedBy: boq.updater?.nama || boq.updated_by ? String(boq.updated_by) : "",
+    createdBy: boq.creator?.nama || (boq.created_by ? String(boq.created_by) : ""),
+    updatedBy: boq.updater?.nama || (boq.updated_by ? String(boq.updated_by) : ""),
     items: (boq.items || []).map((item) => ({
       ...item,
       id: String(item.boq_item_id),

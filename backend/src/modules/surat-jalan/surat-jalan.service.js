@@ -198,20 +198,36 @@ const create = async (data, actorId) => {
     }
   }
 
-  if (data.boq_id) {
-    const boq = await prisma.boq.findUnique({
-      where: { boq_id: Number(data.boq_id) },
-      select: { boq_id: true, status: true, boq_number: true },
-    });
-    if (!boq) {
-      throw new AppError("BOQ yang dipilih tidak ditemukan.", 400);
-    }
-    if (boq.status !== "aktif") {
-      throw new AppError(`BOQ berstatus ${boq.status} tidak dapat diajukan Surat Jalan.`, 400);
-    }
-  }
+   if (data.boq_id) {
+     const boq = await prisma.boq.findUnique({
+       where: { boq_id: Number(data.boq_id) },
+       select: { boq_id: true, status: true, boq_number: true },
+     });
+     if (!boq) {
+       throw new AppError("BOQ yang dipilih tidak ditemukan.", 400);
+     }
+     if (boq.status !== "aktif") {
+       throw new AppError(`BOQ berstatus ${boq.status} tidak dapat diajukan Surat Jalan.`, 400);
+     }
+   }
 
-  const normalizedItems = data.items.map((item) => ({
+   if (data.tujuan_tipe === "lapangan" && data.titik_lapangan_id) {
+     const titik = await prisma.titik_lapangan.findUnique({
+       where: { titik_lapangan_id: Number(data.titik_lapangan_id) },
+       select: { titik_lapangan_id: true, is_aktif: true, project_id: true },
+     });
+     if (!titik) {
+       throw new AppError("Titik lapangan yang dipilih tidak ditemukan.", 400);
+     }
+     if (!titik.is_aktif) {
+       throw new AppError("Titik lapangan yang dipilih tidak aktif.", 400);
+     }
+     if (data.project_id && Number(titik.project_id) !== Number(data.project_id)) {
+       throw new AppError("Titik lapangan tidak sesuai dengan project yang dipilih.", 400);
+     }
+   }
+
+   const normalizedItems = data.items.map((item) => ({
     ...item,
     serial_number: normalizeSerial(item.serial_number),
   }));

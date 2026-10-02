@@ -114,7 +114,10 @@ const update = async (projectId, data) => {
   const id = BigInt(projectId);
   return await prisma.project.update({
     where: { project_id: id },
-    data,
+    data: {
+      ...data,
+      updated_at: new Date(),
+    },
   });
 };
 

@@ -40,11 +40,13 @@ const createSuratJalanSchema = z
   })
   .superRefine((data, ctx) => {
     if (data.tujuan_tipe === "lapangan") {
-      if (!data.alamat_lapangan || data.alamat_lapangan.trim() === "") {
+      const hasTitik = !!data.titik_lapangan_id && data.titik_lapangan_id !== "" && data.titik_lapangan_id !== "0";
+      const hasAlamat = !!data.alamat_lapangan && data.alamat_lapangan.trim() !== "";
+      if (!hasTitik && !hasAlamat) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "alamat_lapangan wajib diisi jika tujuan_tipe adalah lapangan.",
-          path: ["alamat_lapangan"],
+          message: "Pilih titik lapangan atau isi alamat lapangan.",
+          path: ["titik_lapangan_id"],
         });
       }
     }
