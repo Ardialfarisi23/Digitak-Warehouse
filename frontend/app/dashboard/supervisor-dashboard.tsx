@@ -90,25 +90,18 @@ export function SupervisorDashboard() {
                   {
                     title: "Barang Masuk Menunggu Persetujuan",
                     value: queue.inboundPending,
-                    badge: `Tertua: ${queue.inboundOldestLabel}`,
-                    badgeTone: "bg-slate-100 text-slate-600",
                     accent: "border-l-4 border-l-amber-500",
                     icon: ArrowDownLeft,
                   },
                   {
                     title: "Barang Keluar Menunggu Persetujuan",
                     value: queue.outboundPending,
-                    badge: queue.outboundCritical && queue.outboundCritical > 0 ? `Kritis! ${queue.outboundCritical}` : "Aman",
-                    badgeTone: queue.outboundCritical && queue.outboundCritical > 0 ? "bg-rose-500 text-white font-bold" : "bg-slate-100 text-slate-600",
-                    subBadge: `Tertua: ${queue.outboundOldestLabel}`,
                     accent: "border-l-4 border-l-rose-500",
                     icon: ArrowUpRight,
                   },
                   {
                     title: "Verifikasi Surat Jalan",
                     value: queue.suratJalanPending,
-                    badge: `Tertua: ${queue.suratJalanOldestLabel}`,
-                    badgeTone: "bg-slate-100 text-slate-600",
                     accent: "border-l-4 border-l-sky-500",
                     icon: Truck,
                   },
@@ -116,15 +109,12 @@ export function SupervisorDashboard() {
                   <div key={card.title} className={`relative flex flex-col justify-between rounded-2xl bg-white p-4 shadow-sm border border-stone-100 ${card.accent}`}>
                     <div className="flex items-start justify-between gap-2">
                       <card.icon size={18} className="text-slate-400 mt-0.5" />
-                      <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${card.badgeTone}`}>{card.badge}</span>
                     </div>
 
                     <div className="mt-4">
                       <p className="text-3xl font-black text-slate-900 tracking-tight">{formatNumber(card.value)}</p>
                       <p className="mt-1 text-xs font-semibold text-slate-600 line-clamp-2">{card.title}</p>
                     </div>
-
-                    {card.subBadge && <p className="mt-2 text-[11px] font-semibold text-rose-500">{card.subBadge}</p>}
                   </div>
                 ))}
               </div>

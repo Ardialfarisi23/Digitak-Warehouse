@@ -8,10 +8,14 @@ const validate = (schema, source = "body") => {
                 `VALIDATION FAILED (${source}):\n`,
                 JSON.stringify(result.error.flatten().fieldErrors, null, 2)
             );
+
+            const fieldErrors = result.error.flatten().fieldErrors;
+            const firstErrorMessage = Object.values(fieldErrors).flat()[0] || "Validation Error";
+
             return res.status(400).json({
                 success: false,
-                message: "Validation Error",
-                errors: result.error.flatten().fieldErrors,
+                message: firstErrorMessage,
+                errors: fieldErrors,
             });
         }
 

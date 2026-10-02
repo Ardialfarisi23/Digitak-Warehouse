@@ -41,6 +41,7 @@ const create = async (data, userId) => {
     ...data,
     cluster_id: normalizedClusterId,
     project_id: Number(data.project_id),
+    status_aktif: data.status_aktif === undefined || data.status_aktif === null ? true : Boolean(data.status_aktif),
     created_by: Number(userId),
     updated_by: Number(userId),
   };
@@ -87,10 +88,42 @@ const toggleStatus = async (clusterId) => {
   return cluster;
 };
 
+const deleteCluster = async (clusterId) => {
+  if (!clusterId) {
+    throw new AppError("Cluster ID wajib diisi.", 400);
+  }
+
+  const existing = await prisma.cluster.findUnique({
+    where: { cluster_id: clusterId },
+    select: { cluster_id: true, nama_cluster: true },
+  });
+
+  if (!existing) {
+    throw new AppError("Cluster tidak ditemukan.", 404);
+  }
+
+  const relatedBoq = await prisma.boq.findFirst({
+    where: { cluster_id: clusterId },
+    select: { boq_id: true, status: true },
+  });
+
+  if (relatedBoq) {
+    throw new AppError(`Cluster tidak dapat dihapus karena masih digunakan pada data BOQ (status: ${relatedBoq.status}). Nonaktifkan cluster jika diperlukan.`, 409);
+  }
+
+  await prisma.cluster.update({
+    where: { cluster_id: clusterId },
+    data: { status_aktif: false },
+  });
+
+  return { message: "Cluster berhasil dihapus." };
+};
+
 module.exports = {
   findByProjectId,
   findAll,
   create,
   update,
   toggleStatus,
+  deleteCluster,
 };
