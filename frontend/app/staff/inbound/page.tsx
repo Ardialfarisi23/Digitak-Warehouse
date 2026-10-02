@@ -768,6 +768,8 @@ pic_pemohon_nama: picPemohon.trim() || null,
               }}
               placeholder="Pilih BOQ / Tiket"
               tipe="inbound"
+              excludeStatus="draft,selesai,ditolak"
+              emptyMessage="Tidak ada BOQ yang dapat diajukan."
             />
           </div>
           <div>

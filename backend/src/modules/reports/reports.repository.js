@@ -37,6 +37,16 @@ const enrichAuditEntityNames = async (logs) => {
     zona_id: new Set(),
     barang_id: new Set(),
     surat_jalan_item_id: new Set(),
+    created_by: new Set(),
+    updated_by: new Set(),
+    kategori_id: new Set(),
+    satuan_default_id: new Set(),
+    gudang_id: new Set(),
+    personil_id: new Set(),
+    kendaraan_id: new Set(),
+    supplier_id: new Set(),
+    user_id: new Set(),
+    pic_id: new Set(),
   };
 
   for (const log of logs) {
@@ -70,6 +80,16 @@ const enrichAuditEntityNames = async (logs) => {
     zona_id: new Map(),
     barang_id: new Map(),
     surat_jalan_item_id: new Map(),
+    created_by: new Map(),
+    updated_by: new Map(),
+    kategori_id: new Map(),
+    satuan_default_id: new Map(),
+    gudang_id: new Map(),
+    personil_id: new Map(),
+    kendaraan_id: new Map(),
+    supplier_id: new Map(),
+    user_id: new Map(),
+    pic_id: new Map(),
   };
 
   for (const [entityType, idSet] of groupedEntity) {
@@ -104,6 +124,56 @@ const enrichAuditEntityNames = async (logs) => {
         });
         for (const row of rows) {
           nameMap.set(`project:${row.project_id}`, row.nama_project);
+        }
+        break;
+      }
+      case "item": {
+        const rows = await prisma.barang.findMany({
+          where: { barang_id: { in: ids } },
+          select: { barang_id: true, nama_barang: true, kode_perangkat: true },
+        });
+        for (const row of rows) {
+          nameMap.set(`item:${row.barang_id}`, row.nama_barang || row.kode_perangkat || `Barang ${row.barang_id}`);
+        }
+        break;
+      }
+      case "personil": {
+        const rows = await prisma.personil.findMany({
+          where: { personil_id: { in: ids } },
+          select: { personil_id: true, nama: true },
+        });
+        for (const row of rows) {
+          nameMap.set(`personil:${row.personil_id}`, row.nama || `Personil ${row.personil_id}`);
+        }
+        break;
+      }
+      case "vehicle": {
+        const rows = await prisma.kendaraan.findMany({
+          where: { kendaraan_id: { in: ids } },
+          select: { kendaraan_id: true, no_polisi: true, jenis_kendaraan: true },
+        });
+        for (const row of rows) {
+          nameMap.set(`vehicle:${row.kendaraan_id}`, row.no_polisi || row.jenis_kendaraan || `Kendaraan ${row.kendaraan_id}`);
+        }
+        break;
+      }
+      case "supplier": {
+        const rows = await prisma.supplier.findMany({
+          where: { supplier_id: { in: ids } },
+          select: { supplier_id: true, nama: true, kode: true },
+        });
+        for (const row of rows) {
+          nameMap.set(`supplier:${row.supplier_id}`, row.nama || row.kode || `Supplier ${row.supplier_id}`);
+        }
+        break;
+      }
+      case "warehouse": {
+        const rows = await prisma.gudang.findMany({
+          where: { gudang_id: { in: ids } },
+          select: { gudang_id: true, nama_gudang: true },
+        });
+        for (const row of rows) {
+          nameMap.set(`warehouse:${row.gudang_id}`, row.nama_gudang || `Gudang ${row.gudang_id}`);
         }
         break;
       }
@@ -237,6 +307,116 @@ const enrichAuditEntityNames = async (logs) => {
     }
   }
 
+  if (refGroups.created_by.size) {
+    const ids = Array.from(refGroups.created_by);
+    const rows = await prisma.user_account.findMany({
+      where: { user_id: { in: ids } },
+      select: { user_id: true, nama: true },
+    });
+    for (const row of rows) {
+      refMaps.created_by.set(Number(row.user_id), row.nama || `User ${row.user_id}`);
+    }
+  }
+
+  if (refGroups.updated_by.size) {
+    const ids = Array.from(refGroups.updated_by);
+    const rows = await prisma.user_account.findMany({
+      where: { user_id: { in: ids } },
+      select: { user_id: true, nama: true },
+    });
+    for (const row of rows) {
+      refMaps.updated_by.set(Number(row.user_id), row.nama || `User ${row.user_id}`);
+    }
+  }
+
+  if (refGroups.kategori_id.size) {
+    const ids = Array.from(refGroups.kategori_id);
+    const rows = await prisma.kategori_barang.findMany({
+      where: { kategori_id: { in: ids } },
+      select: { kategori_id: true, nama_kategori: true },
+    });
+    for (const row of rows) {
+      refMaps.kategori_id.set(Number(row.kategori_id), row.nama_kategori || `Kategori ${row.kategori_id}`);
+    }
+  }
+
+  if (refGroups.satuan_default_id.size) {
+    const ids = Array.from(refGroups.satuan_default_id);
+    const rows = await prisma.satuan.findMany({
+      where: { satuan_id: { in: ids } },
+      select: { satuan_id: true, kode_satuan: true },
+    });
+    for (const row of rows) {
+      refMaps.satuan_default_id.set(Number(row.satuan_id), row.kode_satuan || `Satuan ${row.satuan_id}`);
+    }
+  }
+
+  if (refGroups.gudang_id.size) {
+    const ids = Array.from(refGroups.gudang_id);
+    const rows = await prisma.gudang.findMany({
+      where: { gudang_id: { in: ids } },
+      select: { gudang_id: true, nama_gudang: true },
+    });
+    for (const row of rows) {
+      refMaps.gudang_id.set(Number(row.gudang_id), row.nama_gudang || `Gudang ${row.gudang_id}`);
+    }
+  }
+
+  if (refGroups.personil_id.size) {
+    const ids = Array.from(refGroups.personil_id);
+    const rows = await prisma.personil.findMany({
+      where: { personil_id: { in: ids } },
+      select: { personil_id: true, nama: true },
+    });
+    for (const row of rows) {
+      refMaps.personil_id.set(Number(row.personil_id), row.nama || `Personil ${row.personil_id}`);
+    }
+  }
+
+  if (refGroups.kendaraan_id.size) {
+    const ids = Array.from(refGroups.kendaraan_id);
+    const rows = await prisma.kendaraan.findMany({
+      where: { kendaraan_id: { in: ids } },
+      select: { kendaraan_id: true, no_polisi: true, jenis_kendaraan: true },
+    });
+    for (const row of rows) {
+      refMaps.kendaraan_id.set(Number(row.kendaraan_id), row.no_polisi || row.jenis_kendaraan || `Kendaraan ${row.kendaraan_id}`);
+    }
+  }
+
+  if (refGroups.supplier_id.size) {
+    const ids = Array.from(refGroups.supplier_id);
+    const rows = await prisma.supplier.findMany({
+      where: { supplier_id: { in: ids } },
+      select: { supplier_id: true, nama: true, kode: true },
+    });
+    for (const row of rows) {
+      refMaps.supplier_id.set(Number(row.supplier_id), row.nama || row.kode || `Supplier ${row.supplier_id}`);
+    }
+  }
+
+  if (refGroups.user_id.size) {
+    const ids = Array.from(refGroups.user_id);
+    const rows = await prisma.user_account.findMany({
+      where: { user_id: { in: ids } },
+      select: { user_id: true, nama: true },
+    });
+    for (const row of rows) {
+      refMaps.user_id.set(Number(row.user_id), row.nama || `User ${row.user_id}`);
+    }
+  }
+
+  if (refGroups.pic_id.size) {
+    const ids = Array.from(refGroups.pic_id);
+    const rows = await prisma.personil.findMany({
+      where: { personil_id: { in: ids } },
+      select: { personil_id: true, nama: true },
+    });
+    for (const row of rows) {
+      refMaps.pic_id.set(Number(row.personil_id), row.nama || `Personil ${row.personil_id}`);
+    }
+  }
+
   return logs.map((log) => {
     const entity_refs_resolved = {};
     for (const key of Object.keys(refGroups)) {
@@ -251,7 +431,7 @@ const enrichAuditEntityNames = async (logs) => {
 
     return {
       ...log,
-      entity_name: nameMap.get(`${log.entity_type}:${String(log.entity_id)}`) ?? null,
+      entity_name: nameMap.get(`${log.entity_type}:${String(log.entity_id)}`) ?? (log.entity_type === "cluster" ? (log.data_sesudah?.nama_cluster || log.data_sebelum?.nama_cluster || null) : null),
       entity_refs_resolved,
     };
   });
@@ -278,6 +458,227 @@ const parseIdFilter = (value, fieldName) => {
   return BigInt(raw);
 };
 
+const buildZonaFallbackMap = async (rows, prisma) => {
+  const candidates = rows.filter(
+    (r) =>
+      r.surat_jalan_item?.surat_jalan?.tipe === "inbound" &&
+      r.surat_jalan_item?.surat_jalan?.status === "diterima_didistribusikan" &&
+      !r.surat_jalan_item?.zona_id &&
+      r.surat_jalan_item?.surat_jalan?.gudang_tujuan_id
+  );
+
+  if (!candidates.length) {
+    return new Map();
+  }
+
+  const uniqueKeys = new Set();
+  for (const r of candidates) {
+    uniqueKeys.add(`${r.barang_id}:${r.surat_jalan_item.surat_jalan.gudang_tujuan_id}`);
+  }
+
+  if (!uniqueKeys.size) {
+    return new Map();
+  }
+
+  const orConditions = Array.from(uniqueKeys).map((key) => {
+    const [barang_id, gudang_id] = key.split(":").map(Number);
+    return { barang_id, gudang_id };
+  });
+
+  const stokRecords = await prisma.stok_gudang.findMany({
+    where: { OR: orConditions },
+    select: { barang_id: true, gudang_id: true, zona_id: true },
+  });
+
+  const grouped = new Map();
+  for (const record of stokRecords) {
+    const key = `${record.barang_id}:${record.gudang_id}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, new Set());
+    }
+    if (record.zona_id != null) {
+      grouped.get(key).add(Number(record.zona_id));
+    }
+  }
+
+  const fallbackMap = new Map();
+  for (const [key, zonaIds] of grouped) {
+    if (zonaIds.size === 1) {
+      fallbackMap.set(key, Array.from(zonaIds)[0]);
+    }
+  }
+
+  return fallbackMap;
+};
+
+const buildPickZonaMap = async (rows, prisma) => {
+  const allZonaIds = new Set();
+  for (const r of rows) {
+    const picks = r.surat_jalan_item?.picks;
+    if (Array.isArray(picks)) {
+      for (const p of picks) {
+        if (p?.zona_id != null) {
+          allZonaIds.add(Number(p.zona_id));
+        }
+      }
+    }
+  }
+
+  if (!allZonaIds.size) {
+    return new Map();
+  }
+
+  const zonaRecords = await prisma.zona_gudang.findMany({
+    where: { zona_id: { in: Array.from(allZonaIds) } },
+    select: {
+      zona_id: true,
+      kode_zona: true,
+      nama_zona: true,
+      tipe_zona: true,
+      gudang: {
+        select: {
+          nama_gudang: true,
+        },
+      },
+    },
+  });
+
+  const zonaMap = new Map();
+  for (const z of zonaRecords) {
+    zonaMap.set(Number(z.zona_id), z);
+  }
+
+  const result = new Map();
+  for (const r of rows) {
+    const picks = r.surat_jalan_item?.picks;
+    if (!Array.isArray(picks) || !picks.length) {
+      result.set(Number(r.ledger_id), null);
+      continue;
+    }
+
+    const uniqueZonaIds = [...new Set(picks.map((p) => Number(p.zona_id)).filter((id) => !Number.isNaN(id)))];
+    if (uniqueZonaIds.length === 0) {
+      result.set(Number(r.ledger_id), null);
+      continue;
+    }
+
+    if (uniqueZonaIds.length === 1) {
+      result.set(Number(r.ledger_id), zonaMap.get(uniqueZonaIds[0]) || null);
+      continue;
+    }
+
+    const labels = uniqueZonaIds
+      .map((id) => {
+        const z = zonaMap.get(id);
+        if (!z) return null;
+        const nama = z.nama_zona || z.kode_zona || `Zona ${id}`;
+        const gudang = z.gudang?.nama_gudang || "";
+        return gudang ? `${nama} / ${gudang}` : nama;
+      })
+      .filter(Boolean);
+
+    result.set(Number(r.ledger_id), labels.join(", "));
+  }
+
+  return result;
+};
+
+const resolveAsal = (ledger) => {
+  const item = ledger.surat_jalan_item;
+  const suratJalan = item?.surat_jalan;
+
+  if (!suratJalan) {
+    return { asal_label: null, asal_tipe: null };
+  }
+
+  if (suratJalan.tipe === "inbound") {
+    if (suratJalan.gudang_asal?.nama_gudang) {
+      return { asal_label: suratJalan.gudang_asal.nama_gudang, asal_tipe: "gudang" };
+    }
+    if (suratJalan.tipe_pengirim === "external") {
+      const nama = suratJalan.supplier?.nama || suratJalan.pengirim_eksternal_nama || null;
+      if (nama) {
+        return { asal_label: nama, asal_tipe: "pemasok" };
+      }
+    }
+    if (suratJalan.project?.nama_project) {
+      return { asal_label: suratJalan.project.nama_project, asal_tipe: "project" };
+    }
+    return { asal_label: null, asal_tipe: null };
+  }
+
+  if (suratJalan.tipe === "outbound") {
+    if (suratJalan.gudang_asal?.nama_gudang) {
+      return { asal_label: suratJalan.gudang_asal.nama_gudang, asal_tipe: "gudang" };
+    }
+    const zonaGudang = item?.zona?.gudang?.nama_gudang;
+    if (zonaGudang) {
+      return { asal_label: zonaGudang, asal_tipe: "gudang_stok" };
+    }
+    return { asal_label: null, asal_tipe: null };
+  }
+
+  if (ledger.return_transaction) {
+    const rt = ledger.return_transaction;
+    const zonaGudang = rt.surat_jalan_item?.zona?.gudang?.nama_gudang;
+    if (zonaGudang) {
+      return { asal_label: zonaGudang, asal_tipe: "return" };
+    }
+    if (rt.project?.nama_project) {
+      return { asal_label: rt.project.nama_project, asal_tipe: "project" };
+    }
+    return { asal_label: null, asal_tipe: null };
+  }
+
+  if (suratJalan.gudang_asal?.nama_gudang) {
+    return { asal_label: suratJalan.gudang_asal.nama_gudang, asal_tipe: "gudang" };
+  }
+  return { asal_label: null, asal_tipe: null };
+};
+
+const getPutawayLedgerIds = async (prismaOrTx) => {
+  const putawayRows = await prismaOrTx.$queryRaw`
+    WITH pairs AS (
+      SELECT
+        a.ledger_id AS out_id,
+        b.ledger_id AS in_id
+      FROM stok_ledger a
+      JOIN stok_ledger b ON a.surat_jalan_item_id = b.surat_jalan_item_id
+      WHERE a.jenis_mutasi = 'out'
+        AND b.jenis_mutasi = 'in'
+        AND a.return_transaction_id IS NULL
+        AND b.return_transaction_id IS NULL
+        AND (
+          (a.waktu_mutasi < b.waktu_mutasi AND ABS(EXTRACT(EPOCH FROM (b.waktu_mutasi - a.waktu_mutasi))) <= 1.0)
+          OR (a.waktu_mutasi = b.waktu_mutasi AND a.ledger_id < b.ledger_id)
+        )
+    ),
+    out_counts AS (
+      SELECT out_id, COUNT(*) AS cnt FROM pairs GROUP BY out_id
+    ),
+    in_counts AS (
+      SELECT in_id, COUNT(*) AS cnt FROM pairs GROUP BY in_id
+    ),
+    unique_pairs AS (
+      SELECT p.out_id, p.in_id
+      FROM pairs p
+      JOIN out_counts oc ON p.out_id = oc.out_id AND oc.cnt = 1
+      JOIN in_counts ic ON p.in_id = ic.in_id AND ic.cnt = 1
+    )
+    SELECT out_id AS ledger_id FROM unique_pairs
+    UNION
+    SELECT in_id AS ledger_id FROM unique_pairs
+  `;
+  return Array.isArray(putawayRows)
+    ? putawayRows.map((row) => {
+        const raw = row.ledger_id;
+        if (typeof raw === 'bigint') return raw;
+        if (typeof raw === 'number' && Number.isFinite(raw)) return BigInt(Math.trunc(raw));
+        return null;
+      }).filter((val) => val !== null)
+    : [];
+};
+
 const getStockHistory = async (filters = {}) => {
   const {
     search = "",
@@ -291,9 +692,17 @@ const getStockHistory = async (filters = {}) => {
     endDate,
     page = 1,
     limit = 50,
+    include_putaway = "false",
   } = filters;
 
   const where = {};
+
+  if (include_putaway !== "true") {
+    const putawayIds = await getPutawayLedgerIds(prisma);
+    if (putawayIds.length > 0) {
+      where.ledger_id = { notIn: putawayIds };
+    }
+  }
 
   if (search.trim()) {
     const s = search.trim();
@@ -383,6 +792,31 @@ const getStockHistory = async (filters = {}) => {
       take: Number(limit),
       orderBy: { waktu_mutasi: "desc" },
       include: {
+        return_transaction: {
+          include: {
+            surat_jalan_item: {
+              include: {
+                zona: {
+                  select: {
+                    zona_id: true,
+                    nama_zona: true,
+                    gudang: {
+                      select: {
+                        nama_gudang: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            project: {
+              select: {
+                project_id: true,
+                nama_project: true,
+              },
+            },
+          },
+        },
         barang: {
           select: {
             kode_perangkat: true,
@@ -398,7 +832,23 @@ const getStockHistory = async (filters = {}) => {
         surat_jalan_item: {
           include: {
             surat_jalan: {
-              include: {
+              select: {
+                surat_jalan_id: true,
+                nomor_surat_jalan: true,
+                alamat_lapangan: true,
+                tipe: true,
+                status: true,
+                gudang_asal_id: true,
+                gudang_tujuan_id: true,
+                tipe_pengirim: true,
+                pengirim_eksternal_nama: true,
+                supplier: {
+                  select: {
+                    supplier_id: true,
+                    nama: true,
+                    kode: true,
+                  },
+                },
                 project: {
                   select: {
                     nama_project: true,
@@ -413,6 +863,11 @@ const getStockHistory = async (filters = {}) => {
                 gudang_tujuan: {
                   select: {
                     nama_gudang: true,
+                  },
+                },
+                titik_lapangan: {
+                  select: {
+                    nama_lokasi: true,
                   },
                 },
                 boq: {
@@ -467,6 +922,16 @@ const getStockHistory = async (filters = {}) => {
                 },
               },
             },
+            picks: {
+              select: {
+                zona_id: true,
+                qty: true,
+                picked_at: true,
+              },
+              orderBy: {
+                picked_at: "asc",
+              },
+            },
           },
         },
       },
@@ -474,12 +939,112 @@ const getStockHistory = async (filters = {}) => {
     prisma.stok_ledger.count({ where }),
   ]);
 
+  const zonaFallbackMap = await buildZonaFallbackMap(data, prisma);
+  const pickZonaMap = await buildPickZonaMap(data, prisma);
+
+  const putawayLedgerIds = new Set();
+  const uniqueSjiIds = Array.from(
+    new Set(
+      data
+        .map((ledger) => ledger.surat_jalan_item_id)
+        .filter((sji) => sji != null && Number.isFinite(Number(sji)))
+    )
+  );
+
+  if (uniqueSjiIds.length > 0) {
+    const candidateLedgers = await prisma.stok_ledger.findMany({
+      where: {
+        surat_jalan_item_id: { in: uniqueSjiIds.map((id) => Number(id)) },
+        return_transaction_id: null,
+      },
+      select: {
+        ledger_id: true,
+        surat_jalan_item_id: true,
+        jenis_mutasi: true,
+        waktu_mutasi: true,
+      },
+    });
+
+    const groupedBySji = new Map();
+    for (const ledger of candidateLedgers) {
+      const sji = ledger.surat_jalan_item_id;
+      if (!sji) continue;
+      if (!groupedBySji.has(sji)) groupedBySji.set(sji, []);
+      groupedBySji.get(sji).push(ledger);
+    }
+
+    for (const [sji, ledgers] of groupedBySji) {
+      const outCandidates = ledgers.filter((l) => l.jenis_mutasi === "out");
+      const inCandidates = ledgers.filter((l) => l.jenis_mutasi === "in");
+
+      const outMatches = new Map();
+      const inMatches = new Map();
+
+      for (const out of outCandidates) {
+        const outTime = new Date(out.waktu_mutasi).getTime();
+        for (const inEntry of inCandidates) {
+          const inTime = new Date(inEntry.waktu_mutasi).getTime();
+          if (inTime > outTime && Math.abs(inTime - outTime) <= 1000) {
+            if (!outMatches.has(out.ledger_id)) outMatches.set(out.ledger_id, []);
+            outMatches.get(out.ledger_id).push(inEntry);
+            if (!inMatches.has(inEntry.ledger_id)) inMatches.set(inEntry.ledger_id, []);
+            inMatches.get(inEntry.ledger_id).push(out);
+          }
+        }
+      }
+
+      let unique = true;
+      for (const matches of outMatches.values()) {
+        if (matches.length !== 1) { unique = false; break; }
+      }
+      if (unique) {
+        for (const matches of inMatches.values()) {
+          if (matches.length !== 1) { unique = false; break; }
+        }
+      }
+
+      if (unique) {
+        for (const [outId, ins] of outMatches) {
+          putawayLedgerIds.add(String(outId));
+          for (const inEntry of ins) {
+            putawayLedgerIds.add(String(inEntry.ledger_id));
+          }
+        }
+      }
+    }
+  }
+
+  const zonaMap = new Map();
+  for (const ledger of data) {
+    const z = ledger.surat_jalan_item?.zona;
+    if (z?.zona_id) {
+      zonaMap.set(Number(z.zona_id), z);
+    }
+  }
+
   const rows = data.map((ledger) => {
     const item = ledger.surat_jalan_item;
     const suratJalan = item?.surat_jalan;
     const barang = item?.barang ?? ledger.barang;
     const tiket = suratJalan?.boq?.tiket;
-    const zona = item?.zona;
+
+    const fallbackZonaId =
+      !item?.zona_id &&
+      suratJalan?.tipe === "inbound" &&
+      suratJalan?.status === "diterima_didistribusikan"
+        ? zonaFallbackMap.get(`${ledger.barang_id}:${suratJalan?.gudang_tujuan_id}`)
+        : null;
+
+    const effectiveZonaId = item?.zona_id || fallbackZonaId || null;
+    const pickZona = pickZonaMap.get(Number(ledger.ledger_id));
+    const zona =
+      suratJalan?.tipe === "outbound" && pickZona
+        ? typeof pickZona === "string"
+          ? { kode_zona: pickZona, nama_zona: pickZona, tipe_zona: null, gudang: { nama_gudang: null }, zona_id: null }
+          : pickZona
+        : effectiveZonaId && zonaMap.get(Number(effectiveZonaId))
+          ? zonaMap.get(Number(effectiveZonaId))
+          : item?.zona || null;
 
     const gudangAsal = suratJalan?.gudang_asal?.nama_gudang || null;
     const gudangTujuan = suratJalan?.gudang_tujuan?.nama_gudang || null;
@@ -503,16 +1068,13 @@ const getStockHistory = async (filters = {}) => {
       status_surat_jalan: suratJalan?.status || "-",
       project_nama: suratJalan?.project?.nama_project || "-",
       area: suratJalan?.project?.area || "-",
-      // `gudang` dipertahankan untuk kompatibilitas konsumen lama.
       gudang: gudangAsal || gudangTujuan || "-",
-      // Asal & tujuan dipisah: level GUDANG (antar/keluar-masuk gudang).
       gudang_asal: gudangAsal || "-",
       gudang_tujuan: gudangTujuan || "-",
       gudang_asal_id: suratJalan?.gudang_asal_id ? String(suratJalan.gudang_asal_id) : null,
       gudang_tujuan_id: suratJalan?.gudang_tujuan_id ? String(suratJalan.gudang_tujuan_id) : null,
-      // Zona: sub-lokasi DI DALAM satu gudang (granularitas lebih kecil dari
-      // gudang_asal/gudang_tujuan, bukan duplikatnya).
-      zona_id: zona?.zona_id ? String(zona.zona_id) : null,
+      lapangan_tujuan: suratJalan?.titik_lapangan?.nama_lokasi ?? suratJalan?.alamat_lapangan ?? null,
+      zona_id: effectiveZonaId ? String(effectiveZonaId) : null,
       zona_kode: zona?.kode_zona || "-",
       zona_nama: zona?.nama_zona || "-",
       zona_tipe: zona?.tipe_zona || "-",
@@ -522,6 +1084,8 @@ const getStockHistory = async (filters = {}) => {
       is_kelebihan: item?.is_kelebihan || false,
       diproses_oleh: suratJalan?.creator?.nama || "-",
       diproses_oleh_role: suratJalan?.creator?.role || "-",
+      is_putaway: putawayLedgerIds.has(String(ledger.ledger_id)),
+      ...resolveAsal(ledger),
     };
   });
 
@@ -547,9 +1111,17 @@ const getStockHistoryForExport = async (filters = {}) => {
     status = "all",
     startDate,
     endDate,
+    include_putaway = "false",
   } = filters;
 
   const where = {};
+
+  if (include_putaway !== "true") {
+    const putawayIds = await getPutawayLedgerIds(prisma);
+    if (putawayIds.length > 0) {
+      where.ledger_id = { notIn: putawayIds };
+    }
+  }
 
   if (search.trim()) {
     const s = search.trim();
@@ -630,6 +1202,31 @@ const getStockHistoryForExport = async (filters = {}) => {
       take: EXPORT_LIMIT,
       orderBy: { waktu_mutasi: "desc" },
       include: {
+        return_transaction: {
+          include: {
+            surat_jalan_item: {
+              include: {
+                zona: {
+                  select: {
+                    zona_id: true,
+                    nama_zona: true,
+                    gudang: {
+                      select: {
+                        nama_gudang: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            project: {
+              select: {
+                project_id: true,
+                nama_project: true,
+              },
+            },
+          },
+        },
         barang: {
           select: {
             kode_perangkat: true,
@@ -645,7 +1242,23 @@ const getStockHistoryForExport = async (filters = {}) => {
         surat_jalan_item: {
           include: {
             surat_jalan: {
-              include: {
+              select: {
+                surat_jalan_id: true,
+                nomor_surat_jalan: true,
+                alamat_lapangan: true,
+                tipe: true,
+                status: true,
+                gudang_asal_id: true,
+                gudang_tujuan_id: true,
+                tipe_pengirim: true,
+                pengirim_eksternal_nama: true,
+                supplier: {
+                  select: {
+                    supplier_id: true,
+                    nama: true,
+                    kode: true,
+                  },
+                },
                 project: {
                   select: {
                     nama_project: true,
@@ -660,6 +1273,11 @@ const getStockHistoryForExport = async (filters = {}) => {
                 gudang_tujuan: {
                   select: {
                     nama_gudang: true,
+                  },
+                },
+                titik_lapangan: {
+                  select: {
+                    nama_lokasi: true,
                   },
                 },
                 boq: {
@@ -710,6 +1328,16 @@ const getStockHistoryForExport = async (filters = {}) => {
                 },
               },
             },
+            picks: {
+              select: {
+                zona_id: true,
+                qty: true,
+                picked_at: true,
+              },
+              orderBy: {
+                picked_at: "asc",
+              },
+            },
           },
         },
       },
@@ -717,12 +1345,64 @@ const getStockHistoryForExport = async (filters = {}) => {
     prisma.stok_ledger.count({ where }),
   ]);
 
+  const zonaFallbackMap = await buildZonaFallbackMap(data, prisma);
+  const pickZonaMap = await buildPickZonaMap(data, prisma);
+
+  const zonaMap = new Map();
+  for (const ledger of data) {
+    const z = ledger.surat_jalan_item?.zona;
+    if (z?.zona_id) {
+      zonaMap.set(Number(z.zona_id), z);
+    }
+  }
+
+  const putawayLedgerIds = new Set();
+  const groupedBySji = new Map();
+  for (const ledger of data) {
+    const sji = ledger.surat_jalan_item_id;
+    if (!sji) continue;
+    if (!groupedBySji.has(sji)) groupedBySji.set(sji, []);
+    groupedBySji.get(sji).push(ledger);
+  }
+
+  for (const [sji, ledgers] of groupedBySji) {
+    const outCandidates = ledgers.filter((l) => l.jenis_mutasi === "out" && !l.return_transaction_id);
+    const inCandidates = ledgers.filter((l) => l.jenis_mutasi === "in" && !l.return_transaction_id);
+    for (const out of outCandidates) {
+      const outTime = new Date(out.waktu_mutasi).getTime();
+      for (const inEntry of inCandidates) {
+        const inTime = new Date(inEntry.waktu_mutasi).getTime();
+        if (inTime > outTime && Math.abs(inTime - outTime) <= 1000) {
+          putawayLedgerIds.add(String(out.ledger_id));
+          putawayLedgerIds.add(String(inEntry.ledger_id));
+        }
+      }
+    }
+  }
+
   const rows = data.map((ledger) => {
     const item = ledger.surat_jalan_item;
     const suratJalan = item?.surat_jalan;
     const barang = item?.barang ?? ledger.barang;
     const tiket = suratJalan?.boq?.tiket;
-    const zona = item?.zona;
+
+    const fallbackZonaId =
+      !item?.zona_id &&
+      suratJalan?.tipe === "inbound" &&
+      suratJalan?.status === "diterima_didistribusikan"
+        ? zonaFallbackMap.get(`${ledger.barang_id}:${suratJalan?.gudang_tujuan_id}`)
+        : null;
+
+    const effectiveZonaId = item?.zona_id || fallbackZonaId || null;
+    const pickZona = pickZonaMap.get(Number(ledger.ledger_id));
+    const zona =
+      suratJalan?.tipe === "outbound" && pickZona
+        ? typeof pickZona === "string"
+          ? { kode_zona: pickZona, nama_zona: pickZona, tipe_zona: null, gudang: { nama_gudang: null }, zona_id: null }
+          : pickZona
+        : effectiveZonaId && zonaMap.get(Number(effectiveZonaId))
+          ? zonaMap.get(Number(effectiveZonaId))
+          : item?.zona || null;
 
     const gudangAsal = suratJalan?.gudang_asal?.nama_gudang || null;
     const gudangTujuan = suratJalan?.gudang_tujuan?.nama_gudang || null;
@@ -751,7 +1431,8 @@ const getStockHistoryForExport = async (filters = {}) => {
       gudang_tujuan: gudangTujuan || "-",
       gudang_asal_id: suratJalan?.gudang_asal_id ? String(suratJalan.gudang_asal_id) : null,
       gudang_tujuan_id: suratJalan?.gudang_tujuan_id ? String(suratJalan.gudang_tujuan_id) : null,
-      zona_id: zona?.zona_id ? String(zona.zona_id) : null,
+      lapangan_tujuan: suratJalan?.titik_lapangan?.nama_lokasi ?? suratJalan?.alamat_lapangan ?? null,
+      zona_id: effectiveZonaId ? String(effectiveZonaId) : null,
       zona_kode: zona?.kode_zona || "-",
       zona_nama: zona?.nama_zona || "-",
       zona_tipe: zona?.tipe_zona || "-",
@@ -761,6 +1442,8 @@ const getStockHistoryForExport = async (filters = {}) => {
       is_kelebihan: item?.is_kelebihan || false,
       diproses_oleh: suratJalan?.creator?.nama || "-",
       diproses_oleh_role: suratJalan?.creator?.role || "-",
+      is_putaway: putawayLedgerIds.has(String(ledger.ledger_id)),
+      ...resolveAsal(ledger),
     };
   });
 

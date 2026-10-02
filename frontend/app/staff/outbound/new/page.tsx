@@ -104,6 +104,8 @@ function ConfirmModal({
   fotoUrlsByItem,
   selectedTujuanKategori,
   alamatLapangan,
+  selectedTitikLapanganId,
+  titikLapangan,
   selectedPengirimKategori,
   pengirimEksternalNama,
 }: {
@@ -121,6 +123,8 @@ function ConfirmModal({
   fotoUrlsByItem: Record<string, string>;
   selectedTujuanKategori: string;
   alamatLapangan: string;
+  selectedTitikLapanganId: string;
+  titikLapangan: { titik_lapangan_id: string | number; nama_lokasi: string }[];
   selectedPengirimKategori: string;
   pengirimEksternalNama: string;
 }) {
@@ -186,7 +190,13 @@ function ConfirmModal({
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500">Tujuan</span>
                   <span className="font-medium text-slate-700">
-                    {selectedTujuanKategori === "lapangan" ? alamatLapangan || "-" : selectedGudangTujuan?.nama_gudang || "-"}
+                    {selectedTujuanKategori === "lapangan"
+                      ? (() => {
+                          const namaTitik = titikLapangan.find((tl) => String(tl.titik_lapangan_id) === selectedTitikLapanganId)?.nama_lokasi || "";
+                          const parts = [namaTitik, alamatLapangan.trim()].filter(Boolean);
+                          return parts.length ? parts.join(" — ") : "-";
+                        })()
+                      : selectedGudangTujuan?.nama_gudang || "-"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -288,6 +298,9 @@ export default function AjukanSuratJalanPage() {
   const [stockSearch, setStockSearch] = useState("");
   const [stockExpanded, setStockExpanded] = useState(false);
 
+  const [titikLapangan, setTitikLapangan] = useState<{ titik_lapangan_id: string | number; nama_lokasi: string }[]>([]);
+  const [selectedTitikLapanganId, setSelectedTitikLapanganId] = useState<string>("");
+
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
   useEffect(() => {
@@ -338,6 +351,37 @@ export default function AjukanSuratJalanPage() {
   }, []);
 
   const selectedProject = useMemo(() => projects.find((p) => String(p.project_id) === selectedProjectId) || null, [projects, selectedProjectId]);
+
+  useEffect(() => {
+    let mounted = true;
+    const projectIdNum = Number(selectedProjectId);
+    if (!projectIdNum) {
+      setTitikLapangan([]);
+      setSelectedTitikLapanganId("");
+      return;
+    }
+
+    const loadTitikLapangan = async () => {
+      try {
+        const url = new URL("/api/titik-lapangan", apiBase);
+        url.searchParams.set("project_id", String(projectIdNum));
+        url.searchParams.set("is_aktif", "true");
+        const resp = await get(url.toString());
+        if (!resp.ok) throw new Error("Gagal mengambil daftar titik lapangan.");
+        const json = await resp.json();
+        const raw = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []);
+        const rows = raw as Array<{ titik_lapangan_id: string | number; nama_lokasi: string }>;
+        if (mounted) {
+          setTitikLapangan(rows.map((r) => ({ titik_lapangan_id: r.titik_lapangan_id, nama_lokasi: r.nama_lokasi })));
+        }
+      } catch (err) {
+        if (mounted) setTitikLapangan([]);
+      }
+    };
+
+    loadTitikLapangan();
+    return () => { mounted = false; };
+  }, [selectedProjectId, apiBase, get]);
 
   const selectedVehicle = useMemo(() => vehicles.find((v) => String(v.kendaraan_id || v.id) === selectedVehicleId) || null, [vehicles, selectedVehicleId]);
 
@@ -628,8 +672,8 @@ const [itemsRes, boqsRes] = await Promise.all([
       showToast("Pilih kategori tujuan terlebih dahulu.", "error");
       return;
     }
-    if (selectedTujuanKategori === "lapangan" && !alamatLapangan.trim()) {
-      showToast("Alamat lapangan wajib diisi.", "error");
+    if (selectedTujuanKategori === "lapangan" && !selectedTitikLapanganId && !alamatLapangan.trim()) {
+      showToast("Pilih titik lapangan atau isi alamat lapangan.", "error");
       return;
     }
     if (selectedTujuanKategori === "gudang" && !selectedGudangTujuanId) {
@@ -664,7 +708,7 @@ const [itemsRes, boqsRes] = await Promise.all([
         project_id: selectedProjectId,
         boq_id: selectedBoqId || null,
         tujuan_tipe: selectedTujuanKategori || null,
-        titik_lapangan_id: null,
+        titik_lapangan_id: selectedTujuanKategori === "lapangan" ? (selectedTitikLapanganId || null) : null,
         alamat_lapangan: selectedTujuanKategori === "lapangan" ? alamatLapangan.trim() : null,
         tipe_pengirim: selectedPengirimKategori || null,
         pengirim_eksternal_nama: selectedPengirimKategori === "external" ? pengirimEksternalNama.trim() : null,
@@ -752,6 +796,8 @@ const [itemsRes, boqsRes] = await Promise.all([
               }}
               placeholder="Pilih BOQ / Tiket"
               tipe="outbound"
+              excludeStatus="draft,selesai,ditolak"
+              emptyMessage="Tidak ada BOQ yang dapat diajukan."
             />
             {selectedBoqId && <p className="mt-2 text-xs text-gray-500">Tiket: {selectedProject?.nama_project || `Project ID ${selectedProjectId}`}</p>}
           </div>
@@ -903,16 +949,17 @@ const [itemsRes, boqsRes] = await Promise.all([
               </p>
 
               <label className="mb-1.5 block text-xs font-medium text-gray-500">Kategori Tujuan</label>
-              <div className="relative mb-3">
-                <select
-                  value={selectedTujuanKategori}
-                  onChange={(e) => {
-                    setSelectedTujuanKategori(e.target.value);
-                    setSelectedGudangTujuanId("");
-                    setAlamatLapangan("");
-                  }}
-                  className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
-                >
+               <div className="relative mb-3">
+                 <select
+                   value={selectedTujuanKategori}
+                   onChange={(e) => {
+                     setSelectedTujuanKategori(e.target.value);
+                     setSelectedGudangTujuanId("");
+                     setAlamatLapangan("");
+                     setSelectedTitikLapanganId("");
+                   }}
+                   className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+                 >
                   <option value="">Pilih Kategori...</option>
                   <option value="gudang">Gudang</option>
                   <option value="lapangan">Lapangan</option>
@@ -945,18 +992,42 @@ const [itemsRes, boqsRes] = await Promise.all([
               )}
 
 {selectedTujuanKategori === "lapangan" && (
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">
-                    Alamat Lapangan <span className="text-rose-500">*</span>
-                  </label>
-                  <textarea
-                    value={alamatLapangan}
-                    onChange={(e) => setAlamatLapangan(e.target.value)}
-                    placeholder="Isi alamat detail / catatan lokasi lapangan (mis. blok, RT/RW, landmark)"
-                    rows={3}
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
-                    required
-                  />
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">
+                      Titik Lapangan <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={selectedTitikLapanganId}
+                        onChange={(e) => setSelectedTitikLapanganId(e.target.value)}
+                        className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+                      >
+                        <option value="">Pilih Titik Lapangan...</option>
+                        {titikLapangan.map((tl) => (
+                          <option key={tl.titik_lapangan_id} value={String(tl.titik_lapangan_id)}>
+                            {tl.nama_lokasi}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    </div>
+                    {titikLapangan.length === 0 && <p className="mt-2 text-xs text-gray-400">Belum ada titik lapangan untuk project ini.</p>}
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">
+                      Alamat Lapangan <span className="text-rose-500">*</span>
+                    </label>
+                    <textarea
+                      value={alamatLapangan}
+                      onChange={(e) => setAlamatLapangan(e.target.value)}
+                      placeholder="Isi alamat detail / catatan lokasi lapangan (mis. blok, RT/RW, landmark)"
+                      rows={3}
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+                      required
+                    />
+                  </div>
                 </div>
               )}
 
@@ -1162,6 +1233,8 @@ const [itemsRes, boqsRes] = await Promise.all([
           fotoUrlsByItem={fotoUrlsByItem}
           selectedTujuanKategori={selectedTujuanKategori}
           alamatLapangan={alamatLapangan}
+          selectedTitikLapanganId={selectedTitikLapanganId}
+          titikLapangan={titikLapangan}
           selectedPengirimKategori={selectedPengirimKategori}
           pengirimEksternalNama={pengirimEksternalNama}
         />

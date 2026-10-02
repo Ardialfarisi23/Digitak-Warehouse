@@ -827,8 +827,8 @@ const getExportMatrixData = async () => {
   return await boqRepository.getExportMatrixData();
 };
 
-const getItems = async (projectId) => {
-  return await boqRepository.findItemsByProject(projectId);
+const getItems = async (projectId, statuses) => {
+  return await boqRepository.findItemsByProject(projectId, null, statuses);
 };
 
 module.exports = {

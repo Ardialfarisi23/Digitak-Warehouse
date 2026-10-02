@@ -647,8 +647,8 @@ const addReturnStock = async (returnRecord, gudangTujuanId, tx) => {
       barang_id: barangId,
       kondisi: "baik",
       zona_id: null,
-      project_id: projectId,
     },
+    orderBy: { stok_id: "asc" },
   });
 
   let saldoSetelah;
@@ -670,7 +670,7 @@ const addReturnStock = async (returnRecord, gudangTujuanId, tx) => {
       data: {
         gudang_id: gudangId,
         barang_id: barangId,
-        project_id: projectId,
+        project_id: null,
         kondisi: "baik",
         qty: qtyDecimal,
         zona_id: null,

@@ -2,6 +2,19 @@ const projectRepository = require("./project.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
 const notificationService = require("../../modules/notifications/notifications.service");
+const { createAuditLog } = require("../../utils/audit-log");
+
+const toProjectResponse = (record) => {
+  if (!record || typeof record !== "object") return record;
+
+  const { creator, updater, ...rest } = record;
+
+  return {
+    ...rest,
+    created_by_name: creator?.nama ?? null,
+    updated_by_name: updater?.nama ?? null,
+  };
+};
 
 const create = async (data, userId) => {
   if (data.project_id) {
@@ -17,7 +30,23 @@ const create = async (data, userId) => {
     updated_by: Number(userId),
   };
 
-  const result = await projectRepository.create(createData);
+  const result = await prisma.$transaction(async (tx) => {
+    const project = await tx.project.create({ data: createData });
+
+    await createAuditLog(
+      {
+        entityType: "project",
+        entityId: project.project_id,
+        aksi: "create",
+        actorId: userId,
+        dataSebelum: null,
+        dataSesudah: project,
+      },
+      tx
+    );
+
+    return project;
+  });
 
   const actor = await prisma.user_account.findUnique({
     where: { user_id: BigInt(userId) },
@@ -91,7 +120,7 @@ const findAll = async (query = {}) => {
       );
 
       result.data = result.data.map((p) => ({
-        ...p,
+        ...toProjectResponse(p),
         has_active_boq: activeProjectIds.has(Number(p.project_id)),
       }));
     }
@@ -107,7 +136,7 @@ const findByProjectId = async (project_id) => {
     throw new AppError("Project tidak ditemukan.", 404);
   }
 
-  return record;
+  return toProjectResponse(record);
 };
 
 const update = async (project_id, data, userId) => {
@@ -139,8 +168,19 @@ const remove = async (project_id, userId) => {
   try {
     return await projectRepository.remove(project_id);
   } catch (err) {
-    if (err && err.code === "P2003") {
-      return await projectRepository.softDelete(project_id);
+    const message = String(err?.message || "");
+    const isFkRestrict =
+      err &&
+      (err.code === "P2003" ||
+        err.code === "23001" ||
+        err.code === "23503" ||
+        /23001|23503|violates\s+RESTRICT/i.test(message));
+
+    if (isFkRestrict) {
+      throw new AppError(
+        "Project tidak dapat dihapus karena masih memiliki data terkait (tiket/cluster/BOQ). Nonaktifkan project ini sebagai gantinya.",
+        409
+      );
     }
 
     throw err;

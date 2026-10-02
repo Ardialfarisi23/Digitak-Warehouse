@@ -20,6 +20,10 @@ const findByProjectId = async (projectId, options = {}) => {
   if (options.includeInactive) {
     return await prisma.project.findUnique({
       where: { project_id: id },
+      include: {
+        creator: { select: { nama: true } },
+        updater: { select: { nama: true } },
+      },
     });
   }
 
@@ -27,6 +31,10 @@ const findByProjectId = async (projectId, options = {}) => {
     where: {
       project_id: id,
       status_aktif: true,
+    },
+    include: {
+      creator: { select: { nama: true } },
+      updater: { select: { nama: true } },
     },
   });
 };
@@ -77,6 +85,8 @@ const findAll = async ({
     skip: all ? undefined : (sanitizedPage - 1) * sanitizedLimit,
     take: all ? undefined : sanitizedLimit,
     include: {
+      creator: { select: { nama: true } },
+      updater: { select: { nama: true } },
       _count: {
         select: {
           clusters: true,
@@ -104,7 +114,10 @@ const update = async (projectId, data) => {
   const id = BigInt(projectId);
   return await prisma.project.update({
     where: { project_id: id },
-    data,
+    data: {
+      ...data,
+      updated_at: new Date(),
+    },
   });
 };
 

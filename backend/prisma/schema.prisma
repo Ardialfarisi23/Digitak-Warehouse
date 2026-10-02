@@ -88,6 +88,7 @@ model personil {
   created_by              BigInt
   updated_by              BigInt
   gudang_pics             gudang[]         @relation("gudang_pic")
+  cluster_pic             cluster[]        @relation("ClusterPic")
   permintaan_boq_diajukan permintaan_boq[] @relation("permintaan_diajukan_oleh")
   permintaan_boq_ditinjai permintaan_boq[] @relation("permintaan_ditinjai_oleh")
   creator                 user_account     @relation("personil_created_by", fields: [created_by], references: [user_id])
@@ -136,7 +137,7 @@ model project {
   provinsi        String?
   status_aktif    Boolean          @default(true)
   created_at      DateTime         @default(now())
-  updated_at      DateTime         @default(now())
+  updated_at      DateTime         @default(now()) @updatedAt
   created_by      BigInt
   updated_by      BigInt
   gudangs         gudang[]
@@ -165,6 +166,7 @@ model cluster {
   no_tiket_release  String?   @db.Text
   vendor            String?   @db.Text
   alamat_lengkap    String?   @db.Text
+  pic_id            BigInt?
   status_aktif      Boolean   @default(true)
   created_at        DateTime  @default(now())
   updated_at        DateTime  @default(now())
@@ -172,9 +174,11 @@ model cluster {
   updated_by        BigInt
 
   project           project    @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
+  pic               personil?  @relation("ClusterPic", fields: [pic_id], references: [personil_id], onDelete: SetNull)
   boqs              boq[]
 
   @@index([project_id])
+  @@index([pic_id])
   @@unique([project_id, nama_cluster])
 }
 
@@ -362,7 +366,7 @@ model boq {
   reference_file               String?
   email_reference              String?
   created_at                   DateTime                     @default(now())
-  updated_at                   DateTime                     @default(now())
+  updated_at                   DateTime                     @default(now()) @updatedAt
   created_by                   BigInt
   updated_by                   BigInt
   creator                      user_account                 @relation("boq_created_by", fields: [created_by], references: [user_id])
@@ -635,6 +639,14 @@ model reconciliation_upload_detail {
   remains_lapangan Decimal?                     @db.Decimal(14, 2)
   status           reconciliation_detail_status
   reason           String?
+
+  kondisi          kondisi_barang?
+  nama_barang      String?                      @db.Text
+  kode_barang      String?                      @db.Text
+  project_nama     String?                      @db.Text
+  tanggal_laporan  DateTime?
+  pic_mitra        String?                      @db.Text
+  catatan          String?                      @db.Text
 
   upload_log    reconciliation_upload_log @relation("ReconciliationUploadLogDetail", fields: [upload_id], references: [upload_id], onDelete: Cascade)
   barang        barang?                  @relation("ReconciliationUploadDetailBarang", fields: [barang_id], references: [barang_id], onDelete: SetNull)

@@ -198,17 +198,36 @@ const create = async (data, actorId) => {
     }
   }
 
-  if (data.boq_id) {
-    const boq = await prisma.boq.findUnique({
-      where: { boq_id: Number(data.boq_id) },
-      select: { boq_id: true, status: true, boq_number: true },
-    });
-    if (!boq || boq.status !== "aktif") {
-      throw new AppError("Tidak dapat membuat surat jalan — BOQ/Project terkait belum diaktifkan oleh Admin.", 400);
-    }
-  }
+   if (data.boq_id) {
+     const boq = await prisma.boq.findUnique({
+       where: { boq_id: Number(data.boq_id) },
+       select: { boq_id: true, status: true, boq_number: true },
+     });
+     if (!boq) {
+       throw new AppError("BOQ yang dipilih tidak ditemukan.", 400);
+     }
+     if (boq.status !== "aktif") {
+       throw new AppError(`BOQ berstatus ${boq.status} tidak dapat diajukan Surat Jalan.`, 400);
+     }
+   }
 
-  const normalizedItems = data.items.map((item) => ({
+   if (data.tujuan_tipe === "lapangan" && data.titik_lapangan_id) {
+     const titik = await prisma.titik_lapangan.findUnique({
+       where: { titik_lapangan_id: Number(data.titik_lapangan_id) },
+       select: { titik_lapangan_id: true, is_aktif: true, project_id: true },
+     });
+     if (!titik) {
+       throw new AppError("Titik lapangan yang dipilih tidak ditemukan.", 400);
+     }
+     if (!titik.is_aktif) {
+       throw new AppError("Titik lapangan yang dipilih tidak aktif.", 400);
+     }
+     if (data.project_id && Number(titik.project_id) !== Number(data.project_id)) {
+       throw new AppError("Titik lapangan tidak sesuai dengan project yang dipilih.", 400);
+     }
+   }
+
+   const normalizedItems = data.items.map((item) => ({
     ...item,
     serial_number: normalizeSerial(item.serial_number),
   }));
@@ -1133,9 +1152,8 @@ if (!Array.isArray(items) || items.length === 0) {
             barang_id: barangId,
             kondisi: suratItem.kondisi || "baik",
             zona_id: null,
-            project_id: shipment.project_id,
           },
-          orderBy: { qty: "desc" },
+          orderBy: { stok_id: "asc" },
         });
 
         if (!genericStock || Number(genericStock.qty || 0) < qty) {
@@ -1174,8 +1192,8 @@ if (!Array.isArray(items) || items.length === 0) {
             barang_id: barangId,
             zona_id: zonaId,
             kondisi: suratItem.kondisi || "baik",
-            project_id: shipment.project_id,
           },
+          orderBy: { stok_id: "asc" },
         });
 
         let saldoSetelahZona = qty;
@@ -1191,7 +1209,7 @@ if (!Array.isArray(items) || items.length === 0) {
               gudang_id: gudangTujuanId,
               barang_id: barangId,
               zona_id: zonaId,
-              project_id: shipment.project_id,
+              project_id: null,
               kondisi: suratItem.kondisi || "baik",
               qty: qty,
             },
@@ -1300,6 +1318,17 @@ if (!Array.isArray(items) || items.length === 0) {
         throw new AppError("Surat jalan tidak dalam status disetujui.", 400);
       }
 
+      const pickStockRow = (rows, neededQty) => {
+        if (!rows.length) return null;
+        const needed = Number(neededQty || 0);
+        const withQty = rows.map((r) => ({ ...r, qtyNum: Number(r.qty || 0) }));
+
+        const enoughRow = withQty.find((r) => r.qtyNum >= needed);
+        if (enoughRow) return enoughRow;
+
+        return withQty.sort((a, b) => b.qtyNum - a.qtyNum)[0] || null;
+      };
+
       const seenItemIds = new Set();
       const pickedTotals = new Map();
 
@@ -1333,39 +1362,39 @@ if (!Array.isArray(items) || items.length === 0) {
         const requestedKondisi = (suratItem.kondisi || "baik").toLowerCase();
         const effectiveKondisi = pickedKondisi || requestedKondisi;
 
-        const stockDiminta = await tx.stok_gudang.findFirst({
+        const stockDimintaRows = await tx.stok_gudang.findMany({
           where: {
             gudang_id: gudangAsalId,
             barang_id: barangId,
             zona_id: zonaId,
             kondisi: requestedKondisi,
-            project_id: shipment.project_id,
           },
           orderBy: { qty: "desc" },
         });
+        const stockDiminta = pickStockRow(stockDimintaRows, qty);
 
-        const stockDiambil = await tx.stok_gudang.findFirst({
+        const stockDiambilRows = await tx.stok_gudang.findMany({
           where: {
             gudang_id: gudangAsalId,
             barang_id: barangId,
             zona_id: zonaId,
             kondisi: effectiveKondisi,
-            project_id: shipment.project_id,
           },
           orderBy: { qty: "desc" },
         });
+        const stockDiambil = pickStockRow(stockDiambilRows, qty);
 
         const fallbackStocks = await tx.stok_gudang.findMany({
           where: {
             gudang_id: gudangAsalId,
             barang_id: barangId,
             zona_id: zonaId,
-            project_id: shipment.project_id,
           },
           select: {
             kondisi: true,
             qty: true,
           },
+          orderBy: { qty: "desc" },
         });
 
         const zona = await tx.zona_gudang.findUnique({
