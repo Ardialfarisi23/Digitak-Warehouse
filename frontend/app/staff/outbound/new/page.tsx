@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardList, ChevronDown, ChevronRight, Loader2, AlertCircle, Truck, User, MapPin, X, Upload, Image as ImageIcon, Search } from "lucide-react";
+import { ClipboardList, ChevronDown, ChevronRight, Loader2, AlertCircle, Truck, User, MapPin, X, Upload, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -279,6 +279,8 @@ export default function AjukanSuratJalanPage() {
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [fotoUrlsByItem, setFotoUrlsByItem] = useState<Record<string, string>>({});
+  const [fotoPreviewsByItem, setFotoPreviewsByItem] = useState<Record<string, string>>({});
+  const fotoPreviewRef = useRef<Record<string, string>>({});
   const [uploadingFotoByItem, setUploadingFotoByItem] = useState<Record<string, boolean>>({});
   const [fotoErrorsByItem, setFotoErrorsByItem] = useState<Record<string, string | null>>({});
 
@@ -293,8 +295,31 @@ export default function AjukanSuratJalanPage() {
   useEffect(() => {
     return () => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      Object.values(fotoPreviewRef.current).forEach((url) => URL.revokeObjectURL(url));
+      fotoPreviewRef.current = {};
     };
   }, []);
+
+  function setFotoPreview(itemKey: string, url: string | null) {
+    const previous = fotoPreviewRef.current[itemKey];
+    if (previous && previous !== url) {
+      URL.revokeObjectURL(previous);
+    }
+    if (url) {
+      fotoPreviewRef.current[itemKey] = url;
+    } else {
+      delete fotoPreviewRef.current[itemKey];
+    }
+    setFotoPreviewsByItem((prev) => {
+      const next = { ...prev };
+      if (url) {
+        next[itemKey] = url;
+      } else {
+        delete next[itemKey];
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     async function loadData() {
@@ -569,6 +594,7 @@ const [itemsRes, boqsRes] = await Promise.all([
   async function handleFotoUpload(itemKey: string, file: File) {
     setFotoErrorsByItem((prev) => ({ ...prev, [itemKey]: null }));
     setUploadingFotoByItem((prev) => ({ ...prev, [itemKey]: true }));
+    setFotoPreview(itemKey, URL.createObjectURL(file));
 
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -594,11 +620,13 @@ const [itemsRes, boqsRes] = await Promise.all([
         [itemKey]: err instanceof Error ? err.message : "Gagal upload foto.",
       }));
     } finally {
+      setFotoPreview(itemKey, null);
       setUploadingFotoByItem((prev) => ({ ...prev, [itemKey]: false }));
     }
   }
 
   function handleFotoRemove(itemKey: string) {
+    setFotoPreview(itemKey, null);
     setFotoUrlsByItem((prev) => {
       const next = { ...prev };
       delete next[itemKey];
@@ -1015,32 +1043,41 @@ const [itemsRes, boqsRes] = await Promise.all([
                               </div>
                             </td>
                             <td className="py-3">
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <label
+                                  htmlFor={`foto-${key}`}
+                                  className={`inline-flex h-9 cursor-pointer items-center gap-1 rounded-md border border-dashed border-gray-300 px-1.5 text-[10px] font-medium text-gray-500 hover:border-[#E8632C] hover:text-[#E8632C] ${uploadingFotoByItem[key] ? "pointer-events-none opacity-50" : ""}`}
+                                >
+                                  {uploadingFotoByItem[key] ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                                  Pilih Foto
+                                </label>
                                 <input
                                   id={`foto-${key}`}
                                   type="file"
                                   accept="image/*"
                                   className="hidden"
+                                  disabled={uploadingFotoByItem[key]}
                                   onChange={(e) => {
                                     const file = e.target.files?.[0];
                                     if (file) handleFotoUpload(key, file);
+                                    e.target.value = "";
                                   }}
                                 />
-                                {fotoUrlsByItem[key] ? (
+                                {fotoPreviewsByItem[key] ? (
+                                  <div className="relative h-10 w-10 overflow-hidden rounded-md border border-[#E8632C]">
+                                    <img src={fotoPreviewsByItem[key]} alt="Pratinjau foto" className="h-full w-full object-cover" />
+                                    <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-[9px] font-medium text-white">
+                                      Mengunggah
+                                    </span>
+                                  </div>
+                                ) : fotoUrlsByItem[key] ? (
                                   <div className="relative">
                                     <img src={fotoUrlsByItem[key]} alt="Preview" className="h-10 w-10 rounded-md border border-gray-200 object-cover" />
                                     <button type="button" onClick={() => handleFotoRemove(key)} className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-white hover:bg-rose-600">
                                       <X size={10} />
                                     </button>
                                   </div>
-                                ) : (
-                                  <label
-                                    htmlFor={`foto-${key}`}
-                                    className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-dashed border-gray-300 text-gray-400 hover:border-[#E8632C] hover:text-[#E8632C] ${uploadingFotoByItem[key] ? "opacity-50" : ""}`}
-                                  >
-                                    {uploadingFotoByItem[key] ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                                  </label>
-                                )}
+                                ) : null}
                               </div>
                               {fotoErrorsByItem[key] && <p className="mt-1 text-[10px] text-rose-600">{fotoErrorsByItem[key]}</p>}
                             </td>

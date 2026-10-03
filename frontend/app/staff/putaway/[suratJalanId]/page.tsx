@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, PackagePlus, Loader2, AlertCircle, MapPin, X } from "lucide-react";
+import { ArrowLeft, PackagePlus, Loader2, AlertCircle, MapPin, X, Image as ImageIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
+import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
 import { useApi } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
@@ -17,6 +18,9 @@ type ApiSuratJalanItem = {
   kondisi?: string | null;
   is_kelebihan?: boolean;
   barang?: { kode_perangkat?: string; nama_barang?: string };
+  // Foto dokumentasi barang yang diunggah saat proses Inbound.
+  fotos?: Array<{ foto_id: number | string; url: string; filename?: string }> | null;
+  foto_url?: string | null;
   zona?: {
     zona_id: number;
     kode_zona: string;
@@ -187,6 +191,30 @@ export default function PutawayDetailPage() {
   const [successModalMessage, setSuccessModalMessage] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Preview foto barang Inbound (klik thumbnail → perbesar).
+  const [previewFoto, setPreviewFoto] = useState<{ urls: string[]; index: number } | null>(null);
+
+  useEffect(() => {
+    if (!previewFoto) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setPreviewFoto(null);
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [previewFoto]);
+
+  function openPreview(urls: string[], index: number) {
+    if (urls.length === 0) return;
+    setPreviewFoto({ urls, index });
+  }
+
+  function stepPreview(step: number) {
+    setPreviewFoto((prev) => {
+      if (!prev || prev.urls.length === 0) return prev;
+      const nextIndex = (prev.index + step + prev.urls.length) % prev.urls.length;
+      return { ...prev, index: nextIndex };
+    });
+  }
 
   useEffect(() => {
     return () => {
@@ -398,13 +426,17 @@ export default function PutawayDetailPage() {
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
               <th className="pb-3 pr-4 font-semibold">Barang</th>
+              <th className="pb-3 pr-4 font-semibold">Foto Barang</th>
               <th className="pb-3 pr-4 font-semibold">Kondisi</th>
               <th className="pb-3 pr-4 font-semibold text-right">Qty</th>
               <th className="pb-3 font-semibold">Zona</th>
             </tr>
           </thead>
           <tbody>
-            {data.items.map((item) => (
+            {data.items.map((item) => {
+              const fotoUrls = getItemFotoUrls(item);
+              const extraFoto = Math.max(fotoUrls.length - 1, 0);
+              return (
               <tr key={item.item_id} className="border-b border-gray-50 last:border-0 align-top">
                 <td className="py-3 pr-4">
                   <p className="font-medium text-gray-800">{item.barang?.nama_barang || "-"}</p>
@@ -414,6 +446,32 @@ export default function PutawayDetailPage() {
                       <PackagePlus size={10} />
                       Kelebihan Barang
                     </span>
+                  )}
+                </td>
+                <td className="py-3 pr-4">
+                  {fotoUrls.length === 0 ? (
+                    <span className="text-sm text-gray-300">-</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => openPreview(fotoUrls, 0)}
+                      title="Perbesar foto"
+                      className="group relative block h-14 w-14 overflow-hidden rounded-lg border border-gray-200"
+                    >
+                      <img
+                        src={fotoUrls[0]}
+                        alt={item.barang?.nama_barang ? `Foto ${item.barang.nama_barang}` : "Foto barang"}
+                        className="h-full w-full object-cover"
+                      />
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/0 text-white opacity-0 transition group-hover:bg-black/40 group-hover:opacity-100">
+                        <ImageIcon size={16} />
+                      </span>
+                      {extraFoto > 0 && (
+                        <span className="absolute bottom-0 right-0 rounded-tl-md bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                          +{extraFoto}
+                        </span>
+                      )}
+                    </button>
                   )}
                 </td>
                 <td className="py-3 pr-4"><KondisiBadge value={item.kondisi} /></td>
@@ -450,7 +508,8 @@ export default function PutawayDetailPage() {
                   )}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -541,6 +600,58 @@ export default function PutawayDetailPage() {
                 OK
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {previewFoto && previewFoto.urls.length > 0 && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-slate-900/70 p-4"
+          onClick={() => setPreviewFoto(null)}
+        >
+          <div className="flex w-full max-w-3xl items-center justify-between px-1 text-xs text-white/80">
+            <span>
+              Foto barang {previewFoto.index + 1} dari {previewFoto.urls.length}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPreviewFoto(null)}
+              className="rounded-full p-1.5 text-white/80 hover:bg-white/10 hover:text-white"
+              title="Tutup"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div
+            className="relative flex max-h-[75vh] w-full max-w-3xl items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={previewFoto.urls[previewFoto.index]}
+              alt={`Foto barang ${previewFoto.index + 1}`}
+              className="max-h-[75vh] w-auto max-w-full rounded-xl bg-white object-contain shadow-2xl"
+            />
+            {previewFoto.urls.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => stepPreview(-1)}
+                  className="absolute left-2 flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70"
+                  title="Foto sebelumnya"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => stepPreview(1)}
+                  className="absolute right-2 flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70"
+                  title="Foto berikutnya"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -31,19 +31,6 @@ interface InboundItem {
   qty: number;
 }
 
-interface VehicleOption {
-  kendaraan_id: string | number;
-  jenis_kendaraan: string;
-  merk: string;
-  no_polisi: string;
-}
-
-interface PersonnelOption {
-  personil_id: string | number;
-  nama: string;
-  posisi?: string;
-}
-
 interface InboundSuratJalan {
   surat_jalan_id: number;
   nomor_surat_jalan: string;
@@ -161,8 +148,6 @@ export default function InboundListPage() {
   const [submitting, setSubmitting] = useState(false);
   const [barangOptions, setBarangOptions] = useState<BarangOption[]>([]);
   const [warehouseOptions, setWarehouseOptions] = useState<WarehouseOption[]>([]);
-  const [vehicleOptions, setVehicleOptions] = useState<VehicleOption[]>([]);
-  const [personnelOptions, setPersonnelOptions] = useState<PersonnelOption[]>([]);
   const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
 
@@ -172,8 +157,9 @@ export default function InboundListPage() {
   const [nomorSuratJalan, setNomorSuratJalan] = useState("");
   const [selectedGudangTujuanId, setSelectedGudangTujuanId] = useState("");
   const [tanggalMasuk, setTanggalMasuk] = useState("");
-  const [selectedKendaraanId, setSelectedKendaraanId] = useState("");
-  const [selectedDriverId, setSelectedDriverId] = useState("");
+  const [kendaraanNamaTeks, setKendaraanNamaTeks] = useState("");
+  const [kendaraanNoPolisTeks, setKendaraanNoPolisTeks] = useState("");
+  const [driverNamaTeks, setDriverNamaTeks] = useState("");
   const [selectedAsalTipe, setSelectedAsalTipe] = useState<"internal" | "external" | "">("");
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
   const [selectedGudangAsalId, setSelectedGudangAsalId] = useState("");
@@ -241,32 +227,24 @@ export default function InboundListPage() {
     setLoadingOptions(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const [itemRes, warehouseRes, vehicleRes, personnelRes, supplierRes] = await Promise.all([
+const [itemRes, warehouseRes, supplierRes] = await Promise.all([
         get(`${baseUrl}/api/items?limit=200`),
         get(`${baseUrl}/api/warehouses`),
-        get(`${baseUrl}/api/vehicles`),
-        get(`${baseUrl}/api/personnels?bisa_menyetir=true`),
         get(`${baseUrl}/api/suppliers`),
       ]);
       if (!itemRes.ok) throw new Error("Gagal mengambil daftar barang.");
       if (!warehouseRes.ok) throw new Error("Gagal mengambil daftar gudang.");
-      if (!vehicleRes.ok) throw new Error("Gagal mengambil daftar kendaraan.");
-      if (!personnelRes.ok) throw new Error("Gagal mengambil daftar personil.");
       if (!supplierRes.ok) throw new Error("Gagal mengambil daftar supplier.");
 
-      const [itemJson, warehouseJson, vehicleJson, personnelJson, supplierJson] = await Promise.all([
+      const [itemJson, warehouseJson, supplierJson] = await Promise.all([
         itemRes.json(),
         warehouseRes.json(),
-        vehicleRes.json(),
-        personnelRes.json(),
         supplierRes.json(),
       ]);
 
       const unwrap = (json: any) => Array.isArray(json?.data) ? json.data : json?.data?.data || [];
       setBarangOptions(unwrap(itemJson));
       setWarehouseOptions(unwrap(warehouseJson));
-      setVehicleOptions(unwrap(vehicleJson));
-      setPersonnelOptions(unwrap(personnelJson));
       setSupplierOptions(unwrap(supplierJson));
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Gagal memuat data master.");
@@ -281,8 +259,9 @@ export default function InboundListPage() {
     setNomorSuratJalan("");
     setSelectedGudangTujuanId("");
     setTanggalMasuk("");
-    setSelectedKendaraanId("");
-    setSelectedDriverId("");
+    setKendaraanNamaTeks("");
+    setKendaraanNoPolisTeks("");
+    setDriverNamaTeks("");
     setSelectedAsalTipe("");
     setSelectedSupplierId("");
     setSelectedGudangAsalId("");
@@ -494,6 +473,10 @@ export default function InboundListPage() {
 
   const selectedGudangTujuan = warehouseOptions.find((w) => String(w.gudang_id) === selectedGudangTujuanId);
 
+  const kendaraanValid = kendaraanNamaTeks.trim().length > 0;
+  const noPolisiValid = kendaraanNoPolisTeks.trim().length > 0;
+  const driverValid = driverNamaTeks.trim().length > 0;
+
   const canSubmitModal =
     nomorSuratJalan.trim().length > 0 &&
     selectedGudangTujuanId &&
@@ -504,6 +487,9 @@ export default function InboundListPage() {
     (selectedAsalTipe === "internal"
       ? selectedGudangAsalId
       : selectedSupplierId || pengirimEksternalNama.trim()) &&
+    kendaraanValid &&
+    noPolisiValid &&
+    driverValid &&
     modalItems.length > 0 &&
     modalItems.every((row) => row.barang_id && row.qty > 0 && row.satuan_id);
 
@@ -528,6 +514,19 @@ export default function InboundListPage() {
       return;
     }
 
+    // Pesan eksplisit supaya staff tahu apa yang kurang, bukan hanya tombol yang
+    // tiba-tiba tidak bisa diklik.
+    const kurangKendaraan = [
+      !kendaraanValid && "nama kendaraan",
+      !noPolisiValid && "nomor polisi",
+      !driverValid && "nama driver",
+    ].filter(Boolean);
+
+    if (kurangKendaraan.length > 0) {
+      setFormError(`Lengkapi dulu: ${kurangKendaraan.join(", ")}.`);
+      return;
+    }
+
     if (!canSubmitModal) return;
     setFormError(null);
     setSubmitting(true);
@@ -544,8 +543,9 @@ export default function InboundListPage() {
         supplier_id: selectedAsalTipe === "external" && !isVendorManual ? selectedSupplierId || null : null,
         gudang_asal_id: selectedAsalTipe === "internal" ? selectedGudangAsalId || null : null,
         pengirim_eksternal_nama: selectedAsalTipe === "external" && isVendorManual ? pengirimEksternalNama.trim() || null : null,
-        kendaraan_id: selectedKendaraanId || null,
-        personil_pengantar_id: selectedDriverId || null,
+        kendaraan_nama_teks: kendaraanNamaTeks.trim() || null,
+        kendaraan_no_polisi_teks: kendaraanNoPolisTeks.trim() || null,
+        driver_nama_teks: driverNamaTeks.trim() || null,
 pic_pemohon_nama: picPemohon.trim() || null,
         boq_id: selectedBoqId ? String(selectedBoqId) : null,
         notes: null,
@@ -904,40 +904,58 @@ pic_pemohon_nama: picPemohon.trim() || null,
             />
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Kendaraan</label>
-            <div className="relative">
-              <select
-                value={selectedKendaraanId}
-                onChange={(e) => setSelectedKendaraanId(e.target.value)}
-                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
-              >
-                <option value="">Pilih Kendaraan...</option>
-                {vehicleOptions.map((v) => (
-                  <option key={v.kendaraan_id} value={String(v.kendaraan_id)}>
-                    {v.no_polisi} - {v.merk} {v.jenis_kendaraan}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            </div>
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-gray-600">
+              Kendaraan <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={kendaraanNamaTeks}
+              onChange={(e) => setKendaraanNamaTeks(e.target.value)}
+              placeholder="Contoh: Truk Box Mitsubishi Canter"
+              className={`w-full rounded-lg border px-3 py-2.5 text-sm text-gray-800 focus:outline-none ${
+                kendaraanValid ? "border-gray-200 focus:border-[#E8632C]" : "border-red-300 focus:border-red-400"
+              }`}
+            />
+            {!kendaraanValid && (
+              <p className="mt-1 text-xs text-red-600">Nama kendaraan wajib diisi.</p>
+            )}
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Driver</label>
-            <div className="relative">
-              <select
-                value={selectedDriverId}
-                onChange={(e) => setSelectedDriverId(e.target.value)}
-                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
-              >
-                <option value="">Pilih Driver...</option>
-                {personnelOptions.map((p) => (
-                  <option key={p.personil_id} value={String(p.personil_id)}>{p.nama}</option>
-                ))}
-              </select>
-              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            </div>
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-gray-600">
+              No. Polisi <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={kendaraanNoPolisTeks}
+              onChange={(e) => setKendaraanNoPolisTeks(e.target.value)}
+              placeholder="Contoh: B 9123 CD"
+              className={`w-full rounded-lg border px-3 py-2.5 text-sm text-gray-800 focus:outline-none ${
+                noPolisiValid ? "border-gray-200 focus:border-[#E8632C]" : "border-red-300 focus:border-red-400"
+              }`}
+            />
+            {!noPolisiValid && (
+              <p className="mt-1 text-xs text-red-600">Nomor polisi wajib diisi.</p>
+            )}
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-gray-600">
+              Nama Driver <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={driverNamaTeks}
+              onChange={(e) => setDriverNamaTeks(e.target.value)}
+              placeholder="Contoh: Budi Santoso"
+              className={`w-full rounded-lg border px-3 py-2.5 text-sm text-gray-800 focus:outline-none ${
+                driverValid ? "border-gray-200 focus:border-[#E8632C]" : "border-red-300 focus:border-red-400"
+              }`}
+            />
+            {!driverValid && (
+              <p className="mt-1 text-xs text-red-600">Nama driver wajib diisi.</p>
+            )}
           </div>
 
           <div className="sm:col-span-2">

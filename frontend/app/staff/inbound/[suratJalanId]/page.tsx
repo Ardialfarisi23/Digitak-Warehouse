@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { PackagePlus, AlertTriangle, ArrowLeft, FileDown, Loader2, AlertCircle, ExternalLink, Upload, X, Image as ImageIcon } from "lucide-react";
+import { PackagePlus, AlertTriangle, ArrowLeft, FileDown, Loader2, AlertCircle, ExternalLink, Upload, X } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
@@ -57,6 +57,12 @@ type ApiSuratJalan = {
   gudang_tujuan?: { nama_gudang: string } | null;
   kendaraan?: { jenis_kendaraan: string; merk?: string; no_polisi: string } | null;
   personil_pengantar?: { nama: string } | null;
+  // Kolom teks bebas (sudah di-fallback-kan di backend, lihat surat-jalan.repository.js)
+  kendaraan_teks?: string | null;
+  no_polisi_teks?: string | null;
+  driver_teks?: string | null;
+  kendaraan_label?: string | null;
+  driver_label?: string | null;
   project?: { nama_project: string } | null;
   creator?: { nama?: string; name?: string } | null;
   boq_id?: number | string | null;
@@ -132,6 +138,8 @@ export default function InboundDetailPage() {
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [uploadingFoto, setUploadingFoto] = useState<Record<number, boolean>>({});
   const [fotoErrors, setFotoErrors] = useState<Record<number, string | null>>({});
+  const [fotoPreviews, setFotoPreviews] = useState<Record<number, string>>({});
+  const fotoPreviewRef = useRef<Record<number, string>>({});
   const [showFotoSuccessModal, setShowFotoSuccessModal] = useState(false);
   const [showFotoErrorModal, setShowFotoErrorModal] = useState(false);
   const [fotoModalMessage, setFotoModalMessage] = useState("");
@@ -139,6 +147,34 @@ export default function InboundDetailPage() {
 
   const [showExcessModal, setShowExcessModal] = useState(false);
   const [excessNotesDraft, setExcessNotesDraft] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    return () => {
+      Object.values(fotoPreviewRef.current).forEach((url) => URL.revokeObjectURL(url));
+      fotoPreviewRef.current = {};
+    };
+  }, []);
+
+  function setFotoPreview(index: number, url: string | null) {
+    const previous = fotoPreviewRef.current[index];
+    if (previous && previous !== url) {
+      URL.revokeObjectURL(previous);
+    }
+    if (url) {
+      fotoPreviewRef.current[index] = url;
+    } else {
+      delete fotoPreviewRef.current[index];
+    }
+    setFotoPreviews((prev) => {
+      const next = { ...prev };
+      if (url) {
+        next[index] = url;
+      } else {
+        delete next[index];
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (!toast) return;
@@ -248,6 +284,7 @@ export default function InboundDetailPage() {
   async function handleFotoUpload(index: number, file: File) {
     setFotoErrors((prev) => ({ ...prev, [index]: null }));
     setUploadingFoto((prev) => ({ ...prev, [index]: true }));
+    setFotoPreview(index, URL.createObjectURL(file));
 
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -303,6 +340,7 @@ export default function InboundDetailPage() {
       setFotoModalMessage(err instanceof Error ? err.message : "Upload foto gagal, silakan coba lagi.");
       setShowFotoErrorModal(true);
     } finally {
+      setFotoPreview(index, null);
       setUploadingFoto((prev) => ({ ...prev, [index]: false }));
     }
   }
@@ -447,8 +485,8 @@ export default function InboundDetailPage() {
         asalGudang: pengirimLabel,
         tujuanGudang: data.gudang_tujuan?.nama_gudang || "-",
         kendaraan: kendaraanLabel,
-        noPolisi: data.kendaraan?.no_polisi || "-",
-        namaDriver: data.personil_pengantar?.nama || "-",
+        noPolisi: noPolisiLabel,
+        namaDriver: driverLabel,
         namaPicPemohon: data.creator?.nama || data.creator?.name || "-",
         tanggal: data.tanggal
           ? new Date(data.tanggal).toLocaleDateString("id-ID", {
@@ -485,14 +523,20 @@ export default function InboundDetailPage() {
         : data.gudang_asal?.nama_gudang || "-"
     : "-";
 
-  // Helper untuk format kendaraan: "Merk - Tipe Kendaraan"
-  const kendaraanLabel = data
-    ? data.kendaraan
-      ? data.kendaraan.merk && data.kendaraan.merk.trim()
-        ? `${data.kendaraan.merk} - ${data.kendaraan.jenis_kendaraan}`
-        : data.kendaraan.jenis_kendaraan
-      : "-"
-    : "-";
+  // Fallback ke kolom teks bebas (isi manual / vendor eksternal) yang sudah
+  // difallback-kan di backend. Kolom `kendaraan_nama_teks` / `kendaraan_no_polisi_teks` /
+  // `driver_nama_teks` jadi sumber utama, `kendaraan` & `personil_pengantar` hanya cadangan.
+  const kendaraanLabel =
+    data?.kendaraan_teks
+      || (data?.kendaraan
+        ? data.kendaraan.merk && data.kendaraan.merk.trim()
+          ? `${data.kendaraan.merk} - ${data.kendaraan.jenis_kendaraan}`
+          : data.kendaraan.jenis_kendaraan
+        : null)
+      || "-";
+
+  const noPolisiLabel = data?.no_polisi_teks || data?.kendaraan?.no_polisi || "-";
+  const driverLabel = data?.driver_teks || data?.personil_pengantar?.nama || "-";
 
   if (!data) {
     return (
@@ -659,6 +703,14 @@ export default function InboundDetailPage() {
                   <td className="py-3">
                     <div className="flex flex-col gap-2">
                       <div className="flex flex-wrap gap-1.5">
+                        {fotoPreviews[index] && (
+                          <div className="relative h-14 w-14 overflow-hidden rounded-lg border border-[#E8632C]">
+                            <img src={fotoPreviews[index]} alt="Pratinjau foto" className="h-full w-full object-cover" />
+                            <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-[9px] font-medium text-white">
+                              Mengunggah
+                            </span>
+                          </div>
+                        )}
                         {item.fotos?.map((foto) => (
                           <div key={foto.foto_id} className="relative h-14 w-14 overflow-hidden rounded-lg border border-gray-200">
                             <img src={foto.url} alt={foto.filename || "Foto barang"} className="h-full w-full object-cover" />
@@ -673,24 +725,28 @@ export default function InboundDetailPage() {
                           </div>
                         ))}
                       </div>
-                      <div>
-                        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:border-[#E8632C] hover:text-[#E8632C]">
-                          <Upload size={12} />
-                          {uploadingFoto[index] ? "Uploading..." : "Upload Foto"}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            disabled={uploadingFoto[index]}
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                handleFotoUpload(index, file);
-                              }
-                              e.target.value = "";
-                            }}
-                          />
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <label
+                          htmlFor={`foto-${index}`}
+                          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:border-[#E8632C] hover:text-[#E8632C] ${uploadingFoto[index] ? "pointer-events-none opacity-50" : ""}`}
+                        >
+                          {uploadingFoto[index] ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                          Upload Foto
                         </label>
+                        <input
+                          id={`foto-${index}`}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={uploadingFoto[index]}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              handleFotoUpload(index, file);
+                            }
+                            e.target.value = "";
+                          }}
+                        />
                       </div>
                       {fotoErrors[index] && (
                         <p className="text-[11px] text-rose-600">{fotoErrors[index]}</p>

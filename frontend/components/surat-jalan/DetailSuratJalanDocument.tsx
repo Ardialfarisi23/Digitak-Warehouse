@@ -31,6 +31,10 @@ export interface DetailSuratJalanData {
   gudang_tujuan?: { nama_gudang?: string };
   personil_pengantar?: { nama?: string };
   kendaraan?: { jenis_kendaraan?: string; merk?: string; no_polisi?: string } | null;
+  // Kolom teks bebas (inbound), sudah di-fallback-kan di backend
+  kendaraan_teks?: string | null;
+  no_polisi_teks?: string | null;
+  driver_teks?: string | null;
   creator?: { nama?: string };
   boq_id?: number | string | null;
   boq?: {
@@ -119,15 +123,24 @@ export function DetailSuratJalanDocument({
   const namaGudangAsal = tampilkan(data.gudang_asal?.nama_gudang);
   const namaGudangTujuan = tampilkan(data.gudang_tujuan?.nama_gudang);
   const namaProject = tampilkan(data.project?.nama_project);
+  // Kolom teks bebas (inbound) diprioritaskan; relasi master data jadi cadangan.
+  // Outbound tidak pernah mengisi kolom teks, jadi perilakunya tidak berubah.
+  const namaKendaraanTeks = tampilkan(data.kendaraan_teks);
+  const noPolisiTeks = tampilkan(data.no_polisi_teks);
+  const driverTeks = tampilkan(data.driver_teks);
   const jenisKendaraan = tampilkan(data.kendaraan?.jenis_kendaraan);
   const merkKendaraan = tampilkan(data.kendaraan?.merk);
-  const noPolisi = tampilkan(data.kendaraan?.no_polisi);
-  const namaDriver = tampilkan(data.personil_pengantar?.nama);
-  const namaMaterialHandler = tampilkan(data.creator?.nama);
+  const noPolisi = noPolisiTeks !== "-" ? noPolisiTeks : tampilkan(data.kendaraan?.no_polisi);
+  const namaDriver = driverTeks !== "-" ? driverTeks : tampilkan(data.personil_pengantar?.nama);
 
-  const kendaraanLabel = merkKendaraan && merkKendaraan !== "-"
-    ? `${merkKendaraan} - ${jenisKendaraan}`
-    : jenisKendaraan;
+  const kendaraanLabel =
+    namaKendaraanTeks !== "-"
+      ? namaKendaraanTeks
+      : merkKendaraan && merkKendaraan !== "-"
+        ? `${merkKendaraan} - ${jenisKendaraan}`
+        : jenisKendaraan;
+
+  const namaMaterialHandler = tampilkan(data.creator?.nama);
 
   const tujuanLabel =
     data.tujuan_tipe === "lapangan"
