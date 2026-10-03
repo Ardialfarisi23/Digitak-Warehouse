@@ -363,6 +363,26 @@ const exportMatrixExcel = async (req, res, next) => {
   }
 };
 
+const checkTicketAvailability = async (req, res, next) => {
+  try {
+    const ticketNumber = String(req.query.ticketNumber || "").trim();
+    const excludeBoqId = req.query.excludeBoqId ? Number(req.query.excludeBoqId) : null;
+
+    if (!ticketNumber) {
+      return response.success(res, "Nomor tiket kosong.", { available: true });
+    }
+
+    const result = await boqService.checkTicketAvailability(ticketNumber, excludeBoqId);
+    if (result.available) {
+      return response.success(res, "Nomor tiket tersedia.", { available: true });
+    }
+
+    return response.error(res, result.message || `Nomor tiket "${ticketNumber}" sudah digunakan.`, 409);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   create,
   findAll,
@@ -378,4 +398,5 @@ module.exports = {
   getItems,
   getExportMatrixData,
   exportMatrixExcel,
+  checkTicketAvailability,
 };

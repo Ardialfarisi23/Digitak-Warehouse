@@ -240,6 +240,8 @@ export default function BoqPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [uploadingRef, setUploadingRef] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [ticketChecking, setTicketChecking] = useState(false);
+  const [ticketDuplicateError, setTicketDuplicateError] = useState<string | null>(null);
 
   const [clusters, setClusters] = useState<{ cluster_id: string; nama_cluster: string }[]>([]);
   const [clusterModalOpen, setClusterModalOpen] = useState(false);
@@ -254,6 +256,38 @@ export default function BoqPage() {
     const timer = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    if (!form.ticketNumber.trim()) {
+      setTicketDuplicateError(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setTicketChecking(true);
+      setTicketDuplicateError(null);
+      try {
+        const params = new URLSearchParams({ ticketNumber: form.ticketNumber.trim() });
+        if (modalMode === "edit" && selectedBoq?.id) {
+          params.set("excludeBoqId", selectedBoq.id);
+        }
+        const res = await get(`${API_BASE}/api/boqs/check-ticket?${params.toString()}`);
+        const json = await res.json();
+        if (!res.ok || json?.data?.available === false) {
+          const message = json?.message || json?.data?.message || `Nomor tiket "${form.ticketNumber.trim()}" sudah digunakan.`;
+          setTicketDuplicateError(message);
+        } else {
+          setTicketDuplicateError(null);
+        }
+      } catch {
+        // ignore validation check error
+      } finally {
+        setTicketChecking(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [form.ticketNumber, modalMode, selectedBoq?.id, get]);
 
   const fetchBoqs = useCallback(async () => {
     setLoading(true);
@@ -496,6 +530,11 @@ export default function BoqPage() {
     if (!form.cluster_id.trim()) { setFormError("Cluster wajib dipilih."); return; }
     if (!form.area.trim()) { setFormError("Area wajib diisi."); return; }
     if (!form.ticketNumber.trim()) { setFormError("Kode tiket wajib diisi."); return; }
+
+    if (ticketDuplicateError) {
+      setFormError(ticketDuplicateError);
+      return;
+    }
 
     const validItems = form.items.filter(
       (item) => item.itemCode.trim() && item.itemName.trim() && item.quantity > 0
@@ -986,7 +1025,16 @@ export default function BoqPage() {
                 )}
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">Kode Tiket <span className="text-rose-500">*</span></label>
-                  <input type="text" value={form.ticketNumber} onChange={(e) => setForm((p) => ({ ...p, ticketNumber: e.target.value }))} placeholder="Nomor tiket material" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
+                  <input type="text" value={form.ticketNumber} onChange={(e) => setForm((p) => ({ ...p, ticketNumber: e.target.value }))} placeholder="Nomor tiket material" className={`w-full rounded-xl border px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400 ${ticketDuplicateError ? "border-rose-400 bg-rose-50" : "border-slate-200"}`} />
+                  {ticketChecking && (
+                    <p className="mt-1 text-[11px] text-slate-400">Memeriksa kode tiket...</p>
+                  )}
+                  {ticketDuplicateError && !ticketChecking && (
+                    <p className="mt-1 flex items-center gap-1 text-[11px] text-rose-600">
+                      <AlertCircle size={12} />
+                      {ticketDuplicateError}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">Referensi Email/PO</label>

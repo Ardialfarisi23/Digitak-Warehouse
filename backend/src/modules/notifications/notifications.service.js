@@ -15,6 +15,7 @@ const buildUserScope = (user) => {
 const list = async (user, query = {}) => {
   const page = Number(query.page || 1);
   const limit = Number(query.limit || 20);
+  const since = typeof query.since === "string" && query.since.trim() ? query.since.trim() : null;
 
   const isReadFilter =
     query.is_read === "true" ? true : query.is_read === "false" ? false : null;
@@ -22,6 +23,7 @@ const list = async (user, query = {}) => {
   const where = {
     ...buildUserScope(user),
     ...(isReadFilter !== null ? { is_read: isReadFilter } : {}),
+    ...(since ? { created_at: { gt: new Date(since) } } : {}),
   };
 
   const [items, total] = await Promise.all([
@@ -41,6 +43,7 @@ const list = async (user, query = {}) => {
     page,
     limit,
     totalPages: Math.ceil(total / limit) || 1,
+    since: since || new Date().toISOString(),
   };
 };
 

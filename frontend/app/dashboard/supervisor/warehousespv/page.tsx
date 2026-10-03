@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Warehouse as WarehouseIcon, Loader2, AlertCircle, Boxes, X, Info, Sun, Building2, ChevronDown, ArrowDown, Search } from "lucide-react";
+import { Warehouse as WarehouseIcon, Loader2, AlertCircle, Boxes, X, Info, Sun, Building2, ChevronDown, ArrowDown, Search, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -66,6 +66,10 @@ export default function SpvWarehouseLayoutPage() {
   const [panelStock, setPanelStock] = useState<any[]>([]);
   const [panelSearch, setPanelSearch] = useState("");
   const [panelError, setPanelError] = useState<string | null>(null);
+  const [panelPage, setPanelPage] = useState(1);
+  const [panelLimit] = useState(20);
+  const [panelTotal, setPanelTotal] = useState(0);
+  const [panelTotalPages, setPanelTotalPages] = useState(1);
 
   // State Modal Input Status
   const [statusModalOpen, setStatusModalOpen] = useState(false);
@@ -251,15 +255,17 @@ export default function SpvWarehouseLayoutPage() {
     setSelectedZone(zone);
     setPanelOpen(true);
     setPanelSearch("");
+    setPanelPage(1);
     setPanelError(null);
-
-    await fetchZoneStock(zone);
   }
 
   function closePanel() {
     setPanelOpen(false);
     setPanelStock([]);
     setPanelSearch("");
+    setPanelPage(1);
+    setPanelTotal(0);
+    setPanelTotalPages(1);
     setPanelError(null);
   }
 
@@ -312,14 +318,24 @@ export default function SpvWarehouseLayoutPage() {
     }
   }
 
-  async function fetchZoneStock(zone: Zona) {
+  async function fetchZoneStock(zone: Zona, page = 1) {
     if (!selectedWarehouseId || !zone) return;
 
     setPanelLoading(true);
     setPanelError(null);
+    setPanelPage(page);
 
     try {
-      const res = await get(`${API_BASE}/api/warehouses/${selectedWarehouseId}/zona/${zone.zona_id}/stock-snapshot`);
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(panelLimit),
+      });
+
+      if (panelSearch.trim()) {
+        params.set("search", panelSearch.trim());
+      }
+
+      const res = await get(`${API_BASE}/api/warehouses/${selectedWarehouseId}/zona/${zone.zona_id}/stock-snapshot?${params.toString()}`);
 
       const json = await res.json();
 
@@ -328,26 +344,25 @@ export default function SpvWarehouseLayoutPage() {
       }
 
       const rows = Array.isArray(json?.data?.data) ? json.data.data : Array.isArray(json?.data) ? json.data : [];
+      const meta = json?.data?.meta || json?.meta || {};
 
       setPanelStock(rows);
+      setPanelTotal(Number(meta.total || rows.length || 0));
+      setPanelTotalPages(Number(meta.totalPages || 1));
     } catch (err) {
       setPanelError(err instanceof Error ? err.message : "Gagal mengambil snapshot stok zona.");
       setPanelStock([]);
+      setPanelTotal(0);
+      setPanelTotalPages(1);
     } finally {
       setPanelLoading(false);
     }
   }
 
-  // Filter Barang berdasarkan pencarian
-  const filteredStock = useMemo(() => {
-    if (!panelSearch.trim()) return panelStock;
-    const query = panelSearch.toLowerCase();
-    return panelStock.filter((item) => {
-      const kode = (item.kode_barang || item.kode_perangkat || "").toLowerCase();
-      const nama = (item.nama_barang || item.nama_perangkat || "").toLowerCase();
-      return kode.includes(query) || nama.includes(query);
-    });
-  }, [panelStock, panelSearch]);
+  useEffect(() => {
+    if (!panelOpen || !selectedZone) return;
+    fetchZoneStock(selectedZone, panelPage);
+  }, [panelSearch, panelPage, panelOpen, selectedZone]);
 
   function getZoneBackground(zone: Zona) {
     const zoneType = getZoneType(zone);
@@ -709,7 +724,10 @@ export default function SpvWarehouseLayoutPage() {
                   type="text"
                   placeholder="Cari kode perangkat / nama barang..."
                   value={panelSearch}
-                  onChange={(e) => setPanelSearch(e.target.value)}
+                  onChange={(e) => {
+                    setPanelSearch(e.target.value);
+                    setPanelPage(1);
+                  }}
                   className="w-full rounded-xl border border-[#e5e7eb] bg-white py-2.5 pl-10 pr-4 text-[13px] text-[#111827] placeholder-[#9ca3af] outline-none transition focus:border-[#94a3b8]"
                 />
               </div>
@@ -725,7 +743,7 @@ export default function SpvWarehouseLayoutPage() {
                   <AlertCircle size={32} className="text-red-500 mb-2" />
                   <p className="text-[13px] text-[#374151]">{panelError}</p>
                 </div>
-              ) : filteredStock.length === 0 ? (
+              ) : panelStock.length === 0 ? (
                 /* Empty State (Persis Admin) */
                 <div className="flex min-h-[220px] flex-col items-center justify-center py-8 text-center">
                   <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gray-50 text-[#9ca3af]">
@@ -734,24 +752,82 @@ export default function SpvWarehouseLayoutPage() {
                   <h4 className="text-[14px] font-bold text-[#111827]">Belum ada barang di zona ini</h4>
                   <p className="mt-1 text-[12px] text-[#9ca3af]">Zona ini belum memiliki stok barang</p>
                 </div>
-                ) : (
-                 /* List Barang */
-                 <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
-                   {filteredStock.map((item, idx) => (
-                     <div key={idx} className="flex items-center justify-between rounded-xl border border-[#e5e7eb] p-3 transition hover:bg-[#f9fafb]">
-                       <div>
-                         <p className="text-[13px] font-bold text-[#111827]">{item.nama_barang || item.nama_perangkat || "Tanpa Nama"}</p>
-                         <p className="text-[11px] text-[#6b7280]">Kode: {item.kode_barang || item.kode_perangkat || "-"}</p>
-                       </div>
-                       <div className="text-right">
-                         <p className="text-[13px] font-bold text-[#111827]">{Number(item.qty || item.stok || 0).toLocaleString("id-ID")}</p>
-                         <p className="text-[11px] text-[#6b7280]">Unit</p>
-                         <div className="mt-1"><KondisiBadge value={item.kondisi} /></div>
-                       </div>
-                     </div>
-                   ))}
-                 </div>
-               )}
+              ) : (
+                /* List Barang */
+                <>
+                  <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
+                    {panelStock.map((item, idx) => (
+                      <div key={idx} className="flex items-center justify-between rounded-xl border border-[#e5e7eb] p-3 transition hover:bg-[#f9fafb]">
+                        <div>
+                          <p className="text-[13px] font-bold text-[#111827]">{item.nama_barang || item.nama_perangkat || "Tanpa Nama"}</p>
+                          <p className="text-[11px] text-[#6b7280]">Kode: {item.kode_barang || item.kode_perangkat || "-"}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[13px] font-bold text-[#111827]">{Number(item.qty || item.stok || 0).toLocaleString("id-ID")}</p>
+                          <p className="text-[11px] text-[#6b7280]">Unit</p>
+                          <div className="mt-1"><KondisiBadge value={item.kondisi} /></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {panelTotalPages > 1 && (
+                    <div className="mt-4 flex items-center justify-between">
+                      <p className="text-[12px] text-[#6b7280]">
+                        Menampilkan {panelTotal === 0 ? 0 : (panelPage - 1) * panelLimit + 1}-{Math.min(panelPage * panelLimit, panelTotal)} dari {panelTotal} barang
+                      </p>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setPanelPage((p) => Math.max(1, p - 1))}
+                          disabled={panelPage === 1}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 disabled:opacity-30"
+                        >
+                          <ChevronLeft size={15} />
+                        </button>
+
+                        {(() => {
+                          const pages: (number | "...")[] = [];
+                          const totalPages = panelTotalPages;
+
+                          if (totalPages <= 6) {
+                            for (let i = 1; i <= totalPages; i++) pages.push(i);
+                          } else {
+                            pages.push(1, 2);
+                            if (panelPage > 4) pages.push("...");
+                            const start = Math.max(3, panelPage - 1);
+                            const end = Math.min(totalPages - 2, panelPage + 1);
+                            for (let i = start; i <= end; i++) pages.push(i);
+                            if (panelPage < totalPages - 3) pages.push("...");
+                            pages.push(totalPages - 1, totalPages);
+                          }
+
+                          return pages.map((p, idx) =>
+                            p === "..." ? (
+                              <span key={`ellipsis-${idx}`} className="px-1 text-sm text-slate-400">...</span>
+                            ) : (
+                              <button
+                                key={p}
+                                onClick={() => setPanelPage(Number(p))}
+                                className={["flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition-colors", panelPage === p ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"].join(" ")}
+                              >
+                                {p}
+                              </button>
+                            ),
+                          );
+                        })()}
+
+                        <button
+                          onClick={() => setPanelPage((p) => Math.min(panelTotalPages, p + 1))}
+                          disabled={panelPage === panelTotalPages}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 disabled:opacity-30"
+                        >
+                          <ChevronRight size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>

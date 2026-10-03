@@ -739,7 +739,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
           data: {
             entity_type: "reconciliation",
             entity_id: BigInt(tiketId),
-            aksi: "update",
+            aksi: "input_rekonsiliasi",
             actor_id: BigInt(actorId),
             data_sebelum: dataSebelum,
             data_sesudah: {
