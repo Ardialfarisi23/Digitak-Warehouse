@@ -8,6 +8,10 @@ const createSuratJalanSchema = z
     gudang_tujuan_id: z.string().optional().nullable(),
     kendaraan_id: z.string().optional().nullable(),
     personil_pengantar_id: z.string().optional().nullable(),
+    // Free text (inbound). Kalau kosong, reader fallback ke relasi di atas.
+    kendaraan_nama_teks: z.string().trim().max(200, "Nama kendaraan maksimal 200 karakter.").optional().nullable(),
+    kendaraan_no_polisi_teks: z.string().trim().max(50, "Nomor polisi maksimal 50 karakter.").optional().nullable(),
+    driver_nama_teks: z.string().trim().max(200, "Nama driver maksimal 200 karakter.").optional().nullable(),
     project_id: z.string().optional().nullable(),
     boq_id: z.string().optional().nullable(),
     kategori_approval: z.string().optional().nullable(),
@@ -76,6 +80,31 @@ const createSuratJalanSchema = z
             code: z.ZodIssueCode.custom,
             message: "gudang_asal_id wajib diisi jika tipe_pengirim adalah internal.",
             path: ["gudang_asal_id"],
+          });
+        }
+      }
+    }
+
+    // Kendaraan + driver inbound diisi bebas (bisa kendaraan/supir vendor eksternal
+    // yang tidak ada di master data), jadi wajib lewat kolom teks -- bukan lewat
+    // relasi master data.
+    //
+    // KHUSUS inbound. Outbound tetap memakai kendaraan_id / personil_pengantar_id
+    // dari master data dan tidak boleh ikut tervalidasi oleh blok ini.
+    if (data.tipe === "inbound") {
+      const wajibTeks = [
+        ["kendaraan_nama_teks", "Nama kendaraan wajib diisi."],
+        ["kendaraan_no_polisi_teks", "Nomor polisi wajib diisi."],
+        ["driver_nama_teks", "Nama driver wajib diisi."],
+      ];
+
+      for (const [field, message] of wajibTeks) {
+        const value = data[field];
+        if (!value || value.trim() === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message,
+            path: [field],
           });
         }
       }

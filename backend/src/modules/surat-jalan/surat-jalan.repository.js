@@ -202,6 +202,42 @@ const buildListMeta = (total, { page, limit }) => ({
   totalPages: Math.ceil(total / limit),
 });
 
+// Fallback tampilan kendaraan & driver.
+//
+// Aturan: kolom free text (isi manual, mis. vendor eksternal) adalah sumber utama.
+// Kalau kosong, turunkan dari relasi master data supaya record lama / outbound yang
+// masih pakai dropdown tidak kehilangan informasi di PDF maupun halaman detail.
+//
+// Menghasilkan field turunan (bukan menimpa `kendaraan` / `personil_pengantar`) supaya
+// konsumen lama yang membaca `record.kendaraan.no_polisi` tetap bekerja apa adanya.
+function withKendaraanDriverFallback(record) {
+  if (!record) return record;
+
+  const namaKendaraan = (record.kendaraan_nama_teks || "").trim();
+  const noPolisi = (record.kendaraan_no_polisi_teks || "").trim();
+  const namaDriver = (record.driver_nama_teks || "").trim();
+
+  const kendaraan = record.kendaraan;
+  const personil = record.personil_pengantar;
+
+  return {
+    ...record,
+    kendaraan_teks: namaKendaraan || null,
+    no_polisi_teks: noPolisi || null,
+    driver_teks: namaDriver || null,
+    // Label siap pakai supaya frontend tidak perlu logika fallback berulang.
+    kendaraan_label:
+      [namaKendaraan || [kendaraan?.merk, kendaraan?.jenis_kendaraan].filter(Boolean).join(" - "), noPolisi || kendaraan?.no_polisi]
+        .filter(Boolean)
+        .join(" — ") || null,
+    driver_label: namaDriver || personil?.nama || null,
+  };
+}
+
+function withKendaraanDriverFallbackList(records) {
+  return Array.isArray(records) ? records.map(withKendaraanDriverFallback) : records;
+}
+
 const create = async (data, actorId, tx = prisma) => {
   const count = await tx.surat_jalan.count();
   const year = new Date().getFullYear();
@@ -219,6 +255,9 @@ const create = async (data, actorId, tx = prisma) => {
       gudang_tujuan_id: data.gudang_tujuan_id ? Number(data.gudang_tujuan_id) : null,
       kendaraan_id: data.kendaraan_id ? Number(data.kendaraan_id) : null,
       personil_pengantar_id: data.personil_pengantar_id ? Number(data.personil_pengantar_id) : null,
+      kendaraan_nama_teks: data.kendaraan_nama_teks || null,
+      kendaraan_no_polisi_teks: data.kendaraan_no_polisi_teks || null,
+      driver_nama_teks: data.driver_nama_teks || null,
       status: status,
       kategori_approval: data.kategori_approval || null,
       pic_pemohon_nama: data.pic_pemohon_nama || null,
@@ -305,10 +344,12 @@ const findOutboundQueue = async (filters = {}) => {
 
   const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
 
-  return data.map((item) => ({
-    ...item,
-    approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
-  }));
+  return withKendaraanDriverFallbackList(
+    data.map((item) => ({
+      ...item,
+      approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+    }))
+  );
 };
 
 const findInboundList = async (filters = {}) => {
@@ -366,10 +407,12 @@ const findInboundList = async (filters = {}) => {
 
   const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
 
-  return data.map((item) => ({
-    ...item,
-    approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
-  }));
+  return withKendaraanDriverFallbackList(
+    data.map((item) => ({
+      ...item,
+      approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+    }))
+  );
 };
 
 const findVerificationQueue = async ({ status, tipe, kategori_approval, search, startDate, endDate, page = 1, limit = 10 } = {}) => {
@@ -400,7 +443,10 @@ const findVerificationQueue = async ({ status, tipe, kategori_approval, search, 
     }),
   ]);
 
-  return { data, meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }) };
+  return {
+    data: withKendaraanDriverFallbackList(data),
+    meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }),
+  };
 };
 
 const findOutboundForApproval = async (params = {}) => {
@@ -427,10 +473,12 @@ const findOutboundForApproval = async (params = {}) => {
   const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
 
   return {
-    data: data.map((item) => ({
-      ...item,
-      approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
-    })),
+    data: withKendaraanDriverFallbackList(
+      data.map((item) => ({
+        ...item,
+        approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+      }))
+    ),
     meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }),
   };
 };
@@ -459,30 +507,36 @@ const findOutboundForDelivery = async (params = {}) => {
   const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
 
   return {
-    data: data.map((item) => ({
-      ...item,
-      approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
-    })),
+    data: withKendaraanDriverFallbackList(
+      data.map((item) => ({
+        ...item,
+        approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+      }))
+    ),
     meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }),
   };
 };
 
 const findById = async (id) => {
-  return await prisma.surat_jalan.findUnique({
+  const record = await prisma.surat_jalan.findUnique({
     where: {
       surat_jalan_id: Number(id),
     },
     include: findByIdInclude,
   });
+
+  return withKendaraanDriverFallback(record);
 };
 
 const findOutboundDetail = async (id) => {
-  return await prisma.surat_jalan.findUnique({
+  const record = await prisma.surat_jalan.findUnique({
     where: {
       surat_jalan_id: Number(id),
     },
     include: outboundInclude,
   });
+
+  return withKendaraanDriverFallback(record);
 };
 
 const updateStatus = async (id, status, options = {}, tx = prisma) => {
