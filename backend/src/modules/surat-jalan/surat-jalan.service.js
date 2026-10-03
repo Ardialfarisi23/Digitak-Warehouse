@@ -193,7 +193,17 @@ const create = async (data, actorId) => {
   }
 
   for (const item of data.items) {
-    if (!item.barang_id || !item.satuan_id) {
+    if (!item.satuan_id) {
+      throw new AppError("Setiap item harus memiliki satuan_id.", 400);
+    }
+    if (item.is_non_master) {
+      if (!item.nama_barang_teks || String(item.nama_barang_teks).trim() === "") {
+        throw new AppError("Nama barang wajib diisi untuk barang non-master.", 400);
+      }
+      if (!item.kategori_id) {
+        throw new AppError("Kategori wajib diisi untuk barang non-master.", 400);
+      }
+    } else if (!item.barang_id) {
       throw new AppError("Setiap item harus memiliki barang_id dan satuan_id.", 400);
     }
   }
@@ -212,6 +222,23 @@ const create = async (data, actorId) => {
     ...item,
     serial_number: normalizeSerial(item.serial_number),
   }));
+
+  // Item non-master: buat record barang di master data lebih dulu supaya
+  // surat_jalan_item tetap punya barang_id yang valid (kolomnya non-null).
+  for (const item of normalizedItems) {
+    if (!item.is_non_master) continue;
+
+    const barang = await suratJalanRepository.createAdhocBarang({
+      nama_barang: item.nama_barang_teks,
+      kategori_id: item.kategori_id,
+      satuan_id: item.satuan_id,
+      actorId,
+    });
+
+    item.barang_id = String(barang.barang_id);
+    item.is_di_luar_boq = true;
+    item.catatan = item.catatan && item.catatan.trim() !== "" ? item.catatan : "Di luar BOQ";
+  }
 
   const seen = new Map();
   for (const item of normalizedItems) {

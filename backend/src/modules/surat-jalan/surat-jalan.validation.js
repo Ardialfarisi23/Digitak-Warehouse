@@ -28,7 +28,12 @@ const createSuratJalanSchema = z
     items: z
       .array(
         z.object({
-          barang_id: z.string().min(1, "Barang wajib diisi."),
+          // Item "non-master" (barang di luar master data) tidak punya barang_id.
+          // Backend membuat record barang baru dari nama_barang_teks + kategori_id.
+          barang_id: z.string().optional().nullable(),
+          nama_barang_teks: z.string().trim().max(150, "Nama barang maksimal 150 karakter.").optional().nullable(),
+          kategori_id: z.string().optional().nullable(),
+          is_non_master: z.boolean().optional().default(false),
           qty: z.number().positive("Qty harus lebih dari 0."),
           satuan_id: z.string().min(1, "Satuan wajib diisi."),
           kondisi: z.string().optional().nullable(),
@@ -40,7 +45,36 @@ const createSuratJalanSchema = z
           zona_id: z.coerce.number().positive().nullable().optional(),
         }),
       )
-      .min(1, "Minimal satu item harus diisi."),
+      .min(1, "Minimal satu item harus diisi.")
+      .superRefine((items, ctx) => {
+        items.forEach((item, index) => {
+          if (item.is_non_master) {
+            if (!item.nama_barang_teks || item.nama_barang_teks.trim() === "") {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "Nama barang wajib diisi untuk barang non-master.",
+                path: [index, "nama_barang_teks"],
+              });
+            }
+            if (!item.kategori_id || item.kategori_id === "") {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "Kategori wajib diisi untuk barang non-master.",
+                path: [index, "kategori_id"],
+              });
+            }
+            return;
+          }
+
+          if (!item.barang_id || item.barang_id === "") {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Barang wajib diisi.",
+              path: [index, "barang_id"],
+            });
+          }
+        });
+      }),
   })
   .superRefine((data, ctx) => {
     if (data.tujuan_tipe === "lapangan") {

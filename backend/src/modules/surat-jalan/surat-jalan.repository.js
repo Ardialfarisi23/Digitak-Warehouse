@@ -293,6 +293,44 @@ const create = async (data, actorId, tx = prisma) => {
   return suratJalan;
 };
 
+/**
+ * Membuat record barang di master data untuk item inbound "non-master"
+ * (barang di luar master data yang diinput staf lewat form).
+ * kode_perangkat digenerate otomatis & dijamin unik.
+ */
+const createAdhocBarang = async ({ nama_barang, kategori_id, satuan_id, actorId, tx = prisma }) => {
+  const baseName = String(nama_barang || "").trim().slice(0, 150) || "Barang Tanpa Nama";
+  const kategoriId = Number(kategori_id);
+  const satuanId = Number(satuan_id);
+  const actor = BigInt(actorId);
+
+  const attempts = 5;
+  for (let i = 0; i < attempts; i += 1) {
+    const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
+    const kode = `DI-LUAR-BOQ-${suffix}`;
+
+    try {
+      return await tx.barang.create({
+        data: {
+          kode_perangkat: kode,
+          nama_barang: baseName,
+          kategori_id: kategoriId,
+          satuan_default_id: satuanId,
+          wajib_sn: false,
+          created_by: actor,
+          updated_by: actor,
+        },
+      });
+    } catch (err) {
+      // Retry hanya kalau bentrok kode unik.
+      if (err?.code === "P2002" && i < attempts - 1) continue;
+      throw err;
+    }
+  }
+
+  throw new AppError("Gagal membuat barang non-master. Silakan coba lagi.", 500);
+};
+
 const findOutboundQueue = async (filters = {}) => {
   const { gudangTujuanId, status, startDate, endDate, search } = filters;
   const where = { tipe: "outbound" };
@@ -1231,6 +1269,7 @@ module.exports = {
   addInboundStock,
   createApprovalLog,
   reduceBoqAllocation,
+  createAdhocBarang,
   updateDeliveryStatus,
   addItemFoto,
   updateItemVerification,

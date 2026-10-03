@@ -26,6 +26,10 @@ type ItemBarang = {
   unit?: string;
   satuan_default_id?: string | number;
   qty_rencana?: number;
+  // Qty inbound kelurahan (di luar alokasi BOQ Plan) — dari backend.
+  additional?: number;
+  // Qty yang sudah pernah dikirim (outbound final) — dari backend.
+  mos?: number;
 };
 
 type Personil = {
@@ -529,6 +533,8 @@ const [itemsRes, boqsRes] = await Promise.all([
         unit: it.satuan_kode || it.satuan_default?.kode_satuan || it.satuan_default_id || "",
         satuan_default_id: it.satuan_id || it.satuan_default_id || "",
         qty_rencana: Number(it.qty_rencana || 0),
+        additional: Number(it.additional || 0),
+        mos: Number(it.mos || 0),
       }));
       setBoqItems(mapped);
 
@@ -559,13 +565,10 @@ const [itemsRes, boqsRes] = await Promise.all([
 
   function setQty(itemKey: string, value: number) {
     setFormError(null);
-    const item = boqItems.find((it) => String(it.barang_id || it.id) === itemKey);
-    const maxQty = item?.qty_rencana ?? 0;
-    const clamped = Math.min(Math.max(0, value), maxQty);
-    setQtyByItem((prev) => ({ ...prev, [itemKey]: clamped }));
-    if (value > maxQty && maxQty > 0) {
-      setFormError(`Qty tidak boleh melebihi alokasi BOQ Plan (${maxQty}).`);
-    }
+    // Tidak lagi di-clamp ke alokasi BOQ: input melebihi "Sisa Dapat Dikirim"
+    // hanya menampilkan peringatan halus, tetap bisa disubmit.
+    const safeValue = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+    setQtyByItem((prev) => ({ ...prev, [itemKey]: safeValue }));
   }
 
   const selectedItems = useMemo(
@@ -1002,14 +1005,25 @@ const [itemsRes, boqsRes] = await Promise.all([
                   <Loader2 className="h-5 w-5 animate-spin text-[#E8632C]" />
                 </div>
               ) : (
-                <div>
-                  <table className="w-full text-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[720px] table-fixed text-sm">
+                    <colgroup>
+                      <col className="w-[116px]" />
+                      <col />
+                      <col className="w-[84px]" />
+                      <col className="w-[104px]" />
+                      <col className="w-[64px]" />
+                      <col className="w-[150px]" />
+                      <col className="w-[132px]" />
+                    </colgroup>
                     <thead>
-                      <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
-                        <th className="pb-3 font-semibold">Kode</th>
-                        <th className="pb-3 font-semibold">Nama Barang</th>
-                        <th className="pb-3 font-semibold text-right">BOQ Plan</th>
-                        <th className="pb-3 font-semibold text-right">Qty</th>
+                      <tr className="border-b border-gray-100 text-left text-[10px] uppercase leading-tight tracking-wide text-gray-400">
+                        <th className="pb-3 pr-3 font-semibold">Kode</th>
+                        <th className="pb-3 pr-3 font-semibold">Nama Barang</th>
+                        <th className="pb-3 pr-3 text-right font-semibold">BOQ Plan</th>
+                        <th className="pb-3 pr-3 text-right font-semibold">Sisa Dapat Dikirim</th>
+                        <th className="pb-3 pr-3 text-right font-semibold">MOS</th>
+                        <th className="pb-3 pr-3 text-right font-semibold">Qty</th>
                         <th className="pb-3 font-semibold">Foto Barang</th>
                       </tr>
                     </thead>
@@ -1017,14 +1031,29 @@ const [itemsRes, boqsRes] = await Promise.all([
                       {boqItems.map((item) => {
                         const key = item.barang_id || item.id;
                         const qty = qtyByItem[key] || 0;
-                        const maxQty = item.qty_rencana ?? 0;
-                        const isOver = qty > maxQty && maxQty > 0;
+                        const boqPlan = item.qty_rencana ?? 0;
+                        // Sisa Dapat Dikirim = BOQ Plan (sudah neto) + Additional.
+                        const sisa = boqPlan + (item.additional ?? 0);
+                        const exceedsSisa = qty > sisa;
                         return (
                           <tr key={key} className="border-b border-gray-50 last:border-0">
-                            <td className="py-3 pr-4 font-medium text-gray-800">{item.kode_perangkat}</td>
-                            <td className="py-3 pr-4 text-gray-600">{item.nama_barang}</td>
-                            <td className="py-3 pr-4 text-right text-xs text-gray-500">{maxQty > 0 ? `${maxQty} unit` : "-"}</td>
-                            <td className="py-3">
+                            <td className="py-3 pr-3 font-medium text-gray-800">{item.kode_perangkat}</td>
+                            <td className="py-3 pr-3 text-gray-600">{item.nama_barang}</td>
+                            <td className="py-3 pr-3 text-right text-xs whitespace-nowrap text-gray-500">{boqPlan > 0 ? `${boqPlan} unit` : "-"}</td>
+                            <td className="py-3 pr-3 text-right text-xs">
+                              <div className="whitespace-nowrap">
+                                <span className={sisa > 0 ? "font-medium text-gray-700" : "text-gray-400"}>
+                                  {sisa > 0 ? `${sisa} unit` : "-"}
+                                </span>
+                              </div>
+                              {(item.additional ?? 0) > 0 && (
+                                <div className="whitespace-nowrap text-[10px] text-gray-400">(+{item.additional} additional)</div>
+                              )}
+                            </td>
+                            <td className="py-3 pr-3 text-right text-xs whitespace-nowrap text-gray-500">
+                              {(item.mos ?? 0) > 0 ? `${item.mos} unit` : "-"}
+                            </td>
+                            <td className="py-3 pr-3">
                               <div className="flex items-center justify-end gap-2">
                                 <button onClick={() => setQty(key, qty - 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50">
                                   −
@@ -1032,15 +1061,19 @@ const [itemsRes, boqsRes] = await Promise.all([
                                 <input
                                   type="number"
                                   min={0}
-                                  max={maxQty || undefined}
                                   value={qty}
                                   onChange={(e) => setQty(key, Number(e.target.value))}
-                                  className={`w-12 rounded-md border py-1 text-center text-sm ${isOver ? "border-rose-400 text-rose-600" : "border-gray-200"}`}
+                                  className={`w-14 rounded-md border py-1 text-center text-sm ${exceedsSisa ? "border-amber-400 text-amber-700" : "border-gray-200"}`}
                                 />
                                 <button onClick={() => setQty(key, qty + 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50">
                                   +
                                 </button>
                               </div>
+                              {exceedsSisa && (
+                                <p className="mt-1 whitespace-nowrap text-right text-[10px] font-medium text-amber-600">
+                                  Melebihi sisa ({sisa} unit)
+                                </p>
+                              )}
                             </td>
                             <td className="py-3">
                               <div className="flex flex-wrap items-center gap-1.5">
@@ -1086,7 +1119,7 @@ const [itemsRes, boqsRes] = await Promise.all([
                       })}
                       {boqItems.length === 0 && (
                         <tr>
-                          <td colSpan={5} className="py-8 text-center text-gray-400">
+                          <td colSpan={7} className="py-8 text-center text-gray-400">
                             Project ini belum memiliki BOQ aktif atau belum ada item di BOQ Plan.
                           </td>
                         </tr>
