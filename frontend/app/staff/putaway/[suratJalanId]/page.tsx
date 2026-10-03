@@ -5,7 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, PackagePlus, Loader2, AlertCircle, MapPin, X, Image as ImageIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
+import { KondisiUnitSummary } from "@/components/common/KondisiUnitSummary";
 import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
+import { hasKondisiUnit, type KondisiUnit } from "@/lib/kondisi-barang";
 import { useApi } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
@@ -16,6 +18,8 @@ type ApiSuratJalanItem = {
   item_id: number;
   qty: number;
   kondisi?: string | null;
+  // Penilaian kondisi per unit dari proses inbound (relasi `units`).
+  units?: KondisiUnit[] | null;
   is_kelebihan?: boolean;
   barang?: { kode_perangkat?: string; nama_barang?: string };
   // Foto dokumentasi barang yang diunggah saat proses Inbound.
@@ -474,7 +478,13 @@ export default function PutawayDetailPage() {
                     </button>
                   )}
                 </td>
-                <td className="py-3 pr-4"><KondisiBadge value={item.kondisi} /></td>
+                <td className="py-3 pr-4">
+                  {hasKondisiUnit(item.units) ? (
+                    <KondisiUnitSummary units={item.units} />
+                  ) : (
+                    <KondisiBadge value={item.kondisi} />
+                  )}
+                </td>
                 <td className="py-3 pr-4 text-right text-gray-600">{item.qty}</td>
                 <td className="py-3">
                   {isSelesai ? (

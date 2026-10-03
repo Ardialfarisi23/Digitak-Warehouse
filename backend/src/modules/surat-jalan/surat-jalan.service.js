@@ -492,6 +492,17 @@ const receiveInbound = async (id, items, actorId) => {
       "doa": "doa",
     };
 
+    // Urutan tingkat keparahan kondisi. Dipakai hanya untuk item yang punya
+    // penilaian per unit, supaya kolom kondisi ringkasan item terisi nilai
+    // terburuk dan stok_gudang tetap terkelompok dengan benar.
+    const KONDISI_SEVERITY = {
+      baik: 0,
+      rusak_ringan: 1,
+      tidak_sesuai_spek: 2,
+      rusak_berat: 3,
+      doa: 4,
+    };
+
     for (const item of normalizedItems) {
       const updateData = {};
 
@@ -512,6 +523,40 @@ const receiveInbound = async (id, items, actorId) => {
       }
       if (typeof item.zona_id === "number" && item.zona_id > 0) {
         updateData.zona_id = Number(item.zona_id);
+      }
+
+      const itemId = Number(item.item_id);
+      const units = Array.isArray(item.units) ? item.units : [];
+
+      if (units.length > 0) {
+        const kondisiTerburuk = units.reduce((worst, unit) => {
+          const candidate = KONDISI_MAP[unit.kondisi] || unit.kondisi;
+          return (KONDISI_SEVERITY[candidate] ?? -1) > (KONDISI_SEVERITY[worst] ?? -1)
+            ? candidate
+            : worst;
+        }, units[0].kondisi);
+        updateData.kondisi = kondisiTerburuk;
+
+        // Simpan ulang seluruh unit item ini supaya idempoten saat staf
+        // menyimpan penerimaan lebih dari sekali.
+        await tx.surat_jalan_item_unit.deleteMany({
+          where: { surat_jalan_item_id: itemId },
+        });
+
+        await tx.surat_jalan_item_unit.createMany({
+          data: units.map((unit) => ({
+            surat_jalan_item_id: itemId,
+            nomor_unit: Number(unit.nomor_unit),
+            kondisi: KONDISI_MAP[unit.kondisi] || unit.kondisi,
+            catatan: unit.catatan && String(unit.catatan).trim() !== "" ? unit.catatan : null,
+          })),
+        });
+      } else if (typeof item.qty === "number" && item.qty <= 1) {
+        // Qty turun ke 0/1 unit: assessment per unit lama harus dibuang biar
+        // tidak nyangkut dengan qty terbaru.
+        await tx.surat_jalan_item_unit.deleteMany({
+          where: { surat_jalan_item_id: itemId },
+        });
       }
 
       if (Object.keys(updateData).length > 0) {

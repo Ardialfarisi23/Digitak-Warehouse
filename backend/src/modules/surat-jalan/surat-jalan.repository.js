@@ -7,6 +7,11 @@ const baseInclude = {
     include: {
       // baseInclude TIDAK diubah — tetap dipakai inbound/verifikasi
       fotos: true,
+      units: {
+        orderBy: {
+          nomor_unit: "asc",
+        },
+      },
       zona: {
         select: {
           zona_id: true,

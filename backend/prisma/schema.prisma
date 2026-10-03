@@ -511,6 +511,7 @@ model surat_jalan_item {
   fotos               surat_jalan_item_foto[]
   return_transactions return_transaction[]
   picks               surat_jalan_item_pick[]
+  units               surat_jalan_item_unit[]
 
   @@index([surat_jalan_id])
   @@index([barang_id])
@@ -545,6 +546,24 @@ model surat_jalan_item_pick {
 
   @@id([pick_id], map: "surat_jalan_item_pick_pick_id_pkey")
   @@index([surat_jalan_item_id], map: "surat_jalan_item_pick_surat_jalan_item_id_idx")
+}
+
+// Penilaian kondisi per unit saat penerimaan inbound.
+// Satu baris = satu unit fisik dari item Surat Jalan (nomor_unit 1..N).
+// Item lama yang belum punya baris di tabel ini tetap memakai kolom
+// surat_jalan_item.kondisi seperti sebelumnya.
+model surat_jalan_item_unit {
+  unit_id            BigInt           @id @default(autoincrement())
+  surat_jalan_item_id BigInt
+  nomor_unit         Int
+  kondisi            kondisi_barang
+  catatan            String?          @db.Text
+  created_at         DateTime         @default(now())
+  updated_at         DateTime         @updatedAt
+  item               surat_jalan_item @relation(fields: [surat_jalan_item_id], references: [item_id], onDelete: Cascade)
+
+  @@unique([surat_jalan_item_id, nomor_unit], map: "surat_jalan_item_unit_item_nomor_unit_key")
+  @@index([surat_jalan_item_id], map: "surat_jalan_item_unit_surat_jalan_item_id_idx")
 }
 
 model stok_gudang {

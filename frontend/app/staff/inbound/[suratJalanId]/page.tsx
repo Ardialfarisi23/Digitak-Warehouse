@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { PackagePlus, AlertTriangle, ArrowLeft, FileDown, Loader2, AlertCircle, ExternalLink, Upload, X } from "lucide-react";
+import { PackagePlus, AlertTriangle, ArrowLeft, FileDown, Loader2, AlertCircle, ExternalLink, Upload, X, ChevronRight, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { summarizeKondisiUnits } from "@/lib/kondisi-barang";
 import type { InboundSuratJalan as InboundPdfShape } from "@/lib/staff/inbound-pdf";
 
 // ---------------------------------------------------------------------------
@@ -29,6 +30,7 @@ type ApiSuratJalanItem = {
   serial_number?: string | null;
   catatan?: string | null;
   is_kelebihan?: boolean;
+  units?: ApiUnitRow[];
   barang?: ApiBarang;
   zona?: {
     zona_id: number;
@@ -80,6 +82,13 @@ type ApiSuratJalan = {
 // Baris yang staf edit di layar — qtyRencana disnapshot SEKALI pas fetch,
 // sebelum staf mulai ubah qty (backend nggak nyimpen qty rencana terpisah,
 // begitu di-submit field `qty` yang sama ditimpa jadi qty aktual).
+// Penilaian kondisi per unit (dipakai saat qty diterima > 1).
+type UnitInput = {
+  nomorUnit: number;
+  kondisi: string;
+  catatan: string;
+};
+
 type EditableItem = {
   itemId: number;
   kodeBarang: string;
@@ -87,6 +96,7 @@ type EditableItem = {
   qtyRencana: number;
   qtyDiterima: number;
   kondisi: string;
+  units: UnitInput[];
   serialNumber: string;
   isKelebihan: boolean;
   catatanKelebihan: string;
@@ -125,6 +135,60 @@ const KONDISI_TONE: Record<string, string> = {
   doa: "bg-gray-100 text-gray-600 border-gray-300",
 };
 
+type ApiUnitRow = {
+  unit_id?: number | string;
+  nomor_unit?: number;
+  kondisi?: string | null;
+  catatan?: string | null;
+};
+
+function buildUnitRows(total: number): UnitInput[] {
+  const count = Math.max(0, Math.floor(Number(total) || 0));
+  return Array.from({ length: count }, (_, i) => ({
+    nomorUnit: i + 1,
+    kondisi: "",
+    catatan: "",
+  }));
+}
+
+// Samakan daftar unit dengan qty terbaru tanpa menghapus penilaian yang
+// sudah diisi staf.
+function syncUnitRows(existing: UnitInput[] | undefined, total: number): UnitInput[] {
+  const rows = buildUnitRows(total);
+  const previous = existing || [];
+  return rows.map((row) => {
+    const kept = previous.find((u) => u.nomorUnit === row.nomorUnit);
+    return kept ? { ...row, kondisi: kept.kondisi, catatan: kept.catatan } : row;
+  });
+}
+
+// Data per unit dari server (item lama tidak punya array ini).
+function mapUnitRowsFromApi(units: ApiUnitRow[] | undefined, total: number): UnitInput[] {
+  const rows = buildUnitRows(total);
+  if (!Array.isArray(units) || units.length === 0) return rows;
+  const byNomor = new Map<number, ApiUnitRow>();
+  for (const unit of units) {
+    const nomor = Number(unit.nomor_unit);
+    if (Number.isFinite(nomor)) byNomor.set(nomor, unit);
+  }
+  return rows.map((row) => {
+    const found = byNomor.get(row.nomorUnit);
+    if (!found) return row;
+    return {
+      nomorUnit: row.nomorUnit,
+      kondisi: found.kondisi || "",
+      catatan: found.catatan || "",
+    };
+  });
+}
+
+function summarizeUnitConditions(units: UnitInput[]): { label: string; tone: string }[] {
+  return summarizeKondisiUnits(units).map((entry) => ({
+    label: `${entry.label} ${entry.total}`,
+    tone: KONDISI_TONE[entry.value] || "bg-gray-100 text-gray-600 border-gray-300",
+  }));
+}
+
 export default function InboundDetailPage() {
   const params = useParams<{ suratJalanId: string }>();
   const router = useRouter();
@@ -147,6 +211,10 @@ export default function InboundDetailPage() {
 
   const [showExcessModal, setShowExcessModal] = useState(false);
   const [excessNotesDraft, setExcessNotesDraft] = useState<Record<number, string>>({});
+  // Panel daftar unit per item (indexer baris, bukan item_id).
+  const [unitPanelOpen, setUnitPanelOpen] = useState<Record<number, boolean>>({});
+  // Nilai dari tombol "Set semua unit ke ..." per item.
+  const [bulkUnitCondition, setBulkUnitCondition] = useState<Record<number, string>>({});
 
   useEffect(() => {
     return () => {
@@ -213,6 +281,7 @@ export default function InboundDetailPage() {
             qtyRencana: it.qty,
             qtyDiterima: it.qty,
             kondisi: it.kondisi || "",
+            units: mapUnitRowsFromApi(it.units, it.qty),
             serialNumber: it.serial_number || "",
             isKelebihan: false,
             catatanKelebihan: it.catatan || "",
@@ -266,7 +335,50 @@ export default function InboundDetailPage() {
   function updateItem(index: number, patch: Partial<EditableItem>) {
     setItems((prev) => {
       const next = [...prev];
-      next[index] = { ...next[index], ...patch };
+      const merged = { ...next[index], ...patch };
+      // Jumlah unit selalu mengikuti qty diterima agar tidak pernah
+      // tidak sinkron dengan yang akan dikirim ke backend.
+      if (patch.qtyDiterima !== undefined) {
+        merged.units = syncUnitRows(merged.units, patch.qtyDiterima);
+      }
+      next[index] = merged;
+      return next;
+    });
+  }
+
+  function setUnitCondition(index: number, nomorUnit: number, value: string) {
+    setItems((prev) => {
+      const next = [...prev];
+      const row = next[index];
+      next[index] = {
+        ...row,
+        units: row.units.map((u) => (u.nomorUnit === nomorUnit ? { ...u, kondisi: value } : u)),
+      };
+      return next;
+    });
+  }
+
+  function setUnitCatatan(index: number, nomorUnit: number, value: string) {
+    setItems((prev) => {
+      const next = [...prev];
+      const row = next[index];
+      next[index] = {
+        ...row,
+        units: row.units.map((u) => (u.nomorUnit === nomorUnit ? { ...u, catatan: value } : u)),
+      };
+      return next;
+    });
+  }
+
+  function setAllUnitConditions(index: number, kondisi: string) {
+    setBulkUnitCondition((prev) => ({ ...prev, [index]: kondisi }));
+    setItems((prev) => {
+      const next = [...prev];
+      const row = next[index];
+      next[index] = {
+        ...row,
+        units: row.units.map((u) => ({ ...u, kondisi })),
+      };
       return next;
     });
   }
@@ -368,14 +480,28 @@ export default function InboundDetailPage() {
     }
   }
 
-  const allKondisiFilled = items.every((i) => i.qtyDiterima === 0 || i.kondisi !== "");
+// Item dengan qty diterima > 1 wajib dinilai per unit; qty 1 tetap satu
+  // pilihan kondisi biasa.
+  const unitRowsMissingIndexes = items
+    .map((i, idx) => ({ i, idx }))
+    .filter(({ i }) => i.qtyDiterima > 1 && i.units.some((u) => !u.kondisi))
+    .map(({ idx }) => idx);
+  const hasMissingUnitConditions = unitRowsMissingIndexes.length > 0;
+
+  const allKondisiFilled = items.every(
+    (i) => i.qtyDiterima === 0 || (i.qtyDiterima > 1 ? true : i.kondisi !== ""),
+  );
   const unresolvedExcessIndexes = items
     .map((i, idx) => ({ i, idx }))
     .filter(({ i }) => i.qtyDiterima > i.qtyRencana && !i.isKelebihan)
     .map(({ idx }) => idx);
   const hasUnresolvedExcess = unresolvedExcessIndexes.length > 0;
   const serialRequiredMissing = items.some((i) => i.qtyDiterima > 0 && i.wajibSn && !i.serialNumber.trim());
-  const canSubmit = allKondisiFilled && items.some((i) => i.qtyDiterima > 0) && !serialRequiredMissing;
+  const canSubmit =
+    allKondisiFilled &&
+    !hasMissingUnitConditions &&
+    items.some((i) => i.qtyDiterima > 0) &&
+    !serialRequiredMissing;
 
   const tujuanLabel =
     data?.tujuan_tipe === "lapangan"
@@ -439,7 +565,15 @@ export default function InboundDetailPage() {
           .map((i) => ({
             item_id: i.itemId,
             qty: i.qtyDiterima,
-            kondisi: i.kondisi || null,
+            kondisi: i.qtyDiterima > 1 ? null : i.kondisi || null,
+            units:
+              i.qtyDiterima > 1
+                ? i.units.map((u) => ({
+                    nomor_unit: u.nomorUnit,
+                    kondisi: u.kondisi,
+                    catatan: u.catatan.trim() || null,
+                  }))
+                : null,
             serial_number: i.serialNumber || null,
             catatan: i.catatanKelebihan || null,
             is_kelebihan: i.isKelebihan,
@@ -500,7 +634,7 @@ export default function InboundDetailPage() {
           namaBarang: i.namaBarang,
           qtyDiminta: i.qtyRencana,
           qtyDiterima: i.qtyDiterima,
-          kondisi: i.kondisi as any,
+          kondisi: i.qtyDiterima > 1 ? summarizeUnitConditions(i.units).map((c) => c.label).join(", ") : i.kondisi,
           serialNumbers: i.serialNumber ? [i.serialNumber] : [],
         })),
         status: "MENUNGGU_VERIFIKASI",
@@ -629,7 +763,8 @@ export default function InboundDetailPage() {
               const selisih = item.qtyDiterima - item.qtyRencana;
               const adaKelebihan = selisih > 0;
               return (
-                <tr key={item.itemId} className="border-b border-gray-50 last:border-0 align-top">
+                <Fragment key={item.itemId}>
+                <tr className="border-b border-gray-50 last:border-0 align-top">
                   <td className="py-3 pr-4 font-medium text-gray-800">{item.kodeBarang}</td>
                   <td className="py-3 pr-4 text-gray-600">{item.namaBarang}</td>
                   <td className="py-3 pr-4 text-right text-gray-500">{item.qtyRencana}</td>
@@ -657,19 +792,54 @@ export default function InboundDetailPage() {
                     )}
                   </td>
                   <td className="py-3 pr-4">
-                    <select
-                      value={item.kondisi}
-                      onChange={(e) => updateItem(index, { kondisi: e.target.value })}
-                      disabled={item.qtyDiterima === 0}
-                      className={`rounded-md border px-2 py-1.5 text-xs font-medium focus:outline-none disabled:opacity-40 ${item.kondisi ? KONDISI_TONE[item.kondisi] : "border-gray-200 text-gray-500"}`}
-                    >
-                      <option value="">Pilih kondisi...</option>
-                      {KONDISI_OPTIONS.map((k) => (
-                        <option key={k.value} value={k.value}>
-                          {k.label}
-                        </option>
-                      ))}
-                     </select>
+                    {item.qtyDiterima > 1 ? (
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex flex-wrap gap-1">
+                          {summarizeUnitConditions(item.units).map((chip) => (
+                            <span
+                              key={chip.label}
+                              className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${chip.tone}`}
+                            >
+                              {chip.label}
+                            </span>
+                          ))}
+                          {item.units.every((u) => !u.kondisi) && (
+                            <span className="text-[11px] text-gray-400">Belum dinilai</span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setUnitPanelOpen((prev) => ({ ...prev, [index]: !prev[index] }))
+                          }
+                          className="inline-flex w-fit items-center gap-1 text-[11px] font-semibold text-[#E8632C] hover:underline"
+                        >
+                          {unitPanelOpen[index] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                          Nilai {item.qtyDiterima} unit
+                        </button>
+                        <span
+                          className={`text-[11px] font-medium ${
+                            unitRowsMissingIndexes.includes(index) ? "text-rose-600" : "text-gray-400"
+                          }`}
+                        >
+                          {item.qtyDiterima - item.units.filter((u) => u.kondisi).length}/{item.qtyDiterima} dinilai
+                        </span>
+                      </div>
+                    ) : (
+                      <select
+                        value={item.kondisi}
+                        onChange={(e) => updateItem(index, { kondisi: e.target.value })}
+                        disabled={item.qtyDiterima === 0}
+                        className={`rounded-md border px-2 py-1.5 text-xs font-medium focus:outline-none disabled:opacity-40 ${item.kondisi ? KONDISI_TONE[item.kondisi] : "border-gray-200 text-gray-500"}`}
+                      >
+                        <option value="">Pilih kondisi...</option>
+                        {KONDISI_OPTIONS.map((k) => (
+                          <option key={k.value} value={k.value}>
+                            {k.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                    <td className="py-3 pr-4 text-xs text-gray-600">
                      {item.zona ? (
@@ -754,6 +924,60 @@ export default function InboundDetailPage() {
                     </div>
                   </td>
                 </tr>
+                {item.qtyDiterima > 1 && unitPanelOpen[index] && (
+                  <tr key={`units-${item.itemId}`} className="border-b border-gray-50 bg-gray-50/50">
+                    <td colSpan={8} className="px-4 py-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs font-semibold text-gray-700">
+                          Kondisi per unit — {item.kodeBarang}
+                        </p>
+                        <label className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                          Set semua unit
+                          <select
+                            value={bulkUnitCondition[index] || ""}
+                            onChange={(e) => setAllUnitConditions(index, e.target.value)}
+                            className="rounded-md border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-700 focus:outline-none"
+                          >
+                            <option value="">Pilih kondisi...</option>
+                            {KONDISI_OPTIONS.map((k) => (
+                              <option key={k.value} value={k.value}>
+                                {k.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                        {item.units.map((unit) => (
+                          <div key={unit.nomorUnit} className="rounded-lg border border-gray-200 bg-white p-2.5">
+                            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                              Unit {unit.nomorUnit}
+                            </p>
+                            <select
+                              value={unit.kondisi}
+                              onChange={(e) => setUnitCondition(index, unit.nomorUnit, e.target.value)}
+                              className={`w-full rounded-md border px-2 py-1.5 text-xs font-medium focus:outline-none ${unit.kondisi ? KONDISI_TONE[unit.kondisi] : "border-gray-200 text-gray-500"}`}
+                            >
+                              <option value="">Pilih kondisi...</option>
+                              {KONDISI_OPTIONS.map((k) => (
+                                <option key={k.value} value={k.value}>
+                                  {k.label}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              value={unit.catatan}
+                              onChange={(e) => setUnitCatatan(index, unit.nomorUnit, e.target.value)}
+                              placeholder="Catatan unit (opsional)"
+                              className="mt-1.5 w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>
@@ -763,6 +987,11 @@ export default function InboundDetailPage() {
       <Button disabled={!canSubmit || submitting} onClick={handleSubmitClick} className="mt-5 h-auto rounded-xl bg-[#E8632C] px-6 py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40">
         {submitting ? "Menyimpan..." : "Simpan & Ajukan Verifikasi"}
       </Button>
+      {hasMissingUnitConditions && (
+        <p className="mt-2 text-xs text-rose-600">
+          Masih ada {unitRowsMissingIndexes.length} barang dengan unit yang belum dinilai kondisinya. Buka tombol Nilai unit pada masing-masing barang.
+        </p>
+      )}
 
       {/* Modal gabungan catatan kelebihan */}
       {showExcessModal && (

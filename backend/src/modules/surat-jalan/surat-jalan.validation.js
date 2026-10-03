@@ -145,17 +145,79 @@ const createSuratJalanSchema = z
     }
   });
 
+const KONDISI_ENUM = z.enum([
+  "baik",
+  "rusak_ringan",
+  "rusak_berat",
+  "tidak_sesuai_spek",
+  "doa",
+]);
+
 const receiveInboundSchema = z.object({
   items: z
     .array(
-      z.object({
-        item_id: z.coerce.number(),
-        qty: z.coerce.number().nonnegative("Qty tidak boleh negatif.").optional(),
-        kondisi: z.string().optional().nullable(),
-        serial_number: z.string().optional().nullable(),
-        catatan: z.string().max(500).optional().nullable(),
-        zona_id: z.preprocess((val) => (val === null || val === undefined || val === "" || val === 0 ? null : Number(val)), z.number().positive().nullable().optional()),
-      }),
+      z
+        .object({
+          item_id: z.coerce.number(),
+          qty: z.coerce.number().nonnegative("Qty tidak boleh negatif.").optional(),
+          kondisi: z.string().optional().nullable(),
+          serial_number: z.string().optional().nullable(),
+          catatan: z.string().max(500).optional().nullable(),
+          zona_id: z.preprocess((val) => (val === null || val === undefined || val === "" || val === 0 ? null : Number(val)), z.number().positive().nullable().optional()),
+          // Penilaian kondisi per unit. Wajib lengkap (1..qty) bila dikirim.
+          units: z
+            .array(
+              z.object({
+                nomor_unit: z.coerce.number().int().positive("Nomor unit harus berupa angka bulat positif."),
+                kondisi: KONDISI_ENUM,
+                catatan: z.string().max(500).optional().nullable(),
+              }),
+            )
+            .optional()
+            .nullable(),
+        })
+        .superRefine((item, ctx) => {
+          if (!item.units || item.units.length === 0) return;
+
+          const qty = Number(item.qty);
+          if (!Number.isFinite(qty) || qty <= 0) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Qty item harus diisi sebelum assessing kondisi per unit.",
+              path: ["qty"],
+            });
+            return;
+          }
+
+          const totalUnit = Math.floor(qty);
+          if (item.units.length !== totalUnit) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Jumlah unit yang dinilai (${item.units.length}) harus sama dengan qty diterima (${totalUnit}).`,
+              path: ["units"],
+            });
+          }
+
+          const seen = new Set();
+          for (const unit of item.units) {
+            if (seen.has(unit.nomor_unit)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Nomor unit ${unit.nomor_unit} duplikat.`,
+                path: ["units"],
+              });
+            }
+            seen.add(unit.nomor_unit);
+
+            if (unit.nomor_unit < 1 || unit.nomor_unit > totalUnit) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Nomor unit ${unit.nomor_unit} harus antara 1 sampai ${totalUnit}.`,
+                path: ["units"],
+              });
+            }
+          }
+        })
     )
     .min(1, "Minimal satu item harus diupdate."),
 });

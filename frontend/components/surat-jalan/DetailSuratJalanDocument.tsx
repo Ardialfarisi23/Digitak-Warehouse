@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
-import { getKondisiLabel } from "@/lib/kondisi-barang";
+import { getKondisiLabel, getKondisiUnitRows, formatRingkasanKondisiUnits, type KondisiUnit } from "@/lib/kondisi-barang";
 
 export interface DetailSuratJalanItem {
   item_id?: number | string;
@@ -15,6 +15,8 @@ export interface DetailSuratJalanItem {
   qty?: number | string;
   satuan?: { kode_satuan?: string };
   kondisi?: string;
+  // Penilaian kondisi per unit dari proses inbound (relasi `units`).
+  units?: KondisiUnit[] | null;
   serial_number?: string;
   catatan?: string;
   is_di_luar_boq?: boolean;
@@ -305,14 +307,42 @@ export function DetailSuratJalanDocument({
                     <td className="border p-1 text-center">{tampilkan(item.satuan?.kode_satuan ?? item.barang?.satuan_default?.kode_satuan)}</td>
                      <td className="border p-1 text-center">
                        <div>
-                         {item.kondisi != null && <div>{getKondisiLabel(item.kondisi)}</div>}
-                         {item.catatan && <div className="text-xs text-slate-500 italic">{item.catatan}</div>}
+                         {(() => {
+                           const barisUnit = getKondisiUnitRows(item.units);
+                           if (barisUnit.length > 0) {
+                             return (
+                               <div className="space-y-0.5">
+                                 <div className="font-medium">
+                                   {formatRingkasanKondisiUnits(item.units)}
+                                 </div>
+                                 {barisUnit.map((row) => (
+                                   <div
+                                     key={row.nomor}
+                                     className="text-[10px] leading-tight text-slate-500"
+                                   >
+Unit {row.nomor}: {getKondisiLabel(row.kondisi)}
+                                    {row.catatan ? ` (${row.catatan})` : ""}
+                                  </div>
+                                ))}
+                                {item.catatan && (
+                                  <div className="text-xs text-slate-500 italic">{item.catatan}</div>
+                                )}
+                              </div>
+                             );
+                           }
+                           return (
+                             <>
+                               {item.kondisi != null && <div>{getKondisiLabel(item.kondisi)}</div>}
+                               {item.catatan && <div className="text-xs text-slate-500 italic">{item.catatan}</div>}
+                               {item.kondisi == null && !item.catatan && !item.is_di_luar_boq && tampilkan(null)}
+                             </>
+                           );
+                         })()}
                          {item.is_di_luar_boq && (
                            <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
                              Di luar BOQ
                            </span>
                          )}
-                         {item.kondisi == null && !item.catatan && !item.is_di_luar_boq && tampilkan(null)}
                        </div>
                        {stockStatusByItemId && (() => {
                          const stokStatus = stockStatusByItemId[Number(item.item_id)];
