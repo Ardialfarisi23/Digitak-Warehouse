@@ -67,6 +67,10 @@ type PickingStockAvailability = {
     kondisi: string;
     available_qty: number;
   }>;
+  stok_project_lain?: Array<{
+    project_id: number;
+    qty: number;
+  }>;
 };
 
 type AvailabilityResult = {
@@ -126,10 +130,10 @@ function getValidZonesForItem(
   return zonas.filter((z) => validZonaIds.has(Number(z.zona_id)));
 }
 
-function getAvailableQtyForItemZone(item: ApiSuratJalanItem, zonaId: number, pickingStock: Record<number, PickingStockAvailability["zonas"]>, selectedKondisi?: string): number {
+function getQtyForItemZoneKondisi(item: ApiSuratJalanItem, zonaId: number, pickingStock: Record<number, PickingStockAvailability["zonas"]>, kondisi?: string): number {
   const zonasForItem = pickingStock[item.barang_id] || [];
-  const kondisi = (selectedKondisi || item.kondisi || "baik").toLowerCase();
-  const match = zonasForItem.find((z) => z.zona_id === zonaId && z.kondisi.toLowerCase() === kondisi);
+  const kondisiLower = (kondisi || item.kondisi || "baik").toLowerCase();
+  const match = zonasForItem.find((z) => Number(z.zona_id) === zonaId && String(z.kondisi).toLowerCase() === kondisiLower);
   return match ? match.available_qty : 0;
 }
 
@@ -301,6 +305,7 @@ export default function PickingDetailPage() {
   const [zonaByItem, setZonaByItem] = useState<Record<number, string>>({});
   const [stockAvailability, setStockAvailability] = useState<Record<string, StockAvailability>>({});
   const [pickingStockByItem, setPickingStockByItem] = useState<Record<number, PickingStockAvailability["zonas"]>>({});
+  const [stokProjectLainByItem, setStokProjectLainByItem] = useState<Record<number, PickingStockAvailability["stok_project_lain"]>>({});
   const [availabilityByItem, setAvailabilityByItem] = useState<Record<number, AvailabilityResult>>({});
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [kondisiByItem, setKondisiByItem] = useState<Record<number, string>>({});
@@ -344,8 +349,8 @@ export default function PickingDetailPage() {
 
         setData(record);
         const zonaList: ApiZona[] = Array.isArray(zonaJson?.data)
-          ? zonaJson.data
-          : zonaJson?.data?.data || [];
+          ? zonaJson.data.map((z) => ({ ...z, zona_id: Number(z.zona_id) }))
+          : (zonaJson?.data?.data || []).map((z) => ({ ...z, zona_id: Number(z.zona_id) }));
         setZonas(zonaList);
       } catch (err) {
         setLoadError(
@@ -486,7 +491,12 @@ export default function PickingDetailPage() {
     ) : null;
 
   const isSelesai = data?.status === "diterima_didistribusikan";
-  const cannotPick = isSelesai || data?.status !== "disetujui";
+  const hasNoStockAtAll = data?.items?.some((it) => {
+    const availableKondisi = pickingStockByItem[it.barang_id] || [];
+    const otherProjects = stokProjectLainByItem[it.barang_id] || [];
+    return !availableKondisi.some((s) => s.available_qty > 0) && otherProjects.length === 0;
+  }) ?? false;
+  const cannotPick = isSelesai || data?.status !== "disetujui" || hasNoStockAtAll;
 
   if (data === undefined && !loadError) {
     return (
@@ -515,21 +525,47 @@ export default function PickingDetailPage() {
     );
   }
 
-  const allAssigned = data.items.every((it) => {
+  const assignment = data.items.map((it) => {
     const selectedComposite = zonaByItem[it.item_id];
-    if (!selectedComposite) return false;
     const selectedZonaId = getZonaIdFromComposite(selectedComposite);
-    if (!selectedZonaId) return false;
-
+    const selectedKondisi = kondisiByItem[it.item_id] || it.kondisi || "baik";
     const availability = availabilityByItem[it.item_id];
-    if (!availability) return false;
+    const qty = Number(it.qty || 0);
+    const itemName = it.barang?.nama_barang || it.barang?.kode_perangkat || `item #${it.item_id}`;
 
-    if (availability.status === "no_stock" || availability.status === "no_zone") return false;
-    if (availability.status === "ok") return true;
-    if (availability.status === "override_available") return true;
+    if (!selectedComposite || !selectedZonaId) {
+      return { ok: false as const, reason: `Pilih zona untuk ${itemName}` };
+    }
 
-    return false;
+    if (!availability) {
+      return { ok: false as const, reason: `Memuat stok untuk ${itemName}...` };
+    }
+
+    if (availability.status === "no_stock" || availability.status === "no_zone") {
+      return { ok: false as const, reason: availability.message || `Stok tidak tersedia untuk ${itemName}` };
+    }
+
+    if (availability.status === "override_available") {
+      const matchedAlt = availability.alternatives.find((a) => a.kondisi.toLowerCase() === selectedKondisi.toLowerCase());
+      if (!matchedAlt) {
+        return { ok: false as const, reason: `Pilih kondisi pengganti untuk ${itemName}` };
+      }
+      if (qty <= 0 || qty > matchedAlt.qty) {
+        return { ok: false as const, reason: `Stok tidak cukup untuk ${itemName}` };
+      }
+      return { ok: true as const };
+    }
+
+    if (qty <= 0 || qty > availability.requested_available) {
+      return { ok: false as const, reason: `Stok tidak cukup untuk ${itemName}` };
+    }
+
+    return { ok: true as const };
   });
+
+  const allAssigned = assignment.every((a) => a.ok);
+  const firstBad = assignment.find((a) => !a.ok);
+  const disableReason = firstBad ? firstBad.reason : zonasForGudang.length === 0 ? "Gudang ini belum memiliki zona. Hubungi supervisor." : null;
 
   function showToast(message: string, type: "success" | "error") {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -602,10 +638,15 @@ export default function PickingDetailPage() {
       const rows: PickingStockAvailability[] = Array.isArray(json?.data) ? json.data : [];
 
       const map: Record<number, PickingStockAvailability["zonas"]> = {};
+      const otherProjectsMap: Record<number, PickingStockAvailability["stok_project_lain"]> = {};
       for (const row of rows) {
         map[row.barang_id] = row.zonas;
+        if (row.stok_project_lain?.length) {
+          otherProjectsMap[row.barang_id] = row.stok_project_lain;
+        }
       }
       setPickingStockByItem(map);
+      setStokProjectLainByItem(otherProjectsMap);
     } catch {
       // silently ignore picking stock check fetch errors
     }
@@ -743,8 +784,9 @@ export default function PickingDetailPage() {
       {cannotPick && (
         <div className="mb-4 flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700">
           <AlertCircle size={16} className="mt-0.5 shrink-0" />
-          Picking hanya bisa dilakukan pada surat jalan dengan status &quot;Disetujui — Siap
-          Picking&quot;.
+          {hasNoStockAtAll
+            ? "Tidak ada stok yang tersedia untuk barang-barang di surat jalan ini."
+            : 'Picking hanya bisa dilakukan pada surat jalan dengan status "Disetujui — Siap Picking".'}
         </div>
       )}
 
@@ -821,17 +863,104 @@ export default function PickingDetailPage() {
                        const availability = availabilityByItem[item.item_id];
                        const isOverride = selectedKondisi.toLowerCase() !== requiredKondisi.toLowerCase();
 
-                       const validZones = getValidZonesForItem(item, zonasForGudang, pickingStockByItem, selectedKondisi);
-                       const currentZona = currentZonaId ? zonasForGudang.find((z) => String(z.zona_id) === String(currentZonaId)) : null;
+                        const currentZona = currentZonaId ? zonasForGudang.find((z) => String(z.zona_id) === String(currentZonaId)) : null;
 
-                        if (!availability || !currentZonaId) {
-                          const availableKondisi = pickingStockByItem[item.barang_id] || [];
-                          const otherKondisi = availableKondisi.filter(
-                            (z) => z.kondisi.toLowerCase() !== requiredKondisi.toLowerCase() && z.available_qty > 0
-                          );
+                         const availableKondisi = pickingStockByItem[item.barang_id] || [];
+                         const hasAnyStock = availableKondisi.some((s) => s.available_qty > 0);
+                         const stokProjectLain = stokProjectLainByItem[item.barang_id] || [];
+                         const zonesWithStock = zonasForGudang.filter((z) =>
+                           availableKondisi.some((s) => Number(s.zona_id) === z.zona_id && s.available_qty > 0)
+                         );
 
-                          if (otherKondisi.length > 0) {
-                            return (
+                         if (!hasAnyStock && stokProjectLain.length > 0) {
+                           const projectLabels = stokProjectLain.map((p) => `project ${p.project_id}: ${p.qty} unit`).join(", ");
+                           return (
+                             <div>
+                               <div className="text-xs text-amber-700">
+                                 Stok tersedia di project lain (${projectLabels}), tidak bisa dipick untuk project surat jalan ini.
+                               </div>
+                             </div>
+                           );
+                         }
+
+                         if (!hasAnyStock) {
+                           return (
+                             <div>
+                               <div className="text-xs text-red-600">
+                                 Tidak ada stok barang ini di gudang/project pada surat jalan ini.
+                               </div>
+                             </div>
+                           );
+                         }
+
+                        const hasNoStock = availability && (availability.status === "no_stock" || availability.status === "no_zone");
+                        const hasOverride = availability && availability.status === "override_available";
+
+                        const zonesToShow = zonesWithStock.map((z) => ({
+                          zona_id: z.zona_id,
+                          kondisi: requiredKondisi,
+                          available_qty: getQtyForItemZoneKondisi(item, z.zona_id, pickingStockByItem, requiredKondisi),
+                          zona: z,
+                        }));
+
+                        const handleZonaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+                          const rawValue = e.target.value;
+                          if (!rawValue) {
+                            setZonaByItem((prev) => {
+                              const next = { ...prev };
+                              delete next[item.item_id];
+                              return next;
+                            });
+                            setKondisiByItem((prev) => {
+                              const next = { ...prev };
+                              delete next[item.item_id];
+                              return next;
+                            });
+                            setCatatanKondisiByItem((prev) => {
+                              const next = { ...prev };
+                              delete next[item.item_id];
+                              return next;
+                            });
+                            return;
+                          }
+
+                          let selectedZonaId: number;
+                          let selectedKondisi: string;
+
+                          if (rawValue.includes("|")) {
+                            const [zonaId, kondisi] = rawValue.split("|");
+                            selectedZonaId = Number(zonaId);
+                            selectedKondisi = kondisi;
+                          } else {
+                            selectedZonaId = Number(rawValue);
+                            const stockForItem = pickingStockByItem[item.barang_id] || [];
+                            const stockZona = stockForItem.find((s) => s.zona_id === selectedZonaId);
+                            selectedKondisi = stockZona?.kondisi || requiredKondisi;
+                          }
+
+                          setZonaByItem((prev) => ({ ...prev, [item.item_id]: `${selectedZonaId}|${selectedKondisi}` }));
+                          setKondisiByItem((prev) => ({ ...prev, [item.item_id]: selectedKondisi }));
+                        };
+
+                        return (
+                          <div>
+                            <select value={currentComposite || ""} onChange={handleZonaChange} className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none">
+                              <option value="">Pilih zona pengambilan</option>
+                              {zonesToShow.map((z) => {
+                                const zona = z.zona;
+                                const label = zona ? zonaLabel(zona) : `Zona ${z.zona_id}`;
+                                const qtyToShow = z.available_qty;
+                                const optionValue = `${z.zona_id}|${z.kondisi}`;
+                                return (
+                                  <option key={optionValue} value={optionValue}>
+                                    {label} — {qtyToShow} unit ({z.kondisi})
+                                  </option>
+                                );
+                              })}
+                            </select>
+                            {currentZonaId && !availability && <div className="text-xs text-gray-500">Memuat stok...</div>}
+                            {hasNoStock && <div className="text-xs text-red-600">{availability.message || `Stok kondisi ${requiredKondisi} tidak tersedia di gudang ini.`}</div>}
+                            {hasOverride && (
                               <div>
                                 <p className="text-xs text-amber-700">
                                   Stok kondisi &quot;{requiredKondisi}&quot; tidak tersedia. Pilih kondisi
@@ -1012,20 +1141,17 @@ export default function PickingDetailPage() {
                                 Override otomatis: {requiredKondisi} → {selectedKondisi}
                               </p>
                             )}
-                            {isOverride && (
-                              <div className="mt-1">
-                                <label className="mb-1 block text-[10px] font-medium text-slate-600">Catatan (opsional)</label>
-                                <textarea
-                                  value={catatanKondisiByItem[item.item_id] || ""}
-                                  onChange={(e) => setCatatanKondisiByItem((prev) => ({ ...prev, [item.item_id]: e.target.value }))}
-                                  placeholder="Catatan opsional (jika ada alasan khusus)."
-                                  className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
-                                  rows={2}
-                                />
+                            {isOverride && !hasOverride && (
+                              <div>
+                                <p className="mt-1 text-xs text-amber-700">Override otomatis: {requiredKondisi} → {selectedKondisi}</p>
+                                <div className="mt-1">
+                                  <label className="mb-1 block text-[10px] font-medium text-slate-600">Catatan (opsional)</label>
+                                  <textarea value={catatanKondisiByItem[item.item_id] || ""} onChange={(e) => setCatatanKondisiByItem((prev) => ({ ...prev, [item.item_id]: e.target.value }))} placeholder="Catatan opsional (jika ada alasan khusus)." className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none" rows={2} />
+                                </div>
                               </div>
                             )}
-                         </div>
-                       );
+                          </div>
+                        );
                      })()}
                    </td>
                  )}
@@ -1035,15 +1161,20 @@ export default function PickingDetailPage() {
         </table>
       </div>
 
-      {!isSelesai && (
-        <Button
-          disabled={!allAssigned || submitting || cannotPick || zonasForGudang.length === 0}
-          onClick={handleSubmit}
-          className="mt-5 h-auto rounded-xl bg-[#E8632C] px-6 py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
-        >
-          {submitting ? "Menyimpan..." : "Konfirmasi Pengambilan"}
-        </Button>
-      )}
+       {!isSelesai && (
+         <div>
+           <Button
+             disabled={!allAssigned || submitting || cannotPick || zonasForGudang.length === 0}
+             onClick={handleSubmit}
+             className="mt-5 h-auto rounded-xl bg-[#E8632C] px-6 py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
+           >
+             {submitting ? "Menyimpan..." : "Konfirmasi Pengambilan"}
+           </Button>
+           {disableReason && !allAssigned && (
+             <div className="mt-2 text-xs text-gray-500">{disableReason}</div>
+           )}
+         </div>
+       )}
 
       <ConfirmModal
         open={showConfirmModal}

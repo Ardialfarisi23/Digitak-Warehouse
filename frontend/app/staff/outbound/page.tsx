@@ -21,6 +21,15 @@ const STATUS_META: Record<SuratJalanStatus, { label: string; tone: string }> = {
   ditolak: { label: "Ditolak", tone: "bg-rose-50 text-rose-600" },
 };
 
+const PICKING_SELESAI_STATUS: SuratJalanStatus = "disetujui";
+
+function getStatusMeta(status: SuratJalanStatus, pickingSelesai?: boolean) {
+  if (status === PICKING_SELESAI_STATUS && pickingSelesai) {
+    return { label: "Picking Selesai — Siap Distribusi", tone: "bg-blue-50 text-blue-600" };
+  }
+  return STATUS_META[status] || STATUS_META.draft_diajukan;
+}
+
 const FILTER_TABS: { key: "SEMUA" | SuratJalanStatus; label: string }[] = [
   { key: "SEMUA", label: "Semua" },
   { key: "draft_diajukan", label: "Menunggu Persetujuan" },
@@ -52,6 +61,7 @@ interface SuratJalan {
   gudang_asal?: { gudang_id: number; nama_gudang: string };
   gudang_tujuan?: { nama_gudang: string };
   project?: { nama_project: string };
+  picking_selesai?: boolean;
 }
 
 export default function SuratJalanListPage() {
@@ -162,7 +172,7 @@ export default function SuratJalanListPage() {
               </tr>
             ) : (
               filtered.map((sj) => {
-                const meta = STATUS_META[sj.status] || STATUS_META.draft_diajukan;
+                const meta = getStatusMeta(sj.status, sj.picking_selesai);
                 const totalUnit = sj.items.reduce((sum, i) => sum + Number(i.qty || 0), 0);
                 const tujuanText = sj.gudang_tujuan?.nama_gudang || sj.project?.nama_project || "-";
                 const tanggal = new Date(sj.created_at).toLocaleDateString("id-ID", {

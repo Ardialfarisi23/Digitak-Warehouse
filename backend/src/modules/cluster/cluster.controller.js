@@ -25,6 +25,7 @@ const create = async (req, res, next) => {
     const result = await clusterService.create(req.body, req.user.id);
     return response.success(res, "Cluster berhasil dibuat.", result, 201);
   } catch (err) {
+    console.error("[ClusterController] create failed:", err);
     next(err);
   }
 };
@@ -34,6 +35,7 @@ const update = async (req, res, next) => {
     const result = await clusterService.update(req.params.clusterId, req.body);
     return response.success(res, "Cluster berhasil diperbarui.", result);
   } catch (err) {
+    console.error("[ClusterController] update failed:", err);
     next(err);
   }
 };
@@ -47,10 +49,20 @@ const toggleStatus = async (req, res, next) => {
   }
 };
 
+const deleteCluster = async (req, res, next) => {
+  try {
+    const result = await clusterService.deleteCluster(req.params.clusterId);
+    return response.success(res, result.message || "Cluster berhasil dihapus.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   listByProject,
   listAll,
   create,
   update,
   toggleStatus,
+  deleteCluster,
 };

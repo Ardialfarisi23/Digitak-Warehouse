@@ -96,12 +96,35 @@ const baseInclude = {
 
 const findByIdInclude = {
   ...baseInclude,
+  personil_pengantar: {
+    select: {
+      personil_id: true,
+      nama: true,
+      jenis: true,
+      no_hp: true,
+    },
+  },
   items: {
     ...baseInclude.items,
     include: {
       ...baseInclude.items.include,
+      picks: {
+        select: {
+          pick_id: true,
+          gudang_id: true,
+          zona_id: true,
+          kondisi_diminta: true,
+          kondisi_diambil: true,
+          qty: true,
+          is_override: true,
+          catatan_override: true,
+          picked_by: true,
+          picked_at: true,
+        },
+      },
       diperiksa_oleh_user: {
         select: {
+          user_id: true,
           nama: true,
         },
       },
@@ -658,8 +681,8 @@ const addInboundStock = async (suratJalan, tx = prisma) => {
         barang_id: item.barang_id,
         kondisi: item.kondisi || "baik",
         zona_id: null,
-        project_id: suratJalan.project_id,
       },
+      orderBy: { stok_id: "asc" },
     });
 
     if (existingStock) {
@@ -689,7 +712,7 @@ const addInboundStock = async (suratJalan, tx = prisma) => {
         data: {
           gudang_id: gudangTujuanId,
           barang_id: item.barang_id,
-          project_id: suratJalan.project_id,
+          project_id: null,
           kondisi: item.kondisi || "baik",
           qty: qty,
           zona_id: null,

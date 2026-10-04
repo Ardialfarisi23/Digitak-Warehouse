@@ -272,8 +272,11 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
     { key: "nama_cluster", label: "Nama Cluster", type: "text", required: true },
     { key: "cluster_type", label: "Tipe Cluster", type: "text" },
     { key: "alamat_lengkap", label: "Alamat Lengkap", type: "textarea" },
-    { key: "cluster_id", label: "Cluster ID", type: "text" },
-    { key: "status_aktif", label: "Status Aktif", type: "checkbox" },
+    { key: "cluster_id", label: "Cluster ID", type: "text", required: true },
+    { key: "status_aktif", label: "Status", type: "select", required: false, options: [
+      { value: "true", label: "Aktif" },
+      { value: "false", label: "Non-Aktif" },
+    ]},
   ],
 };
 
@@ -649,6 +652,8 @@ function FormModal({
         initial[field.key] = direct ?? nested ?? "";
       } else if (field.key === "cluster_id" && tab === "clusters") {
         initial[field.key] = (record as any)?.cluster_id || "";
+      } else if (field.key === "status_aktif" && tab === "clusters" && mode === "create") {
+        initial[field.key] = "true";
       } else if (field.key === "tipe" && tab === "warehouses" && mode === "create") {
         initial[field.key] = "tetap";
       } else {
@@ -813,13 +818,13 @@ function FormModal({
     if (tab === "clusters") {
       return fields.map((field) => {
         if (field.key === "project_id") return { ...field, options: projectOptions };
-        if (field.key === "cluster_id") return { ...field, type: "text" as const, required: false };
+        if (field.key === "cluster_id") return { ...field, type: "text" as const, required: mode === "create" };
         return field;
       });
     }
 
     return fields;
-  }, [tab, fields, categoryOptions, unitOptions, warehouseOptions, projectOptions]);
+  }, [tab, fields, categoryOptions, unitOptions, warehouseOptions, projectOptions, mode]);
 
   const visibleFormFields = useMemo(() => {
     if (tab === "warehouses") {
@@ -832,11 +837,11 @@ function FormModal({
     }
 
     if (tab === "clusters") {
-      return formFields.filter((field) => field.key !== "cluster_id");
+      return formFields.filter((field) => !(field.key === "cluster_id" && mode === "edit"));
     }
 
     return formFields;
-  }, [tab, formFields, form.tipe]);
+  }, [tab, formFields, form.tipe, mode]);
 
   useEffect(() => {
     if (open) {
@@ -908,6 +913,8 @@ function FormModal({
           }
         } else if (field.type === "checkbox") {
           submitData[field.key] = Boolean(submitData[field.key]);
+        } else if (field.key === "status_aktif" && tab === "clusters" && submitData[field.key] !== undefined && submitData[field.key] !== "") {
+          submitData[field.key] = submitData[field.key] === "true" || submitData[field.key] === true || submitData[field.key] === 1;
         } else if (field.type === "select" && submitData[field.key] !== undefined && submitData[field.key] !== "") {
           const numericValue = Number(submitData[field.key]);
           if (!Number.isNaN(numericValue)) {
@@ -955,8 +962,9 @@ function FormModal({
         const warehouseName = (record as { nama_gudang?: string } | null)?.nama_gudang;
         url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(warehouseName))}`, baseUrl).toString();
       } else if (tab === "clusters") {
+        const clusterBase = "/api/clusters";
         const clusterId = (record as { cluster_id?: string } | null)?.cluster_id;
-        url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(clusterId))}`, baseUrl).toString();
+        url = mode === "create" ? new URL(clusterBase, baseUrl).toString() : new URL(`${clusterBase}/${encodeURIComponent(String(clusterId))}`, baseUrl).toString();
       } else if (tab === "suppliers") {
         const supplierKode = (record as { kode?: string } | null)?.kode;
         url = mode === "create" ? new URL(endpoint, baseUrl).toString() : new URL(`${endpoint}/${encodeURIComponent(String(supplierKode))}`, baseUrl).toString();
@@ -995,7 +1003,7 @@ function FormModal({
           : message;
 
         if ([400, 404, 409, 422].includes(response.status)) {
-          onShowToast(message, "error");
+          onShowToast(fullMessage, "error");
           return;
         }
 
@@ -2178,16 +2186,16 @@ function MasterDataPageContent() {
             <p className="mt-0.5 text-xs text-slate-400">{meta.total} data</p>
           </div>
 
-           {canCreate && activeTab !== "personnel" && activeTab !== "clusters" && (
-            <button
-              type="button"
-              onClick={() => setFormModal({ mode: "create", record: null })}
-              className="flex items-center gap-2 rounded-full bg-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 transition-colors hover:bg-orange-600"
-            >
-              <Plus size={16} />
-              Tambah
-            </button>
-          )}
+           {canCreate && activeTab !== "personnel" && (
+             <button
+               type="button"
+               onClick={() => setFormModal({ mode: "create", record: null })}
+               className="flex items-center gap-2 rounded-full bg-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 transition-colors hover:bg-orange-600"
+             >
+               <Plus size={16} />
+               Tambah
+             </button>
+           )}
         </div>
 
         {/* Table */}
@@ -2591,7 +2599,7 @@ function MasterDataPageContent() {
             open={!!deleteRecord}
             onClose={() => setDeleteRecord(null)}
             tabLabel={activeConfig.singularLabel}
-            endpoint={activeConfig.endpoint}
+            endpoint={activeTab === "clusters" ? "/api/clusters" : activeConfig.endpoint}
             record={deleteRecord}
             idField={activeConfig.idField}
             idFields={activeConfig.idFields}

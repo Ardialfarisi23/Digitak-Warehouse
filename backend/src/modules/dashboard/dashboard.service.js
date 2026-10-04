@@ -18,12 +18,12 @@ const getApprovalQueue = async (actor) => {
   const userId = Number(actor?.id || 0);
 
   const whereInbound = {
-    status: { in: ["menunggu_verifikasi", "ready_putaway"] },
+    status: { in: ["menunggu_verifikasi"] },
     tipe: "inbound",
   };
 
   const whereOutbound = {
-    status: { in: ["draft_diajukan", "diterima_didistribusikan"] },
+    status: { in: ["draft_diajukan"] },
     tipe: "outbound",
   };
 

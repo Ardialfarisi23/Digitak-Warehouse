@@ -31,6 +31,7 @@ import BoqPicker, { type BoqPickerItem } from "@/components/BoqPicker";
 import BarangPicker, { type BarangPickerItem } from "@/components/BarangPicker";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { useAccountStatusGuard } from "@/hooks/use-account-status-guard";
+import { exportReconciliationXlsx } from "@/lib/exportReconciliationXlsx";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -43,6 +44,9 @@ interface ReconciliationRecord {
   project_id: string;
   project_nama: string;
   cluster_id: string;
+  nama_cluster: string;
+  pic_nama: string | null;
+  pic_sumber: string | null;
   area: string;
   tiket_id: string;
   kode_tiket: string;
@@ -57,6 +61,8 @@ interface ReconciliationRecord {
   used: number;
   remains: number;
   status: "sesuai" | "perhatian" | "belum_ada_data";
+  boq_list: Array<{ boq_id: string; kode_boq: string; status: string }>;
+  ada_boq_selesai: boolean;
   temuan_penerimaan?: {
     jumlah_item_bertemuan_selisih: number;
     total_selisih_qty: number;
@@ -119,6 +125,7 @@ export default function ReconciliationInventoryPage() {
   const [projectFilter, setProjectFilter] = useState("all");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [boqStatusFilter, setBoqStatusFilter] = useState("all");
   const [selectedRecord, setSelectedRecord] = useState<ReconciliationRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +153,10 @@ export default function ReconciliationInventoryPage() {
   const [selectedKodeTiket, setSelectedKodeTiket] = useState("");
 
   const boqItemsQueryParams = useMemo(() => ({ projectId: selectedProjectId }), [selectedProjectId]);
+  const manualBoqItemsQueryParams = useMemo(
+    () => ({ projectId: selectedProjectId, statuses: "draft,aktif,selesai" }),
+    [selectedProjectId]
+  );
   const [exporting, setExporting] = useState(false);
   const [mitraReportMeta, setMitraReportMeta] = useState({ tanggal_laporan: new Date().toISOString().slice(0, 10), pic_mitra: "" });
 
@@ -160,7 +171,7 @@ export default function ReconciliationInventoryPage() {
   const [historyActor, setHistoryActor] = useState("");
   const [historyStartDate, setHistoryStartDate] = useState("");
   const [historyEndDate, setHistoryEndDate] = useState("");
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "warning" } | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -186,7 +197,7 @@ export default function ReconciliationInventoryPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await get(RECONCILIATION_ENDPOINT);
+      const response = await get(`${RECONCILIATION_ENDPOINT}?groupBy=cluster`);
       const json = await response.json();
       if (!response.ok) {
         throw new Error(json?.message || "Gagal mengambil data rekonsiliasi inventory.");
@@ -219,6 +230,9 @@ export default function ReconciliationInventoryPage() {
           project_id: String(item.project_id ?? ""),
           project_nama: item.project_nama ?? item.project?.nama_project ?? "-",
           cluster_id: item.cluster_id ?? item.project?.cluster_id ?? "-",
+          nama_cluster: item.nama_cluster ?? "-",
+          pic_nama: item.pic_nama ?? null,
+          pic_sumber: item.pic_sumber ?? null,
           area: item.area ?? item.project?.area ?? "-",
           tiket_id: String(item.tiket_id ?? item.tiket?.tiket_id ?? ""),
           kode_tiket: item.kode_tiket ?? item.tiket?.kode_tiket ?? "-",
@@ -233,6 +247,8 @@ export default function ReconciliationInventoryPage() {
           used,
           remains,
           status: recStatus,
+          boq_list: Array.isArray(item.boq_list) ? item.boq_list : [],
+          ada_boq_selesai: Boolean(item.ada_boq_selesai),
           temuan_penerimaan: item.temuan_penerimaan || null,
         };
       });
@@ -363,6 +379,10 @@ export default function ReconciliationInventoryPage() {
         setMitraError("Setiap item harus memiliki Nama Barang.");
         return;
       }
+      if (!row.barang_id) {
+        setMitraError("Setiap item harus memilih Barang dari daftar BOQ.");
+        return;
+      }
       if (Number(row.used) <= 0) {
         setMitraError("Setiap item harus memiliki Qty Used > 0.");
         return;
@@ -404,9 +424,25 @@ export default function ReconciliationInventoryPage() {
         throw new Error(json?.message || "Gagal menyimpan hasil laporan mitra.");
       }
 
-      closeMitraModal();
-      fetchReconciliation();
-      setToast({ message: "Laporan mitra berhasil disimpan.", type: "success" });
+      const failedCount = json?.data?.failedCount || 0;
+      const failedItems = json?.data?.failedItems || [];
+
+      if (failedCount > 0 && failedCount >= (preview?.length || 0)) {
+        const reasons = failedItems.slice(0, 3).map((it: any) => it.reason).filter(Boolean).join("; ");
+        setMitraError(`Gagal menyimpan semua item (${failedCount}). ${reasons}`);
+        setToast({ message: `Gagal menyimpan semua item (${failedCount}). ${reasons}`, type: "error" });
+      } else if (failedCount > 0) {
+        const reasons = failedItems.slice(0, 3).map((it: any) => it.reason).filter(Boolean).join("; ");
+        setMitraError(null);
+        closeMitraModal();
+        fetchReconciliation();
+        setToast({ message: `${preview?.length - failedCount} berhasil, ${failedCount} gagal. ${reasons}`, type: "warning" });
+      } else {
+        setMitraError(null);
+        closeMitraModal();
+        fetchReconciliation();
+        setToast({ message: "Laporan mitra berhasil disimpan.", type: "success" });
+      }
     } catch (err) {
       setMitraError(err instanceof Error ? err.message : "Terjadi kesalahan saat konfirmasi.");
       setToast({ message: err instanceof Error ? err.message : "Terjadi kesalahan saat konfirmasi.", type: "error" });
@@ -523,9 +559,12 @@ export default function ReconciliationInventoryPage() {
   const filteredRecords = useMemo(() => {
     const query = search.toLowerCase();
     return records.filter((record) => {
+      const boqCodes = (record.boq_list || [])
+        .map((boq) => [boq.kode_boq, boq.status].filter(Boolean).join(" "))
+        .join(" ");
       const matchesSearch =
         !query ||
-        [record.project_nama, record.cluster_id, record.area, record.kode_tiket, record.kode_perangkat, record.nama_barang, record.gudang_nama]
+        [record.project_nama, record.nama_cluster, record.cluster_id, record.pic_nama, record.area, record.kode_tiket, record.kode_perangkat, record.nama_barang, record.gudang_nama, boqCodes]
           .join(" ")
           .toLowerCase()
           .includes(query);
@@ -533,62 +572,18 @@ export default function ReconciliationInventoryPage() {
       const matchesProject = projectFilter === "all" || record.project_id === projectFilter;
       const matchesWarehouse = warehouseFilter === "all" || record.gudang_nama === warehouseFilter;
       const matchesStatus = statusFilter === "all" || record.status === statusFilter;
+      const matchesBoqStatus =
+        boqStatusFilter === "all" ||
+        (boqStatusFilter === "selesai" ? record.ada_boq_selesai : record.boq_list.some((boq) => boq.status === boqStatusFilter));
 
-      return matchesSearch && matchesProject && matchesWarehouse && matchesStatus;
+      return matchesSearch && matchesProject && matchesWarehouse && matchesStatus && matchesBoqStatus;
     });
-  }, [records, search, projectFilter, warehouseFilter, statusFilter]);
+  }, [records, search, projectFilter, warehouseFilter, statusFilter, boqStatusFilter]);
 
   const handleExport = async () => {
     setExporting(true);
     try {
-      const headers = [
-        "Project",
-        "Kode Tiket",
-        "Barang",
-        "Kode Perangkat",
-        "Gudang",
-        "Satuan",
-        "BOQ",
-        "Additional",
-        "MOS",
-        "Used",
-        "Remains",
-        "Status",
-      ];
-
-      const escapeCsv = (value: string | number) => {
-        const str = String(value ?? "");
-        if (str.includes(",") || str.includes('"') || str.includes("\n")) {
-          return `"${str.replace(/"/g, '""')}"`;
-        }
-        return str;
-      };
-
-      const rows = filteredRecords.map((r) => [
-        escapeCsv(r.project_nama),
-        escapeCsv(r.kode_tiket),
-        escapeCsv(r.nama_barang),
-        escapeCsv(r.kode_perangkat),
-        escapeCsv(r.gudang_nama),
-        escapeCsv(r.satuan),
-        escapeCsv(r.boq),
-        escapeCsv(r.additional),
-        escapeCsv(r.mos),
-        escapeCsv(r.used),
-        escapeCsv(r.remains),
-        escapeCsv(r.status),
-      ]);
-
-      const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `rekoncilasi-inventory-${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      await exportReconciliationXlsx(filteredRecords);
     } catch (err) {
       console.error("Gagal mengekspor rekonsiliasi:", err);
     } finally {
@@ -624,9 +619,9 @@ export default function ReconciliationInventoryPage() {
         <header className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Rekonsiliasi Inventory</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Pantau kesesuaian BOQ dengan realisasi hardware pada setiap project dan tiket.
-            </p>
+              <p className="mt-1 text-sm text-slate-500">
+               Pantau kesesuaian BOQ dengan realisasi hardware pada setiap cluster dan tiket.
+             </p>
           </div>
         </header>
 
@@ -636,7 +631,7 @@ export default function ReconciliationInventoryPage() {
           <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
           <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material on Site" icon={PackageCheck} tone="slate" />
           <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan" icon={PackageMinus} tone="slate" />
-          <KpiCard title="Remains" value={formatNumber(summary.remains)} description="Sisa setelah used" icon={Wallet} tone="slate" />
+          <KpiCard title="Remains" value={formatNumber(summary.remains)} description="Sisa pengiriman (MOS - BOQ)" icon={Wallet} tone="slate" />
           {summary.temuan_jumlah_item > 0 && (
             <KpiCard title="Temuan Penerimaan" value={`${summary.temuan_jumlah_item} item`} description={`Kekurangan ${formatNumber(summary.temuan_total_selisih)}`} icon={AlertTriangle} tone="rose" />
           )}
@@ -676,7 +671,7 @@ export default function ReconciliationInventoryPage() {
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Cari project, tiket, kode perangkat..."
+               placeholder="Cari project, cluster, tiket, kode perangkat..."
               className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
             />
           </div>
@@ -716,6 +711,16 @@ export default function ReconciliationInventoryPage() {
             <option value="sesuai">Sesuai</option>
             <option value="belum_ada_data">Belum Ada Data</option>
             <option value="perhatian">Perhatian</option>
+          </select>
+
+          <select
+            value={boqStatusFilter}
+            onChange={(e) => setBoqStatusFilter(e.target.value)}
+            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+          >
+            <option value="all">Semua Status BOQ</option>
+            <option value="aktif">Aktif</option>
+            <option value="selesai">Selesai</option>
           </select>
         </div>
 
@@ -759,28 +764,32 @@ export default function ReconciliationInventoryPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="min-w-[1100px] w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
-                  <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
-                  <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
-                  <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
-                  <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
-                  <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Remains</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                  <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
-                </tr>
-              </thead>
+              <table className="min-w-[1250px] w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50">
+                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[190px]">Cluster</th>
+                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px]">PIC</th>
+                    <th className="px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Kode Tiket</th>
+                    <th className="px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">BOQ</th>
+                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
+                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
+                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
+                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
+                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
+                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px]">Remains</th>
+                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap min-w-[100px]">Status</th>
+                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[70px] sticky right-0 bg-slate-50 border-l border-slate-100">
+                      Aksi
+                    </th>
+                  </tr>
+                </thead>
 
               <tbody className="divide-y divide-slate-50">
                 {isLoading ? (
                   Array.from({ length: 7 }).map((_, rowIndex) => (
                     <tr key={rowIndex}>
-                      {Array.from({ length: 12 }).map((_, colIndex) => (
-                        <td key={colIndex} className="px-6 py-4">
+                      {Array.from({ length: 13 }).map((_, colIndex) => (
+                        <td key={colIndex} className="px-3 py-2">
                           <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                         </td>
                       ))}
@@ -788,13 +797,13 @@ export default function ReconciliationInventoryPage() {
                   ))
                 ) : error ? (
                   <tr>
-                    <td colSpan={12} className="px-6 py-16 text-center text-sm text-rose-500">
+                    <td colSpan={13} className="px-6 py-16 text-center text-sm text-rose-500">
                       {error}
                     </td>
                   </tr>
                 ) : filteredRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-6 py-16 text-center">
+                    <td colSpan={13} className="px-6 py-16 text-center">
                       <Package size={28} className="mx-auto text-slate-300" />
                       <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data rekonsiliasi</p>
                       <p className="mt-1 text-xs text-slate-400">Coba ubah filter atau kata pencarian.</p>
@@ -803,53 +812,74 @@ export default function ReconciliationInventoryPage() {
                 ) : (
                   filteredRecords.map((record) => {
                     const statusBadge = getStatusBadge(record.status);
+                    const isClusterNameSameAsProject = record.nama_cluster && record.project_nama && record.nama_cluster.toLowerCase() === record.project_nama.toLowerCase();
                     return (
                       <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
-                        <td className="px-6 py-4">
-                          <p className="font-medium text-slate-900">{record.project_nama}</p>
+                        <td className="px-3 py-2">
+                          <p className="font-medium text-slate-900">{record.nama_cluster}</p>
                           <p className="text-xs text-slate-400">
-                            {record.area}
-                            {record.cluster_id !== "-" && ` • ${record.cluster_id}`}
+                            {isClusterNameSameAsProject ? record.area : `${record.project_nama} • ${record.area}`}
                           </p>
                         </td>
 
-                        <td className="px-6 py-4">
-                          <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                        <td className="px-3 py-2 text-sm text-slate-600 whitespace-nowrap">
+                          {record.pic_nama || <span className="text-slate-400">-</span>}
+                        </td>
+
+                        <td className="px-2 py-2 whitespace-nowrap">
+                          <span className="inline-flex rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
                             {record.kode_tiket}
                           </span>
                         </td>
 
-                        <td className="px-6 py-4">
-                          <p className="font-medium text-slate-800">{record.nama_barang}</p>
-                          <p className="text-xs text-slate-400">
+                        <td className="px-2 py-2 whitespace-nowrap">
+                          <div className="flex flex-wrap gap-1">
+                            {(record.boq_list || []).map((boq) => (
+                              <span
+                                key={boq.boq_id}
+                                className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 whitespace-nowrap"
+                              >
+                                {boq.kode_boq || `BOQ-${boq.boq_id}`}
+                                {boq.status === "selesai" && (
+                                  <span className="ml-0.5 rounded bg-slate-200 px-1 py-0.5 text-[9px] font-semibold text-slate-500">Selesai</span>
+                                )}
+                              </span>
+                            ))}
+                            {(record.boq_list || []).length === 0 && <span className="text-xs text-slate-400">-</span>}
+                          </div>
+                        </td>
+
+                        <td className="px-3 py-2">
+                          <p className="font-medium text-slate-800 line-clamp-2">{record.nama_barang}</p>
+                          <p className="text-xs text-slate-400 line-clamp-1">
                             {record.kode_perangkat} • {record.gudang_nama}
                           </p>
                         </td>
 
-                        <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.boq)}</td>
-                        <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.additional)}</td>
-                        <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos)}</td>
-                        <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.used)}</td>
+                        <td className="px-3 py-2 text-right font-medium text-slate-700">{formatNumber(record.boq)}</td>
+                        <td className="px-3 py-2 text-right text-slate-600">{formatNumber(record.additional)}</td>
+                        <td className="px-3 py-2 text-right font-medium text-slate-700">{formatNumber(record.mos)}</td>
+                        <td className="px-3 py-2 text-right text-slate-600">{formatNumber(record.used)}</td>
 
-                        <td className="px-6 py-4 text-right">
+                        <td className="px-3 py-2 text-right min-w-[80px]">
                           <span className={record.remains < 0 ? "font-semibold text-rose-600" : "font-semibold text-emerald-700"}>
                             {formatNumber(record.remains)}
                           </span>
                         </td>
 
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
+                        <td className="px-3 py-2 whitespace-nowrap min-w-[100px] pr-10">
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
                             <statusBadge.icon size={12} />
                             {statusBadge.label}
                           </span>
                           {record.temuan_penerimaan && record.temuan_penerimaan.jumlah_item_bertemuan_selisih > 0 && (
-                            <span className="mt-1 block text-xs text-amber-700">
+                            <span className="ml-1.5 text-[11px] text-amber-700">
                               Selisih terima: {record.temuan_penerimaan.jumlah_item_bertemuan_selisih} item, kekurangan {formatNumber(record.temuan_penerimaan.total_selisih_qty)}
                             </span>
                           )}
                         </td>
 
-                        <td className="px-4 py-4">
+                        <td className="px-3 py-2 sticky right-0 bg-white group-hover:bg-slate-50 border-l border-slate-100">
                           <div className="flex items-center justify-end gap-1">
                             <button
                               type="button"
@@ -926,14 +956,23 @@ export default function ReconciliationInventoryPage() {
 
             <div className="px-6 py-5 space-y-5">
               <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs font-medium text-slate-400">Project</p>
-                <p className="mt-1 font-semibold text-slate-900">{selectedRecord.project_nama}</p>
+                <p className="text-xs font-medium text-slate-400">Cluster</p>
+                <p className="mt-1 font-semibold text-slate-900">{selectedRecord.nama_cluster}</p>
+                <p className="text-xs text-slate-500">
+                  {selectedRecord.nama_cluster && selectedRecord.project_nama && selectedRecord.nama_cluster.toLowerCase() === selectedRecord.project_nama.toLowerCase()
+                    ? selectedRecord.area
+                    : `${selectedRecord.project_nama} • ${selectedRecord.area}`}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {selectedRecord.cluster_id}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  PIC: {selectedRecord.pic_nama || "-"}
+                  {selectedRecord.pic_sumber ? ` (${selectedRecord.pic_sumber})` : ""}
+                </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <span className="rounded-lg bg-white px-2.5 py-1 text-[11px] text-slate-500">
                     Tiket: {selectedRecord.kode_tiket}
-                  </span>
-                  <span className="rounded-lg bg-white px-2.5 py-1 text-[11px] text-slate-500">
-                    Area: {selectedRecord.area}
                   </span>
                   <span className="rounded-lg bg-white px-2.5 py-1 text-[11px] text-slate-500">
                     Gudang: {selectedRecord.gudang_nama}
@@ -969,13 +1008,25 @@ export default function ReconciliationInventoryPage() {
                 </span>
               </div>
 
-              {selectedRecord.remains < 0 && (
+              {selectedRecord.used > selectedRecord.mos && (
                 <div className="flex gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4">
                   <AlertTriangle size={18} className="mt-0.5 shrink-0 text-rose-600" />
                   <div>
                     <p className="text-sm font-semibold text-rose-800">Remains tidak valid</p>
                     <p className="mt-1 text-xs leading-relaxed text-rose-600">
                       Qty Used melebihi MOS (Sistem). Kondisi ini perlu diperiksa sebelum transaksi outbound berikutnya diproses.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {selectedRecord.used <= selectedRecord.mos && selectedRecord.remains < 0 && (
+                <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">Pengiriman belum memenuhi BOQ</p>
+                    <p className="mt-1 text-xs leading-relaxed text-amber-700">
+                      Kurang {formatNumber(Math.abs(selectedRecord.remains))} {selectedRecord.satuan} dari BOQ (MOS - BOQ).
                     </p>
                   </div>
                 </div>
@@ -1179,7 +1230,6 @@ export default function ReconciliationInventoryPage() {
                                <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
                                 <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
                                 <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
-                                <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Remains di Lapangan</th>
                                 <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kondisi</th>
                                <th className="px-4 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
                              </tr>
@@ -1190,9 +1240,8 @@ export default function ReconciliationInventoryPage() {
                                  <td className="px-4 py-2 font-mono text-xs font-semibold text-orange-600">{row.kode_tiket}</td>
                                  <td className="px-4 py-2 text-slate-700">{row.project_nama}</td>
                                   <td className="px-4 py-2 text-slate-700">{row.nama_barang || "-"}</td>
-                                  <td className="px-4 py-2 text-right font-mono text-slate-600">{row.used}</td>
-                                  <td className="px-4 py-2 text-right font-mono text-slate-600">{row.remains_lapangan}</td>
-                                  <td className="px-4 py-2 text-slate-700">{row.kondisi || "-"}</td>
+                                   <td className="px-4 py-2 text-right font-mono text-slate-600">{row.used}</td>
+                                   <td className="px-4 py-2 text-slate-700">{row.kondisi || "-"}</td>
                                  <td className="px-4 py-2 text-center">
                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
                                      <CheckCircle2 size={12} />
@@ -1206,9 +1255,8 @@ export default function ReconciliationInventoryPage() {
                                  <td className="px-4 py-2 font-mono text-xs font-semibold text-slate-700">{row.kode_tiket || "-"}</td>
                                  <td className="px-4 py-2 text-slate-700">-</td>
                                  <td className="px-4 py-2 text-slate-700">-</td>
-                                 <td className="px-4 py-2 text-right font-mono text-slate-400">-</td>
-                                 <td className="px-4 py-2 text-right font-mono text-slate-400">-</td>
-                                 <td className="px-4 py-2 text-slate-700">-</td>
+                                  <td className="px-4 py-2 text-right font-mono text-slate-400">-</td>
+                                  <td className="px-4 py-2 text-slate-700">-</td>
                                  <td className="px-4 py-2 text-center">
                                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700">
                                      <AlertTriangle size={12} />
@@ -1268,6 +1316,7 @@ export default function ReconciliationInventoryPage() {
                           setSelectedProjectId(e.target.value);
                           setSelectedBoqId("");
                           setSelectedKodeTiket("");
+                          setManualRows([]);
                         }}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
                       >
@@ -1281,19 +1330,20 @@ export default function ReconciliationInventoryPage() {
                     </div>
                     <div>
                       <label className="mb-1 block text-xs font-semibold text-slate-500">Kode Tiket</label>
-                      <BoqPicker
-                        value={selectedBoqId}
-                        onSelect={(picked: BoqPickerItem) => {
-                          setSelectedBoqId(picked.boq_id);
-                          setSelectedKodeTiket(picked.kode_tiket);
-                          if (picked.project_id) {
-                            setSelectedProjectId(String(picked.project_id));
-                          }
-                        }}
-                        placeholder="Pilih Kode Tiket"
-                        disabled={!selectedProjectId}
-                        projectId={selectedProjectId || undefined}
-                      />
+                       <BoqPicker
+                         value={selectedBoqId}
+                         onSelect={(picked: BoqPickerItem) => {
+                           setSelectedBoqId(picked.boq_id);
+                           setSelectedKodeTiket(picked.kode_tiket);
+                           if (picked.project_id) {
+                             setSelectedProjectId(String(picked.project_id));
+                           }
+                         }}
+                         placeholder="Pilih Kode Tiket"
+                         disabled={!selectedProjectId}
+                         projectId={selectedProjectId || undefined}
+                         displayField="kode_tiket"
+                       />
                     </div>
                   </div>
 
@@ -1325,18 +1375,18 @@ export default function ReconciliationInventoryPage() {
                             <div className="grid grid-cols-12 gap-2">
                               <div className="col-span-12 sm:col-span-4">
                                 <label className="mb-1 block text-[11px] font-medium text-slate-500">Nama Barang</label>
-                                 <BarangPicker
-                                   value={row.nama_barang}
-                                   onSelect={(item) => {
-                                     updateManualRow(row.id, "barang_id", item.id || "");
-                                     updateManualRow(row.id, "nama_barang", item.nama_barang || item.kode_perangkat || "");
-                                   }}
-                                   placeholder="Pilih atau ketik nama barang"
-                                   disabled={!selectedProjectId}
-                                   fetchEndpoint="/api/boqs/items"
-                                   queryParams={boqItemsQueryParams}
-                                   emptyMessage="Belum ada BOQ aktif untuk project ini — Anda tetap bisa mengetik nama barang manual"
-                                 />
+                                  <BarangPicker
+                                    value={row.nama_barang}
+                                    onSelect={(item) => {
+                                      updateManualRow(row.id, "barang_id", item.id || "");
+                                      updateManualRow(row.id, "nama_barang", item.nama_barang || item.kode_perangkat || "");
+                                    }}
+                                    placeholder="Pilih atau ketik nama barang"
+                                    disabled={!selectedProjectId}
+                                    fetchEndpoint="/api/boqs/items"
+                                    queryParams={manualBoqItemsQueryParams}
+                                    emptyMessage="Belum ada BOQ untuk project ini. Barang harus dipilih dari daftar BOQ."
+                                  />
                               </div>
                               <div className="col-span-6 sm:col-span-3">
                                 <label className="mb-1 block text-[11px] font-medium text-slate-500">Qty Terpasang (Used)</label>

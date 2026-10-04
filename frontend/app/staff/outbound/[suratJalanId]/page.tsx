@@ -21,6 +21,13 @@ const STATUS_META: Record<string, { label: string; tone: string }> = {
   ditolak: { label: "Ditolak", tone: "bg-rose-50 text-rose-600" },
 };
 
+function getStatusMeta(status: string, pickingSelesai?: boolean) {
+  if (status === "disetujui" && pickingSelesai) {
+    return { label: "Picking Selesai — Siap Distribusi", tone: "bg-blue-50 text-blue-600" };
+  }
+  return STATUS_META[status] || { label: status, tone: "bg-gray-100 text-gray-600" };
+}
+
 interface SuratJalanItem {
   item_id: number;
   barang_id: number;
@@ -241,18 +248,26 @@ export default function SuratJalanDetailPage() {
             <ArrowLeft size={16} />
             Kembali
           </button>
-          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_META[suratJalan.status]?.tone || "bg-gray-100 text-gray-600"}`}>
-            {STATUS_META[suratJalan.status]?.label || suratJalan.status}
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusMeta(suratJalan.status, suratJalan.picking_selesai).tone}`}>
+            {getStatusMeta(suratJalan.status, suratJalan.picking_selesai).label}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {suratJalan.status === "disetujui" && (
+          {suratJalan.status === "disetujui" && suratJalan.picking_selesai !== true && (
             <Link
               href={`/staff/outbound/${suratJalan.surat_jalan_id}/picking`}
               className="rounded-xl border border-[#F3D9C7] bg-white px-4 py-2.5 text-sm font-semibold text-[#E8632C] hover:bg-[#FDECE1]"
             >
               Picking
             </Link>
+          )}
+          {suratJalan.status === "disetujui" && suratJalan.picking_selesai === true && (
+            <button
+              disabled
+              className="cursor-not-allowed rounded-xl border border-[#F3D9C7] bg-white px-4 py-2.5 text-sm font-semibold text-gray-400 opacity-70"
+            >
+              Picking sudah selesai
+            </button>
           )}
           {(suratJalan.status === "disetujui" || suratJalan.status === "sedang_dikirim") && (
             <div>

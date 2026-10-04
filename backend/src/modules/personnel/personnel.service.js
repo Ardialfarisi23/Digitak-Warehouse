@@ -2,6 +2,7 @@ const personnelRepository = require("./personnel.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
 const notificationService = require("../../modules/notifications/notifications.service");
+const { createAuditLog } = require("../../utils/audit-log");
 
 
 const create = async (data, userId) => {
@@ -35,7 +36,26 @@ const create = async (data, userId) => {
     updated_by: Number(userId),
   };
 
-  const result = await personnelRepository.create(createData);
+  const result = await prisma.$transaction(async (tx) => {
+    const personil = await tx.personil.create({
+      data: createData,
+      include: { gudang: true },
+    });
+
+    await createAuditLog(
+      {
+        entityType: "personil",
+        entityId: personil.personil_id,
+        aksi: "create",
+        actorId: userId,
+        dataSebelum: null,
+        dataSesudah: personil,
+      },
+      tx
+    );
+
+    return personil;
+  });
 
   const actor = await prisma.user_account.findUnique({
     where: { user_id: BigInt(userId) },

@@ -5,6 +5,8 @@ const getReconciliationInventorySchema = z.object({
   projectId: z.string().optional(),
   warehouseId: z.string().optional(),
   status: z.enum(["all", "sesuai", "perhatian", "belum_ada_data"]).optional(),
+  groupBy: z.enum(["project", "cluster"]).optional(),
+  clusterId: z.string().optional(),
 });
 
 module.exports = {

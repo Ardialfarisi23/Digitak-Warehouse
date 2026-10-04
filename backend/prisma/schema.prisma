@@ -103,6 +103,7 @@ model personil {
   created_by              BigInt
   updated_by              BigInt
   gudang_pics             gudang[]         @relation("gudang_pic")
+  cluster_pic             cluster[]        @relation("ClusterPic")
   permintaan_boq_diajukan permintaan_boq[] @relation("permintaan_diajukan_oleh")
   permintaan_boq_ditinjai permintaan_boq[] @relation("permintaan_ditinjai_oleh")
   creator                 user_account     @relation("personil_created_by", fields: [created_by], references: [user_id])
@@ -378,7 +379,7 @@ model boq {
   reference_file               String?
   email_reference              String?
   created_at                   DateTime                     @default(now())
-  updated_at                   DateTime                     @default(now())
+  updated_at                   DateTime                     @default(now()) @updatedAt
   created_by                   BigInt
   updated_by                   BigInt
   creator                      user_account                 @relation("boq_created_by", fields: [created_by], references: [user_id])
