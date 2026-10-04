@@ -38,6 +38,10 @@ interface SuratJalanRecord {
     jenis_kendaraan: string;
     no_polisi: string;
   };
+  // Kolom teks bebas, sudah di-fallback-kan di backend
+  kendaraan_teks?: string | null;
+  no_polisi_teks?: string | null;
+  driver_teks?: string | null;
   creator?: {
     nama: string;
   };
@@ -262,9 +266,9 @@ export default function AdminDeliveryPage() {
         namaProject: selectedRecord.project?.nama_project || "-",
         asalGudang: selectedRecord.gudang_asal?.nama_gudang || "-",
         tujuanGudang: selectedRecord.gudang_tujuan?.nama_gudang || "-",
-        kendaraan: selectedRecord.kendaraan?.jenis_kendaraan || "-",
-        noPolisi: selectedRecord.kendaraan?.no_polisi || "-",
-        namaDriver: selectedRecord.personil_pengantar?.nama || "-",
+        kendaraan: selectedRecord.kendaraan_teks || selectedRecord.kendaraan?.jenis_kendaraan || "-",
+        noPolisi: selectedRecord.no_polisi_teks || selectedRecord.kendaraan?.no_polisi || "-",
+        namaDriver: selectedRecord.driver_teks || selectedRecord.personil_pengantar?.nama || "-",
         namaPicPemohon: (selectedRecord as any).pic_pemohon_nama || "-",
         tanggal: selectedRecord.tanggal
           ? new Date(selectedRecord.tanggal).toLocaleDateString("id-ID", {

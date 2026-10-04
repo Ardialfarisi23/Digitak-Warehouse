@@ -98,6 +98,18 @@ type ZoneRow = {
   dinilaiPada: string | null;
 };
 
+// Bentuk apa adanya dari /api/dashboard/warehouse-assessment sebelum dipetakan ke ZoneRow.
+type ZonaApiItem = Partial<Record<keyof ZoneRow, unknown>> & {
+  namaZona?: string | null;
+  kodeZona?: string | null;
+  statusKecukupan?: string | null;
+  kapasitasMaksimum?: number | null;
+  totalQty?: number | string | null;
+  sisa?: number | null;
+  dinilaiOleh?: string | null;
+  dinilaiPada?: string | null;
+};
+
 type NextTaskRow = {
   suratJalanId: number | string;
   nomorSuratJalan: string;
@@ -137,6 +149,10 @@ export default function StaffDashboardPage() {
   const [zonesLoading, setZonesLoading] = useState(true);
   const [zonesError, setZonesError] = useState<string | null>(null);
   const [staffGudangId, setStaffGudangId] = useState<string | null>(null);
+  // Satu staf boleh ditugaskan ke satu atau beberapa gudang. Semua kartu yang
+  // butuh scope gudang memakai daftar ini, bukan satu ID saja.
+  const [staffGudangIds, setStaffGudangIds] = useState<string[]>([]);
+  const [belumDitugaskan, setBelumDitugaskan] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const [showDeactivatedModal, setShowDeactivatedModal] = useState(false);
   const profilePollRef = useRef<number | null>(null);
@@ -168,11 +184,29 @@ export default function StaffDashboardPage() {
         }
         const json = await response.json();
         const data = json?.data ?? json;
-        const gudangId = data?.gudang_id ? String(data.gudang_id) : null;
-        setStaffGudangId(gudangId);
+
+        // Fallback berjenjang, supaya staf yang punya beberapa gudang tetap
+        // punya scope dan staf tanpa penugasan pun tidak membuat halaman kosong:
+        //   1. gudang_ids        -> daftar lengkap hasil union penugasan
+        //   2. gudang_utama_id   -> gudang bawaan dari backend
+        //   3. gudang_id         -> penugasan lama (personil.gudang_id)
+        const dariDaftar: string[] = Array.isArray(data?.gudang_ids)
+          ? data.gudang_ids.map((id: unknown) => String(id)).filter((id: string) => id !== "" && id !== "null")
+          : [];
+
+        const utama = data?.gudang_utama_id ? String(data.gudang_utama_id) : null;
+        const lama = data?.gudang_id ? String(data.gudang_id) : null;
+
+        const gabungan = [...new Set([...(utama ? [utama] : []), ...dariDaftar, ...(lama ? [lama] : [])])];
+
+        setStaffGudangIds(gabungan);
+        setStaffGudangId(gabungan[0] ?? null);
+        setBelumDitugaskan(gabungan.length === 0);
       } catch (err) {
         console.error("Gagal memuat profil staff:", err);
         setStaffGudangId(null);
+        setStaffGudangIds([]);
+        setBelumDitugaskan(false);
       } finally {
         setProfileLoading(false);
       }
@@ -218,7 +252,7 @@ export default function StaffDashboardPage() {
 
   useEffect(() => {
     async function loadZones() {
-      if (!staffGudangId) {
+      if (staffGudangIds.length === 0) {
         setZones([]);
         setZonesLoading(false);
         return;
@@ -228,17 +262,27 @@ export default function StaffDashboardPage() {
       setZonesError(null);
       try {
         const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-        const response = await get(
-          `${baseUrl}/api/dashboard/warehouse-assessment?gudangId=${staffGudangId}`
+        const responses = await Promise.all(
+          staffGudangIds.map((gudangId) =>
+            get(`${baseUrl}/api/dashboard/warehouse-assessment?gudangId=${gudangId}`)
+          )
         );
-        if (!response.ok) {
-          const err = await response.json().catch(() => null);
-          throw new Error(err?.message || "Gagal memuat status zona.");
+
+        const list: ZonaApiItem[] = [];
+        let pesanGagal: string | null = null;
+        for (const response of responses) {
+          if (!response.ok) {
+            const err = await response.json().catch(() => null);
+            pesanGagal = pesanGagal || err?.message || "Gagal memuat status zona.";
+            continue;
+          }
+          const json = await response.json();
+          const data = json?.data ?? json;
+          if (Array.isArray(data)) list.push(...data);
         }
-        const json = await response.json();
-        const data = json?.data ?? json;
-        const list = Array.isArray(data) ? data : [];
-        const mapped: ZoneRow[] = list.map((z: any) => ({
+        if (pesanGagal) throw new Error(pesanGagal);
+
+        const mapped: ZoneRow[] = list.map((z) => ({
           namaZona: z.namaZona || z.kodeZona || "-",
           kodeZona: z.kodeZona || "-",
           statusKecukupan: z.statusKecukupan || "CUKUP",
@@ -258,7 +302,7 @@ export default function StaffDashboardPage() {
     }
 
     loadZones();
-  }, [get, staffGudangId]);
+  }, [get, staffGudangIds]);
 
   useEffect(() => {
     async function loadActivities() {
@@ -291,7 +335,7 @@ export default function StaffDashboardPage() {
 
   useEffect(() => {
     async function loadNextTask() {
-      if (!staffGudangId) {
+      if (staffGudangIds.length === 0) {
         setNextTask(null);
         setNextTaskLoading(false);
         return;
@@ -302,53 +346,60 @@ export default function StaffDashboardPage() {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-        const [outboundRes, inboundRes] = await Promise.all([
-          get(
-            `${baseUrl}/api/surat-jalan/outbound/queue?gudangTujuanId=${staffGudangId}&status=disetujui`
-          ),
-          get(
-            `${baseUrl}/api/surat-jalan/inbound?gudangTujuanId=${staffGudangId}&status=ready_putaway`
-          ),
-        ]);
+        const perGudang = await Promise.all(
+          staffGudangIds.map(async (gudangId) => {
+            const [outboundRes, inboundRes] = await Promise.all([
+              get(
+                `${baseUrl}/api/surat-jalan/outbound/queue?gudangTujuanId=${gudangId}&status=disetujui`
+              ),
+              get(`${baseUrl}/api/surat-jalan/inbound?gudangTujuanId=${gudangId}&status=ready_putaway`),
+            ]);
 
-        const outboundCandidates: NextTaskRow[] = [];
-        const inboundCandidates: NextTaskRow[] = [];
+            const outbound: NextTaskRow[] = [];
+            const inbound: NextTaskRow[] = [];
 
-        if (outboundRes.ok) {
-          const outboundJson = await outboundRes.json();
-          const outboundData = outboundJson?.data ?? outboundJson ?? [];
-          const outboundList = Array.isArray(outboundData) ? outboundData : [];
-          for (const sj of outboundList) {
-            outboundCandidates.push({
-              suratJalanId: sj.surat_jalan_id,
-              nomorSuratJalan: sj.nomor_surat_jalan,
-              tipe: "outbound",
-              status: sj.status,
-              created_at: sj.created_at,
-              gudangAsal: sj.gudang_asal?.nama_gudang || null,
-              gudangTujuan: sj.gudang_tujuan?.nama_gudang || null,
-              project: sj.project?.nama_project || null,
-            });
-          }
-        }
+            if (outboundRes.ok) {
+              const outboundJson = await outboundRes.json();
+              const outboundData = outboundJson?.data ?? outboundJson ?? [];
+              const outboundList = Array.isArray(outboundData) ? outboundData : [];
+              for (const sj of outboundList) {
+                outbound.push({
+                  suratJalanId: sj.surat_jalan_id,
+                  nomorSuratJalan: sj.nomor_surat_jalan,
+                  tipe: "outbound",
+                  status: sj.status,
+                  created_at: sj.created_at,
+                  gudangAsal: sj.gudang_asal?.nama_gudang || null,
+                  gudangTujuan: sj.gudang_tujuan?.nama_gudang || null,
+                  project: sj.project?.nama_project || null,
+                });
+              }
+            }
 
-        if (inboundRes.ok) {
-          const inboundJson = await inboundRes.json();
-          const inboundData = inboundJson?.data ?? inboundJson ?? [];
-          const inboundList = Array.isArray(inboundData) ? inboundData : [];
-          for (const sj of inboundList) {
-            inboundCandidates.push({
-              suratJalanId: sj.surat_jalan_id,
-              nomorSuratJalan: sj.nomor_surat_jalan,
-              tipe: "inbound",
-              status: sj.status,
-              created_at: sj.created_at,
-              gudangAsal: sj.gudang_asal?.nama_gudang || null,
-              gudangTujuan: sj.gudang_tujuan?.nama_gudang || null,
-              project: sj.project?.nama_project || null,
-            });
-          }
-        }
+            if (inboundRes.ok) {
+              const inboundJson = await inboundRes.json();
+              const inboundData = inboundJson?.data ?? inboundJson ?? [];
+              const inboundList = Array.isArray(inboundData) ? inboundData : [];
+              for (const sj of inboundList) {
+                inbound.push({
+                  suratJalanId: sj.surat_jalan_id,
+                  nomorSuratJalan: sj.nomor_surat_jalan,
+                  tipe: "inbound",
+                  status: sj.status,
+                  created_at: sj.created_at,
+                  gudangAsal: sj.gudang_asal?.nama_gudang || null,
+                  gudangTujuan: sj.gudang_tujuan?.nama_gudang || null,
+                  project: sj.project?.nama_project || null,
+                });
+              }
+            }
+
+            return { outbound, inbound };
+          })
+        );
+
+        const outboundCandidates = perGudang.flatMap((r) => r.outbound);
+        const inboundCandidates = perGudang.flatMap((r) => r.inbound);
 
         const allCandidates = [...outboundCandidates, ...inboundCandidates];
         if (allCandidates.length === 0) {
@@ -372,11 +423,11 @@ export default function StaffDashboardPage() {
     }
 
     loadNextTask();
-  }, [get, staffGudangId]);
+  }, [get, staffGudangIds]);
 
   useEffect(() => {
     async function loadPendingCounts() {
-      if (!staffGudangId) {
+      if (staffGudangIds.length === 0) {
         setInboundPendingCount(0);
         setOutboundPendingCount(0);
         setPendingCountsLoading(false);
@@ -387,31 +438,38 @@ export default function StaffDashboardPage() {
       setPendingCountsError(null);
       try {
         const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-        const [inboundRes, outboundRes] = await Promise.all([
-          get(
-            `${baseUrl}/api/surat-jalan/inbound?gudangTujuanId=${staffGudangId}&status=ready_putaway`
-          ),
-          get(
-            `${baseUrl}/api/surat-jalan/outbound/queue?gudangTujuanId=${staffGudangId}&status=disetujui`
-          ),
-        ]);
+        const hasilPerGudang = await Promise.all(
+          staffGudangIds.map(async (gudangId) => {
+            const [inboundRes, outboundRes] = await Promise.all([
+              get(
+                `${baseUrl}/api/surat-jalan/inbound?gudangTujuanId=${gudangId}&status=ready_putaway`
+              ),
+              get(
+                `${baseUrl}/api/surat-jalan/outbound/queue?gudangTujuanId=${gudangId}&status=disetujui`
+              ),
+            ]);
 
-        let inboundCount = 0;
-        let outboundCount = 0;
+            let inbound = 0;
+            let outbound = 0;
 
-        if (inboundRes.ok) {
-          const inboundJson = await inboundRes.json();
-          const inboundData = inboundJson?.data ?? inboundJson ?? [];
-          const inboundList = Array.isArray(inboundData) ? inboundData : [];
-          inboundCount = inboundList.length;
-        }
+            if (inboundRes.ok) {
+              const inboundJson = await inboundRes.json();
+              const inboundData = inboundJson?.data ?? inboundJson ?? [];
+              inbound = Array.isArray(inboundData) ? inboundData.length : 0;
+            }
 
-        if (outboundRes.ok) {
-          const outboundJson = await outboundRes.json();
-          const outboundData = outboundJson?.data ?? outboundJson ?? [];
-          const outboundList = Array.isArray(outboundData) ? outboundData : [];
-          outboundCount = outboundList.length;
-        }
+            if (outboundRes.ok) {
+              const outboundJson = await outboundRes.json();
+              const outboundData = outboundJson?.data ?? outboundJson ?? [];
+              outbound = Array.isArray(outboundData) ? outboundData.length : 0;
+            }
+
+            return { inbound, outbound };
+          })
+        );
+
+        const inboundCount = hasilPerGudang.reduce((total, r) => total + r.inbound, 0);
+        const outboundCount = hasilPerGudang.reduce((total, r) => total + r.outbound, 0);
 
         setInboundPendingCount(inboundCount);
         setOutboundPendingCount(outboundCount);
@@ -423,7 +481,7 @@ export default function StaffDashboardPage() {
     }
 
     loadPendingCounts();
-  }, [get, staffGudangId]);
+  }, [get, staffGudangIds]);
 
   useEffect(() => {
     async function loadMySubmissions() {
@@ -586,9 +644,11 @@ export default function StaffDashboardPage() {
             <span className="rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600">
               {profileLoading
                 ? "Memuat..."
-                : staffGudangId
-                  ? `Gudang #${staffGudangId}`
-                  : "Belum ditugaskan"}
+                : staffGudangIds.length > 1
+                  ? `${staffGudangIds.length} gudang`
+                  : staffGudangId
+                    ? `Gudang #${staffGudangId}`
+                    : "Belum ditugaskan"}
             </span>
           </div>
 
@@ -596,9 +656,21 @@ export default function StaffDashboardPage() {
             <div className="flex h-32 items-center justify-center">
               <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#E8632C]" />
             </div>
-          ) : !staffGudangId ? (
+          ) : staffGudangIds.length === 0 ? (
             <div className="py-6 text-center text-sm text-gray-500">
-              Anda belum ditugaskan ke gudang manapun. Hubungi Admin.
+              {belumDitugaskan ? (
+                <>
+                  <p className="font-medium text-gray-700">
+                    Anda belum ditugaskan ke gudang mana pun.
+                  </p>
+                  <p className="mt-1 text-xs text-gray-400">
+                    Hubungi admin atau supervisor untuk penugasan gudang. Pengajuan dan riwayat
+                    Anda tetap dapat diakses di halaman ini.
+                  </p>
+                </>
+              ) : (
+                "Belum ada data zona untuk gudang Anda."
+              )}
             </div>
           ) : zonesLoading ? (
             <div className="flex h-32 items-center justify-center">
@@ -713,9 +785,11 @@ export default function StaffDashboardPage() {
               </div>
             ) : nextTaskError ? (
               <p className="py-6 text-center text-sm text-red-400">{nextTaskError}</p>
-            ) : !staffGudangId ? (
+            ) : staffGudangIds.length === 0 ? (
               <p className="py-6 text-center text-sm text-gray-400">
-                Anda belum ditugaskan ke gudang manapun. Hubungi Admin.
+                {belumDitugaskan
+                  ? "Anda belum ditugaskan ke gudang mana pun. Hubungi admin atau supervisor."
+                  : "Gudang Anda belum memiliki zona aktif."}
               </p>
             ) : !nextTask ? (
               <p className="py-6 text-center text-sm text-gray-400">

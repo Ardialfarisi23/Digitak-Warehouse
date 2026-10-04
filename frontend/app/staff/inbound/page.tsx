@@ -31,19 +31,6 @@ interface InboundItem {
   qty: number;
 }
 
-interface VehicleOption {
-  kendaraan_id: string | number;
-  jenis_kendaraan: string;
-  merk: string;
-  no_polisi: string;
-}
-
-interface PersonnelOption {
-  personil_id: string | number;
-  nama: string;
-  posisi?: string;
-}
-
 interface InboundSuratJalan {
   surat_jalan_id: number;
   nomor_surat_jalan: string;
@@ -82,6 +69,16 @@ interface SupplierOption {
   kode: string;
 }
 
+interface UnitOption {
+  satuan_id: string | number;
+  kode_satuan?: string;
+}
+
+interface CategoryOption {
+  kategori_id: string | number;
+  nama_kategori?: string;
+}
+
 interface ModalItemRow {
   id: string;
   barang_id: string;
@@ -90,8 +87,10 @@ interface ModalItemRow {
   qty: number;
   satuan_id: string;
   satuan_label: string;
+  kategori_id: string;
   catatan: string;
   is_di_luar_boq: boolean;
+  is_non_master: boolean;
   catatanAutoFilled: boolean;
 }
 
@@ -160,9 +159,9 @@ export default function InboundListPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [barangOptions, setBarangOptions] = useState<BarangOption[]>([]);
+  const [unitOptions, setUnitOptions] = useState<UnitOption[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
   const [warehouseOptions, setWarehouseOptions] = useState<WarehouseOption[]>([]);
-  const [vehicleOptions, setVehicleOptions] = useState<VehicleOption[]>([]);
-  const [personnelOptions, setPersonnelOptions] = useState<PersonnelOption[]>([]);
   const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
 
@@ -172,8 +171,9 @@ export default function InboundListPage() {
   const [nomorSuratJalan, setNomorSuratJalan] = useState("");
   const [selectedGudangTujuanId, setSelectedGudangTujuanId] = useState("");
   const [tanggalMasuk, setTanggalMasuk] = useState("");
-  const [selectedKendaraanId, setSelectedKendaraanId] = useState("");
-  const [selectedDriverId, setSelectedDriverId] = useState("");
+  const [kendaraanNamaTeks, setKendaraanNamaTeks] = useState("");
+  const [kendaraanNoPolisTeks, setKendaraanNoPolisTeks] = useState("");
+  const [driverNamaTeks, setDriverNamaTeks] = useState("");
   const [selectedAsalTipe, setSelectedAsalTipe] = useState<"internal" | "external" | "">("");
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
   const [selectedGudangAsalId, setSelectedGudangAsalId] = useState("");
@@ -241,33 +241,33 @@ export default function InboundListPage() {
     setLoadingOptions(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const [itemRes, warehouseRes, vehicleRes, personnelRes, supplierRes] = await Promise.all([
+const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise.all([
         get(`${baseUrl}/api/items?limit=200`),
         get(`${baseUrl}/api/warehouses`),
-        get(`${baseUrl}/api/vehicles`),
-        get(`${baseUrl}/api/personnels`),
         get(`${baseUrl}/api/suppliers`),
+        get(`${baseUrl}/api/units`),
+        get(`${baseUrl}/api/categories`),
       ]);
       if (!itemRes.ok) throw new Error("Gagal mengambil daftar barang.");
       if (!warehouseRes.ok) throw new Error("Gagal mengambil daftar gudang.");
-      if (!vehicleRes.ok) throw new Error("Gagal mengambil daftar kendaraan.");
-      if (!personnelRes.ok) throw new Error("Gagal mengambil daftar personil.");
       if (!supplierRes.ok) throw new Error("Gagal mengambil daftar supplier.");
+      if (!unitRes.ok) throw new Error("Gagal mengambil daftar satuan.");
+      if (!categoryRes.ok) throw new Error("Gagal mengambil daftar kategori.");
 
-      const [itemJson, warehouseJson, vehicleJson, personnelJson, supplierJson] = await Promise.all([
+      const [itemJson, warehouseJson, supplierJson, unitJson, categoryJson] = await Promise.all([
         itemRes.json(),
         warehouseRes.json(),
-        vehicleRes.json(),
-        personnelRes.json(),
         supplierRes.json(),
+        unitRes.json(),
+        categoryRes.json(),
       ]);
 
       const unwrap = (json: any) => Array.isArray(json?.data) ? json.data : json?.data?.data || [];
       setBarangOptions(unwrap(itemJson));
       setWarehouseOptions(unwrap(warehouseJson));
-      setVehicleOptions(unwrap(vehicleJson));
-      setPersonnelOptions(unwrap(personnelJson));
       setSupplierOptions(unwrap(supplierJson));
+      setUnitOptions(unwrap(unitJson));
+      setCategoryOptions(unwrap(categoryJson));
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Gagal memuat data master.");
     } finally {
@@ -281,8 +281,9 @@ export default function InboundListPage() {
     setNomorSuratJalan("");
     setSelectedGudangTujuanId("");
     setTanggalMasuk("");
-    setSelectedKendaraanId("");
-    setSelectedDriverId("");
+    setKendaraanNamaTeks("");
+    setKendaraanNoPolisTeks("");
+    setDriverNamaTeks("");
     setSelectedAsalTipe("");
     setSelectedSupplierId("");
     setSelectedGudangAsalId("");
@@ -383,8 +384,10 @@ export default function InboundListPage() {
         qty: 1,
         satuan_id: "",
         satuan_label: "",
+        kategori_id: "",
         catatan: "",
         is_di_luar_boq: true,
+        is_non_master: false,
         catatanAutoFilled: false,
       },
     ]);
@@ -392,6 +395,55 @@ export default function InboundListPage() {
 
   const removeModalItem = (id: string) => {
     setModalItems((prev) => prev.filter((row) => row.id !== id));
+  };
+
+  const toggleModalItemNonMaster = (id: string) => {
+    setModalItems((prev) =>
+      prev.map((row) => {
+        if (row.id !== id) return row;
+        const nextNonMaster = !row.is_non_master;
+        if (nextNonMaster) {
+          return {
+            ...row,
+            is_non_master: true,
+            barang_id: "",
+            kode_perangkat: "",
+            nama_barang: "",
+            satuan_id: "",
+            satuan_label: "",
+            kategori_id: "",
+            is_di_luar_boq: true,
+            catatan: row.catatanAutoFilled ? "" : row.catatan,
+            catatanAutoFilled: false,
+          };
+        }
+        return {
+          ...row,
+          is_non_master: false,
+          nama_barang: "",
+          kategori_id: "",
+        };
+      })
+    );
+  };
+
+  const setModalItemNama = (id: string, value: string) => {
+    setModalItems((prev) => prev.map((row) => (row.id === id ? { ...row, nama_barang: value } : row)));
+  };
+
+  const setModalItemKategori = (id: string, value: string) => {
+    setModalItems((prev) => prev.map((row) => (row.id === id ? { ...row, kategori_id: value } : row)));
+  };
+
+  const setModalItemSatuan = (id: string, value: string) => {
+    const selected = unitOptions.find((u) => String(u.satuan_id) === String(value));
+    setModalItems((prev) =>
+      prev.map((row) =>
+        row.id === id
+          ? { ...row, satuan_id: value, satuan_label: selected?.kode_satuan || "" }
+          : row
+      )
+    );
   };
 
   const pickModalItem = (id: string, picked: BarangPickerItem) => {
@@ -494,6 +546,18 @@ export default function InboundListPage() {
 
   const selectedGudangTujuan = warehouseOptions.find((w) => String(w.gudang_id) === selectedGudangTujuanId);
 
+  const kendaraanValid = kendaraanNamaTeks.trim().length > 0;
+  const noPolisiValid = kendaraanNoPolisTeks.trim().length > 0;
+  const driverValid = driverNamaTeks.trim().length > 0;
+
+  const isRowValid = (row: ModalItemRow) => {
+    if (row.qty <= 0 || !row.satuan_id) return false;
+    if (row.is_non_master) {
+      return row.nama_barang.trim().length > 0 && !!row.kategori_id;
+    }
+    return !!row.barang_id;
+  };
+
   const canSubmitModal =
     nomorSuratJalan.trim().length > 0 &&
     selectedGudangTujuanId &&
@@ -504,11 +568,14 @@ export default function InboundListPage() {
     (selectedAsalTipe === "internal"
       ? selectedGudangAsalId
       : selectedSupplierId || pengirimEksternalNama.trim()) &&
+    kendaraanValid &&
+    noPolisiValid &&
+    driverValid &&
     modalItems.length > 0 &&
-    modalItems.every((row) => row.barang_id && row.qty > 0 && row.satuan_id);
+    modalItems.every(isRowValid);
 
   const validModalItems = useMemo(
-    () => modalItems.filter((row) => row.barang_id && row.qty > 0 && row.satuan_id),
+    () => modalItems.filter(isRowValid),
     [modalItems],
   );
 
@@ -528,6 +595,19 @@ export default function InboundListPage() {
       return;
     }
 
+    // Pesan eksplisit supaya staff tahu apa yang kurang, bukan hanya tombol yang
+    // tiba-tiba tidak bisa diklik.
+    const kurangKendaraan = [
+      !kendaraanValid && "nama kendaraan",
+      !noPolisiValid && "nomor polisi",
+      !driverValid && "nama driver",
+    ].filter(Boolean);
+
+    if (kurangKendaraan.length > 0) {
+      setFormError(`Lengkapi dulu: ${kurangKendaraan.join(", ")}.`);
+      return;
+    }
+
     if (!canSubmitModal) return;
     setFormError(null);
     setSubmitting(true);
@@ -544,20 +624,24 @@ export default function InboundListPage() {
         supplier_id: selectedAsalTipe === "external" && !isVendorManual ? selectedSupplierId || null : null,
         gudang_asal_id: selectedAsalTipe === "internal" ? selectedGudangAsalId || null : null,
         pengirim_eksternal_nama: selectedAsalTipe === "external" && isVendorManual ? pengirimEksternalNama.trim() || null : null,
-        kendaraan_id: selectedKendaraanId || null,
-        personil_pengantar_id: selectedDriverId || null,
+        kendaraan_nama_teks: kendaraanNamaTeks.trim() || null,
+        kendaraan_no_polisi_teks: kendaraanNoPolisTeks.trim() || null,
+        driver_nama_teks: driverNamaTeks.trim() || null,
 pic_pemohon_nama: picPemohon.trim() || null,
         boq_id: selectedBoqId ? String(selectedBoqId) : null,
         notes: null,
         kategori_approval: "manual_override",
         surat_jalan_url: suratJalanPdfUrl || null,
         items: modalItems.map((row) => ({
-          barang_id: row.barang_id,
+          barang_id: row.is_non_master ? "" : row.barang_id,
+          is_non_master: row.is_non_master,
+          nama_barang_teks: row.is_non_master ? row.nama_barang.trim() : null,
+          kategori_id: row.is_non_master ? row.kategori_id : null,
           qty: row.qty,
           satuan_id: row.satuan_id,
           kondisi: "baik",
           is_kelebihan: false,
-          is_di_luar_boq: row.is_di_luar_boq,
+          is_di_luar_boq: row.is_non_master ? true : row.is_di_luar_boq,
           catatan: row.catatan?.trim() || null,
         })),
       };
@@ -906,40 +990,58 @@ pic_pemohon_nama: picPemohon.trim() || null,
             />
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Kendaraan</label>
-            <div className="relative">
-              <select
-                value={selectedKendaraanId}
-                onChange={(e) => setSelectedKendaraanId(e.target.value)}
-                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
-              >
-                <option value="">Pilih Kendaraan...</option>
-                {vehicleOptions.map((v) => (
-                  <option key={v.kendaraan_id} value={String(v.kendaraan_id)}>
-                    {v.no_polisi} - {v.merk} {v.jenis_kendaraan}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            </div>
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-gray-600">
+              Kendaraan <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={kendaraanNamaTeks}
+              onChange={(e) => setKendaraanNamaTeks(e.target.value)}
+              placeholder="Contoh: Truk Box Mitsubishi Canter"
+              className={`w-full rounded-lg border px-3 py-2.5 text-sm text-gray-800 focus:outline-none ${
+                kendaraanValid ? "border-gray-200 focus:border-[#E8632C]" : "border-red-300 focus:border-red-400"
+              }`}
+            />
+            {!kendaraanValid && (
+              <p className="mt-1 text-xs text-red-600">Nama kendaraan wajib diisi.</p>
+            )}
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Driver</label>
-            <div className="relative">
-              <select
-                value={selectedDriverId}
-                onChange={(e) => setSelectedDriverId(e.target.value)}
-                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
-              >
-                <option value="">Pilih Driver...</option>
-                {personnelOptions.map((p) => (
-                  <option key={p.personil_id} value={String(p.personil_id)}>{p.nama}</option>
-                ))}
-              </select>
-              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            </div>
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-gray-600">
+              No. Polisi <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={kendaraanNoPolisTeks}
+              onChange={(e) => setKendaraanNoPolisTeks(e.target.value)}
+              placeholder="Contoh: B 9123 CD"
+              className={`w-full rounded-lg border px-3 py-2.5 text-sm text-gray-800 focus:outline-none ${
+                noPolisiValid ? "border-gray-200 focus:border-[#E8632C]" : "border-red-300 focus:border-red-400"
+              }`}
+            />
+            {!noPolisiValid && (
+              <p className="mt-1 text-xs text-red-600">Nomor polisi wajib diisi.</p>
+            )}
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-gray-600">
+              Nama Driver <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={driverNamaTeks}
+              onChange={(e) => setDriverNamaTeks(e.target.value)}
+              placeholder="Contoh: Budi Santoso"
+              className={`w-full rounded-lg border px-3 py-2.5 text-sm text-gray-800 focus:outline-none ${
+                driverValid ? "border-gray-200 focus:border-[#E8632C]" : "border-red-300 focus:border-red-400"
+              }`}
+            />
+            {!driverValid && (
+              <p className="mt-1 text-xs text-red-600">Nama driver wajib diisi.</p>
+            )}
           </div>
 
           <div className="sm:col-span-2">
@@ -987,21 +1089,62 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 key={row.id}
                 className="grid grid-cols-12 gap-2 rounded-xl border border-slate-100 p-3"
               >
-                <div className="col-span-4">
-                  <BarangPicker
-                    value={row.kode_perangkat}
-                    onSelect={(picked) => pickModalItem(row.id, picked)}
-                    placeholder="Kode perangkat"
-                  />
+                <div className="col-span-12 mb-1 flex items-center justify-between">
+                  <label className="flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-slate-500 hover:text-orange-600">
+                    <input
+                      type="checkbox"
+                      checked={row.is_non_master}
+                      onChange={() => toggleModalItemNonMaster(row.id)}
+                      className="h-3.5 w-3.5 accent-orange-500"
+                    />
+                    Barang non-master (di luar master data)
+                  </label>
+                  {row.is_non_master && (
+                    <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-600">
+                      Non-master
+                    </span>
+                  )}
                 </div>
                 <div className="col-span-4">
-                  <input
-                    type="text"
-                    value={row.nama_barang}
-                    readOnly
-                    placeholder="Nama barang"
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-700 outline-none"
-                  />
+                  {row.is_non_master ? (
+                    <input
+                      type="text"
+                      value={row.nama_barang}
+                      onChange={(e) => setModalItemNama(row.id, e.target.value)}
+                      placeholder="Nama barang (input manual)"
+                      className="w-full rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
+                    />
+                  ) : (
+                    <BarangPicker
+                      value={row.kode_perangkat}
+                      onSelect={(picked) => pickModalItem(row.id, picked)}
+                      placeholder="Kode perangkat"
+                    />
+                  )}
+                </div>
+                <div className="col-span-4">
+                  {row.is_non_master ? (
+                    <select
+                      value={row.satuan_id}
+                      onChange={(e) => setModalItemSatuan(row.id, e.target.value)}
+                      className="w-full rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
+                    >
+                      <option value="">Pilih satuan...</option>
+                      {unitOptions.map((u) => (
+                        <option key={u.satuan_id} value={String(u.satuan_id)}>
+                          {u.kode_satuan}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={row.nama_barang}
+                      readOnly
+                      placeholder="Nama barang"
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-700 outline-none"
+                    />
+                  )}
                 </div>
                 <div className="col-span-3">
                   <div className="flex items-center gap-1">
@@ -1038,6 +1181,25 @@ pic_pemohon_nama: picPemohon.trim() || null,
                   </button>
                 </div>
                 <div className="col-span-12">
+                  {row.is_non_master && (
+                    <div className="mb-2">
+                      <label className="mb-1 block text-[11px] font-medium text-slate-500">
+                        Kategori barang <span className="text-rose-500">*</span>
+                      </label>
+                      <select
+                        value={row.kategori_id}
+                        onChange={(e) => setModalItemKategori(row.id, e.target.value)}
+                        className="w-full rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400 sm:w-64"
+                      >
+                        <option value="">Pilih kategori...</option>
+                        {categoryOptions.map((c) => (
+                          <option key={c.kategori_id} value={String(c.kategori_id)}>
+                            {c.nama_kategori}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <input
                     type="text"
                     value={row.catatan}
@@ -1045,7 +1207,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
                     placeholder="Catatan (opsional)"
                     className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
                   />
-                  {row.is_di_luar_boq && (
+                  {row.is_di_luar_boq && !row.is_non_master && (
                     <span className="mt-1 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
                       Di luar BOQ
                     </span>

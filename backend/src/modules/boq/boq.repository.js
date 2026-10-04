@@ -393,6 +393,11 @@ const findItemsByProject = async (projectId, clusterId, statuses = ["aktif"]) =>
           satuan: true,
         },
       },
+      tiket: {
+        select: {
+          project_id: true,
+        },
+      },
     },
   });
 
@@ -421,7 +426,66 @@ const findItemsByProject = async (projectId, clusterId, statuses = ["aktif"]) =>
     }
   }
 
-  return Array.from(itemMap.values());
+  // Additional = qty inbound yang marked "kelebihan" (di luar alokasi BOQ Plan).
+  // MOS = qty yang sudah pernah dikirim (outbound final, bukan transfer antar gudang).
+  // Keduanya dipakai sebagai informasi di form Outbound. Catatan: qty_rencana di
+  // atas sudah NETO karena reduceBoqAllocation() memotongnya saat outbound disetujui.
+  const additionalByBarang = new Map();
+  const mosByBarang = new Map();
+
+  const projectIds = [
+    ...new Set(boqs.map((boq) => boq.tiket?.project_id).filter((id) => id != null)),
+  ];
+
+  if (projectIds.length > 0) {
+    const FINAL_SHIPMENT_STATUSES = ["disetujui", "diterima_didistribusikan"];
+
+    const shipmentItems = await prisma.surat_jalan_item.findMany({
+      where: {
+        barang_id: { in: [...itemMap.keys()] },
+        surat_jalan: {
+          project_id: { in: projectIds },
+          status: { in: FINAL_SHIPMENT_STATUSES },
+        },
+      },
+      select: {
+        barang_id: true,
+        qty: true,
+        is_kelebihan: true,
+        surat_jalan: {
+          select: {
+            tipe: true,
+            tujuan_tipe: true,
+          },
+        },
+      },
+    });
+
+    for (const item of shipmentItems) {
+      const key = String(item.barang_id);
+      const qty = Number(item.qty || 0);
+
+      if (item.surat_jalan?.tipe === "inbound") {
+        if (item.is_kelebihan) {
+          additionalByBarang.set(key, (additionalByBarang.get(key) || 0) + qty);
+        }
+        continue;
+      }
+
+      if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
+        mosByBarang.set(key, (mosByBarang.get(key) || 0) + qty);
+      }
+    }
+  }
+
+  return Array.from(itemMap.values()).map((row) => {
+    const key = String(row.barang_id);
+    return {
+      ...row,
+      additional: Number(additionalByBarang.get(key) || 0),
+      mos: Number(mosByBarang.get(key) || 0),
+    };
+  });
 };
 
 const getExportMatrixData = async () => {

@@ -7,6 +7,8 @@ import { useApi } from "@/lib/api";
 import { CheckCircle2, ArrowLeft, Printer, Eye, X, FileText } from "lucide-react";
 import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
+import { KondisiUnitSummary } from "@/components/common/KondisiUnitSummary";
+import { hasKondisiUnit } from "@/lib/kondisi-barang";
 import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
 import dynamic from "next/dynamic";
 
@@ -378,7 +380,11 @@ export default function SupervisorApprovalInboundDetailPage() {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-xs text-slate-500">Kondisi</p>
-                  <p className="font-medium text-slate-900"><KondisiBadge value={selectedDocItem?.kondisi} /></p>
+                  {hasKondisiUnit(selectedDocItem?.units) ? (
+                    <KondisiUnitSummary units={selectedDocItem?.units} />
+                  ) : (
+                    <p className="font-medium text-slate-900"><KondisiBadge value={selectedDocItem?.kondisi} /></p>
+                  )}
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">QTY</p>

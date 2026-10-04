@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, AlertCircle, MapPin, Truck, CheckCircle2, X, Clock, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useApi } from "@/lib/api";
+import { useApi, ensureOk } from "@/lib/api";
 
 type ApiSuratJalanItem = {
   item_id: number;
@@ -126,7 +126,7 @@ export default function DistributionDetailPage() {
           setData(null);
           return;
         }
-        if (!res.ok) throw new Error("Gagal mengambil detail Surat Jalan.");
+        await ensureOk(res, "Gagal mengambil detail Surat Jalan.");
 
         const json = await res.json();
         const record: ApiSuratJalan | undefined = json?.data;

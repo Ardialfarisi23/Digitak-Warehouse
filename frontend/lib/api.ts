@@ -123,3 +123,34 @@ export function useApi() {
 
   return { request, get, post, put, patch, del };
 }
+
+/**
+ * Ubah response gagal menjadi Error yang pesannya diambil dari body server.
+ *
+ * Dipakai halaman yang sebelumnya membuang pesan asli server dan menampilkan
+ * string generik, sehingga penyebab sebenarnya (mis. 403 "Anda belum ditugaskan
+ * ke gudang mana pun") ikut hilang dan sulit ditelusuri.
+ *
+ * Halaman baru memanggil `ensureOk(res, "pesan cadangan")` alih-alih
+ * `if (!res.ok) throw new Error("pesan cadangan")`. Kalau response-nya sukses,
+ * fungsi ini mengembalikan response sehingga bisa langsung dipakai berikutnya.
+ */
+export async function ensureOk(
+  response: Response,
+  pesanCadangan: string
+): Promise<Response> {
+  if (response.ok) return response;
+
+  let pesanServer: string | null = null;
+
+  try {
+    const data = await response.clone().json();
+    if (typeof data?.message === "string" && data.message.trim() !== "") {
+      pesanServer = data.message;
+    }
+  } catch {
+    pesanServer = null;
+  }
+
+  throw new Error(pesanServer ?? pesanCadangan);
+}

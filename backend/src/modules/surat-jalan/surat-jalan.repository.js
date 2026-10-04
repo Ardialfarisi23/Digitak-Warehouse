@@ -7,6 +7,11 @@ const baseInclude = {
     include: {
       // baseInclude TIDAK diubah — tetap dipakai inbound/verifikasi
       fotos: true,
+      units: {
+        orderBy: {
+          nomor_unit: "asc",
+        },
+      },
       zona: {
         select: {
           zona_id: true,
@@ -225,6 +230,42 @@ const buildListMeta = (total, { page, limit }) => ({
   totalPages: Math.ceil(total / limit),
 });
 
+// Fallback tampilan kendaraan & driver.
+//
+// Aturan: kolom free text (isi manual, mis. vendor eksternal) adalah sumber utama.
+// Kalau kosong, turunkan dari relasi master data supaya record lama / outbound yang
+// masih pakai dropdown tidak kehilangan informasi di PDF maupun halaman detail.
+//
+// Menghasilkan field turunan (bukan menimpa `kendaraan` / `personil_pengantar`) supaya
+// konsumen lama yang membaca `record.kendaraan.no_polisi` tetap bekerja apa adanya.
+function withKendaraanDriverFallback(record) {
+  if (!record) return record;
+
+  const namaKendaraan = (record.kendaraan_nama_teks || "").trim();
+  const noPolisi = (record.kendaraan_no_polisi_teks || "").trim();
+  const namaDriver = (record.driver_nama_teks || "").trim();
+
+  const kendaraan = record.kendaraan;
+  const personil = record.personil_pengantar;
+
+  return {
+    ...record,
+    kendaraan_teks: namaKendaraan || null,
+    no_polisi_teks: noPolisi || null,
+    driver_teks: namaDriver || null,
+    // Label siap pakai supaya frontend tidak perlu logika fallback berulang.
+    kendaraan_label:
+      [namaKendaraan || [kendaraan?.merk, kendaraan?.jenis_kendaraan].filter(Boolean).join(" - "), noPolisi || kendaraan?.no_polisi]
+        .filter(Boolean)
+        .join(" — ") || null,
+    driver_label: namaDriver || personil?.nama || null,
+  };
+}
+
+function withKendaraanDriverFallbackList(records) {
+  return Array.isArray(records) ? records.map(withKendaraanDriverFallback) : records;
+}
+
 const create = async (data, actorId, tx = prisma) => {
   const count = await tx.surat_jalan.count();
   const year = new Date().getFullYear();
@@ -242,6 +283,9 @@ const create = async (data, actorId, tx = prisma) => {
       gudang_tujuan_id: data.gudang_tujuan_id ? Number(data.gudang_tujuan_id) : null,
       kendaraan_id: data.kendaraan_id ? Number(data.kendaraan_id) : null,
       personil_pengantar_id: data.personil_pengantar_id ? Number(data.personil_pengantar_id) : null,
+      kendaraan_nama_teks: data.kendaraan_nama_teks || null,
+      kendaraan_no_polisi_teks: data.kendaraan_no_polisi_teks || null,
+      driver_nama_teks: data.driver_nama_teks || null,
       status: status,
       kategori_approval: data.kategori_approval || null,
       pic_pemohon_nama: data.pic_pemohon_nama || null,
@@ -275,6 +319,44 @@ const create = async (data, actorId, tx = prisma) => {
   });
 
   return suratJalan;
+};
+
+/**
+ * Membuat record barang di master data untuk item inbound "non-master"
+ * (barang di luar master data yang diinput staf lewat form).
+ * kode_perangkat digenerate otomatis & dijamin unik.
+ */
+const createAdhocBarang = async ({ nama_barang, kategori_id, satuan_id, actorId, tx = prisma }) => {
+  const baseName = String(nama_barang || "").trim().slice(0, 150) || "Barang Tanpa Nama";
+  const kategoriId = Number(kategori_id);
+  const satuanId = Number(satuan_id);
+  const actor = BigInt(actorId);
+
+  const attempts = 5;
+  for (let i = 0; i < attempts; i += 1) {
+    const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
+    const kode = `DI-LUAR-BOQ-${suffix}`;
+
+    try {
+      return await tx.barang.create({
+        data: {
+          kode_perangkat: kode,
+          nama_barang: baseName,
+          kategori_id: kategoriId,
+          satuan_default_id: satuanId,
+          wajib_sn: false,
+          created_by: actor,
+          updated_by: actor,
+        },
+      });
+    } catch (err) {
+      // Retry hanya kalau bentrok kode unik.
+      if (err?.code === "P2002" && i < attempts - 1) continue;
+      throw err;
+    }
+  }
+
+  throw new AppError("Gagal membuat barang non-master. Silakan coba lagi.", 500);
 };
 
 const findOutboundQueue = async (filters = {}) => {
@@ -328,10 +410,12 @@ const findOutboundQueue = async (filters = {}) => {
 
   const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
 
-  return data.map((item) => ({
-    ...item,
-    approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
-  }));
+  return withKendaraanDriverFallbackList(
+    data.map((item) => ({
+      ...item,
+      approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+    }))
+  );
 };
 
 const findInboundList = async (filters = {}) => {
@@ -389,10 +473,12 @@ const findInboundList = async (filters = {}) => {
 
   const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
 
-  return data.map((item) => ({
-    ...item,
-    approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
-  }));
+  return withKendaraanDriverFallbackList(
+    data.map((item) => ({
+      ...item,
+      approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+    }))
+  );
 };
 
 const findVerificationQueue = async ({ status, tipe, kategori_approval, search, startDate, endDate, page = 1, limit = 10 } = {}) => {
@@ -423,7 +509,10 @@ const findVerificationQueue = async ({ status, tipe, kategori_approval, search, 
     }),
   ]);
 
-  return { data, meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }) };
+  return {
+    data: withKendaraanDriverFallbackList(data),
+    meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }),
+  };
 };
 
 const findOutboundForApproval = async (params = {}) => {
@@ -450,10 +539,12 @@ const findOutboundForApproval = async (params = {}) => {
   const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
 
   return {
-    data: data.map((item) => ({
-      ...item,
-      approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
-    })),
+    data: withKendaraanDriverFallbackList(
+      data.map((item) => ({
+        ...item,
+        approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+      }))
+    ),
     meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }),
   };
 };
@@ -482,172 +573,36 @@ const findOutboundForDelivery = async (params = {}) => {
   const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
 
   return {
-    data: data.map((item) => ({
-      ...item,
-      approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
-    })),
+    data: withKendaraanDriverFallbackList(
+      data.map((item) => ({
+        ...item,
+        approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+      }))
+    ),
     meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }),
   };
 };
 
 const findById = async (id) => {
-  const [suratJalan, keberangkatanLog, timelineLogs] = await Promise.all([
-    prisma.surat_jalan.findUnique({
-      where: {
-        surat_jalan_id: Number(id),
-      },
-      include: findByIdInclude,
-    }),
-    prisma.audit_log.findFirst({
-      where: {
-        entity_type: "surat_jalan",
-        entity_id: Number(id),
-        aksi: "start_delivery",
-      },
-      orderBy: {
-        created_at: "desc",
-      },
-      include: {
-        actor: {
-          select: {
-            user_id: true,
-            nama: true,
-          },
-        },
-      },
-    }),
-    prisma.audit_log.findMany({
-      where: {
-        entity_type: "surat_jalan",
-        entity_id: Number(id),
-        aksi: {
-          in: [
-            "create_inbound",
-            "create_outbound",
-            "approve_inbound",
-            "approve_outbound",
-            "reject_inbound",
-            "reject_outbound",
-            "retrieve",
-            "start_delivery",
-            "confirm_distributed",
-          ],
-        },
-      },
-      orderBy: {
-        created_at: "asc",
-      },
-      include: {
-        actor: {
-          select: {
-            user_id: true,
-            nama: true,
-          },
-        },
-      },
-    }),
-  ]);
+  const record = await prisma.surat_jalan.findUnique({
+    where: {
+      surat_jalan_id: Number(id),
+    },
+    include: findByIdInclude,
+  });
 
-  if (!suratJalan) {
-    return null;
-  }
-
-  const LINIMASA_LABEL = {
-    create_inbound: "Diajukan",
-    create_outbound: "Diajukan",
-    approve_inbound: "Disetujui",
-    approve_outbound: "Disetujui",
-    reject_inbound: "Ditolak",
-    reject_outbound: "Ditolak",
-    retrieve: "Picking selesai",
-    start_delivery: "Dikirim",
-    confirm_distributed: "Diterima",
-  };
-
-  const zonaIds = new Set();
-  for (const item of suratJalan.items) {
-    for (const pick of item.picks || []) {
-      if (pick.zona_id != null) {
-        zonaIds.add(Number(pick.zona_id));
-      }
-    }
-  }
-
-  const zonaMap = new Map();
-  if (zonaIds.size > 0) {
-    try {
-      const zonas = await prisma.zona_gudang.findMany({
-        where: {
-          zona_id: { in: Array.from(zonaIds) },
-        },
-        select: {
-          zona_id: true,
-          nama_zona: true,
-        },
-      });
-      for (const z of zonas) {
-        zonaMap.set(Number(z.zona_id), z.nama_zona || null);
-      }
-    } catch (err) {
-      console.error("Gagal memuat nama zona:", err);
-    }
-  }
-
-  const itemsWithZona = suratJalan.items.map((item) => ({
-    ...item,
-    picks: (item.picks || []).map((pick) => ({
-      pick_id: Number(pick.pick_id),
-      surat_jalan_item_id: Number(pick.surat_jalan_item_id),
-      gudang_id: Number(pick.gudang_id),
-      zona_id: pick.zona_id != null ? Number(pick.zona_id) : null,
-      zona_nama: pick.zona_id != null ? zonaMap.get(Number(pick.zona_id)) || null : null,
-      qty: pick.qty ? Number(pick.qty) : 0,
-      kondisi_diminta: pick.kondisi_diminta,
-      kondisi_diambil: pick.kondisi_diambil,
-      is_override: pick.is_override,
-      catatan_override: pick.catatan_override,
-      picked_by: pick.picked_by != null ? Number(pick.picked_by) : null,
-      picked_at: pick.picked_at,
-    })),
-  }));
-
-  const keberangkatan = keberangkatanLog
-    ? {
-        waktu: keberangkatanLog.created_at,
-        oleh_id: Number(keberangkatanLog.actor_id),
-        oleh_nama: keberangkatanLog.actor?.nama || null,
-      }
-    : null;
-
-  const linimasa = (() => {
-    try {
-      return timelineLogs.map((log) => ({
-        kode: log.aksi,
-        label: LINIMASA_LABEL[log.aksi] || log.aksi,
-        waktu: log.created_at,
-        oleh_nama: log.actor?.nama || null,
-      }));
-    } catch (err) {
-      console.error("Gagal memetakan linimasa:", err);
-      return [];
-    }
-  })();
-
-  return {
-    ...suratJalan,
-    items: itemsWithZona,
-    keberangkatan,
-    linimasa,
-  };
+  return withKendaraanDriverFallback(record);
 };
 
 const findOutboundDetail = async (id) => {
-  return await prisma.surat_jalan.findUnique({
+  const record = await prisma.surat_jalan.findUnique({
     where: {
       surat_jalan_id: Number(id),
     },
     include: outboundInclude,
   });
+
+  return withKendaraanDriverFallback(record);
 };
 
 const updateStatus = async (id, status, options = {}, tx = prisma) => {
@@ -1342,6 +1297,7 @@ module.exports = {
   addInboundStock,
   createApprovalLog,
   reduceBoqAllocation,
+  createAdhocBarang,
   updateDeliveryStatus,
   addItemFoto,
   updateItemVerification,

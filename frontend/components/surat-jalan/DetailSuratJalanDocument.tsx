@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
-import { getKondisiLabel } from "@/lib/kondisi-barang";
+import { getKondisiLabel, getKondisiUnitRows, formatRingkasanKondisiUnits, type KondisiUnit } from "@/lib/kondisi-barang";
 
 export interface DetailSuratJalanItem {
   item_id?: number | string;
@@ -15,6 +15,8 @@ export interface DetailSuratJalanItem {
   qty?: number | string;
   satuan?: { kode_satuan?: string };
   kondisi?: string;
+  // Penilaian kondisi per unit dari proses inbound (relasi `units`).
+  units?: KondisiUnit[] | null;
   serial_number?: string;
   catatan?: string;
   is_di_luar_boq?: boolean;
@@ -31,6 +33,10 @@ export interface DetailSuratJalanData {
   gudang_tujuan?: { nama_gudang?: string };
   personil_pengantar?: { nama?: string };
   kendaraan?: { jenis_kendaraan?: string; merk?: string; no_polisi?: string } | null;
+  // Kolom teks bebas (inbound), sudah di-fallback-kan di backend
+  kendaraan_teks?: string | null;
+  no_polisi_teks?: string | null;
+  driver_teks?: string | null;
   creator?: { nama?: string };
   boq_id?: number | string | null;
   boq?: {
@@ -119,15 +125,24 @@ export function DetailSuratJalanDocument({
   const namaGudangAsal = tampilkan(data.gudang_asal?.nama_gudang);
   const namaGudangTujuan = tampilkan(data.gudang_tujuan?.nama_gudang);
   const namaProject = tampilkan(data.project?.nama_project);
+  // Kolom teks bebas (inbound) diprioritaskan; relasi master data jadi cadangan.
+  // Outbound tidak pernah mengisi kolom teks, jadi perilakunya tidak berubah.
+  const namaKendaraanTeks = tampilkan(data.kendaraan_teks);
+  const noPolisiTeks = tampilkan(data.no_polisi_teks);
+  const driverTeks = tampilkan(data.driver_teks);
   const jenisKendaraan = tampilkan(data.kendaraan?.jenis_kendaraan);
   const merkKendaraan = tampilkan(data.kendaraan?.merk);
-  const noPolisi = tampilkan(data.kendaraan?.no_polisi);
-  const namaDriver = tampilkan(data.personil_pengantar?.nama);
-  const namaMaterialHandler = tampilkan(data.creator?.nama);
+  const noPolisi = noPolisiTeks !== "-" ? noPolisiTeks : tampilkan(data.kendaraan?.no_polisi);
+  const namaDriver = driverTeks !== "-" ? driverTeks : tampilkan(data.personil_pengantar?.nama);
 
-  const kendaraanLabel = merkKendaraan && merkKendaraan !== "-"
-    ? `${merkKendaraan} - ${jenisKendaraan}`
-    : jenisKendaraan;
+  const kendaraanLabel =
+    namaKendaraanTeks !== "-"
+      ? namaKendaraanTeks
+      : merkKendaraan && merkKendaraan !== "-"
+        ? `${merkKendaraan} - ${jenisKendaraan}`
+        : jenisKendaraan;
+
+  const namaMaterialHandler = tampilkan(data.creator?.nama);
 
   const tujuanLabel =
     data.tujuan_tipe === "lapangan"
@@ -292,14 +307,42 @@ export function DetailSuratJalanDocument({
                     <td className="border p-1 text-center">{tampilkan(item.satuan?.kode_satuan ?? item.barang?.satuan_default?.kode_satuan)}</td>
                      <td className="border p-1 text-center">
                        <div>
-                         {item.kondisi != null && <div>{getKondisiLabel(item.kondisi)}</div>}
-                         {item.catatan && <div className="text-xs text-slate-500 italic">{item.catatan}</div>}
+                         {(() => {
+                           const barisUnit = getKondisiUnitRows(item.units);
+                           if (barisUnit.length > 0) {
+                             return (
+                               <div className="space-y-0.5">
+                                 <div className="font-medium">
+                                   {formatRingkasanKondisiUnits(item.units)}
+                                 </div>
+                                 {barisUnit.map((row) => (
+                                   <div
+                                     key={row.nomor}
+                                     className="text-[10px] leading-tight text-slate-500"
+                                   >
+Unit {row.nomor}: {getKondisiLabel(row.kondisi)}
+                                    {row.catatan ? ` (${row.catatan})` : ""}
+                                  </div>
+                                ))}
+                                {item.catatan && (
+                                  <div className="text-xs text-slate-500 italic">{item.catatan}</div>
+                                )}
+                              </div>
+                             );
+                           }
+                           return (
+                             <>
+                               {item.kondisi != null && <div>{getKondisiLabel(item.kondisi)}</div>}
+                               {item.catatan && <div className="text-xs text-slate-500 italic">{item.catatan}</div>}
+                               {item.kondisi == null && !item.catatan && !item.is_di_luar_boq && tampilkan(null)}
+                             </>
+                           );
+                         })()}
                          {item.is_di_luar_boq && (
                            <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
                              Di luar BOQ
                            </span>
                          )}
-                         {item.kondisi == null && !item.catatan && !item.is_di_luar_boq && tampilkan(null)}
                        </div>
                        {stockStatusByItemId && (() => {
                          const stokStatus = stockStatusByItemId[Number(item.item_id)];

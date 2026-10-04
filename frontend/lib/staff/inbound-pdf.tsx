@@ -7,7 +7,9 @@ export type InboundItem = {
   namaBarang: string;
   qtyDiminta: number;
   qtyDiterima: number;
-  kondisi: KondisiPerangkat | "";
+  // Satu label kondisi untuk qty 1, atau ringkasan "Baik 6, Rusak Berat 2"
+  // kalau kondisi dinilai per unit.
+  kondisi: KondisiPerangkat | (string & {});
   serialNumbers: string[];
   kelebihan?: {
     qty: number;
