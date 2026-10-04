@@ -4,6 +4,13 @@ const prisma = require("../../config/prisma");
 const { PrismaClientKnownRequestError } = require("@prisma/client");
 const notificationService = require("../notifications/notifications.service");
 const capacityService = require("../capacity/capacity.service");
+const {
+  resolveGudangIds,
+  assertGudangDiizinkan,
+  assertAdaGudangDiizinkan,
+  assertZonaMilikGudang,
+  PESAN_GUDANG_DIARANG,
+} = require("../../middlewares/gudang-scope.middleware");
 
 const KONDISI_LABEL = {
   baik: "Baik",
@@ -88,6 +95,74 @@ const getAllAdminIds = async (excludeUserId = null) => {
 const collectShipmentGudangIds = (shipment) => {
   const ids = [shipment.gudang_asal_id, shipment.gudang_tujuan_id].filter(Boolean);
   return [...new Set(ids)];
+};
+
+/**
+ * Scope gudang efektif untuk satu permintaan.
+ *
+ * Kalau route sudah memasang `attachGudangScope`, scope-nya dipakai apa adanya.
+ * Kalau tidak (mis. pemanggilan internal dari service lain), daftar gudang staf
+ * dibaca ulang dari database supaya pemeriksaannya tetap konsisten dan tetap
+ * mengikuti aturan satu staf boleh punya satu atau banyak gudang.
+ *
+ * admin_general dan supervisor selalu `dibatasi: false`, jadi seluruh guard di
+ * bawah meloloskan mereka tanpa perubahan perilaku.
+ */
+const scopeEfektif = async (actor, scope) => {
+  if (scope && typeof scope === "object" && typeof scope.dibatasi === "boolean") {
+    return scope;
+  }
+
+  if (!actor || actor.role !== "staf_gudang") {
+    return { dibatasi: false, sudahDitugaskan: true, gudangIds: [], gudangUtamaId: null };
+  }
+
+  const gudangIds = await resolveGudangIds(actor.id);
+
+  // Sama seperti attachGudangScope: staf tanpa penugasan tidak diblokir, supaya
+  // perilakunya tetap sama seperti sebelum fitur ini ada sampai admin mengisi data.
+  if (gudangIds.length === 0) {
+    return { dibatasi: false, sudahDitugaskan: false, gudangIds: [], gudangUtamaId: null };
+  }
+
+  return { dibatasi: true, sudahDitugaskan: true, gudangIds, gudangUtamaId: gudangIds[0] };
+};
+
+/**
+ * Scope wajib untuk endpoint tulis (putaway, retrieve, receive, delivery, foto).
+ *
+ * Kalau route lupa memasang `attachGudangScope`, kita gagal tertutup dengan 403
+ * supaya tidak ada jalur yang diam-diam lolos tanpa pemeriksaan gudang.
+ * Route yang sudah memasang middleware selalu mengirim scope dengan bentuk di sini.
+ */
+const scopeWajib = (scope) => {
+  if (!scope || typeof scope !== "object" || typeof scope.dibatasi !== "boolean") {
+    throw new AppError(PESAN_GUDANG_DIARANG, 403);
+  }
+  return scope;
+};
+
+/**
+ * Penjaga gudang untuk satu surat jalan.
+ *
+ * Aturan lama dipertahankan apa adanya: staf yang membuat surat jalan itu sendiri
+ * tetap boleh membukanya (`created_by`), apa pun gudang yang terkait. Selain itu,
+ * staf hanya boleh menyentuh surat jalan yang gudang asal ATAU gudang tujuannya
+ * termasuk dalam daftar penugasannya.
+ */
+const jagaGudangSuratJalan = async (actor, scope, shipment) => {
+  const finalScope = await scopeEfektif(actor, scope);
+
+  if (!finalScope.dibatasi) return finalScope;
+
+  const actorId = Number(actor?.id);
+  if (Number.isInteger(actorId) && actorId > 0 && Number(shipment?.created_by) === actorId) {
+    return finalScope;
+  }
+
+  assertAdaGudangDiizinkan(finalScope, [shipment?.gudang_asal_id, shipment?.gudang_tujuan_id]);
+
+  return finalScope;
 };
 
 const normalizeSerial = (value) => {
@@ -401,7 +476,9 @@ const createStaffInbound = async (data, actorId) => {
   return result;
 };
 
-const receiveInbound = async (id, items, actorId) => {
+const receiveInbound = async (id, items, actorId, scope) => {
+  const scopeFinal = scopeWajib(scope);
+
   const shipment = await suratJalanRepository.findById(id);
 
   if (!shipment) {
@@ -411,6 +488,10 @@ const receiveInbound = async (id, items, actorId) => {
   if (shipment.tipe !== "inbound") {
     throw new AppError("Surat Jalan ini bukan inbound.", 400);
   }
+
+  // Staf hanya boleh mencatat penerimaan inbound untuk gudang tujuan yang
+  // ditugaskan kepadanya. admin_general dan supervisor tidak dibatasi.
+  assertGudangDiizinkan(scopeFinal, shipment.gudang_tujuan_id);
 
   if (shipment.status === "disetujui" || shipment.status === "diterima_didistribusikan") {
     throw new AppError("Inbound ini sudah diproses.", 400);
@@ -615,7 +696,7 @@ const findOutboundForDelivery = async (params = {}) => {
   return await suratJalanRepository.findOutboundForDelivery(params);
 };
 
-const findOutboundDetail = async (id, actor) => {
+const findOutboundDetail = async (id, actor, scope) => {
   const record = await suratJalanRepository.findOutboundDetail(id);
 
   if (!record) {
@@ -632,21 +713,9 @@ const findOutboundDetail = async (id, actor) => {
   }
 
   if (actor.role === "staf_gudang") {
-    const personil = await prisma.personil.findUnique({
-      where: { user_id: BigInt(actor.id) },
-      select: { gudang_id: true },
-    });
-
-    const gudangId = personil?.gudang_id ? Number(personil.gudang_id) : null;
-    const actorId = Number(actor.id);
-
-    const isCreator = Number(record.created_by) === actorId;
-    const isAsal = record.gudang_asal_id !== null && Number(record.gudang_asal_id) === gudangId;
-    const isTujuan = record.gudang_tujuan_id !== null && Number(record.gudang_tujuan_id) === gudangId;
-
-    if (!isCreator && !isAsal && !isTujuan) {
-      throw new AppError("Anda tidak memiliki akses ke surat jalan ini.", 403);
-    }
+    // admin_general dan supervisor tidak dibatasi, jadi penjaga gudang di bawah
+    // hanya berlaku untuk staf_gudang.
+    await jagaGudangSuratJalan(actor, scope, record);
 
     const approvalVerification = await suratJalanRepository.getApprovalVerification(id);
     return { ...record, approval_verification: approvalVerification };
@@ -655,7 +724,7 @@ const findOutboundDetail = async (id, actor) => {
   throw new AppError("Anda tidak memiliki akses ke surat jalan ini.", 403);
 };
 
-const findById = async (id, actor) => {
+const findById = async (id, actor, scope) => {
   const record = await suratJalanRepository.findById(id);
 
   if (!record) {
@@ -686,21 +755,9 @@ const findById = async (id, actor) => {
   }
 
   if (actor.role === "staf_gudang") {
-    const personil = await prisma.personil.findUnique({
-      where: { user_id: BigInt(actor.id) },
-      select: { gudang_id: true },
-    });
-
-    const gudangId = personil?.gudang_id ? Number(personil.gudang_id) : null;
-    const actorId = Number(actor.id);
-
-    const isCreator = Number(record.created_by) === actorId;
-    const isAsal = record.gudang_asal_id !== null && Number(record.gudang_asal_id) === gudangId;
-    const isTujuan = record.gudang_tujuan_id !== null && Number(record.gudang_tujuan_id) === gudangId;
-
-    if (!isCreator && !isAsal && !isTujuan) {
-      throw new AppError("Anda tidak memiliki akses ke surat jalan ini.", 403);
-    }
+    // Sama seperti findOutboundDetail: admin_general dan supervisor tidak
+    // dibatasi, jadi penjaga gudang di bawah hanya berlaku untuk staf_gudang.
+    await jagaGudangSuratJalan(actor, scope, record);
 
     const approvalVerification = await suratJalanRepository.getApprovalVerification(id);
     return { ...record, approval_verification: approvalVerification };
@@ -1162,7 +1219,9 @@ const rejectInbound = async (id, catatan = null, actorId) => {
     return suratJalanRepository.findById(id);
   };
 
-  const putaway = async (suratJalanId, items = [], actorId) => {
+  const putaway = async (suratJalanId, items = [], actorId, scope) => {
+    const scopeFinal = scopeWajib(scope);
+
     const shipment = await suratJalanRepository.findById(suratJalanId);
 
     if (!shipment) {
@@ -1185,6 +1244,20 @@ if (!Array.isArray(items) || items.length === 0) {
     }
 
     const gudangTujuanId = Number(shipment.gudang_tujuan_id);
+
+    // Staf hanya boleh melakukan putaway untuk gudang tujuan yang ditugaskan
+    // kepadanya. admin_general dan supervisor tidak dibatasi.
+    assertGudangDiizinkan(scopeFinal, shipment.gudang_tujuan_id);
+
+    // `zona_id` berasal dari body client, jadi tiap zona harus dipastikan benar
+    // milik gudang tujuan surat jalan ini. Tanpa ini staf bisa menaruh stok di
+    // zona gudang lain hanya dengan mengarang angka zona.
+    if (scopeFinal.dibatasi) {
+      for (const item of items) {
+        if (item.zona_id === null || item.zona_id === undefined) continue;
+        await assertZonaMilikGudang(item.zona_id, gudangTujuanId);
+      }
+    }
 
     await prisma.$transaction(async (tx) => {
       for (const item of items) {
@@ -1338,7 +1411,9 @@ if (!Array.isArray(items) || items.length === 0) {
     return await suratJalanRepository.findById(suratJalanId);
   };
 
-  const retrieve = async (suratJalanId, items = [], actorId) => {
+  const retrieve = async (suratJalanId, items = [], actorId, scope) => {
+    const scopeFinal = scopeWajib(scope);
+
     const shipment = await suratJalanRepository.findById(suratJalanId);
 
     if (!shipment) {
@@ -1356,6 +1431,19 @@ if (!Array.isArray(items) || items.length === 0) {
     const gudangAsalId = Number(shipment.gudang_asal_id);
     if (!shipment.gudang_asal_id || Number.isNaN(gudangAsalId) || gudangAsalId <= 0) {
       throw new AppError("Gudang asal tidak valid pada surat jalan ini. Silakan hubungi admin.", 400);
+    }
+
+    // Staf hanya boleh melakukan picking dari gudang asal yang ditugaskan
+    // kepadanya. admin_general dan supervisor tidak dibatasi.
+    assertGudangDiizinkan(scopeFinal, shipment.gudang_asal_id);
+
+    // `zona_id` berasal dari body client, jadi tiap zona harus dipastikan benar
+    // milik gudang asal surat jalan ini.
+    if (scopeFinal.dibatasi) {
+      for (const item of items) {
+        if (item.zona_id === null || item.zona_id === undefined) continue;
+        await assertZonaMilikGudang(item.zona_id, gudangAsalId);
+      }
     }
 
     await prisma.$transaction(async (tx) => {
@@ -1599,7 +1687,9 @@ if (!Array.isArray(items) || items.length === 0) {
     return await suratJalanRepository.findById(suratJalanId);
   };
 
-  const updateDeliveryStatus = async (id, body, actorId) => {
+  const updateDeliveryStatus = async (id, body, actorId, scope) => {
+    const scopeFinal = scopeWajib(scope);
+
     const shipment = await suratJalanRepository.findById(id);
 
     if (!shipment) {
@@ -1609,6 +1699,11 @@ if (!Array.isArray(items) || items.length === 0) {
     if (shipment.tipe !== "outbound") {
       throw new AppError("Hanya surat jalan outbound yang dapat diubah status distribusinya.", 400);
     }
+
+    // Staf boleh mengubah status distribusi bila gudang asal ATAU gudang tujuannya
+    // termasuk dalam daftar penugasannya. admin_general dan supervisor tidak
+    // dibatasi.
+    assertAdaGudangDiizinkan(scopeFinal, [shipment.gudang_asal_id, shipment.gudang_tujuan_id]);
 
     const allowedOrigins = ["disetujui", "sedang_dikirim"];
     if (!allowedOrigins.includes(shipment.status)) {
@@ -1787,12 +1882,18 @@ if (!Array.isArray(items) || items.length === 0) {
     return await suratJalanRepository.findById(id);
   };
 
-  const addItemFoto = async (suratJalanId, itemId, body, actorId) => {
+  const addItemFoto = async (suratJalanId, itemId, body, actorId, scope) => {
+    const scopeFinal = scopeWajib(scope);
+
     const suratJalan = await suratJalanRepository.findById(suratJalanId);
 
     if (!suratJalan) {
       throw new AppError("Surat Jalan tidak ditemukan.", 404);
     }
+
+    // Staf hanya boleh menambah foto pada surat jalan yang gudang asal atau gudang
+    // tujuannya ditugaskan kepadanya. admin_general dan supervisor tidak dibatasi.
+    assertAdaGudangDiizinkan(scopeFinal, [suratJalan.gudang_asal_id, suratJalan.gudang_tujuan_id]);
 
     const item = suratJalan.items.find((i) => Number(i.item_id) === Number(itemId));
 
@@ -1821,12 +1922,18 @@ if (!Array.isArray(items) || items.length === 0) {
     return foto;
   };
 
-  const deleteItemFoto = async (suratJalanId, itemId, fotoId) => {
+  const deleteItemFoto = async (suratJalanId, itemId, fotoId, actorId, scope) => {
+    const scopeFinal = scopeWajib(scope);
+
     const suratJalan = await suratJalanRepository.findById(suratJalanId);
 
     if (!suratJalan) {
       throw new AppError("Surat Jalan tidak ditemukan.", 404);
     }
+
+    // Sama seperti addItemFoto: hanya staf yang gudang asal atau tujuan surat
+    // jalan ini termasuk penugasannya boleh menghapus foto.
+    assertAdaGudangDiizinkan(scopeFinal, [suratJalan.gudang_asal_id, suratJalan.gudang_tujuan_id]);
 
     const item = suratJalan.items.find((i) => Number(i.item_id) === Number(itemId));
 

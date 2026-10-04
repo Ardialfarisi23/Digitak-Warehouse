@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, PackagePlus, Loader2, AlertCircle, MapPin, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useApi } from "@/lib/api";
+import { useApi, ensureOk } from "@/lib/api";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
 
 type ApiSuratJalanItem = {
@@ -330,8 +330,8 @@ export default function PickingDetailPage() {
           setData(null);
           return;
         }
-        if (!sjRes.ok) throw new Error("Gagal mengambil detail Surat Jalan.");
-        if (!zonaRes.ok) throw new Error("Gagal mengambil daftar Zona.");
+        await ensureOk(sjRes, "Gagal mengambil detail Surat Jalan.");
+        await ensureOk(zonaRes, "Gagal mengambil daftar Zona.");
 
         const sjJson = await sjRes.json();
         const zonaJson = await zonaRes.json();

@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { PackagePlus, AlertTriangle, ArrowLeft, FileDown, Loader2, AlertCircle, ExternalLink, Upload, X, ChevronRight, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { useApi } from "@/lib/api";
+import { useApi, ensureOk } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { summarizeKondisiUnits } from "@/lib/kondisi-barang";
 import type { InboundSuratJalan as InboundPdfShape } from "@/lib/staff/inbound-pdf";
@@ -262,7 +262,7 @@ export default function InboundDetailPage() {
           setData(null);
           return;
         }
-        if (!res.ok) throw new Error("Gagal mengambil detail Surat Jalan Inbound.");
+        await ensureOk(res, "Gagal mengambil detail Surat Jalan Inbound.");
 
         const json = await res.json();
         const record: ApiSuratJalan | undefined = json?.data;

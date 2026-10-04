@@ -8,6 +8,18 @@ const KONDISI_LABEL = {
   rusak_berat: "Rusak Berat",
 };
 
+// Scope gudang untuk pemanggilan service di file test ini.
+//
+// Endpoint suratjalan yang dibatasi gudang (retrieve, putaway, receive-inbound,
+// delivery-status, foto) menerima scope dari middleware `attachGudangScope`.
+// Test di bawah memverifikasi logika lama yang tidak berubah, jadi scope-nya
+// sengaja dibuat TANPA pembatasan — sama seperti yang diterima admin_general dan
+// supervisor. Perilaku staf_gudang diuji terpisah di test middleware gudang-scope.
+const SCOPE_BEBAS = { dibatasi: false, gudangIds: [], gudangUtamaId: null };
+
+/** Membungkus service supaya scope gudang otomatis disuntikkan ke argumen terakhir. */
+const denganScopeBebas = (fn) => (...args) => fn(...args, SCOPE_BEBAS);
+
 function mockModule(modulePath, factory) {
   delete require.cache[require.resolve(modulePath)];
   require.cache[require.resolve(modulePath)] = {
@@ -82,7 +94,7 @@ describe("retrieve", () => {
     mockModule("../capacity/capacity.service", () => capacityMock);
 
     const service = require("./surat-jalan.service");
-    retrieve = service.retrieve;
+    retrieve = denganScopeBebas(service.retrieve);
   }
 
   function teardown() {
@@ -424,7 +436,7 @@ describe("updateDeliveryStatus", () => {
     mockModule("../capacity/capacity.service", () => ({ recalculateZonaStatus: async () => {} }));
 
     const service = require("./surat-jalan.service");
-    updateDeliveryStatus = service.updateDeliveryStatus;
+    updateDeliveryStatus = denganScopeBebas(service.updateDeliveryStatus);
     confirmDistributed = service.confirmDistributed;
   }
 

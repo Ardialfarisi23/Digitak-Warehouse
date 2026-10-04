@@ -18,6 +18,7 @@ const {
 const validate = require("../../middlewares/validation.middleware");
 const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
+const { attachGudangScope } = require("../../middlewares/gudang-scope.middleware");
 
 router.post("/", authenticate, authorize("ADMIN", "STAFF"), validate(createSuratJalanSchema), suratJalanController.create);
 router.post(
@@ -29,6 +30,7 @@ router.post(
 router.post(
   "/:id/receive-inbound",
   authenticate,
+  attachGudangScope,
   validate(receiveInboundSchema),
   suratJalanController.receiveInbound
 );
@@ -36,13 +38,23 @@ router.get("/outbound/queue", authenticate, suratJalanController.findOutboundQue
 router.get("/outbound/approval", authenticate, authorize("SUPERVISOR"), suratJalanController.findOutboundForApproval);
 router.get("/outbound/delivery", authenticate, authorize("SUPERVISOR"), suratJalanController.findOutboundForDelivery);
 router.get("/outbound/riwayat-approval", authenticate, authorize("SUPERVISOR"), suratJalanController.findOutboundApprovalHistory);
-router.get("/outbound/:id", authenticate, suratJalanController.findOutboundDetail);
+router.get(
+  "/outbound/:id",
+  authenticate,
+  attachGudangScope,
+  suratJalanController.findOutboundDetail
+);
 
 router.get("/inbound", authenticate, suratJalanController.findInboundList);
 router.get("/verification/queue", authenticate, suratJalanController.findVerificationQueue);
 router.get("/staff/history", authenticate, suratJalanController.findStaffHistory);
 router.get("/rejected", authenticate, authorize("SUPERVISOR"), suratJalanController.findRejectedList);
-router.get("/:id", authenticate, suratJalanController.findById);
+router.get(
+  "/:id",
+  authenticate,
+  attachGudangScope,
+  suratJalanController.findById
+);
 
 router.put(
   "/:id/approve-inbound",
@@ -78,6 +90,7 @@ router.put(
   "/:id/delivery-status",
   authenticate,
   authorize("STAFF", "SUPERVISOR"),
+  attachGudangScope,
   validate(deliveryStatusSchema),
   suratJalanController.updateDeliveryStatus
 );
@@ -110,6 +123,7 @@ router.post(
   "/:id/putaway",
   authenticate,
   authorize("STAFF", "SUPERVISOR"),
+  attachGudangScope,
   validate(putawaySchema),
   suratJalanController.putaway
 );
@@ -118,6 +132,7 @@ router.post(
   "/:id/retrieve",
   authenticate,
   authorize("STAFF", "SUPERVISOR"),
+  attachGudangScope,
   validate(retrieveSchema),
   suratJalanController.retrieve
 );
@@ -126,6 +141,7 @@ router.post(
   "/:id/items/:itemId/fotos",
   authenticate,
   authorize("STAFF", "SUPERVISOR"),
+  attachGudangScope,
   validate(itemFotoSchema),
   suratJalanController.addItemFoto
 );
@@ -134,6 +150,7 @@ router.delete(
   "/:id/items/:itemId/fotos/:fotoId",
   authenticate,
   authorize("STAFF", "SUPERVISOR"),
+  attachGudangScope,
   suratJalanController.deleteItemFoto
 );
 

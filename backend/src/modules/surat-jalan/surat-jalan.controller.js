@@ -21,7 +21,7 @@ const createStaffInbound = async (req, res, next) => {
 
 const receiveInbound = async (req, res, next) => {
   try {
-    const result = await suratJalanService.receiveInbound(req.params.id, req.body.items, req.user.id);
+    const result = await suratJalanService.receiveInbound(req.params.id, req.body.items, req.user.id, req.gudangScope);
     return response.success(res, "Penerimaan inbound berhasil disimpan.", result);
   } catch (err) {
     next(err);
@@ -102,7 +102,7 @@ const findRejectedList = async (req, res, next) => {
 
 const findById = async (req, res, next) => {
   try {
-    const result = await suratJalanService.findById(req.params.id, req.user);
+    const result = await suratJalanService.findById(req.params.id, req.user, req.gudangScope);
     return response.success(res, "Detail Surat Jalan berhasil diambil.", result);
   } catch (err) {
     next(err);
@@ -111,7 +111,7 @@ const findById = async (req, res, next) => {
 
 const findOutboundDetail = async (req, res, next) => {
   try {
-    const result = await suratJalanService.findOutboundDetail(req.params.id, req.user);
+    const result = await suratJalanService.findOutboundDetail(req.params.id, req.user, req.gudangScope);
     return response.success(res, "Detail Surat Jalan Outbound berhasil diambil.", result);
   } catch (err) {
     next(err);
@@ -186,7 +186,7 @@ const putaway = async (req, res, next) => {
       qty_ditempatkan: item.qty_ditempatkan || item.qty,
     }));
 
-    const result = await suratJalanService.putaway(req.params.id, normalizedItems, req.user.id);
+    const result = await suratJalanService.putaway(req.params.id, normalizedItems, req.user.id, req.gudangScope);
     return response.success(res, "Putaway berhasil diproses.", result);
   } catch (err) {
     next(err);
@@ -195,7 +195,7 @@ const putaway = async (req, res, next) => {
 
 const retrieve = async (req, res, next) => {
   try {
-    const result = await suratJalanService.retrieve(req.params.id, req.body.items, req.user.id);
+    const result = await suratJalanService.retrieve(req.params.id, req.body.items, req.user.id, req.gudangScope);
     return response.success(res, "Retrieval berhasil diproses.", result);
   } catch (err) {
     next(err);
@@ -204,7 +204,7 @@ const retrieve = async (req, res, next) => {
 
 const updateDeliveryStatus = async (req, res, next) => {
   try {
-    const result = await suratJalanService.updateDeliveryStatus(req.params.id, req.body, req.user.id);
+    const result = await suratJalanService.updateDeliveryStatus(req.params.id, req.body, req.user.id, req.gudangScope);
     return response.success(res, "Status distribusi berhasil diperbarui.", result);
   } catch (err) {
     next(err);
@@ -213,7 +213,7 @@ const updateDeliveryStatus = async (req, res, next) => {
 
 const addItemFoto = async (req, res, next) => {
   try {
-    const result = await suratJalanService.addItemFoto(req.params.id, req.params.itemId, req.body, req.user.id);
+    const result = await suratJalanService.addItemFoto(req.params.id, req.params.itemId, req.body, req.user.id, req.gudangScope);
     return response.success(res, "Foto berhasil diunggah.", result, 201);
   } catch (err) {
     next(err);
@@ -222,7 +222,7 @@ const addItemFoto = async (req, res, next) => {
 
 const deleteItemFoto = async (req, res, next) => {
   try {
-    const result = await suratJalanService.deleteItemFoto(req.params.id, req.params.itemId, req.params.fotoId, req.user.id);
+    const result = await suratJalanService.deleteItemFoto(req.params.id, req.params.itemId, req.params.fotoId, req.user.id, req.gudangScope);
     return response.success(res, "Foto berhasil dihapus.", result);
   } catch (err) {
     next(err);

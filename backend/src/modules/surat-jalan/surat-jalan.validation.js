@@ -145,13 +145,7 @@ const createSuratJalanSchema = z
     }
   });
 
-const KONDISI_ENUM = z.enum([
-  "baik",
-  "rusak_ringan",
-  "rusak_berat",
-  "tidak_sesuai_spek",
-  "doa",
-]);
+const KONDISI_ENUM = z.enum(["baik", "rusak_ringan", "rusak_berat", "tidak_sesuai_spek", "doa"]);
 
 const receiveInboundSchema = z.object({
   items: z
@@ -217,7 +211,7 @@ const receiveInboundSchema = z.object({
               });
             }
           }
-        })
+        }),
     )
     .min(1, "Minimal satu item harus diupdate."),
 });

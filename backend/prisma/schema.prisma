@@ -47,6 +47,7 @@ model user_account {
   laporan_mitras                  laporan_mitra[]                 @relation("LaporanMitraUploader")
   notifications                   notification[]
   notification_preferences        user_notification_preferences[]
+  user_gudangs                    user_gudang[]
   created_return_transactions     return_transaction[]            @relation("ReturnCreatedBy")
   approved_return_transactions    return_transaction[]            @relation("ReturnApprovedBy")
   received_return_transactions    return_transaction[]            @relation("ReturnReceivedBy")
@@ -65,6 +66,20 @@ model user_notification_preferences {
   user user_account @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
 
   @@unique([user_id, category])
+  @@index([user_id])
+}
+
+model user_gudang {
+  id         BigInt   @id @default(autoincrement())
+  user_id    BigInt
+  gudang_id  BigInt
+  created_at DateTime @default(now())
+
+  gudang gudang       @relation(fields: [gudang_id], references: [gudang_id], onDelete: Cascade)
+  user   user_account @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@unique([user_id, gudang_id])
+  @@index([gudang_id])
   @@index([user_id])
 }
 
@@ -228,6 +243,7 @@ model gudang {
   surat_jalan_asal        surat_jalan[]          @relation("surat_jalan_asal")
   surat_jalan_tujuan      surat_jalan[]          @relation("surat_jalan_tujuan")
   zonas                   zona_gudang[]
+  user_gudangs            user_gudang[]
 
   @@index([project_id])
   @@index([tipe])

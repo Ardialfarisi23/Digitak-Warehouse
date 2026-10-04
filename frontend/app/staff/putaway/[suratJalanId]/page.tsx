@@ -8,7 +8,7 @@ import { KondisiBadge } from "@/components/common/KondisiBadge";
 import { KondisiUnitSummary } from "@/components/common/KondisiUnitSummary";
 import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
 import { hasKondisiUnit, type KondisiUnit } from "@/lib/kondisi-barang";
-import { useApi } from "@/lib/api";
+import { useApi, ensureOk } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
 // Bentuk respons GET /api/surat-jalan/:id dan GET /api/zones (sudah include
@@ -242,8 +242,8 @@ export default function PutawayDetailPage() {
           setData(null);
           return;
         }
-        if (!sjRes.ok) throw new Error("Gagal mengambil detail Surat Jalan.");
-        if (!zonaRes.ok) throw new Error("Gagal mengambil daftar Zona.");
+        await ensureOk(sjRes, "Gagal mengambil detail Surat Jalan.");
+        await ensureOk(zonaRes, "Gagal mengambil daftar Zona.");
 
         const sjJson = await sjRes.json();
         const zonaJson = await zonaRes.json();
