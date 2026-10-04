@@ -245,7 +245,7 @@ export default function InboundListPage() {
         get(`${baseUrl}/api/items?limit=200`),
         get(`${baseUrl}/api/warehouses`),
         get(`${baseUrl}/api/vehicles`),
-        get(`${baseUrl}/api/personnels`),
+        get(`${baseUrl}/api/personnels?bisa_menyetir=true`),
         get(`${baseUrl}/api/suppliers`),
       ]);
       if (!itemRes.ok) throw new Error("Gagal mengambil daftar barang.");

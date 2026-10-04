@@ -89,6 +89,18 @@ function zonaLabel(z: ApiZona): string {
   return z.tipe_zona ? `${nama} — ${z.tipe_zona}` : nama;
 }
 
+const KONDISI_LABEL: Record<string, string> = {
+  baik: "Baik",
+  rusak_ringan: "Rusak Ringan",
+  rusak_berat: "Rusak Berat",
+  tidak_sesuai_spek: "Tidak Sesuai Spek",
+  doa: "DOA",
+};
+
+function formatKondisi(kondisi: string): string {
+  return KONDISI_LABEL[kondisi?.toLowerCase()] || kondisi;
+}
+
 function stockKey(barangId: number, zonaId: number | null, kondisi: string): string {
   return `${barangId}|${zonaId ?? "global"}|${kondisi}`;
 }
@@ -113,7 +125,9 @@ function getValidZonesForItem(
       .filter((z) => z.kondisi.toLowerCase() === kondisi && z.available_qty > 0)
       .map((z) => z.zona_id)
   );
-  return zonas.filter((z) => validZonaIds.has(z.zona_id));
+  // /api/zones mengembalikan zona_id sebagai string (BigInt diserialisasi jadi string di backend),
+  // sedangkan /picking-stock-check mengembalikan number. Samakan tipe sebelum dibandingkan.
+  return zonas.filter((z) => validZonaIds.has(Number(z.zona_id)));
 }
 
 function getQtyForItemZoneKondisi(item: ApiSuratJalanItem, zonaId: number, pickingStock: Record<number, PickingStockAvailability["zonas"]>, kondisi?: string): number {
@@ -125,7 +139,7 @@ function getQtyForItemZoneKondisi(item: ApiSuratJalanItem, zonaId: number, picki
 
 function findBestPickOption(barangId: number, requestedQty: number, requestedKondisi: string, zonasForGudang: ApiZona[], pickingStock: Record<number, PickingStockAvailability["zonas"]>): string | null {
   const stocks = pickingStock[barangId] || [];
-  const validZonaIds = new Set(zonasForGudang.map((z) => z.zona_id));
+  const validZonaIds = new Set(zonasForGudang.map((z) => Number(z.zona_id)));
 
   const zonasWithOptions = new Map<number, Array<{ kondisi: string; qty: number }>>();
   for (const s of stocks) {

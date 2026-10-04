@@ -209,7 +209,7 @@ const deliveryStatusSchema = z.object({
         qty_diterima: z.coerce.number().nonnegative("Qty diterima harus >= 0."),
         kondisi_diterima: z.string().optional().nullable(),
         catatan_penerimaan: z.string().optional().nullable(),
-      })
+      }),
     )
     .optional(),
 });

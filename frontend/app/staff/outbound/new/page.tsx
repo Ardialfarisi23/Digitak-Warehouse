@@ -319,7 +319,7 @@ export default function AjukanSuratJalanPage() {
         const [projectRes, itemRes, personnelRes, vehicleRes, warehouseRes] = await Promise.all([
           get(new URL("/api/projects", baseUrl).toString()),
           get(new URL("/api/items", baseUrl).toString()),
-          get(new URL("/api/personnels", baseUrl).toString()),
+          get(new URL("/api/personnels?bisa_menyetir=true", baseUrl).toString()),
           get(new URL("/api/vehicles", baseUrl).toString()),
           get(new URL("/api/warehouses", baseUrl).toString()),
         ]);
