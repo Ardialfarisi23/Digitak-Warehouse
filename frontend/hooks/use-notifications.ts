@@ -56,16 +56,25 @@ export function useNotifications(): UseNotificationsResult {
     }
   }, [get, isAuthenticated]);
 
-  const fetchNotifications = useCallback(async () => {
+  const fetchNotifications = useCallback(async (since?: string) => {
     if (!isAuthenticated) return;
 
     try {
       setLoading(true);
-      const res = await get(`${API_BASE}/api/notifications?limit=10`);
+      const url = new URL(`${API_BASE}/api/notifications`);
+      url.searchParams.set("limit", "10");
+      if (since) {
+        url.searchParams.set("since", since);
+      }
+      const res = await get(url.toString());
       if (res.ok) {
         const json = await res.json();
         if (json?.success && Array.isArray(json?.data?.items)) {
-          setNotifications(json.data.items);
+          setNotifications((prev) => {
+            const existing = new Set(prev.map((n) => n.id));
+            const newItems = json.data.items.filter((n: NotificationItem) => !existing.has(n.id));
+            return [...newItems, ...prev];
+          });
         }
       }
     } catch (err) {
@@ -161,14 +170,25 @@ export function useNotifications(): UseNotificationsResult {
       return;
     }
 
+    let isPolling = false;
+    let lastSince = new Date().toISOString();
+
     // Initial fetch on mount / auth change
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
 
     const interval = setInterval(() => {
-      fetchUnreadCount().catch(() => {});
-      fetchNotifications().catch(() => {});
-    }, 30000);
+      if (isPolling) {
+        return;
+      }
+
+      isPolling = true;
+      lastSince = new Date().toISOString();
+
+      Promise.all([fetchUnreadCount(), fetchNotifications(lastSince)]).finally(() => {
+        isPolling = false;
+      });
+    }, 3500);
 
     return () => clearInterval(interval);
   }, [authLoading, isAuthenticated, refresh, fetchUnreadCount, fetchNotifications]);

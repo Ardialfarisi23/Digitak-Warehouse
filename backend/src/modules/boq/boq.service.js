@@ -63,6 +63,26 @@ const getBoqIdentifier = (boq) => boq.boq_number || `BOQ-${boq.boq_id}`;
 
 const getBoqProjectName = (boq) => boq?.tiket?.project?.nama_project || null;
 
+const assertTicketNumberUnique = async (ticketNumber, excludeBoqId = null) => {
+  const existingTiket = await prisma.tiket_material.findFirst({
+    where: { kode_tiket: ticketNumber },
+    include: { boq: true },
+  });
+
+  if (!existingTiket) return;
+
+  if (existingTiket.boq) {
+    const usedByBoqId = existingTiket.boq.boq_id;
+    if (excludeBoqId === null || Number(usedByBoqId) !== Number(excludeBoqId)) {
+      const boqIdentifier = getBoqIdentifier(existingTiket.boq);
+      throw new AppError(
+        `Nomor tiket "${ticketNumber}" sudah digunakan pada BOQ ${boqIdentifier}.`,
+        409
+      );
+    }
+  }
+};
+
 const getRelatedUserIdsByGudang = async (gudangIds, roles) => {
   if (!Array.isArray(gudangIds) || gudangIds.length === 0 || !Array.isArray(roles) || roles.length === 0) {
     return [];
@@ -174,6 +194,8 @@ const create = async (data, userId) => {
   if (existingActiveBoqForCluster) {
     throw new AppError("Cluster ini sudah memiliki BOQ aktif.", 400);
   }
+
+  await assertTicketNumberUnique(ticketNumber);
 
   const existingTiket = await prisma.tiket_material.findFirst({
     where: { kode_tiket: ticketNumber },
@@ -448,7 +470,10 @@ const update = async (id, data, userId) => {
     const tiketUpdateData = {};
     if (projectId) tiketUpdateData.project_id = Number(projectId);
     if (area) tiketUpdateData.area = area;
-    if (ticketNumber) tiketUpdateData.kode_tiket = ticketNumber;
+    if (ticketNumber) {
+      await assertTicketNumberUnique(ticketNumber, Number(id));
+      tiketUpdateData.kode_tiket = ticketNumber;
+    }
 
     await prisma.tiket_material.update({
       where: { tiket_id: boq.tiket_id },
@@ -831,6 +856,30 @@ const getItems = async (projectId, statuses) => {
   return await boqRepository.findItemsByProject(projectId, null, statuses);
 };
 
+const checkTicketAvailability = async (ticketNumber, excludeBoqId = null) => {
+  const existingTiket = await prisma.tiket_material.findFirst({
+    where: { kode_tiket: ticketNumber },
+    include: { boq: true },
+  });
+
+  if (!existingTiket) {
+    return { available: true };
+  }
+
+  if (existingTiket.boq) {
+    const usedByBoqId = existingTiket.boq.boq_id;
+    if (excludeBoqId === null || Number(usedByBoqId) !== Number(excludeBoqId)) {
+      const boqIdentifier = getBoqIdentifier(existingTiket.boq);
+      return {
+        available: false,
+        message: `Nomor tiket "${ticketNumber}" sudah digunakan pada BOQ ${boqIdentifier}.`,
+      };
+    }
+  }
+
+  return { available: true };
+};
+
 module.exports = {
   create,
   findAll,
@@ -845,4 +894,5 @@ module.exports = {
   getAreas,
   getItems,
   getExportMatrixData,
+  checkTicketAvailability,
 };

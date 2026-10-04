@@ -38,7 +38,6 @@ type DashboardStats = {
   activeBoq: number;
   draftBoq: number;
   pendingShipments: number;
-  pendingApprovals: number;
   warehouses: number;
 };
 
@@ -47,7 +46,6 @@ const defaultDashboardStats: DashboardStats = {
   activeBoq: 0,
   draftBoq: 0,
   pendingShipments: 0,
-  pendingApprovals: 0,
   warehouses: 0,
 };
 
@@ -275,7 +273,6 @@ function DashboardPageContent() {
           activeBoq: Number(statsData.activeBoq ?? 0),
           draftBoq: Number(statsData.draftBoq ?? 0),
           pendingShipments: Number(statsData.pendingShipments ?? 0),
-          pendingApprovals: Number(statsData.pendingApprovals ?? 0),
           warehouses: Number(statsData.warehouses ?? 0),
         });
 
@@ -434,15 +431,6 @@ function DashboardPageContent() {
       iconColor: "text-orange-500 bg-orange-50",
       note: "Menunggu konfirmasi Diterima/Didistribusikan",
       noteColor: "text-orange-500",
-      href: "/dashboard/delivery",
-    },
-    {
-      label: "Persetujuan Menunggu",
-      value: formatNumber(dashboardStats.pendingApprovals),
-      icon: ShieldCheck,
-      iconColor: "text-rose-500 bg-rose-50",
-      note: "Informasi — disetujui oleh Supervisor",
-      noteColor: "text-slate-400",
       href: "/dashboard/delivery",
     },
   ];

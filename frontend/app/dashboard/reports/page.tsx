@@ -23,7 +23,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useApi } from "@/lib/api";
-import { humanizeKey, humanizeValue } from "@/lib/audit-labels";
+import { humanizeKey, humanizeValue, VALUE_LABELS } from "@/lib/audit-labels";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -323,7 +323,7 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
     }
   };
 
-  const aksiList = ["create", "update", "delete", "approve", "receive_inbound", "approve_inbound", "approve_outbound", "confirm_distributed", "reject_inbound", "reject_outbound", "putaway", "retrieve", "create_inbound", "create_outbound", "nonaktifkan_project", "aktifkan_project", "soft_delete", "restore", "start_delivery"];
+  const aksiList = ["create", "update", "delete", "approve", "receive_inbound", "approve_inbound", "approve_outbound", "confirm_distributed", "reject_inbound", "reject_outbound", "putaway", "retrieve", "create_inbound", "create_outbound", "nonaktifkan_project", "aktifkan_project", "soft_delete", "restore", "start_delivery", "input_rekonsiliasi"];
 
   const formatDateTime = (iso: string) => {
     const d = new Date(iso);
@@ -546,7 +546,7 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
           >
             <option value="">Semua jenis aksi</option>
             {aksiList.map((o) => (
-              <option key={o} value={o}>{o}</option>
+              <option key={o} value={o}>{VALUE_LABELS.audit_aksi[o] || o}</option>
             ))}
           </select>
           <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />

@@ -368,7 +368,7 @@ model tiket_material {
 model boq {
   boq_id                       BigInt                       @id @default(autoincrement())
   tiket_id                     BigInt                       @unique
-  cluster_id                   String                       @db.Text
+  cluster_id                   String?                      @db.Text
   boq_number                   String?                      @unique
   status                       boq_status                   @default(draft)
   source                       boq_source                   @default(top_down)
@@ -913,6 +913,7 @@ enum audit_aksi {
   aktifkan_project
   soft_delete
   restore
+  input_rekonsiliasi
 }
 
 enum notification_type {
