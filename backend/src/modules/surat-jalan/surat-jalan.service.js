@@ -117,7 +117,7 @@ const scopeEfektif = async (actor, scope) => {
     return { dibatasi: false, sudahDitugaskan: true, gudangIds: [], gudangUtamaId: null };
   }
 
-  const gudangIds = await resolveGudangIds(actor.id);
+  const gudangIds = await resolveGudangIds(actor.id, actor.role);
 
   // Sama seperti attachGudangScope: staf tanpa penugasan tidak diblokir, supaya
   // perilakunya tetap sama seperti sebelum fitur ini ada sampai admin mengisi data.

@@ -186,9 +186,11 @@ model cluster {
   updated_at       DateTime @default(now())
   created_by       BigInt
   updated_by       BigInt
+  pic_id           BigInt?
 
-  project project @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
-  boqs    boq[]
+  project          project   @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
+  pic              personil? @relation("ClusterPic", fields: [pic_id], references: [personil_id])
+  boqs             boq[]
 
   @@unique([project_id, nama_cluster])
   @@index([project_id])
@@ -676,6 +678,13 @@ model reconciliation_upload_detail {
   remains_lapangan Decimal?                     @db.Decimal(14, 2)
   status           reconciliation_detail_status
   reason           String?
+  kondisi          kondisi_barang?
+  catatan          String?   @db.Text
+  nama_barang      String?   @db.Text
+  kode_barang      String?   @db.Text
+  project_nama     String?   @db.Text
+  tanggal_laporan  DateTime?
+  pic_mitra        String?   @db.Text
 
   upload_log reconciliation_upload_log @relation("ReconciliationUploadLogDetail", fields: [upload_id], references: [upload_id], onDelete: Cascade)
   barang     barang?                   @relation("ReconciliationUploadDetailBarang", fields: [barang_id], references: [barang_id], onDelete: SetNull)
