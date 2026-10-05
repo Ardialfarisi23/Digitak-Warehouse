@@ -571,6 +571,8 @@ export default function StaffDashboardPage() {
         return "bg-blue-50 text-blue-600";
       case "sedang_dikirim":
         return "bg-amber-50 text-amber-600";
+      case "tiba_di_transit":
+        return "bg-purple-50 text-purple-700";
       case "tiba_menunggu_konfirmasi":
         return "bg-blue-50 text-blue-600";
       case "diterima_didistribusikan":

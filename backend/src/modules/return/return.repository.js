@@ -1104,7 +1104,8 @@ const getSuratJalanItemReference = async (filters = {}) => {
     where: {
       barang_id: barangIdNum,
       surat_jalan: {
-        status: { in: ["disetujui", "diterima_didistribusikan", "sedang_dikirim"] },
+        // Status transit tetap dianggap pengiriman aktif untuk referensi return.
+        status: { in: ["disetujui", "diterima_didistribusikan", "sedang_dikirim", "tiba_di_transit"] },
       },
     },
     select: {

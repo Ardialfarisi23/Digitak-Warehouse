@@ -181,7 +181,16 @@ const modalListInclude = {
 };
 
 const APPROVAL_STATUS = "draft_diajukan";
-const DELIVERY_STATUSES = ["disetujui", "sedang_dikirim", "tiba_menunggu_konfirmasi", "diterima_didistribusikan"];
+// Dipakai daftar pengiriman supervisor. `tiba_di_transit` ikut disertakan supaya
+// Surat Jalan yang sedang dititipkan di Gudang Transit tidak hilang dari daftar
+// itu (regresi visibilitas), tanpa mengubah keputusan approve/confirm siapapun.
+const DELIVERY_STATUSES = [
+  "disetujui",
+  "sedang_dikirim",
+  "tiba_di_transit",
+  "tiba_menunggu_konfirmasi",
+  "diterima_didistribusikan",
+];
 
 const parseIdFilter = (value, fieldName) => {
   if (value === undefined || value === null) return null;
@@ -648,6 +657,125 @@ const claimPicking = async (id, tx = prisma) => {
   return result.count === 1;
 };
 
+// Claim transisi status secara atomik. Tepat satu request boleh melewati
+// status yang diharapkan; request ganda akan melihat count = 0.
+const claimStatusTransit = async (id, dariStatus, keStatus, tx = prisma) => {
+  const result = await tx.surat_jalan.updateMany({
+    where: {
+      surat_jalan_id: Number(id),
+      tipe: "outbound",
+      status: dariStatus,
+    },
+    data: { status: keStatus },
+  });
+  return result.count === 1;
+};
+
+const createTransitCheckpoint = async (data, tx = prisma) =>
+  tx.surat_jalan_transit.create({ data, select: { transit_id: true, urutan: true } });
+
+const findOpenTransitCheckpoint = async (suratJalanId, tx = prisma) =>
+  tx.surat_jalan_transit.findFirst({
+    where: { surat_jalan_id: Number(suratJalanId), berangkat_at: null },
+    orderBy: { urutan: "desc" },
+  });
+
+const findTransitCheckpoints = async (suratJalanId, tx = prisma) =>
+  tx.surat_jalan_transit.findMany({
+    where: { surat_jalan_id: Number(suratJalanId) },
+    orderBy: { urutan: "asc" },
+    include: {
+      gudang: { select: { gudang_id: true, nama_gudang: true, tipe: true, project_id: true } },
+      tiba_oleh: { select: { user_id: true, nama: true } },
+      berangkat_oleh: { select: { user_id: true, nama: true } },
+    },
+  });
+
+// Kurangi stok transit yang terkait dengan checkpoint terbuka.
+// Pilihan (a): TIDAK mengunci zona — ambil baris stok di gudang transit
+// apa adanya (generic maupun yang sudah di-putaway ke zona), tetap batasi
+// tiap baris dengan qty >= yang akan diambil lewat decrement atomik.
+const deductTransitStock = async ({ checkpoint, items, projectId, actorId }, tx = prisma) => {
+  const transitItems = Array.isArray(items) && items.length > 0 ? items : checkpoint.items;
+
+  for (const deposited of transitItems) {
+    const itemId = Number(deposited.item_id);
+    const barangId = Number(deposited.barang_id);
+    const kondisi = deposited.kondisi || "baik";
+    const qtyDiminta = Number(deposited.qty || 0);
+    if (!Number.isInteger(itemId) || itemId <= 0 || !Number.isInteger(barangId) || barangId <= 0 || qtyDiminta <= 0) {
+      throw new AppError("Data barang titipan di Gudang Transit tidak valid.", 400);
+    }
+
+    let sisa = qtyDiminta;
+    const kandidat = await tx.stok_gudang.findMany({
+      where: {
+        gudang_id: Number(checkpoint.gudang_id),
+        barang_id: barangId,
+        project_id: projectId,
+        kondisi,
+      },
+      orderBy: [{ zona_id: "asc" }, { stok_id: "asc" }],
+      select: { stok_id: true, qty: true, zona_id: true },
+    });
+
+    for (const stok of kandidat) {
+      if (sisa <= 0) break;
+      const tersedia = Number(stok.qty || 0);
+      const qtyAmbil = Math.min(sisa, tersedia);
+      if (qtyAmbil <= 0) continue;
+
+      const updated = await tx.stok_gudang.updateMany({
+        where: { stok_id: stok.stok_id, qty: { gte: qtyAmbil } },
+        data: { qty: { decrement: qtyAmbil }, updated_at: new Date() },
+      });
+      if (updated.count !== 1) {
+        throw new AppError("Stok Gudang Transit berubah saat diproses. Muat ulang data sebelum melanjutkan.", 409);
+      }
+
+      const setelah = await tx.stok_gudang.findUnique({
+        where: { stok_id: stok.stok_id },
+        select: { qty: true },
+      });
+      const saldo = Number(setelah?.qty || 0);
+      if (!setelah || saldo <= 0) {
+        await tx.stok_gudang.deleteMany({ where: { stok_id: stok.stok_id, qty: { lte: 0 } } });
+      }
+      await tx.stok_ledger.create({
+        data: {
+          surat_jalan_item_id: itemId,
+          barang_id: barangId,
+          jenis_mutasi: "out",
+          qty: qtyAmbil,
+          saldo_setelah: Math.max(0, saldo),
+        },
+      });
+      sisa -= qtyAmbil;
+
+      await capacityService.recalculateZonaStatus(tx, Number(checkpoint.gudang_id), stok.zona_id, actorId);
+    }
+
+    if (sisa > 0) {
+      throw new AppError(
+        `Stok transit barang ${barangId} tidak mencukupi untuk Surat Jalan ini (Tersedia: ${qtyDiminta - sisa}, Dibutuhkan: ${qtyDiminta}).`,
+        400
+      );
+    }
+  }
+};
+
+const updateTransitDeparture = async (transitId, actorId, catatan, tx = prisma) => {
+  const result = await tx.surat_jalan_transit.updateMany({
+    where: { transit_id: Number(transitId), berangkat_at: null },
+    data: {
+      berangkat_at: new Date(),
+      berangkat_by: BigInt(actorId),
+      catatan_berangkat: catatan || null,
+    },
+  });
+  return result.count === 1;
+};
+
 const updateInboundItems = async (adjustments) => {
   for (const item of adjustments) {
     await prisma.surat_jalan_item.update({
@@ -661,14 +789,39 @@ const updateInboundItems = async (adjustments) => {
   }
 };
 
-const addInboundStock = async (suratJalan, tx = prisma) => {
-  const gudangTujuanId = Number(suratJalan.gudang_tujuan_id);
+/**
+ * Menambah stok masuk ke sebuah gudang (default: gudang tujuan Surat Jalan).
+ *
+ * Dipakai dua jalur dengan implementasi yang sama, jangan dibuat paralel:
+ *  1. approval inbound          -> addInboundStock(shipment, tx)
+ *  2. titipan di Gudang Transit -> addInboundStock(shipment, tx, { gudangId, items })
+ *
+ * `gudangId` : tujuan penambahan (gudang transit pada jalur 2).
+ * `items`    : daftar item yang dimasukkan. Default memakai item Surat Jalan;
+ *              jalur transit mengirim sendiri karena qty/kondisi dilaporkan
+ *              staf di lapangan dan bisa berbeda dari yang tercatat di SJ.
+ *              Bentuk per item: { item_id, barang_id, qty, kondisi }.
+ *
+ * Selalu menulis stok generic (zona_id = null) + ledger `in`, sama seperti
+ * alur inbound — penempatan ke zona mengikuti putaway seperti biasanya.
+ */
+const addInboundStock = async (suratJalan, tx = prisma, options = {}) => {
+  const gudangTujuanId = Number(
+    options.gudangId !== undefined && options.gudangId !== null
+      ? options.gudangId
+      : suratJalan.gudang_tujuan_id
+  );
+
+  const daftarItem =
+    Array.isArray(options.items) && options.items.length > 0
+      ? options.items
+      : suratJalan.items;
 
   if (!gudangTujuanId) {
     throw new AppError("Gudang tujuan tidak tersedia untuk penambahan stok.", 400);
   }
 
-  for (const item of suratJalan.items) {
+  for (const item of daftarItem) {
     const qty = Number(item.qty || 0);
 
     if (qty <= 0) {
@@ -1308,4 +1461,10 @@ module.exports = {
   getApprovalVerification,
   getBatchApprovalVerifications,
   claimPicking,
+  claimStatusTransit,
+  createTransitCheckpoint,
+  findOpenTransitCheckpoint,
+  findTransitCheckpoints,
+  deductTransitStock,
+  updateTransitDeparture,
 };

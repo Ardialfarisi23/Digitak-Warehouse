@@ -4,7 +4,13 @@ const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRep
 const { computeRemains, computeReconciliationStatus, buildPickSummary, buildItemPickSummary } = require("./reconciliation.utils");
 
 // Stok sudah berkurang saat picking, jadi angka rekonsiliasi tidak boleh naik-turun saat barang di perjalanan.
-const RECONCILIATION_SHIPMENT_STATUSES = ["disetujui", "sedang_dikirim", "tiba_menunggu_konfirmasi", "diterima_didistribusikan"];
+const RECONCILIATION_SHIPMENT_STATUSES = [
+  "disetujui",
+  "sedang_dikirim",
+  "tiba_di_transit",
+  "tiba_menunggu_konfirmasi",
+  "diterima_didistribusikan",
+];
 
 const getInventory = async (filters = {}, actor = null) => {
   const { search = "", projectId = "all", warehouseId = "all", status = "all", groupBy = "project", clusterId = "all" } = filters;

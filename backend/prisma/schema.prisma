@@ -39,6 +39,8 @@ model user_account {
   updated_surat_jalans            surat_jalan[]                   @relation("surat_jalan_updated_by")
   surat_jalan_dilaporkan_tiba     surat_jalan[]                   @relation("surat_jalan_dilaporkan_tiba_oleh")
   surat_jalan_dikonfirmasi_tiba   surat_jalan[]                   @relation("surat_jalan_dikonfirmasi_oleh")
+  surat_jalan_transit_tiba        surat_jalan_transit[]           @relation("surat_jalan_transit_tiba_oleh")
+  surat_jalan_transit_berangkat   surat_jalan_transit[]           @relation("surat_jalan_transit_berangkat_oleh")
   created_tiket_materials         tiket_material[]                @relation("tiket_material_created_by")
   zona_utilisasi_logs             zona_utilisasi_log[]            @relation("zona_utilisasi_log_updater")
   zona_dinilai_oleh               zona_gudang[]                   @relation("ZonaGudangDinilaiOleh")
@@ -243,6 +245,7 @@ model gudang {
   stok_gudangs            stok_gudang[]
   surat_jalan_asal        surat_jalan[]          @relation("surat_jalan_asal")
   surat_jalan_tujuan      surat_jalan[]          @relation("surat_jalan_tujuan")
+  transit_checkpoints     surat_jalan_transit[]  @relation("gudang_transit")
   zonas                   zona_gudang[]
   user_gudangs            user_gudang[]
 
@@ -493,6 +496,7 @@ model surat_jalan {
   dilaporkan_tiba          user_account?       @relation("surat_jalan_dilaporkan_tiba_oleh", fields: [dilaporkan_tiba_oleh], references: [user_id])
   dikonfirmasi_tiba        user_account?       @relation("surat_jalan_dikonfirmasi_oleh", fields: [dikonfirmasi_oleh], references: [user_id])
   items                    surat_jalan_item[]
+  transit_checkpoints      surat_jalan_transit[]
 
   @@index([status])
   @@index([project_id])
@@ -563,6 +567,32 @@ model surat_jalan_item_pick {
 
   @@id([pick_id], map: "surat_jalan_item_pick_pick_id_pkey")
   @@index([surat_jalan_item_id], map: "surat_jalan_item_pick_surat_jalan_item_id_idx")
+}
+
+model surat_jalan_transit {
+  transit_id      BigInt   @id @default(autoincrement())
+  surat_jalan_id  BigInt
+  gudang_id       BigInt
+  urutan          Int
+  tiba_at         DateTime @default(now())
+  tiba_by         BigInt
+  berangkat_at    DateTime?
+  berangkat_by    BigInt?
+  catatan_tiba    String?  @db.Text
+  catatan_berangkat String? @db.Text
+  bukti_url       String?  @db.Text
+  items           Json
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  surat_jalan surat_jalan @relation(fields: [surat_jalan_id], references: [surat_jalan_id], onDelete: Cascade)
+  gudang      gudang      @relation("gudang_transit", fields: [gudang_id], references: [gudang_id])
+  tiba_oleh   user_account @relation("surat_jalan_transit_tiba_oleh", fields: [tiba_by], references: [user_id])
+  berangkat_oleh user_account? @relation("surat_jalan_transit_berangkat_oleh", fields: [berangkat_by], references: [user_id])
+
+  @@unique([surat_jalan_id, urutan])
+  @@index([surat_jalan_id, berangkat_at])
+  @@index([gudang_id])
 }
 
 // Penilaian kondisi per unit saat penerimaan inbound.
@@ -830,6 +860,10 @@ enum surat_jalan_status {
   ready_putaway
   disetujui
   sedang_dikirim
+  // Barang sedang dititipkan di Gudang Transit (gudang dadakan).
+  // BUKAN akhir perjalanan: lanjut lagi ke sedang_dikirim, baru
+  // tiba_menunggu_konfirmasi saat tiba di tujuan akhir.
+  tiba_di_transit
   tiba_menunggu_konfirmasi
   diterima_didistribusikan
   ditolak
@@ -909,6 +943,12 @@ enum audit_aksi {
   create_inbound
   create_outbound
   start_delivery
+  // Laporan tiba oleh staf — sudah lama ditulis service.js tapi belum ada di
+  // enum ini, sehingga audit bisa gagal dan membatalkan transaksi lapor tiba.
+  report_arrival
+  // Checkpoint Gudang Transit (satu SJ, bisa 0..n kali).
+  tiba_di_transit
+  lanjut_dari_transit
   nonaktifkan_project
   aktifkan_project
   soft_delete

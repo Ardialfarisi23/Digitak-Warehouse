@@ -53,6 +53,7 @@ type Warehouse = {
   gudang_id: string | number;
   nama_gudang: string;
   tipe?: string;
+  project_id?: string | number | null;
   alamat?: string;
   is_internal?: boolean;
 };
@@ -350,7 +351,7 @@ export default function AjukanSuratJalanPage() {
           get(new URL("/api/items", baseUrl).toString()),
           get(new URL("/api/personnels?bisa_menyetir=true", baseUrl).toString()),
           get(new URL("/api/vehicles", baseUrl).toString()),
-          get(new URL("/api/warehouses", baseUrl).toString()),
+          get(new URL("/api/warehouses?limit=1000", baseUrl).toString()),
         ]);
 
         if (!projectRes.ok) throw new Error("Gagal mengambil daftar Project.");
@@ -419,6 +420,37 @@ export default function AjukanSuratJalanPage() {
   const selectedGudangAsal = useMemo(() => warehouses.find((w) => String(w.gudang_id) === selectedGudangAsalId) || null, [warehouses, selectedGudangAsalId]);
 
   const selectedGudangTujuan = useMemo(() => warehouses.find((w) => String(w.gudang_id) === selectedGudangTujuanId) || null, [warehouses, selectedGudangTujuanId]);
+
+  // Gudang dadakan (transit) milik project yang sedang dipilih tetap boleh dipilih
+  // sebagai gudang tujuan - ini jalur transit sementara, misalnya pengiriman malam
+  // hari yang tujuan akhirnya masih jauh. Gudang lain tidak dibatasi, hanya diberi
+  // label supaya staff mudah mengenali mana transit milik project ini.
+  const gudangTujuanOptions = useMemo(() => {
+    return warehouses.map((w) => {
+      const isTransit = w.tipe === "dadakan";
+      const transitProjectIni =
+        isTransit && w.project_id != null && String(w.project_id) === String(selectedProjectId);
+
+      let label = w.nama_gudang;
+      if (transitProjectIni) {
+        label += " (Transit - Project Ini)";
+      } else if (isTransit) {
+        label += " (Dadakan)";
+      }
+
+      return { gudang_id: w.gudang_id, label, isTransit, transitProjectIni };
+    });
+  }, [warehouses, selectedProjectId]);
+
+  const jumlahTransitProjectIni = useMemo(
+    () => gudangTujuanOptions.filter((w) => w.transitProjectIni).length,
+    [gudangTujuanOptions]
+  );
+
+  const jumlahSemuaTransit = useMemo(
+    () => gudangTujuanOptions.filter((w) => w.isTransit).length,
+    [gudangTujuanOptions]
+  );
 
   const driverOptions = useMemo(() => {
     const canDrive = personnel.filter((p) => p.bisa_menyetir);
@@ -1010,15 +1042,20 @@ const [itemsRes, boqsRes] = await Promise.all([
                       className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
                     >
                       <option value="">Pilih Gudang Tujuan...</option>
-                      {warehouses.map((w) => (
+                      {gudangTujuanOptions.map((w) => (
                         <option key={w.gudang_id} value={String(w.gudang_id)}>
-                          {w.nama_gudang} {w.tipe === "dadakan" ? "(Dadakan)" : ""}
+                          {w.label}
                         </option>
                       ))}
                     </select>
                     <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   </div>
                   {warehouses.length === 0 && <p className="mt-2 text-xs text-gray-400">Belum ada data Gudang di master data.</p>}
+                  {jumlahSemuaTransit > 0 && jumlahTransitProjectIni === 0 && (
+                    <p className="mt-2 text-xs text-gray-400">
+                      Project ini belum punya Gudang Transit (Dadakan) sendiri.
+                    </p>
+                  )}
                 </div>
               )}
 
