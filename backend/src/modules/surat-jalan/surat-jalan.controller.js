@@ -180,7 +180,7 @@ const putaway = async (req, res, next) => {
       return response.success(res, "Pengecekan fisik berhasil divalidasi. Lanjutkan ke pemilihan zona.", { items });
     }
 
-    const normalizedItems = items.map(item => ({
+    const normalizedItems = items.map((item) => ({
       ...item,
       zona_id: item.zona_id,
       qty_ditempatkan: item.qty_ditempatkan || item.qty,
@@ -206,6 +206,25 @@ const updateDeliveryStatus = async (req, res, next) => {
   try {
     const result = await suratJalanService.updateDeliveryStatus(req.params.id, req.body, req.user.id, req.gudangScope);
     return response.success(res, "Status distribusi berhasil diperbarui.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Gudang Transit — aksi staf gudang dari halaman staff.
+const tibaDiTransit = async (req, res, next) => {
+  try {
+    const result = await suratJalanService.tibaDiTransit(req.params.id, req.body, req.user.id, req.gudangScope);
+    return response.success(res, "Barang berhasil dititipkan di Gudang Transit.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const lanjutDariTransit = async (req, res, next) => {
+  try {
+    const result = await suratJalanService.lanjutDariTransit(req.params.id, req.body, req.user.id, req.gudangScope);
+    return response.success(res, "Perjalanan dilanjutkan dari Gudang Transit.", result);
   } catch (err) {
     next(err);
   }
@@ -249,6 +268,8 @@ module.exports = {
   putaway,
   retrieve,
   updateDeliveryStatus,
+  tibaDiTransit,
+  lanjutDariTransit,
   addItemFoto,
   deleteItemFoto,
   findOutboundApprovalHistory,

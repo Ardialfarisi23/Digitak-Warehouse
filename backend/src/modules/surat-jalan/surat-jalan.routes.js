@@ -13,7 +13,9 @@ const {
   putawaySchema,
   retrieveSchema,
   deliveryStatusSchema,
-  itemFotoSchema
+  itemFotoSchema,
+  tibaTransitSchema,
+  lanjutDariTransitSchema
 } = require("./surat-jalan.validation");
 const validate = require("../../middlewares/validation.middleware");
 const authenticate = require("../../middlewares/auth.middleware");
@@ -93,6 +95,26 @@ router.put(
   attachGudangScope,
   validate(deliveryStatusSchema),
   suratJalanController.updateDeliveryStatus
+);
+
+// Gudang Transit — STAFF ONLY (keputusan bisnis #6: supervisor tidak
+// ditambahi aksi transit). Scope gudang tetap dipasang di kedua route.
+router.post(
+  "/:id/transit/tiba",
+  authenticate,
+  authorize("STAFF"),
+  attachGudangScope,
+  validate(tibaTransitSchema),
+  suratJalanController.tibaDiTransit
+);
+
+router.post(
+  "/:id/transit/lanjut",
+  authenticate,
+  authorize("STAFF"),
+  attachGudangScope,
+  validate(lanjutDariTransitSchema),
+  suratJalanController.lanjutDariTransit
 );
 
 router.put(

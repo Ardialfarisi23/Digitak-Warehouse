@@ -18,6 +18,7 @@ const STATUS_META: Record<string, { label: string; tone: string }> = {
   digenerate: { label: "Digenerate", tone: "bg-blue-50 text-blue-600" },
   diterima_didistribusikan: { label: "Terkirim", tone: "bg-gray-100 text-gray-500" },
   sedang_dikirim: { label: "Sedang Dikirim", tone: "bg-amber-50 text-amber-600" },
+  tiba_di_transit: { label: "Di Gudang Transit", tone: "bg-purple-50 text-purple-700" },
   ditolak: { label: "Ditolak", tone: "bg-rose-50 text-rose-600" },
 };
 
@@ -70,6 +71,19 @@ interface SuratJalan {
   pengirim_eksternal_nama?: string | null;
   alamat_lapangan?: string | null;
   picking_selesai?: boolean;
+  // Checkpoint Gudang Transit (0..n) — dari tabel surat_jalan_transit.
+  riwayat_perjalanan?: Array<{
+    transit_id: number | string;
+    urutan: number;
+    tiba_at: string;
+    berangkat_at?: string | null;
+    catatan_tiba?: string | null;
+    catatan_berangkat?: string | null;
+    gudang?: { nama_gudang?: string } | null;
+    tiba_oleh?: { nama?: string } | null;
+    berangkat_oleh?: { nama?: string } | null;
+    items?: Array<{ item_id: number; qty: number; kondisi?: string | null }>;
+  }>;
 }
 
 // Baris label:nilai yang selalu sejajar, berapa pun panjang labelnya.
@@ -269,7 +283,9 @@ export default function SuratJalanDetailPage() {
               Picking sudah selesai
             </button>
           )}
-          {(suratJalan.status === "disetujui" || suratJalan.status === "sedang_dikirim") && (
+          {(suratJalan.status === "disetujui" ||
+            suratJalan.status === "sedang_dikirim" ||
+            suratJalan.status === "tiba_di_transit") && (
             <div>
               {(suratJalan.status === "disetujui" && suratJalan.picking_selesai === true) ? (
                 <Link
@@ -278,7 +294,7 @@ export default function SuratJalanDetailPage() {
                 >
                   Distribusi
                 </Link>
-              ) : suratJalan.status === "sedang_dikirim" ? (
+              ) : suratJalan.status === "sedang_dikirim" || suratJalan.status === "tiba_di_transit" ? (
                 <Link
                   href={`/staff/outbound/${suratJalan.surat_jalan_id}/distribution`}
                   className="rounded-xl border border-[#F3D9C7] bg-white px-4 py-2.5 text-sm font-semibold text-[#E8632C] hover:bg-[#FDECE1]"
@@ -379,6 +395,65 @@ export default function SuratJalanDetailPage() {
               <p className="font-semibold text-gray-900">{suratJalan.project?.nama_project || "-"}</p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Kronologi titipan Gudang Transit (0..n checkpoint). Kosong berarti
+          pengiriman langsung ke tujuan akhir tanpa titipan. */}
+      {(suratJalan.riwayat_perjalanan?.length ?? 0) > 0 && (
+        <div className="mx-auto mb-8 max-w-3xl rounded-2xl border border-purple-100 bg-purple-50/40 p-6">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-purple-700">
+            Riwayat Perjalanan — Gudang Transit
+          </p>
+          <ol className="space-y-3">
+            {(suratJalan.riwayat_perjalanan || []).map((c) => {
+              const totalQty = (c.items || []).reduce((sum, it) => sum + Number(it.qty || 0), 0);
+              const sudahBerangkat = Boolean(c.berangkat_at);
+              return (
+                <li key={String(c.transit_id)} className="rounded-xl border border-purple-100 bg-white p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-purple-800">
+                      #{c.urutan} · {c.gudang?.nama_gudang || "Gudang Transit"}
+                    </p>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                        sudahBerangkat ? "bg-emerald-50 text-emerald-700" : "bg-purple-100 text-purple-700"
+                      }`}
+                    >
+                      {sudahBerangkat ? "Sudah berangkat" : "Masih dititipkan"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-600">
+                    Tiba: {new Date(c.tiba_at).toLocaleString("id-ID")}
+                    {c.tiba_oleh?.nama ? ` · oleh ${c.tiba_oleh.nama}` : ""} · {totalQty} unit
+                  </p>
+                  {sudahBerangkat && c.berangkat_at && (
+                    <p className="mt-1 text-xs text-gray-600">
+                      Berangkat: {new Date(c.berangkat_at).toLocaleString("id-ID")}
+                      {c.berangkat_oleh?.nama ? ` · oleh ${c.berangkat_oleh.nama}` : ""}
+                    </p>
+                  )}
+                  {c.catatan_tiba && (
+                    <p className="mt-1 text-xs italic text-purple-700">Catatan: {c.catatan_tiba}</p>
+                  )}
+                  {c.catatan_berangkat && (
+                    <p className="mt-1 text-xs italic text-gray-600">
+                      Catatan berangkat: {c.catatan_berangkat}
+                    </p>
+                  )}
+                  {(c.items || []).length > 0 && (
+                    <ul className="mt-2 space-y-1 border-t border-purple-100 pt-2">
+                      {(c.items || []).map((it) => (
+                        <li key={it.item_id} className="text-xs text-gray-700">
+                          Item #{it.item_id}: {it.qty} unit · {it.kondisi || "baik"}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
         </div>
       )}
 

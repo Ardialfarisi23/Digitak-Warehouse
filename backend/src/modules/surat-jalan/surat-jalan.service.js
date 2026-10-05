@@ -726,9 +726,15 @@ const findOutboundDetail = async (id, actor, scope) => {
     throw new AppError("Surat Jalan ini bukan outbound.", 400);
   }
 
+  const approvalVerification = await suratJalanRepository.getApprovalVerification(id);
+  const transitCheckpoints = await suratJalanRepository.findTransitCheckpoints(id);
+
   if (!actor || ["admin_general", "supervisor"].includes(actor.role)) {
-    const approvalVerification = await suratJalanRepository.getApprovalVerification(id);
-    return { ...record, approval_verification: approvalVerification };
+    return {
+      ...record,
+      approval_verification: approvalVerification,
+      riwayat_perjalanan: transitCheckpoints,
+    };
   }
 
   if (actor.role === "staf_gudang") {
@@ -736,8 +742,11 @@ const findOutboundDetail = async (id, actor, scope) => {
     // hanya berlaku untuk staf_gudang.
     await jagaGudangSuratJalan(actor, scope, record);
 
-    const approvalVerification = await suratJalanRepository.getApprovalVerification(id);
-    return { ...record, approval_verification: approvalVerification };
+    return {
+      ...record,
+      approval_verification: approvalVerification,
+      riwayat_perjalanan: transitCheckpoints,
+    };
   }
 
   throw new AppError("Anda tidak memiliki akses ke surat jalan ini.", 403);
@@ -768,9 +777,15 @@ const findById = async (id, actor, scope) => {
     record.items = itemsWithPick;
   }
 
+  const approvalVerification = await suratJalanRepository.getApprovalVerification(id);
+  const transitCheckpoints = await suratJalanRepository.findTransitCheckpoints(id);
+
   if (!actor || ["admin_general", "supervisor"].includes(actor.role)) {
-    const approvalVerification = await suratJalanRepository.getApprovalVerification(id);
-    return { ...record, approval_verification: approvalVerification };
+    return {
+      ...record,
+      approval_verification: approvalVerification,
+      riwayat_perjalanan: transitCheckpoints,
+    };
   }
 
   if (actor.role === "staf_gudang") {
@@ -778,8 +793,11 @@ const findById = async (id, actor, scope) => {
     // dibatasi, jadi penjaga gudang di bawah hanya berlaku untuk staf_gudang.
     await jagaGudangSuratJalan(actor, scope, record);
 
-    const approvalVerification = await suratJalanRepository.getApprovalVerification(id);
-    return { ...record, approval_verification: approvalVerification };
+    return {
+      ...record,
+      approval_verification: approvalVerification,
+      riwayat_perjalanan: transitCheckpoints,
+    };
   }
 
   throw new AppError("Anda tidak memiliki akses ke surat jalan ini.", 403);
@@ -1756,9 +1774,14 @@ if (!Array.isArray(items) || items.length === 0) {
       return shipment;
     }
 
+    // Laporan tiba oleh STAF kini langsung menutup Surat Jalan
+    // (`diterima_didistribusikan`) tanpa menunggu konfirmasi supervisor
+    // — keputusan bisnis. Dari `tiba_menunggu_konfirmasi` (SJ lama yang
+    // sudah terlanjur masuk status itu), konfirmasi tetap HANYA lewat
+    // endpoint supervisor `confirm-distributed` — tidak diubah di sini.
     const validTransitions = {
       disetujui: ["sedang_dikirim"],
-      sedang_dikirim: ["tiba_menunggu_konfirmasi", "sedang_dikirim"],
+      sedang_dikirim: ["tiba_menunggu_konfirmasi", "diterima_didistribusikan", "sedang_dikirim"],
     };
     if (!validTransitions[shipment.status]?.includes(newStatus)) {
       if (newStatus === "diterima_didistribusikan") {
@@ -1773,6 +1796,13 @@ if (!Array.isArray(items) || items.length === 0) {
     const updateData = {
       status: newStatus,
     };
+
+    // Laporan tiba staf yang langsung final: catat waktu terima juga.
+    // (`dikonfirmasi_oleh` sengaja TIDAK diisi — kolom itu khusus konfirmasi
+    // supervisor lewat endpoint terpisah, dan jalur ini bukan konfirmasi.)
+    if (newStatus === "diterima_didistribusikan") {
+      updateData.tanggal_diterima = new Date();
+    }
 
     if (body.estimasi_tiba) {
       updateData.estimasi_tiba = new Date(body.estimasi_tiba);
@@ -1795,7 +1825,10 @@ if (!Array.isArray(items) || items.length === 0) {
         throw new AppError("Status surat jalan sudah berubah. Muat ulang data.", 400);
       }
 
-      if (newStatus === "tiba_menunggu_konfirmasi") {
+      // Jalur lapor tiba staf: baik status antara (`tiba_menunggu_konfirmasi`,
+      // dipakai SJ lama) maupun status final (`diterima_didistribusikan`,
+      // laporan baru) sama-sama menyimpan data kedatangan per item.
+      if (newStatus === "tiba_menunggu_konfirmasi" || newStatus === "diterima_didistribusikan") {
         if (!Array.isArray(body.items) || body.items.length === 0) {
           throw new AppError("Daftar item lapor tiba kosong.", 400);
         }
@@ -1859,18 +1892,64 @@ if (!Array.isArray(items) || items.length === 0) {
         }
       }
 
+      // `confirm_distributed` TIDAK ditulis di sini lagi — jalur konfirmasi
+      // supervisor tetap menulisnya sendiri lewat confirmDistributed().
       await suratJalanRepository.createApprovalLog(id, actorId, "outbound_delivery", "disetujui", body.catatan_distribusi || null, tx);
       await tx.audit_log.create({
         data: {
           entity_type: "surat_jalan",
           entity_id: BigInt(id),
-          aksi: newStatus === "sedang_dikirim" ? "start_delivery" : newStatus === "tiba_menunggu_konfirmasi" ? "report_arrival" : "confirm_distributed",
+          aksi: newStatus === "sedang_dikirim" ? "start_delivery" : "report_arrival",
           actor_id: BigInt(actorId),
           data_sebelum: { status: shipment.status },
           data_sesudah: { status: newStatus, surat_jalan_id: id },
         },
       });
     });
+
+    // --- Notifikasi info ke supervisor & admin (HANYA setelah transaksi sukses).
+    // Laporan baru oleh staf langsung menutup SJ; tidak ada aksi konfirmasi —
+    // notifikasi murni informasi. (Laporan SJ lama di status
+    // tiba_menunggu_konfirmasi tetap dikonfirmasi lewat jalur supervisor lama,
+    // dan tidak melewati blok ini — statusnya tidak berubah menjadi final di
+    // sini.)
+    if (shipment.status === "sedang_dikirim" && newStatus === "diterima_didistribusikan") {
+      try {
+        const pelapor = await prisma.user_account.findUnique({
+          where: { user_id: BigInt(actorId) },
+          select: { nama: true },
+        });
+        const waktuTiba = new Date();
+        const projectInfo = shipment.project?.nama_project
+          ? shipment.project.nama_project
+          : shipment.project_id
+            ? `project #${shipment.project_id}`
+            : "-";
+
+        const pesan = `Surat Jalan ${shipment.nomor_surat_jalan} (Project ${projectInfo}) dilaporkan tiba oleh ${pelapor?.nama || "staf"} pada ${waktuTiba.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })} WIB.`;
+
+        // Dua panggilan per role (bukan gabungan), karena target link berbeda
+        // dan GlobalHeader merender link notification untuk role tersebut.
+        await notificationService.create({
+          role: "supervisor",
+          type: "success",
+          title: "Barang Tiba (Laporan Staf)",
+          message: pesan,
+          link: `/dashboard/supervisor/approval/outbound/${id}`,
+        });
+        await notificationService.create({
+          role: "admin_general",
+          type: "success",
+          title: "Barang Tiba (Laporan Staf)",
+          message: pesan,
+          link: `/dashboard`,
+        });
+      } catch (notifErr) {
+        // Notifikasi bersifat pelengkap: kegagalannya tidak boleh membatalkan
+        // laporan tiba yang sudah tersimpan (pola yang sama dengan blok di bawah).
+        console.error("Gagal membuat notifikasi laporan tiba:", notifErr);
+      }
+    }
 
     if (newStatus === "sedang_dikirim") {
       const actor = await prisma.user_account.findUnique({
@@ -1907,6 +1986,333 @@ if (!Array.isArray(items) || items.length === 0) {
         console.error("Gagal memproses notifikasi delivery status:", notifErr);
       }
     }
+
+    return await suratJalanRepository.findById(id);
+  };
+
+  // -------------------------------------------------------------------------
+  // Gudang Transit (gudang bertipe dadakan) — checkpoint perjalanan pada SJ
+  // yang SAMA. Satu SJ tetap menunjuk tujuan akhir; titipan berikutnya dicatat
+  // sebagai stok GUDANG TRANSIT sungguhan (stok_gudang + stok_ledger).
+  // Aksi ini hanya dipanggil staf gudang dari halaman staff.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Validasi keputusan: barang hanya boleh dititipkan di gudang `dadakan`
+   * yang project_id-nya sama dengan project Surat Jalan. Berlaku umum di
+   * backend (validasi data, bukan kebijakan role).
+   */
+  const validasiGudangTransit = async (shipment, gudangId) => {
+    const gudang = await prisma.gudang.findUnique({
+      where: { gudang_id: Number(gudangId) },
+      select: { gudang_id: true, nama_gudang: true, tipe: true, is_aktif: true, project_id: true },
+    });
+
+    if (!gudang) {
+      throw new AppError("Gudang Transit tidak ditemukan.", 404);
+    }
+
+    if (gudang.tipe !== "dadakan") {
+      throw new AppError(
+        `Hanya Gudang Transit (gudang bertipe dadakan) yang boleh menerima titipan barang. Gudang "${gudang.nama_gudang}" bertipe ${gudang.tipe}.`,
+        400
+      );
+    }
+
+    if (gudang.is_aktif === false) {
+      throw new AppError(`Gudang Transit "${gudang.nama_gudang}" sudah tidak aktif.`, 400);
+    }
+
+    if (shipment.project_id === null || shipment.project_id === undefined) {
+      throw new AppError(
+        "Surat Jalan ini tidak memiliki project sehingga barang tidak dapat dititipkan di Gudang Transit.",
+        400
+      );
+    }
+
+    if (String(gudang.project_id) !== String(shipment.project_id)) {
+      const [projectTransit, projectSj] = await Promise.all([
+        gudang.project_id ? prisma.project.findUnique({ where: { project_id: Number(gudang.project_id) }, select: { nama_project: true } }) : null,
+        prisma.project.findUnique({ where: { project_id: Number(shipment.project_id) }, select: { nama_project: true } }),
+      ]);
+
+      throw new AppError(
+        `Gudang Transit "${gudang.nama_gudang}" terhubung ke project ${projectTransit?.nama_project || gudang.project_id}, sedangkan Surat Jalan ini project ${projectSj?.nama_project || shipment.project_id}. Titipan dibatalkan.`,
+        400
+      );
+    }
+
+    return gudang;
+  };
+
+  /**
+   * Total qty per item yang SEDANG dititipkan (checkpoint yang masih terbuka).
+   *
+   * Checkpoint yang sudah `berangkat_at` tidak dihitung: qty-nya sudah kembali
+   * ke perjalanan (leg penuh), jadi boleh dititipkan lagi di transit berikutnya.
+   * Kalau dihitung semua, satu SJ cuma boleh sekali titip sepanjang perjalanan.
+   */
+  const hitungSudahDititipkan = (checkpoints) => {
+    const total = new Map();
+    for (const checkpoint of checkpoints || []) {
+      if (checkpoint.berangkat_at) continue;
+      const items = Array.isArray(checkpoint.items) ? checkpoint.items : [];
+      for (const item of items) {
+        const key = Number(item.item_id);
+        total.set(key, (total.get(key) || 0) + Number(item.qty || 0));
+      }
+    }
+    return total;
+  };
+
+  /** Qty yang masih boleh dititipkan = total pick − yang sudah dititipkan. */
+  const hitungSisaTitipan = async (shipment) => {
+    const itemIds = shipment.items.map((it) => Number(it.item_id));
+    const picks = await prisma.surat_jalan_item_pick.findMany({
+      where: { surat_jalan_item_id: { in: itemIds } },
+      select: { surat_jalan_item_id: true, qty: true },
+    });
+    const pickSummary = buildItemPickSummary(picks);
+
+    const checkpoints = await suratJalanRepository.findTransitCheckpoints(shipment.surat_jalan_id);
+    const sudahDititipkan = hitungSudahDititipkan(checkpoints);
+
+    const sisa = new Map();
+    for (const item of shipment.items) {
+      const key = Number(item.item_id);
+      const totalPick = pickSummary.get(key)?.totalQty || 0;
+      sisa.set(key, Math.max(0, totalPick - (sudahDititipkan.get(key) || 0)));
+    }
+    return sisa;
+  };
+
+  /** Titipan barang ke Gudang Transit — stok transit MASUK. */
+  const tibaDiTransit = async (id, body, actorId, scope) => {
+    const scopeFinal = scopeWajib(scope);
+
+    const shipment = await suratJalanRepository.findById(id);
+    if (!shipment) {
+      throw new AppError("Surat Jalan tidak ditemukan.", 404);
+    }
+    if (shipment.tipe !== "outbound") {
+      throw new AppError("Hanya surat jalan outbound yang dapat menitipkan barang di Gudang Transit.", 400);
+    }
+    if (shipment.status !== "sedang_dikirim") {
+      throw new AppError(
+        `Barang baru dapat dititipkan saat sedang dikirim. Status saat ini: ${shipment.status}.`,
+        400
+      );
+    }
+
+    // Staf harus ditugaskan ke gudang terkait (asal, transit, atau tujuan).
+    assertAdaGudangDiizinkan(scopeFinal, [shipment.gudang_asal_id, shipment.gudang_tujuan_id, body.gudang_id]);
+
+    // Validasi gudang transit terhadap project SJ — sebelum transaksi.
+    await validasiGudangTransit(shipment, body.gudang_id);
+
+    // Validasi item: harus ada di SJ, dan qty tidak melebihi sisa titipan.
+    const sisa = await hitungSisaTitipan(shipment);
+    const itemsPayload = [];
+
+    for (const incoming of body.items) {
+      const suratItem = shipment.items.find((it) => Number(it.item_id) === Number(incoming.item_id));
+      if (!suratItem) {
+        throw new AppError(`Item ${incoming.item_id} tidak ditemukan di surat jalan.`, 400);
+      }
+
+      const qty = Number(incoming.qty || 0);
+      if (qty <= 0) {
+        throw new AppError(`Qty dititipkan untuk item ${incoming.item_id} harus lebih dari 0.`, 400);
+      }
+
+      const sisaQty = sisa.get(Number(incoming.item_id)) || 0;
+      if (qty > sisaQty) {
+        throw new AppError(
+          `Qty dititipkan item ${incoming.item_id} (${qty}) melebihi sisa yang dapat dititipkan (${sisaQty}).`,
+          400
+        );
+      }
+
+      const units = Array.isArray(incoming.units) ? incoming.units : [];
+      let kondisi = (incoming.kondisi || suratItem.kondisi || "baik").toLowerCase();
+      if (!KONDISI_LABEL[kondisi]) {
+        throw new AppError(`Kondisi "${kondisi}" tidak dikenal.`, 400);
+      }
+
+      // Kondisi ringkasan = kondisi TERBURUK dari penilaian per unit
+      // (pola yang sama dengan receiveInbound), supaya stok transit terkelompok
+      // dengan benar. Detail per unit disimpan di checkpoint.
+      if (units.length > 0) {
+        const KONDISI_SEVERITY = { baik: 0, rusak_ringan: 1, tidak_sesuai_spek: 2, rusak_berat: 3, doa: 4 };
+        kondisi = units.reduce((terburuk, unit) => {
+          const kandidat = String(unit.kondisi || "").toLowerCase();
+          return (KONDISI_SEVERITY[kandidat] ?? -1) > (KONDISI_SEVERITY[terburuk] ?? -1) ? kandidat : terburuk;
+        }, kondisi);
+      }
+
+      itemsPayload.push({
+        item_id: Number(incoming.item_id),
+        barang_id: Number(suratItem.barang_id),
+        qty,
+        kondisi,
+        catatan: incoming.catatan || null,
+        units: units.map((u) => ({
+          nomor_unit: Number(u.nomor_unit),
+          kondisi: String(u.kondisi || "").toLowerCase(),
+          catatan: u.catatan || null,
+        })),
+      });
+    }
+
+    const urutanTransit = await prisma.surat_jalan_transit.aggregate({
+      where: { surat_jalan_id: Number(id) },
+      _max: { urutan: true },
+    });
+    const urutanBerikut = (urutanTransit._max.urutan || 0) + 1;
+
+    await prisma.$transaction(async (tx) => {
+      // Claim atomik: hanya satu request boleh melewati status ini.
+      const claimed = await suratJalanRepository.claimStatusTransit(
+        id,
+        "sedang_dikirim",
+        "tiba_di_transit",
+        tx
+      );
+      if (!claimed) {
+        throw new AppError("Status Surat Jalan sudah berubah. Muat ulang data.", 400);
+      }
+
+      // Stok transit masuk — pola addInboundStock (stok generic + ledger in).
+      await suratJalanRepository.addInboundStock(shipment, tx, {
+        gudangId: Number(body.gudang_id),
+        items: itemsPayload,
+      });
+
+      try {
+        await suratJalanRepository.createTransitCheckpoint(
+          {
+            surat_jalan_id: Number(id),
+            gudang_id: Number(body.gudang_id),
+            urutan: urutanBerikut,
+            tiba_by: BigInt(actorId),
+            catatan_tiba: body.catatan_tiba || null,
+            bukti_url: body.bukti_url || null,
+            items: itemsPayload,
+          },
+          tx
+        );
+      } catch (err) {
+        if (err && err.code === "P2002") {
+          throw new AppError("Checkpoint Gudang Transit untuk Surat Jalan ini sudah tercatat.", 409);
+        }
+        throw err;
+      }
+
+      await tx.audit_log.create({
+        data: {
+          entity_type: "surat_jalan",
+          entity_id: BigInt(id),
+          aksi: "tiba_di_transit",
+          actor_id: BigInt(actorId),
+          data_sebelum: { status: "sedang_dikirim" },
+          data_sesudah: {
+            surat_jalan_id: Number(id),
+            status: "tiba_di_transit",
+            urutan: urutanBerikut,
+            gudang_id: Number(body.gudang_id),
+            total_qty: itemsPayload.reduce((sum, it) => sum + it.qty, 0),
+          },
+        },
+      });
+    });
+
+    return await suratJalanRepository.findById(id);
+  };
+
+  /** Berangkat dari Gudang Transit ke tujuan akhir — leg penuh, stok transit KELUAR. */
+  const lanjutDariTransit = async (id, body, actorId, scope) => {
+    const scopeFinal = scopeWajib(scope);
+
+    const shipment = await suratJalanRepository.findById(id);
+    if (!shipment) {
+      throw new AppError("Surat Jalan tidak ditemukan.", 404);
+    }
+    if (shipment.tipe !== "outbound") {
+      throw new AppError("Hanya surat jalan outbound yang dapat diteruskan dari Gudang Transit.", 400);
+    }
+    if (shipment.status !== "tiba_di_transit") {
+      throw new AppError(
+        `Perjalanan baru dapat dilanjutkan saat barang sedang dititipkan di Gudang Transit. Status saat ini: ${shipment.status}.`,
+        400
+      );
+    }
+
+    const checkpoint =
+      await suratJalanRepository.findOpenTransitCheckpoint(shipment.surat_jalan_id);
+    if (!checkpoint) {
+      throw new AppError("Checkpoint Gudang Transit masih terbuka pada Surat Jalan ini.", 400);
+    }
+
+    assertAdaGudangDiizinkan(scopeFinal, [
+      shipment.gudang_asal_id,
+      shipment.gudang_tujuan_id,
+      checkpoint.gudang_id,
+    ]);
+
+    const checkpointItems = Array.isArray(checkpoint.items) ? checkpoint.items : [];
+    if (checkpointItems.length === 0) {
+      throw new AppError("Data titipan pada checkpoint Gudang Transit kosong. Hubungi admin.", 400);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const claimed = await suratJalanRepository.claimStatusTransit(
+        id,
+        "tiba_di_transit",
+        "sedang_dikirim",
+        tx
+      );
+      if (!claimed) {
+        throw new AppError("Status Surat Jalan sudah berubah. Muat ulang data.", 400);
+      }
+
+      // Leg penuh: keluarkan seluruh sisa titipan checkpoint ini.
+      await suratJalanRepository.deductTransitStock(
+        {
+          checkpoint,
+          items: checkpointItems,
+          projectId: shipment.project_id,
+          actorId,
+        },
+        tx
+      );
+
+      const closed = await suratJalanRepository.updateTransitDeparture(
+        checkpoint.transit_id,
+        actorId,
+        body?.catatan_berangkat,
+        tx
+      );
+      if (!closed) {
+        throw new AppError("Titipan Gudang Transit ini sudah pernah diberangkatkan.", 409);
+      }
+
+      await tx.audit_log.create({
+        data: {
+          entity_type: "surat_jalan",
+          entity_id: BigInt(id),
+          aksi: "lanjut_dari_transit",
+          actor_id: BigInt(actorId),
+          data_sebelum: { status: "tiba_di_transit" },
+          data_sesudah: {
+            surat_jalan_id: Number(id),
+            status: "sedang_dikirim",
+            urutan: Number(checkpoint.urutan),
+            gudang_id: Number(checkpoint.gudang_id),
+            total_qty: checkpointItems.reduce((sum, it) => sum + Number(it.qty || 0), 0),
+          },
+        },
+      });
+    });
 
     return await suratJalanRepository.findById(id);
   };
@@ -2001,6 +2407,8 @@ if (!Array.isArray(items) || items.length === 0) {
     putaway,
     retrieve,
     updateDeliveryStatus,
+    tibaDiTransit,
+    lanjutDariTransit,
     addItemFoto,
     deleteItemFoto,
     findOutboundApprovalHistory,

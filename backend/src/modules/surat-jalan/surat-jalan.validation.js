@@ -340,6 +340,90 @@ const itemFotoSchema = z.object({
   ukuran_bytes: z.coerce.number().positive().optional().nullable(),
 });
 
+// ---------------------------------------------------------------------------
+// Gudang Transit (gudang bertipe dadakan).
+// Checkpoint pertama — staf menitipkan barang di Gudang Transit.
+// Bisa dipanggil berulang (0..n) selama status masih "sedang_dikirim".
+// Qty boleh sebagian; kalau ada penilaian per unit, jumlahnya harus sama qty.
+// ---------------------------------------------------------------------------
+const tibaTransitSchema = z.object({
+  gudang_id: z.coerce.number().positive("Gudang Transit wajib dipilih."),
+  catatan_tiba: z.string().trim().max(500).optional().nullable(),
+  bukti_url: z.string().url("URL bukti tidak valid.").optional().nullable(),
+  items: z
+    .array(
+      z.object({
+        item_id: z.coerce.number().positive(),
+        qty: z.number().positive("Qty dititipkan harus lebih dari 0."),
+        kondisi: z.string().optional().nullable(),
+        catatan: z.string().trim().max(500).optional().nullable(),
+        units: z
+          .array(
+            z.object({
+              nomor_unit: z.coerce.number().int().positive(),
+              kondisi: KONDISI_ENUM,
+              catatan: z.string().trim().max(500).optional().nullable(),
+            }),
+          )
+          .optional()
+          .nullable(),
+      }),
+    )
+    .min(1, "Minimal satu barang harus dititipkan."),
+  })
+  .superRefine((data, ctx) => {
+    const dipakai = new Set();
+    data.items.forEach((item, index) => {
+      if (dipakai.has(item.item_id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Barang yang dititipkan tidak boleh dobel pada satu checkpoint.",
+          path: ["items", index, "item_id"],
+        });
+      }
+      dipakai.add(item.item_id);
+
+      const units = item.units || [];
+      if (units.length === 0) return;
+
+      const totalUnit = Math.floor(item.qty);
+      if (units.length !== totalUnit) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Jumlah unit yang dinilai (${units.length}) harus sama dengan qty dititipkan (${totalUnit}).`,
+          path: ["items", index, "units"],
+        });
+        return;
+      }
+
+      const nomorDipakai = new Set();
+      units.forEach((unit, unitIndex) => {
+        if (nomorDipakai.has(unit.nomor_unit)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Nomor unit ${unit.nomor_unit} duplikat.`,
+            path: ["items", index, "units", unitIndex, "nomor_unit"],
+          });
+        }
+        nomorDipakai.add(unit.nomor_unit);
+
+        if (unit.nomor_unit < 1 || unit.nomor_unit > totalUnit) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Nomor unit ${unit.nomor_unit} harus antara 1 sampai ${totalUnit}.`,
+            path: ["items", index, "units", unitIndex, "nomor_unit"],
+          });
+        }
+      });
+    });
+  });
+
+// Checkpoint keberangkatan dari Gudang Transit ke tujuan akhir (leg penuh).
+// Qty tidak dikirim: backend mengambil sisa titipan yang masih tercatat terbuka.
+const lanjutDariTransitSchema = z.object({
+  catatan_berangkat: z.string().trim().max(500).optional().nullable(),
+});
+
 module.exports = {
   createSuratJalanSchema,
   receiveInboundSchema,
@@ -351,4 +435,6 @@ module.exports = {
   retrieveSchema,
   deliveryStatusSchema,
   itemFotoSchema,
+  tibaTransitSchema,
+  lanjutDariTransitSchema,
 };

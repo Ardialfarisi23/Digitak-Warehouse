@@ -40,6 +40,7 @@ type ApiSuratJalan = {
   gudang_asal?: { gudang_id: number; nama_gudang: string } | null;
   gudang_tujuan?: { nama_gudang: string } | null;
   project?: { nama_project: string } | null;
+  project_id?: number | string | null;
   kendaraan?: { jenis_kendaraan: string; no_polisi: string } | null;
   personil_pengantar?: { personil_id: number; nama: string; jenis: string; no_hp?: string | null } | null;
   estimasi_tiba?: string | null;
@@ -53,14 +54,18 @@ type ApiSuratJalan = {
   catatan_tiba?: string | null;
   dikonfirmasi_oleh?: { nama: string } | null;
   dikonfirmasi_at?: string | null;
+  // Field tambahan dari hasil fast-forward (upstream).
   pic_pemohon_nama?: string | null;
   surat_jalan_url?: string | null;
   keberangkatan?: { waktu: string; oleh_id: number; oleh_nama: string } | null;
   picking_selesai?: boolean;
   linimasa?: Array<{ kode: string; label: string; waktu: string; oleh_nama: string | null }>;
+  // Checkpoint Gudang Transit (0..n). Diisi backend dari tabel
+  // surat_jalan_transit; kosong untuk pengiriman tanpa titipan.
+  riwayat_perjalanan?: TransitCheckpoint[];
 };
 
-type ApiSuratJalanStatus = "draft_diajukan" | "menunggu_verifikasi" | "ready_putaway" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "sedang_dikirim" | "tiba_menunggu_konfirmasi" | "ditolak";
+type ApiSuratJalanStatus = "draft_diajukan" | "menunggu_verifikasi" | "ready_putaway" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "sedang_dikirim" | "tiba_di_transit" | "tiba_menunggu_konfirmasi" | "ditolak";
 
 const STATUS_META: Record<ApiSuratJalanStatus, { label: string; tone: string }> = {
   draft_diajukan: { label: "Menunggu Persetujuan", tone: "bg-amber-50 text-amber-700" },
@@ -71,6 +76,7 @@ const STATUS_META: Record<ApiSuratJalanStatus, { label: string; tone: string }> 
   tiba_menunggu_konfirmasi: { label: "Menunggu Konfirmasi", tone: "bg-blue-50 text-blue-600" },
   diterima_didistribusikan: { label: "Terkirim", tone: "bg-gray-100 text-gray-500" },
   sedang_dikirim: { label: "Sedang Dikirim", tone: "bg-amber-50 text-amber-600" },
+  tiba_di_transit: { label: "Di Gudang Transit", tone: "bg-purple-50 text-purple-700" },
   ditolak: { label: "Ditolak", tone: "bg-rose-50 text-rose-600" },
 };
 
@@ -90,10 +96,81 @@ const formatDateTime = (iso: string) =>
     minute: "2-digit",
   });
 
+type WarehouseOption = {
+  gudang_id: number;
+  nama_gudang: string;
+  tipe?: string;
+  project_id?: number | string | null;
+};
+
+// Satu checkpoint titipan di Gudang Transit.
+type TransitCheckpoint = {
+  transit_id: number | string;
+  urutan: number;
+  tiba_at: string;
+  berangkat_at?: string | null;
+  catatan_tiba?: string | null;
+  catatan_berangkat?: string | null;
+  gudang?: { nama_gudang?: string; tipe?: string } | null;
+  tiba_oleh?: { nama?: string } | null;
+  berangkat_oleh?: { nama?: string } | null;
+  items?: Array<{
+    item_id: number;
+    qty: number;
+    kondisi?: string | null;
+    catatan?: string | null;
+    units?: Array<{ nomor_unit: number; kondisi: string; catatan?: string | null }>;
+  }>;
+};
+
+// Penilaian kondisi per unit — meniru pola halaman inbound (task #5).
+type UnitInput = {
+  nomorUnit: number;
+  kondisi: string;
+  catatan: string;
+};
+
+// Menyembunyikan aksi Gudang Transit dari halaman staf (keputusan bisnis:
+// lapor tiba staf langsung menutup SJ). Route/service/tabel/status transit
+// tidak dihapus. Ubah ke `false` untuk mengaktifkan kembali UI-nya.
+const SEMBUNYIKAN_TRANSIT = true;
+
+const KONDISI_OPTIONS: { value: string; label: string }[] = [
+  { value: "baik", label: "Baik" },
+  { value: "rusak_ringan", label: "Rusak Ringan" },
+  { value: "rusak_berat", label: "Rusak Berat" },
+  { value: "tidak_sesuai_spek", label: "Tidak Sesuai Spek" },
+  { value: "doa", label: "DOA" },
+];
+
+const KONDISI_TONE: Record<string, string> = {
+  baik: "bg-emerald-50 text-emerald-600 border-emerald-200",
+  rusak_ringan: "bg-amber-50 text-amber-600 border-amber-200",
+  rusak_berat: "bg-rose-50 text-rose-600 border-rose-200",
+  tidak_sesuai_spek: "bg-orange-50 text-[#E8632C] border-orange-200",
+  doa: "bg-gray-100 text-gray-600 border-gray-300",
+};
+
+function buildUnitRows(total: number): UnitInput[] {
+  const count = Math.max(0, Math.floor(Number(total) || 0));
+  return Array.from({ length: count }, (_, i) => ({ nomorUnit: i + 1, kondisi: "", catatan: "" }));
+}
+
+// Samakan daftar unit dengan qty titip terbaru tanpa membuang penilaian
+// yang sudah diisi staf (pola syncUnitRows di halaman inbound).
+function syncUnitRows(existing: UnitInput[] | undefined, total: number): UnitInput[] {
+  const rows = buildUnitRows(total);
+  const previous = existing || [];
+  return rows.map((row) => {
+    const kept = previous.find((u) => u.nomorUnit === row.nomorUnit);
+    return kept ? { ...row, kondisi: kept.kondisi, catatan: kept.catatan } : row;
+  });
+}
+
 export default function DistributionDetailPage() {
   const params = useParams<{ suratJalanId: string }>();
   const router = useRouter();
-  const { get, put } = useApi();
+  const { get, put, post } = useApi();
 
   const [data, setData] = useState<ApiSuratJalan | null | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -107,6 +184,19 @@ export default function DistributionDetailPage() {
   const [showArrivalForm, setShowArrivalForm] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // --- Gudang Transit (aksi staf) ---------------------------------------
+  const [showTransitForm, setShowTransitForm] = useState(false);
+  const [warehouseOptions, setWarehouseOptions] = useState<WarehouseOption[]>([]);
+  const [transitGudangId, setTransitGudangId] = useState("");
+  const [transitQty, setTransitQty] = useState<Record<number, string>>({});
+  const [transitKondisi, setTransitKondisi] = useState<Record<number, string>>({});
+  const [transitCatatanPerItem, setTransitCatatanPerItem] = useState<Record<number, string>>({});
+  const [transitUnits, setTransitUnits] = useState<Record<number, UnitInput[]>>({});
+  const [transitCatatanUmum, setTransitCatatanUmum] = useState("");
+  const [unitPanelOpen, setUnitPanelOpen] = useState<Record<number, boolean>>({});
+  const [transitSubmitting, setTransitSubmitting] = useState(false);
+  const [departureSubmitting, setDepartureSubmitting] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -203,8 +293,10 @@ export default function DistributionDetailPage() {
 
   const isDisetujui = data.status === "disetujui";
   const isSedangDikirim = data.status === "sedang_dikirim";
+  const isTibaTransit = data.status === "tiba_di_transit";
   const isTibaMenunggu = data.status === "tiba_menunggu_konfirmasi";
   const isTerkirim = data.status === "diterima_didistribusikan";
+  const checkpoints = data.riwayat_perjalanan || [];
 
   const statusMeta = getStatusMeta(data.status as ApiSuratJalanStatus, data.picking_selesai);
 
@@ -270,7 +362,8 @@ export default function DistributionDetailPage() {
       }));
 
       const payload: Record<string, unknown> = {
-        status: "tiba_menunggu_konfirmasi",
+        // Laporan tiba staf kini langsung menutup SJ (tanpa konfirmasi SPV).
+        status: "diterima_didistribusikan",
         items,
         catatan_tiba: catatanTiba || null,
       };
@@ -285,7 +378,7 @@ export default function DistributionDetailPage() {
         throw new Error(err?.message || "Gagal melapor barang sampai.");
       }
 
-      showToast("Laporan barang sampai berhasil dikirim.", "success");
+      showToast("Laporan barang sampai berhasil. Surat Jalan ditandai selesai.", "success");
       setShowArrivalForm(false);
       setTimeout(() => {
         router.push("/staff/outbound");
@@ -294,6 +387,171 @@ export default function DistributionDetailPage() {
       showToast(err instanceof Error ? err.message : "Terjadi kesalahan.", "error");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  // --- Gudang Transit ----------------------------------------------------
+
+  /** Sisa yang masih boleh dititipkan per item = total pick − yang sedang dititip.
+   *  Checkpoint yang sudah berangkat tidak dihitung: qty-nya sudah kembali ke
+   *  perjalanan sehingga boleh dititipkan lagi di transit berikutnya. */
+  function sisaTitipan(item: ApiSuratJalanItem): number {
+    const checkpoints = data?.riwayat_perjalanan || [];
+    let sedangDititip = 0;
+    for (const c of checkpoints) {
+      if (c.berangkat_at) continue;
+      for (const row of c.items || []) {
+        if (Number(row.item_id) === Number(item.item_id)) sedangDititip += Number(row.qty || 0);
+      }
+    }
+    const totalPick = Number(item.qty_dipick_total ?? item.qty ?? 0);
+    return Math.max(0, totalPick - sedangDititip);
+  }
+
+  /** Siapkan form titipan dan muat daftar Gudang Transit yang sah. */
+  async function handleOpenTransitForm() {
+    if (!data) return;
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+    // Default qty = sisa titipan per item (leg penuh), sama seperti submit lapor tiba.
+    const qtyDefault: Record<number, string> = {};
+    const kondisiDefault: Record<number, string> = {};
+    const catatanDefault: Record<number, string> = {};
+    const unitsDefault: Record<number, UnitInput[]> = {};
+    for (const item of data.items) {
+      const sisa = sisaTitipan(item);
+      qtyDefault[item.item_id] = String(sisa);
+      kondisiDefault[item.item_id] =
+        item.kondisi_diterima || item.kondisi_diambil_list?.[0]?.kondisi || item.kondisi || "baik";
+      catatanDefault[item.item_id] = "";
+      unitsDefault[item.item_id] = buildUnitRows(sisa);
+    }
+
+    setTransitQty(qtyDefault);
+    setTransitKondisi(kondisiDefault);
+    setTransitCatatanPerItem(catatanDefault);
+    setTransitUnits(unitsDefault);
+    setTransitCatatanUmum("");
+    setUnitPanelOpen({});
+    setTransitGudangId("");
+
+    setWarehouseOptions([]);
+    try {
+      const res = await get(`${baseUrl}/api/warehouses?limit=1000`);
+      await ensureOk(res, "Gagal mengambil daftar Gudang Transit.");
+      const json = await res.json();
+      const raw = Array.isArray(json?.data?.data) ? json.data.data : Array.isArray(json?.data) ? json.data : [];
+      // Hanya gudang dadakan yang project_id-nya sama dengan project SJ
+      // (validasi akhir tetap di backend).
+      const filtered = (raw as WarehouseOption[]).filter(
+        (w) =>
+          w.tipe === "dadakan" &&
+          String(w.project_id ?? "") !== "" &&
+          String(w.project_id) === String(data.project_id)
+      );
+      setWarehouseOptions(filtered);
+      if (filtered.length === 1) setTransitGudangId(String(filtered[0].gudang_id));
+      setShowTransitForm(true);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Gagal memuat daftar Gudang Transit.", "error");
+    }
+  }
+
+  async function handleTibaDiTransit() {
+    if (!data) return;
+
+    const gudangId = Number(transitGudangId);
+    if (!gudangId) {
+      showToast("Pilih Gudang Transit terlebih dahulu.", "error");
+      return;
+    }
+
+    const itemsPayload: Array<{
+      item_id: number;
+      qty: number;
+      kondisi: string;
+      catatan?: string | null;
+      units?: Array<{ nomor_unit: number; kondisi: string; catatan?: string | null }>;
+    }> = [];
+
+    for (const item of data.items) {
+      const qty = Number(transitQty[item.item_id] ?? 0);
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+
+      const units = (transitUnits[item.item_id] || []).filter((u) => u.kondisi);
+      const payload: (typeof itemsPayload)[number] = {
+        item_id: Number(item.item_id),
+        qty,
+        kondisi: transitKondisi[item.item_id] || item.kondisi || "baik",
+        catatan: transitCatatanPerItem[item.item_id]?.trim() || null,
+      };
+
+      if (qty > 1) {
+        // Qty > 1 wajib dinilai per unit (pola alur inbound).
+        if (units.length !== Math.floor(qty)) {
+          showToast(`Barang "${item.barang?.nama_barang || item.item_id}" belum dinilai semua unitnya.`, "error");
+          return;
+        }
+        payload.units = units.map((u) => ({
+          nomor_unit: u.nomorUnit,
+          kondisi: u.kondisi,
+          catatan: u.catatan?.trim() || null,
+        }));
+      }
+
+      itemsPayload.push(payload);
+    }
+
+    if (itemsPayload.length === 0) {
+      showToast("Minimal satu barang dengan qty lebih dari 0.", "error");
+      return;
+    }
+
+    setTransitSubmitting(true);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const res = await post(`${baseUrl}/api/surat-jalan/${params.suratJalanId}/transit/tiba`, {
+        gudang_id: gudangId,
+        catatan_tiba: transitCatatanUmum.trim() || null,
+        items: itemsPayload,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.message || "Gagal mencatat titipan di Gudang Transit.");
+      }
+
+      showToast("Barang berhasil dititipkan di Gudang Transit.", "success");
+      setShowTransitForm(false);
+      setTimeout(() => window.location.reload(), 900);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Terjadi kesalahan.", "error");
+    } finally {
+      setTransitSubmitting(false);
+    }
+  }
+
+  /** Berangkat dari Gudang Transit (leg penuh) menuju tujuan akhir. */
+  async function handleLanjutPerjalanan() {
+    if (!data) return;
+    setDepartureSubmitting(true);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const res = await post(`${baseUrl}/api/surat-jalan/${params.suratJalanId}/transit/lanjut`, {
+        catatan_berangkat: null,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.message || "Gagal melanjutkan perjalanan.");
+      }
+
+      showToast("Perjalanan dilanjutkan dari Gudang Transit.", "success");
+      setTimeout(() => window.location.reload(), 900);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Terjadi kesalahan.", "error");
+    } finally {
+      setDepartureSubmitting(false);
     }
   }
 
@@ -361,6 +619,18 @@ export default function DistributionDetailPage() {
             )}
             {data.pic_pemohon_nama && (
               <p className="text-gray-600">PIC Pemohon: <span className="font-semibold text-gray-900">{data.pic_pemohon_nama}</span></p>
+            )}
+            {isTibaTransit && (
+              <span className="inline-flex items-center gap-2 rounded-full bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700">
+                <MapPin size={14} />
+                Di Gudang Transit
+              </span>
+            )}
+            {isTibaMenunggu && (
+              <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">
+                <Clock size={14} />
+                Menunggu Konfirmasi SPV
+              </span>
             )}
             {data.alamat_lapangan && (
               <p className="text-gray-600">Alamat Lapangan: <span className="font-semibold text-gray-900">{data.alamat_lapangan}</span></p>
@@ -476,6 +746,69 @@ export default function DistributionDetailPage() {
         </table>
       </div>
 
+      {/* Kronologi titipan Gudang Transit (0..n checkpoint). */}
+      <div className="mt-6 rounded-2xl border border-[#F3D9C7] bg-white p-6">
+        <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
+          Riwayat Perjalanan
+        </p>
+        {checkpoints.length === 0 ? (
+          <p className="text-sm text-gray-500">
+            Belum ada titipan di Gudang Transit. Pengiriman langsung ke tujuan akhir.
+          </p>
+        ) : (
+          <ol className="space-y-3">
+            {checkpoints.map((c) => {
+              const totalQty = (c.items || []).reduce((sum, it) => sum + Number(it.qty || 0), 0);
+              const berangkat = Boolean(c.berangkat_at);
+              return (
+                <li key={String(c.transit_id)} className="rounded-xl border border-purple-100 bg-purple-50/50 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-purple-800">
+                      #{c.urutan} · {c.gudang?.nama_gudang || "Gudang Transit"}
+                    </p>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                        berangkat ? "bg-emerald-50 text-emerald-700" : "bg-purple-100 text-purple-700"
+                      }`}
+                    >
+                      {berangkat ? "Sudah berangkat" : "Masih dititipkan"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-600">
+                    Tiba: {new Date(c.tiba_at).toLocaleString("id-ID")}
+                    {c.tiba_oleh?.nama ? ` · oleh ${c.tiba_oleh.nama}` : ""} · {totalQty} unit
+                  </p>
+                  {berangkat && c.berangkat_at && (
+                    <p className="mt-1 text-xs text-gray-600">
+                      Berangkat: {new Date(c.berangkat_at).toLocaleString("id-ID")}
+                      {c.berangkat_oleh?.nama ? ` · oleh ${c.berangkat_oleh.nama}` : ""}
+                    </p>
+                  )}
+                  {c.catatan_tiba && <p className="mt-1 text-xs italic text-purple-700">Catatan: {c.catatan_tiba}</p>}
+                  {c.catatan_berangkat && (
+                    <p className="mt-1 text-xs italic text-gray-600">Catatan berangkat: {c.catatan_berangkat}</p>
+                  )}
+                  {(c.items || []).length > 0 && (
+                    <ul className="mt-2 space-y-1 border-t border-purple-100 pt-2">
+                      {(c.items || []).map((it) => (
+                        <li key={it.item_id} className="text-xs text-gray-700">
+                          Item #{it.item_id}: {it.qty} unit · {it.kondisi || "baik"}
+                          {it.units && it.units.length > 1 && (
+                            <span className="ml-1 text-gray-500">
+                              ({it.units.map((u) => `U${u.nomor_unit}:${u.kondisi}`).join(", ")})
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </div>
+
       {isDisetujui && (
         <div className="mt-6 rounded-2xl border border-[#F3D9C7] bg-white p-6">
           <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
@@ -512,7 +845,7 @@ export default function DistributionDetailPage() {
         </div>
       )}
 
-      {isSedangDikirim && !showArrivalForm && (
+      {isSedangDikirim && !showArrivalForm && !showTransitForm && (
         <div className="mt-6 rounded-2xl border border-[#F3D9C7] bg-white p-6">
           <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
             Lapor Barang Sampai
@@ -520,12 +853,238 @@ export default function DistributionDetailPage() {
           <p className="mb-4 text-sm text-gray-600">
             Laporkan jumlah dan kondisi barang yang sudah sampai ke site.
           </p>
-          <Button
-            onClick={() => setShowArrivalForm(true)}
-            className="h-auto rounded-xl bg-[#E8632C] px-6 py-3 text-sm font-semibold text-white hover:bg-[#D9591F]"
-          >
-            Lapor Barang Sampai
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              onClick={() => setShowArrivalForm(true)}
+              className="h-auto rounded-xl bg-[#E8632C] px-6 py-3 text-sm font-semibold text-white hover:bg-[#D9591F]"
+            >
+              Lapor Barang Sampai
+            </Button>
+            {/* Tombol transit disembunyikan dari UI (keputusan bisnis), tidak
+                dihapus — route/service/tabel/status tetap utuh. Ubah
+                SEMBUNYIKAN_TRANSIT ke false untuk menampilkan kembali. */}
+            {!SEMBUNYIKAN_TRANSIT && (
+              <Button
+                onClick={handleOpenTransitForm}
+                className="h-auto rounded-xl border border-[#F3D9C7] bg-white px-6 py-3 text-sm font-semibold text-[#E8632C] hover:bg-[#FDECE1]"
+              >
+                Tiba di Gudang Transit
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Aksi Gudang Transit disembunyikan dari UI (keputusan bisnis:
+          lapor tiba staf kini langsung menutup SJ). Route, service, tabel
+          dan status `tiba_di_transit` TIDAK dihapus supaya mudah diaktifkan
+          lagi. Ubah SEMBUNYIKAN_TRANSIT jadi false untuk menampilkannya. */}
+      {isTibaTransit && !SEMBUNYIKAN_TRANSIT && (
+        <div className="mt-6 rounded-2xl border border-purple-100 bg-purple-50 p-6">
+          <p className="mb-1 text-sm font-semibold text-purple-800">
+            Barang sedang dititipkan di Gudang Transit
+          </p>
+          <p className="mb-4 text-sm text-purple-700">
+            Titipan ini bukan akhir perjalanan. Lanjutkan perjalanan ke tujuan akhir
+            saat barang diberangkatkan kembali.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              disabled={departureSubmitting}
+              onClick={handleLanjutPerjalanan}
+              className="h-auto rounded-xl bg-[#E8632C] px-6 py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
+            >
+              {departureSubmitting ? "Memproses..." : "Lanjutkan Perjalanan"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {showTransitForm && !SEMBUNYIKAN_TRANSIT && (
+        <div className="mt-6 rounded-2xl border border-purple-100 bg-white p-6">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            Tiba di Gudang Transit
+          </p>
+          <p className="mb-4 text-sm text-gray-600">
+            Titipkan barang sementara di Gudang Transit project ini. Stok Gudang Transit
+            bertambah saat titipan disimpan.
+          </p>
+
+          <div className="mb-4">
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Gudang Transit <span className="text-rose-500">*</span>
+            </label>
+            <select
+              value={transitGudangId}
+              onChange={(e) => setTransitGudangId(e.target.value)}
+              className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+            >
+              <option value="">Pilih Gudang Transit...</option>
+              {warehouseOptions.map((w) => (
+                <option key={w.gudang_id} value={String(w.gudang_id)}>
+                  {w.nama_gudang} (Transit)
+                </option>
+              ))}
+            </select>
+            {warehouseOptions.length === 0 && (
+              <p className="mt-1 text-xs text-gray-500">
+                Tidak ada Gudang Transit (dadakan) untuk project ini.
+              </p>
+            )}
+          </div>
+
+          <div className="mb-4">
+            <label className="mb-1 block text-sm font-medium text-gray-700">Catatan Titipan</label>
+            <textarea
+              value={transitCatatanUmum}
+              onChange={(e) => setTransitCatatanUmum(e.target.value)}
+              rows={2}
+              placeholder="Catatan umum saat menitipkan barang..."
+              className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+            />
+          </div>
+
+          <div className="space-y-3">
+            {data.items.map((item) => {
+              const sisa = sisaTitipan(item);
+              if (sisa <= 0) return null;
+              const qty = Number(transitQty[item.item_id] ?? sisa);
+              const units = transitUnits[item.item_id] || [];
+              const panelTerbuka = Boolean(unitPanelOpen[item.item_id]);
+              return (
+                <div key={item.item_id} className="rounded-lg border border-gray-100 p-3">
+                  <p className="text-sm font-medium text-gray-800">
+                    {item.barang?.nama_barang || "-"}{" "}
+                    <span className="text-xs text-gray-400">
+                      ({item.barang?.kode_perangkat || "-"})
+                    </span>
+                  </p>
+                  <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600">
+                        Qty Dititipkan (maks {sisa})
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={sisa}
+                        value={qty}
+                        onChange={(e) => {
+                          const value = Math.max(0, Math.min(sisa, Number(e.target.value)));
+                          setTransitQty((prev) => ({ ...prev, [item.item_id]: String(value) }));
+                          setTransitUnits((prev) => ({ ...prev, [item.item_id]: syncUnitRows(prev[item.item_id], value) }));
+                        }}
+                        className="w-full rounded-md border border-gray-200 px-3 py-1.5 text-sm focus:border-[#E8632C] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600">Kondisi</label>
+                      <select
+                        value={transitKondisi[item.item_id] || item.kondisi || "baik"}
+                        onChange={(e) => setTransitKondisi((prev) => ({ ...prev, [item.item_id]: e.target.value }))}
+                        className="w-full rounded-md border border-gray-200 px-3 py-1.5 text-sm focus:border-[#E8632C] focus:outline-none"
+                      >
+                        {KONDISI_OPTIONS.map((k) => (
+                          <option key={k.value} value={k.value}>
+                            {k.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600">Catatan</label>
+                      <input
+                        type="text"
+                        value={transitCatatanPerItem[item.item_id] || ""}
+                        onChange={(e) =>
+                          setTransitCatatanPerItem((prev) => ({ ...prev, [item.item_id]: e.target.value }))
+                        }
+                        placeholder="Opsional"
+                        className="w-full rounded-md border border-gray-200 px-3 py-1.5 text-sm focus:border-[#E8632C] focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {qty > 1 && (
+                    <div className="mt-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold text-gray-700">Kondisi per unit</p>
+                        <button
+                          type="button"
+                          onClick={() => setUnitPanelOpen((prev) => ({ ...prev, [item.item_id]: !panelTerbuka }))}
+                          className="rounded-md border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50"
+                        >
+                          {panelTerbuka ? "Sembunyikan" : `Nilai ${Math.floor(qty)} unit`}
+                        </button>
+                      </div>
+                      {panelTerbuka && (
+                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                          {units.map((unit) => (
+                            <div key={unit.nomorUnit} className="rounded-lg border border-gray-200 bg-white p-2.5">
+                              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                                Unit {unit.nomorUnit}
+                              </p>
+                              <select
+                                value={unit.kondisi}
+                                onChange={(e) =>
+                                  setTransitUnits((prev) => ({
+                                    ...prev,
+                                    [item.item_id]: (prev[item.item_id] || []).map((u) =>
+                                      u.nomorUnit === unit.nomorUnit ? { ...u, kondisi: e.target.value } : u
+                                    ),
+                                  }))
+                                }
+                                className={`w-full rounded-md border px-2 py-1.5 text-xs font-medium focus:outline-none ${
+                                  unit.kondisi ? KONDISI_TONE[unit.kondisi] : "border-gray-200 text-gray-500"
+                                }`}
+                              >
+                                <option value="">Pilih kondisi...</option>
+                                {KONDISI_OPTIONS.map((k) => (
+                                  <option key={k.value} value={k.value}>
+                                    {k.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <input
+                                value={unit.catatan}
+                                onChange={(e) =>
+                                  setTransitUnits((prev) => ({
+                                    ...prev,
+                                    [item.item_id]: (prev[item.item_id] || []).map((u) =>
+                                      u.nomorUnit === unit.nomorUnit ? { ...u, catatan: e.target.value } : u
+                                    ),
+                                  }))
+                                }
+                                placeholder="Catatan unit (opsional)"
+                                className="mt-1.5 w-full rounded-md border border-gray-200 px-2 py-1 text-xs focus:border-[#E8632C] focus:outline-none"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 flex gap-3">
+            <Button
+              disabled={transitSubmitting}
+              onClick={handleTibaDiTransit}
+              className="h-auto rounded-xl bg-[#E8632C] px-6 py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
+            >
+              {transitSubmitting ? "Menyimpan..." : "Simpan Titipan"}
+            </Button>
+            <button
+              type="button"
+              onClick={() => setShowTransitForm(false)}
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              Batal
+            </button>
+          </div>
         </div>
       )}
 

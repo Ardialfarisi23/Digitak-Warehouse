@@ -468,16 +468,21 @@ describe("updateDeliveryStatus", () => {
     teardown();
   });
 
-  it("sedang_dikirim -> diterima_didistribusikan via updateDeliveryStatus: ditolak", async () => {
-    const shipment = { ...baseShipment, status: "sedang_dikirim" };
+  // Laporan tiba staf kini langsung menutup SJ (keputusan bisnis): dari
+  // sedang_dikirim boleh langsung ke diterima_didistribusikan.
+  it("sedang_dikirim -> diterima_didistribusikan via updateDeliveryStatus: berhasil (laporan tiba staf)", async () => {
+    const shipment = {
+      ...baseShipment,
+      status: "sedang_dikirim",
+      items: [{ item_id: 1, barang_id: 1, qty: 10, kondisi: "baik" }],
+    };
     setup(shipment);
-    let error;
-    try {
-      await updateDeliveryStatus(2, { status: "diterima_didistribusikan" }, 1);
-    } catch (err) {
-      error = err;
-    }
-    assert.ok(error);
+    const result = await updateDeliveryStatus(
+      1,
+      { status: "diterima_didistribusikan", items: [{ item_id: 1, qty_diterima: 0, kondisi_diterima: "baik" }] },
+      1
+    );
+    assert.ok(result);
     teardown();
   });
 

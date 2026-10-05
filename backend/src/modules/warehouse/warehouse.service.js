@@ -144,15 +144,41 @@ const create = async (data, userId, userRole) => {
 const findAll = async (query) => {
   const result = await warehouseRepository.findAll(query);
 
-  const dataWithFlag = await Promise.all(
-    result.data.map(async (warehouse) => {
-      const check = await canEditType(warehouse.gudang_id);
-      return {
-        ...warehouse,
-        dapat_ubah_tipe: check.dapat_ubah_tipe,
-      };
-    })
+  // Flag `dapat_ubah_tipe` dihitung per gudang. Sebelumnya memakai canEditType()
+  // untuk tiap baris (2 query x N gudang); sekarang limit default gudang jauh lebih
+  // besar, jadi cukup dihitung sekali lewat dua query agregat.
+  const gudangIds = result.data.map((warehouse) => warehouse.gudang_id);
+
+  if (gudangIds.length === 0) {
+    return { ...result, data: [] };
+  }
+
+  const [zonaCounts, gudangBerstok] = await Promise.all([
+    prisma.zona_gudang.groupBy({
+      by: ["gudang_id"],
+      where: { gudang_id: { in: gudangIds } },
+      _count: { _all: true },
+    }),
+    prisma.stok_gudang.groupBy({
+      by: ["gudang_id"],
+      where: { gudang_id: { in: gudangIds }, qty: { gt: 0 } },
+    }),
+  ]);
+
+  const zonaCountMap = new Map(
+    zonaCounts.map((row) => [String(row.gudang_id), row._count._all])
   );
+  const gudangBerstokSet = new Set(gudangBerstok.map((row) => String(row.gudang_id)));
+
+  const dataWithFlag = result.data.map((warehouse) => {
+    const zonaCount = zonaCountMap.get(String(warehouse.gudang_id)) || 0;
+    const hasStock = gudangBerstokSet.has(String(warehouse.gudang_id));
+
+    return {
+      ...warehouse,
+      dapat_ubah_tipe: zonaCount <= 1 && !hasStock,
+    };
+  });
 
   return {
     ...result,

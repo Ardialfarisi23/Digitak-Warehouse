@@ -1,6 +1,10 @@
 ﻿const prisma = require("../../config/prisma");
 
-const DEFAULT_LIMIT = 10;
+// Halaman form surat jalan (inbound/outbound) memuat seluruh gudang untuk mengisi
+// dropdown tujuan. Nilai lama 10 membuat gudang terpotong diam-diam sehingga
+// gudang dadakan/transit milik project tertentu bisa tidak pernah muncul.
+const DEFAULT_LIMIT = 100;
+const MAX_LIMIT = 1000;
 const DEFAULT_PAGE = 1;
 
 const ALLOWED_SORT_FIELDS = [
@@ -52,9 +56,12 @@ const findAll = async ({
     DEFAULT_PAGE
   );
 
-  const sanitizedLimit = Math.max(
-    parseInt(limit, 10) || DEFAULT_LIMIT,
-    1
+  const sanitizedLimit = Math.min(
+    Math.max(
+      parseInt(limit, 10) || DEFAULT_LIMIT,
+      1
+    ),
+    MAX_LIMIT
   );
 
   const orderField = ALLOWED_SORT_FIELDS.includes(sortBy)

@@ -61,6 +61,7 @@ interface WarehouseOption {
   gudang_id: string | number;
   nama_gudang: string;
   tipe?: string;
+  project_id?: string | number | null;
 }
 
 interface SupplierOption {
@@ -243,7 +244,7 @@ export default function InboundListPage() {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise.all([
         get(`${baseUrl}/api/items?limit=200`),
-        get(`${baseUrl}/api/warehouses`),
+        get(`${baseUrl}/api/warehouses?limit=1000`),
         get(`${baseUrl}/api/suppliers`),
         get(`${baseUrl}/api/units`),
         get(`${baseUrl}/api/categories`),
@@ -545,6 +546,23 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
   };
 
   const selectedGudangTujuan = warehouseOptions.find((w) => String(w.gudang_id) === selectedGudangTujuanId);
+
+  // Gudang tidak dibatasi per project, tapi gudang dadakan (transit) yang ter-link ke
+  // project terpilih diberi label tambahan supaya staff mudah mengenali.
+  const gudangTujuanOptions = warehouseOptions.map((w) => {
+    const isTransit = w.tipe === "dadakan";
+    const transitProjectIni =
+      isTransit && w.project_id != null && String(w.project_id) === String(selectedProjectId);
+
+    let label = w.nama_gudang;
+    if (transitProjectIni) {
+      label += " (Transit - Project Ini)";
+    } else if (isTransit) {
+      label += " (Dadakan)";
+    }
+
+    return { gudang_id: w.gudang_id, label };
+  });
 
   const kendaraanValid = kendaraanNamaTeks.trim().length > 0;
   const noPolisiValid = kendaraanNoPolisTeks.trim().length > 0;
@@ -876,9 +894,9 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
               >
                   <option value="" disabled>Pilih Gudang Tujuan...</option>
-                  {warehouseOptions.map((w) => (
+                  {gudangTujuanOptions.map((w) => (
                     <option key={w.gudang_id} value={String(w.gudang_id)}>
-                      {w.nama_gudang} {w.tipe === "dadakan" ? "(Dadakan)" : ""}
+                      {w.label}
                     </option>
                   ))}
               </select>
