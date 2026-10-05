@@ -52,7 +52,7 @@ const getProfile = async (id) => {
     throw new AppError("User tidak ditemukan.", 404);
   }
 
-  const gudangIds = await resolveGudangIds(id);
+  const gudangIds = await resolveGudangIds(id, userAccount.role);
 
   return toProfileResponse(userAccount, gudangIds);
 };

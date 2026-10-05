@@ -28,7 +28,10 @@ const getApprovalQueue = async (actor) => {
   };
 
   const whereVerification = {
-    status: { in: ["draft_diajukan", "menunggu_verifikasi"] },
+    OR: [
+      { status: "menunggu_verifikasi", tipe: "inbound" },
+      { status: "draft_diajukan", tipe: "outbound" },
+    ],
   };
 
   const whereDiscrepancy = {

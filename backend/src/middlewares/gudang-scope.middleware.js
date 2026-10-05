@@ -26,7 +26,7 @@ const keNomor = (value) => {
  *
  * Kode ini murni membaca, tidak pernah menulis ke database.
  */
-const resolveGudangIds = async (userId) => {
+const resolveGudangIds = async (userId, role) => {
   const idNumerik = keNomor(userId);
   if (idNumerik === null) return [];
 
@@ -35,29 +35,27 @@ const resolveGudangIds = async (userId) => {
     select: { personil_id: true, gudang_id: true },
   });
 
-  const [penugasanBaru, gudangDipic] = await Promise.all([
-    prisma.user_gudang.findMany({
-      where: { user_id: BigInt(idNumerik) },
-      select: { gudang_id: true },
-    }),
-    personil?.personil_id
-      ? prisma.gudang.findMany({
-          where: { pic_id: personil.personil_id },
-          select: { gudang_id: true },
-        })
-      : Promise.resolve([]),
-  ]);
+  const penugasanBaru = await prisma.user_gudang.findMany({
+    where: { user_id: BigInt(idNumerik) },
+    select: { gudang_id: true },
+  });
 
-  // keNomor mengembalikan null untuk nilai tidak valid, jadi null harus dibuang
-  // sebelum digabung. Kalau tidak, `null` ikut masuk ke gudangIds dan membuat
-  // gudangUtamaId bernilai null meski stafnya sebenarnya punya penugasan.
   const ids = penugasanBaru.map((row) => keNomor(row.gudang_id)).filter((id) => id !== null);
   const lama = keNomor(personil?.gudang_id);
   if (lama !== null) ids.push(lama);
 
-  for (const row of gudangDipic) {
-    const pic = keNomor(row.gudang_id);
-    if (pic !== null) ids.push(pic);
+  if (role !== "staf_gudang") {
+    const gudangDipic = personil?.personil_id
+      ? await prisma.gudang.findMany({
+          where: { pic_id: personil.personil_id },
+          select: { gudang_id: true },
+        })
+      : [];
+
+    for (const row of gudangDipic) {
+      const pic = keNomor(row.gudang_id);
+      if (pic !== null) ids.push(pic);
+    }
   }
 
   return [...new Set(ids)].sort((a, b) => a - b);
@@ -99,7 +97,7 @@ const attachGudangScope = async (req, res, next) => {
       return next();
     }
 
-    const gudangIds = await resolveGudangIds(req.user.id);
+    const gudangIds = await resolveGudangIds(req.user.id, req.user.role);
 
     if (gudangIds.length === 0) {
       req.gudangScope = {

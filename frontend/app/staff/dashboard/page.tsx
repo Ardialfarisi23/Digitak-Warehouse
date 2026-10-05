@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Bell, MapPin, ArrowRight, PackageCheck, Truck } from "lucide-react";
@@ -88,6 +88,11 @@ function StatusBadge({ children }: { children: React.ReactNode }) {
 }
 
 type ZoneRow = {
+  zonaId: string;
+  gudangId: string;
+  gudangNama: string;
+  projectNama?: string | null;
+  area?: string | null;
   namaZona: string;
   kodeZona: string;
   statusKecukupan: string;
@@ -99,7 +104,12 @@ type ZoneRow = {
 };
 
 // Bentuk apa adanya dari /api/dashboard/warehouse-assessment sebelum dipetakan ke ZoneRow.
-type ZonaApiItem = Partial<Record<keyof ZoneRow, unknown>> & {
+type ZonaApiItem = {
+  zonaId?: string | null;
+  gudangId?: string | null;
+  gudangNama?: string | null;
+  projectNama?: string | null;
+  area?: string | null;
   namaZona?: string | null;
   kodeZona?: string | null;
   statusKecukupan?: string | null;
@@ -148,7 +158,6 @@ export default function StaffDashboardPage() {
   const [zones, setZones] = useState<ZoneRow[]>([]);
   const [zonesLoading, setZonesLoading] = useState(true);
   const [zonesError, setZonesError] = useState<string | null>(null);
-  const [staffGudangId, setStaffGudangId] = useState<string | null>(null);
   // Satu staf boleh ditugaskan ke satu atau beberapa gudang. Semua kartu yang
   // butuh scope gudang memakai daftar ini, bukan satu ID saja.
   const [staffGudangIds, setStaffGudangIds] = useState<string[]>([]);
@@ -171,6 +180,15 @@ export default function StaffDashboardPage() {
   const [mySubmissionsError, setMySubmissionsError] = useState<string | null>(null);
 
   const staffName = user?.name || user?.username || "Staf Gudang";
+
+  const zonesByGudang = useMemo(() => {
+    return zones.reduce<Record<string, ZoneRow[]>>((acc, zone) => {
+      const key = zone.gudangId || "-";
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(zone);
+      return acc;
+    }, {});
+  }, [zones]);
 
   useEffect(() => {
     async function loadProfile() {
@@ -200,11 +218,9 @@ export default function StaffDashboardPage() {
         const gabungan = [...new Set([...(utama ? [utama] : []), ...dariDaftar, ...(lama ? [lama] : [])])];
 
         setStaffGudangIds(gabungan);
-        setStaffGudangId(gabungan[0] ?? null);
         setBelumDitugaskan(gabungan.length === 0);
       } catch (err) {
         console.error("Gagal memuat profil staff:", err);
-        setStaffGudangId(null);
         setStaffGudangIds([]);
         setBelumDitugaskan(false);
       } finally {
@@ -283,6 +299,11 @@ export default function StaffDashboardPage() {
         if (pesanGagal) throw new Error(pesanGagal);
 
         const mapped: ZoneRow[] = list.map((z) => ({
+          zonaId: String(z.zonaId ?? crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)),
+          gudangId: String(z.gudangId ?? ""),
+          gudangNama: z.gudangNama || "-",
+          projectNama: z.projectNama ?? null,
+          area: z.area ?? null,
           namaZona: z.namaZona || z.kodeZona || "-",
           kodeZona: z.kodeZona || "-",
           statusKecukupan: z.statusKecukupan || "CUKUP",
@@ -643,15 +664,11 @@ export default function StaffDashboardPage() {
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
               Status Zona Live
             </p>
-            <span className="rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600">
-              {profileLoading
-                ? "Memuat..."
-                : staffGudangIds.length > 1
-                  ? `${staffGudangIds.length} gudang`
-                  : staffGudangId
-                    ? `Gudang #${staffGudangId}`
-                    : "Belum ditugaskan"}
-            </span>
+            {Object.keys(zonesByGudang).length > 1 && (
+              <span className="rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600">
+                {Object.keys(zonesByGudang).length} gudang
+              </span>
+            )}
           </div>
 
           {profileLoading ? (
@@ -685,40 +702,64 @@ export default function StaffDashboardPage() {
               Belum ada data zona untuk gudang Anda.
             </p>
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {zones.map((zone) => (
-                <div
-                  key={zone.kodeZona}
-                  className="rounded-xl border border-slate-100 p-4"
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      {zone.namaZona}
-                    </p>
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${getStatusBadgeClass(
-                        zone.statusKecukupan
-                      )}`}
-                    >
-                      {getStatusLabel(zone.statusKecukupan)}
-                    </span>
+            <>
+              {Object.entries(zonesByGudang).map(([gudangId, items]) => {
+                const representative = items[0];
+                return (
+                  <div key={gudangId} className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          {representative.gudangNama}
+                        </p>
+                        {(representative.projectNama || representative.area) && (
+                          <p className="mt-0.5 text-[11px] text-gray-400">
+                            {representative.projectNama}
+                            {representative.projectNama && representative.area ? " · " : ""}
+                            {representative.area}
+                          </p>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-gray-400">{items.length} zona</span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {items.map((zone) => (
+                        <div
+                          key={zone.zonaId}
+                          className="rounded-xl border border-slate-100 p-4"
+                        >
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              {zone.namaZona}
+                            </p>
+                            <span
+                              className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${getStatusBadgeClass(
+                                zone.statusKecukupan
+                              )}`}
+                            >
+                              {getStatusLabel(zone.statusKecukupan)}
+                            </span>
+                          </div>
+                          <div className="mt-2 text-xs text-gray-500">
+                            {formatSisaCapacity(zone.sisa, zone.kapasitasMaksimum) || (
+                              <span className="text-gray-400">Kapasitas belum diatur</span>
+                            )}
+                          </div>
+                          {zone.dinilaiOleh && (
+                            <p className="mt-1 text-[10px] text-gray-400">
+                              Dinilai oleh {zone.dinilaiOleh}
+                              {zone.dinilaiPada
+                                ? ` pada ${new Date(zone.dinilaiPada).toLocaleDateString("id-ID")}`
+                                : ""}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="mt-2 text-xs text-gray-500">
-                    {formatSisaCapacity(zone.sisa, zone.kapasitasMaksimum) || (
-                      <span className="text-gray-400">Kapasitas belum diatur</span>
-                    )}
-                  </div>
-                  {zone.dinilaiOleh && (
-                    <p className="mt-1 text-[10px] text-gray-400">
-                      Dinilai oleh {zone.dinilaiOleh}
-                      {zone.dinilaiPada
-                        ? ` pada ${new Date(zone.dinilaiPada).toLocaleDateString("id-ID")}`
-                        : ""}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
+                );
+              })}
+            </>
           )}
         </div>
       </div>
