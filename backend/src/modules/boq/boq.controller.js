@@ -164,6 +164,8 @@ const exportBoqs = async (req, res, next) => {
 
     const headers = [
       "Nomor BOQ",
+      "Cluster ID",
+      "Cluster",
       "Tiket",
       "Status",
       "Sumber",
@@ -178,6 +180,8 @@ const exportBoqs = async (req, res, next) => {
 
     const rows = transformed.map((row) => [
       escapeCsv(row.boqNumber),
+      escapeCsv(row.clusterId || ""),
+      escapeCsv(row.cluster?.nama_cluster || ""),
       escapeCsv(row.ticketNumber),
       escapeCsv(row.status),
       escapeCsv(row.source),

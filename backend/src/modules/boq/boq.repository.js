@@ -50,6 +50,11 @@ const findById = async (boq_id) => {
           project: true,
         },
       },
+      cluster: {
+        include: {
+          project: true,
+        },
+      },
       items: {
         include: {
           barang: true,

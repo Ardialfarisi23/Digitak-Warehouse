@@ -635,7 +635,7 @@ function FormModal({
     const initial: Record<string, unknown> = {};
     fields.forEach((field) => {
       if (field.type === "checkbox") {
-        initial[field.key] = record ? Boolean(record[field.key]) : true;
+        initial[field.key] = record ? Boolean(record[field.key]) : (field.key === "wajib_sn" ? false : true);
       } else if (field.type === "file") {
         if (mode === "edit") {
           const existingUrl = getPhotoUrl(record);
