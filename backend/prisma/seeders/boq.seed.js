@@ -30,9 +30,7 @@ async function seedBoq(prisma) {
   const resolveProjectId = (namaProject) => {
     const id = projectMap.get(namaProject);
     if (!id) {
-      throw new Error(
-        `Project "${namaProject}" tidak ditemukan. Jalankan project.seed.js lebih dulu.`
-      );
+      throw new Error(`Project "${namaProject}" tidak ditemukan. Jalankan project.seed.js lebih dulu.`);
     }
     return id;
   };
@@ -97,9 +95,7 @@ async function seedBoq(prisma) {
       nama_project: "FTTH Sumedang Kota",
       area: "Sumedang",
       status: "aktif",
-      items: [
-        { kode_perangkat: "NWK-00466", qty: 10, satuan: "pcs", gudang: "Gudang Rancamanyar" },
-      ],
+      items: [{ kode_perangkat: "NWK-00466", qty: 10, satuan: "pcs", gudang: "Gudang Rancamanyar" }],
     },
   ];
 

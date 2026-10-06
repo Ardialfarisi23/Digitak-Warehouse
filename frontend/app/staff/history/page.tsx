@@ -174,7 +174,7 @@ export default function StaffHistoryPage() {
                             router.push(
                               sj.tipe === "outbound"
                                 ? `/staff/outbound/${sj.surat_jalan_id}`
-                                : `/staff/inbound/${sj.surat_jalan_id}`,
+                                : `/staff/putaway/${sj.surat_jalan_id}`,
                             )
                           }
                           className="font-semibold text-[#E8632C] hover:underline"

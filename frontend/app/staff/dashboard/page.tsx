@@ -890,7 +890,7 @@ export default function StaffDashboardPage() {
                 key={i}
                 href={
                   submission.tipe === "inbound"
-                    ? `/staff/inbound/${submission.suratJalanId}`
+                    ? `/staff/putaway/${submission.suratJalanId}`
                     : `/staff/outbound/${submission.suratJalanId}`
                 }
                 className="flex items-center justify-between rounded-xl border border-slate-100 p-3 transition-colors hover:border-slate-200"
