@@ -138,6 +138,7 @@ interface StockHistoryEntry {
   gudang_tujuan: string;
   lapangan_tujuan?: string | null;
   nomor_surat_jalan?: string;
+  return_transaction_id?: string | number | null;
   kondisi?: string;
   is_kelebihan?: boolean;
   saldo_setelah?: number;
@@ -1412,6 +1413,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
               <tr className="border-b border-slate-100 bg-slate-50">
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tanggal</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">No. Surat Jalan</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Jenis Transaksi</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diproses Oleh</th>
@@ -1427,18 +1429,18 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4" colSpan={11}>
+                    <td className="px-6 py-4" colSpan={12}>
                       <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                     </td>
                   </tr>
                 ))
               ) : error ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={11}>{error}</td>
+                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={12}>{error}</td>
                 </tr>
               ) : data.length === 0 ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={11}>
+                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={12}>
                     Tidak ada pergerakan stok yang cocok dengan filter ini.
                   </td>
                 </tr>
@@ -1454,6 +1456,9 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap font-mono font-semibold text-orange-500">
                       {r.kode_tiket || "-"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap font-mono text-xs font-semibold text-slate-700">
+                      {r.nomor_surat_jalan && r.nomor_surat_jalan !== "-" ? r.nomor_surat_jalan : r.return_transaction_id ? `Return #${r.return_transaction_id}` : "-"}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap items-center gap-2">

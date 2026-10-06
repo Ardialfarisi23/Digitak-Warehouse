@@ -5,6 +5,15 @@ export interface ReconciliationRecord {
   project_nama: string;
   cluster_id: string;
   nama_cluster: string;
+  cluster_type: string | null;
+  project_type: string | null;
+  alamat_lengkap: string | null;
+  kso_partner: string | null;
+  kso_contact: string | null;
+  no_tiket_release: string | null;
+  vendor: string | null;
+  homepass_plan: number | null;
+  status_aktif: boolean | null;
   pic_nama: string | null;
   kode_tiket: string;
   boq_list: Array<{ kode_boq?: string }>;
@@ -423,7 +432,17 @@ export async function exportReconciliationXlsx(records: ReconciliationRecord[]) 
   detailSheet.views = [{ state: "frozen", ySplit: 1, topLeftCell: "A2" } as ExcelJS.WorksheetView];
   detailSheet.columns = [
     { header: "Project", key: "project_nama", width: 30 },
-    { header: "Cluster", key: "nama_cluster", width: 30 },
+    { header: "Cluster Name", key: "nama_cluster", width: 30 },
+    { header: "Cluster ID", key: "cluster_id", width: 18 },
+    { header: "Tipe Cluster", key: "cluster_type", width: 16 },
+    { header: "Tipe Project", key: "project_type", width: 16 },
+    { header: "Alamat Lengkap", key: "alamat_lengkap", width: 40 },
+    { header: "Mitra KSO", key: "kso_partner", width: 24 },
+    { header: "Kontak KSO", key: "kso_contact", width: 18 },
+    { header: "No. Tiket Release", key: "no_tiket_release", width: 20 },
+    { header: "Vendor", key: "vendor", width: 20 },
+    { header: "Homepass Plan", key: "homepass_plan", width: 14 },
+    { header: "Status", key: "status_aktif", width: 14 },
     { header: "PIC", key: "pic_nama", width: 20 },
     { header: "Kode Tiket", key: "kode_tiket", width: 20 },
     { header: "Kode BOQ", key: "kode_boq", width: 20 },
@@ -442,8 +461,18 @@ export async function exportReconciliationXlsx(records: ReconciliationRecord[]) 
   records.forEach((r) => {
     const boqCodes = (r.boq_list || []).map((b) => b.kode_boq).filter(Boolean).join(", ");
     detailSheet.addRow({
-      project_nama: r.project_nama,
-      nama_cluster: r.nama_cluster,
+      project_nama: r.project_nama || "-",
+      nama_cluster: r.nama_cluster || "-",
+      cluster_id: r.cluster_id || "-",
+      cluster_type: r.cluster_type || "-",
+      project_type: r.project_type || "-",
+      alamat_lengkap: r.alamat_lengkap || "-",
+      kso_partner: r.kso_partner || "-",
+      kso_contact: r.kso_contact || "-",
+      no_tiket_release: r.no_tiket_release || "-",
+      vendor: r.vendor || "-",
+      homepass_plan: r.homepass_plan ?? "-",
+      status_aktif: r.status_aktif === true ? "Aktif" : r.status_aktif === false ? "Nonaktif" : "-",
       pic_nama: r.pic_nama || "-",
       kode_tiket: r.kode_tiket,
       kode_boq: boqCodes,
