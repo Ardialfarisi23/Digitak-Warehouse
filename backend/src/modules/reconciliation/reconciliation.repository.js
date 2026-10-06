@@ -241,7 +241,7 @@ const getInventory = async (filters = {}, actor = null) => {
 
     temuanPenerimaanByItem.set(itemId, {
       qty_dipick_total: totalPick,
-      qty_diterima,
+      qty_diterima: qtyDiterima,
       selisih_qty: qtyMatch ? 0 : qtyDiterima - totalPick,
       kondisi_diterima: kondisiDiterima,
       kondisi_diambil_list: kondisiList,

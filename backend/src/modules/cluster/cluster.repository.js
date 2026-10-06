@@ -13,6 +13,7 @@ const findByProjectId = async (projectId) => {
       no_tiket_release: true,
       vendor: true,
       alamat_lengkap: true,
+      homepass_plan: true,
       pic_id: true,
       pic: {
         select: {
@@ -38,15 +39,16 @@ const findAll = async ({ search } = {}) => {
   };
 
   if (normalizedSearch) {
-    where.OR = [
-      { nama_cluster: { contains: normalizedSearch, mode: "insensitive" } },
-      { cluster_id: { contains: normalizedSearch, mode: "insensitive" } },
-      { cluster_type: { contains: normalizedSearch, mode: "insensitive" } },
-      { alamat_lengkap: { contains: normalizedSearch, mode: "insensitive" } },
-      { vendor: { contains: normalizedSearch, mode: "insensitive" } },
-      { no_tiket_release: { contains: normalizedSearch, mode: "insensitive" } },
-      { kso_partner: { contains: normalizedSearch, mode: "insensitive" } },
-    ];
+      where.OR = [
+        { nama_cluster: { contains: normalizedSearch, mode: "insensitive" } },
+        { cluster_id: { contains: normalizedSearch, mode: "insensitive" } },
+        { cluster_type: { contains: normalizedSearch, mode: "insensitive" } },
+        { alamat_lengkap: { contains: normalizedSearch, mode: "insensitive" } },
+        { vendor: { contains: normalizedSearch, mode: "insensitive" } },
+        { no_tiket_release: { contains: normalizedSearch, mode: "insensitive" } },
+        { kso_partner: { contains: normalizedSearch, mode: "insensitive" } },
+        { project: { nama_project: { contains: normalizedSearch, mode: "insensitive" } } },
+      ];
   }
 
   return await prisma.cluster.findMany({

@@ -236,7 +236,7 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
     { key: "nik", label: "NIK", type: "text" },
     { key: "email", label: "Email", type: "text" },
     { key: "gudang_id", label: "Gudang Penugasan", type: "select", options: [] },
-    { key: "bisa_menyetir", label: "Bisa Menyetir", type: "checkbox" },
+    { key: "bisa_menyetir", label: "Punya SIM", type: "checkbox" },
     { key: "is_material_handler", label: "Material Handler", type: "checkbox" },
     { key: "foto", label: "Foto Personil", type: "file" },
   ],
@@ -272,6 +272,7 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
     { key: "nama_cluster", label: "Nama Cluster", type: "text", required: true },
     { key: "cluster_type", label: "Tipe Cluster", type: "text" },
     { key: "alamat_lengkap", label: "Alamat Lengkap", type: "textarea" },
+    { key: "homepass_plan", label: "Homepass Plan", type: "number" },
     { key: "cluster_id", label: "Cluster ID", type: "text", required: true },
     { key: "status_aktif", label: "Status", type: "select", required: false, options: [
       { value: "true", label: "Aktif" },
@@ -818,7 +819,6 @@ function FormModal({
     if (tab === "clusters") {
       return fields.map((field) => {
         if (field.key === "project_id") return { ...field, options: projectOptions };
-        if (field.key === "cluster_id") return { ...field, type: "text" as const, required: mode === "create" };
         return field;
       });
     }
@@ -837,7 +837,12 @@ function FormModal({
     }
 
     if (tab === "clusters") {
-      return formFields.filter((field) => !(field.key === "cluster_id" && mode === "edit"));
+      return formFields.filter((field) => {
+        if (field.key === "project_id") {
+          return form.tipe === "dadakan";
+        }
+        return true;
+      });
     }
 
     return formFields;
@@ -1102,6 +1107,10 @@ function FormModal({
 
                 {field.helperText && <p className="mb-2 text-[11px] text-slate-400">{field.helperText}</p>}
 
+                {mode === "edit" && tab === "clusters" && field.key === "cluster_id" && (
+                  <p className="mb-2 text-[11px] text-slate-400">Cluster ID tidak dapat diubah karena menjadi kunci relasi.</p>
+                )}
+
                 {mode === "edit" && field.key === "tipe" && record?.dapat_ubah_tipe === false && (
                   <p className="mb-2 text-[11px] text-amber-600">Tipe tidak dapat diubah karena gudang ini sudah memiliki stok atau lebih dari 1 zona.</p>
                 )}
@@ -1138,7 +1147,8 @@ function FormModal({
                     value={String(form[field.key] ?? "")}
                     onChange={(e) => handleChange(field.key, e.target.value)}
                     placeholder={field.placeholder}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                    disabled={mode === "edit" && tab === "clusters" && field.key === "cluster_id"}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400 disabled:opacity-60 disabled:bg-slate-50 disabled:cursor-not-allowed"
                   />
                 )}
               </div>
@@ -1956,7 +1966,7 @@ function MasterDataPageContent() {
       case "projects":
         return ["project_id", "title", "nama_project", "kecamatan", "desa_kelurahan", "cluster_count", "status_aktif"];
       case "personnel":
-        return ["personil_id", "nama", "email", "nik", "posisi", "no_hp", "gudang", "bisa_menyetir", "is_aktif", "foto"];
+        return ["nama", "email", "nik", "posisi", "no_hp", "gudang", "bisa_menyetir", "is_aktif", "foto"];
       case "vehicles":
         return ["kendaraan_id", "jenis_kendaraan", "merk", "no_polisi", "gudang", "foto"];
       case "warehouses":
@@ -1964,7 +1974,7 @@ function MasterDataPageContent() {
       case "suppliers":
         return ["kode", "nama", "deskripsi", "is_aktif"];
       case "clusters":
-        return ["cluster_display", "cluster_id", "cluster_type", "status_aktif"];
+        return ["nama_project", "nama_cluster", "cluster_id", "cluster_type", "alamat_lengkap", "homepass_plan", "status_aktif"];
       default:
         return ["id"];
     }
@@ -1988,7 +1998,7 @@ function MasterDataPageContent() {
       no_hp: "Telepon",
       email: "Email",
       nik: "NIK",
-      bisa_menyetir: "Bisa Menyetir",
+      bisa_menyetir: "Punya SIM",
       gudang: "Gudang Asal",
       kendaraan_id: "ID Kendaraan",
       jenis_kendaraan: "Tipe",
@@ -2001,9 +2011,12 @@ function MasterDataPageContent() {
       foto: "Foto",
       kode: "Kode",
       deskripsi: "Deskripsi",
-      cluster_display: "Nama Cluster",
+      nama_project: "Project",
+      nama_cluster: "Nama Cluster",
       cluster_id: "Cluster ID",
       cluster_type: "Tipe Cluster",
+      alamat_lengkap: "Alamat Lengkap",
+      homepass_plan: "Homepass Plan",
       cluster_count: "Jumlah Cluster",
     };
 
@@ -2305,13 +2318,13 @@ function MasterDataPageContent() {
                              );
                            }
 
-                          if (column === "bisa_menyetir") {
-                            return (
-                              <td key={column} className="px-3 py-3 text-sm text-slate-600">
-                                {value === true ? "Bisa" : "Tidak"}
-                              </td>
-                            );
-                          }
+                           if (column === "bisa_menyetir") {
+                             return (
+                               <td key={column} className="px-3 py-3 text-sm text-slate-600">
+                                 {value === true ? "Ya" : "Tidak"}
+                               </td>
+                             );
+                           }
 
                            if (column === "tipe" && activeTab === "warehouses") {
                              const tipeVal = String(value || "").toLowerCase();
@@ -2335,19 +2348,38 @@ function MasterDataPageContent() {
                              );
                            }
 
-                           if (column === "cluster_display" && activeTab === "clusters") {
-                             const projectName = (record as any)?.project?.nama_project || "";
-                             const clusterName = (record as any)?.nama_cluster || "";
-                             const display = projectName && clusterName ? `${projectName} + ${clusterName}` : clusterName || projectName || "-";
+                            if (column === "nama_project" && activeTab === "clusters") {
+                              const projectName = (record as any)?.project?.nama_project || "-";
 
-                             return (
-                               <td key={column} className="px-3 py-3 text-sm font-medium text-slate-800">
-                                 {display}
-                               </td>
-                             );
-                           }
+                              return (
+                                <td key={column} className="px-3 py-3 text-sm font-medium text-slate-800">
+                                  {projectName}
+                                </td>
+                              );
+                            }
 
-                          if (column === "kategori" || column === "satuan_default") {
+                            if (column === "alamat_lengkap" && activeTab === "clusters") {
+                              const alamat = (record as any)?.alamat_lengkap || "-";
+
+                              return (
+                                <td key={column} className="px-3 py-3 text-sm text-slate-500 max-w-[220px] truncate" title={String(alamat)}>
+                                  {alamat}
+                                </td>
+                              );
+                            }
+
+                            if (column === "homepass_plan" && activeTab === "clusters") {
+                              const raw = (record as any)?.homepass_plan;
+                              const display = raw === null || raw === undefined || raw === "" ? "-" : Number(raw).toLocaleString("id-ID");
+
+                              return (
+                                <td key={column} className="px-3 py-3 text-sm text-slate-600 text-right tabular-nums">
+                                  {display}
+                                </td>
+                              );
+                            }
+
+                           if (column === "kategori" || column === "satuan_default") {
                             const label = column === "kategori" ? item.kategori?.nama_kategori : item.satuan_default?.kode_satuan;
 
                             return (

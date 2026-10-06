@@ -2484,6 +2484,7 @@ const backfillReconciliation = async (actorId) => {
         mos,
         used,
         catatan: "Data migrasi otomatis dari sistem lama — belum dikonfirmasi mitra",
+        cluster_id: tiket.cluster_id || null,
         uploaded_by: BigInt(actorId || 0),
         is_aktif: true,
       },

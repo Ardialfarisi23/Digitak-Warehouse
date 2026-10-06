@@ -666,6 +666,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
           }
 
         try {
+          const clusterFromTiket = await tx.cluster.findFirst({ where: { cluster_id: tiket.cluster_id }, select: { cluster_id: true } });
           await tx.laporan_mitra.create({
             data: {
               tiket_id: BigInt(tiketId),
@@ -681,6 +682,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
               used: Number(item.used || 0),
               catatan: catatan || item.catatan || null,
               kondisi: normalizeKondisi(kondisi || item.kondisi),
+              cluster_id: clusterFromTiket?.cluster_id || null,
               uploaded_by: BigInt(actorId),
               is_aktif: true,
             },

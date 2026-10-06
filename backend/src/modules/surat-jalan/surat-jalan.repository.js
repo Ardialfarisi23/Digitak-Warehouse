@@ -1,6 +1,12 @@
 const prisma = require("../../config/prisma");
 const AppError = require("../../shared/errors");
 const capacityService = require("../capacity/capacity.service");
+const {
+  resolveFromBoq,
+  resolveFromProjectSingleCluster,
+  assertClusterExists,
+  warnNull,
+} = require("../../utils/clusterResolver");
 
 const baseInclude = {
   items: {
@@ -66,6 +72,11 @@ const baseInclude = {
             select: {
               satuan_id: true,
               kode_satuan: true,
+            },
+          },
+          cluster: {
+            select: {
+              cluster_id: true,
             },
           },
         },
@@ -283,6 +294,20 @@ const create = async (data, actorId, tx = prisma) => {
   const status = data.status || (data.tipe === "inbound" ? "menunggu_verifikasi" : "draft_diajukan");
   const tanggal = data.tanggal ? new Date(data.tanggal) : new Date();
 
+  // Resolve cluster_id: payload -> boq -> single-cluster project
+  let clusterId = data.cluster_id ? String(data.cluster_id).trim() : null;
+  if (clusterId) {
+    await assertClusterExists(tx, clusterId);
+  } else if (data.boq_id) {
+    clusterId = await resolveFromBoq(tx, data.boq_id);
+  }
+  if (!clusterId && data.project_id) {
+    clusterId = await resolveFromProjectSingleCluster(tx, data.project_id);
+  }
+  if (!clusterId) {
+    warnNull("surat_jalan", { boq_id: data.boq_id, project_id: data.project_id });
+  }
+
   const suratJalan = await tx.surat_jalan.create({
     data: {
       nomor_surat_jalan: nomor,
@@ -301,6 +326,7 @@ const create = async (data, actorId, tx = prisma) => {
       project_id: data.project_id ? Number(data.project_id) : null,
       surat_jalan_url: data.surat_jalan_url || null,
       tanggal: tanggal,
+      cluster_id: clusterId,
       created_by: Number(actorId),
       updated_by: Number(actorId),
       titik_lapangan_id: data.titik_lapangan_id ? Number(data.titik_lapangan_id) : null,
@@ -321,6 +347,7 @@ const create = async (data, actorId, tx = prisma) => {
           is_di_luar_boq: Boolean(item.is_di_luar_boq),
           catatan: item.catatan || null,
           zona_id: item.zona_id ? Number(item.zona_id) : null,
+          cluster_id: clusterId,
         })),
       },
     },
@@ -697,6 +724,7 @@ const findTransitCheckpoints = async (suratJalanId, tx = prisma) =>
 // tiap baris dengan qty >= yang akan diambil lewat decrement atomik.
 const deductTransitStock = async ({ checkpoint, items, projectId, actorId }, tx = prisma) => {
   const transitItems = Array.isArray(items) && items.length > 0 ? items : checkpoint.items;
+  const clusterCache = new Map();
 
   for (const deposited of transitItems) {
     const itemId = Number(deposited.item_id);
@@ -741,10 +769,22 @@ const deductTransitStock = async ({ checkpoint, items, projectId, actorId }, tx 
       if (!setelah || saldo <= 0) {
         await tx.stok_gudang.deleteMany({ where: { stok_id: stok.stok_id, qty: { lte: 0 } } });
       }
+
+      let clusterId = clusterCache.get(checkpoint.surat_jalan_id);
+      if (clusterId === undefined) {
+        const fromSj = await tx.surat_jalan.findUnique({
+          where: { surat_jalan_id: Number(checkpoint.surat_jalan_id) },
+          select: { cluster_id: true },
+        });
+        clusterId = fromSj?.cluster_id || null;
+        clusterCache.set(checkpoint.surat_jalan_id, clusterId);
+      }
+
       await tx.stok_ledger.create({
         data: {
           surat_jalan_item_id: itemId,
           barang_id: barangId,
+          cluster_id: clusterId,
           jenis_mutasi: "out",
           qty: qtyAmbil,
           saldo_setelah: Math.max(0, saldo),
@@ -763,7 +803,6 @@ const deductTransitStock = async ({ checkpoint, items, projectId, actorId }, tx 
     }
   }
 };
-
 const updateTransitDeparture = async (transitId, actorId, catatan, tx = prisma) => {
   const result = await tx.surat_jalan_transit.updateMany({
     where: { transit_id: Number(transitId), berangkat_at: null },
@@ -855,6 +894,7 @@ const addInboundStock = async (suratJalan, tx = prisma, options = {}) => {
         data: {
           surat_jalan_item_id: item.item_id,
           barang_id: item.barang_id,
+          cluster_id: item.cluster_id || null,
           jenis_mutasi: "in",
           qty: qty,
           saldo_setelah: newQty,
@@ -876,6 +916,7 @@ const addInboundStock = async (suratJalan, tx = prisma, options = {}) => {
         data: {
           surat_jalan_item_id: item.item_id,
           barang_id: item.barang_id,
+          cluster_id: item.cluster_id || null,
           jenis_mutasi: "in",
           qty: qty,
           saldo_setelah: Number(newStock.qty),
@@ -1058,6 +1099,7 @@ const deductOutboundStock = async (suratJalan, tx = prisma) => {
       data: {
         surat_jalan_item_id: item.item_id,
         barang_id: item.barang_id,
+        cluster_id: item.cluster_id || null,
         jenis_mutasi: "out",
         qty: qty,
         saldo_setelah: updatedQty,
