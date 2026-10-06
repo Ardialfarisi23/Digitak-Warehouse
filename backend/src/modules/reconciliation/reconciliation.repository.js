@@ -2,15 +2,16 @@ const prisma = require("../../config/prisma");
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
 const { computeRemains, computeReconciliationStatus, buildPickSummary, buildItemPickSummary } = require("./reconciliation.utils");
+const { surat_jalan_status, boq_status } = require("@prisma/client");
 
 // Stok sudah berkurang saat picking, jadi angka rekonsiliasi tidak boleh naik-turun saat barang di perjalanan.
 const RECONCILIATION_SHIPMENT_STATUSES = [
-  "disetujui",
-  "sedang_dikirim",
-  "tiba_di_transit",
-  "tiba_menunggu_konfirmasi",
-  "diterima_didistribusikan",
-];
+  surat_jalan_status.disetujui,
+  surat_jalan_status.sedang_dikirim,
+  surat_jalan_status.tiba_di_transit,
+  surat_jalan_status.tiba_menunggu_konfirmasi,
+  surat_jalan_status.diterima_didistribusikan,
+].filter(Boolean);
 
 const getInventory = async (filters = {}, actor = null) => {
   const { search = "", projectId = "all", warehouseId = "all", status = "all", groupBy = "project", clusterId = "all" } = filters;
@@ -48,7 +49,7 @@ const getInventory = async (filters = {}, actor = null) => {
 
   const whereBoq = {
     boq: {
-      status: { in: ["draft", "aktif", "selesai"] },
+      status: { in: [boq_status.draft, boq_status.aktif, boq_status.selesai] },
       source: "top_down",
     },
   };

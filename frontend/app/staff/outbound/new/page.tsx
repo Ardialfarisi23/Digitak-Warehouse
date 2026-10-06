@@ -217,7 +217,7 @@ function ConfirmModal({
                 <div className="space-y-1 text-sm">
                   {picPemohon && (
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-500">PIC Pemohon</span>
+                      <span className="text-slate-500">PIC Penerima</span>
                       <span className="font-medium text-slate-700">{picPemohon}</span>
                     </div>
                   )}
@@ -1254,7 +1254,7 @@ const [itemsRes, boqsRes] = await Promise.all([
             <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Detail Pengiriman</p>
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-xs text-gray-500">PIC / Pemohon</label>
+                <label className="mb-1 block text-xs text-gray-500">PIC / Penerima</label>
                 <input value={picPemohon} onChange={(e) => setPicPemohon(e.target.value)} placeholder="Nama pemohon barang" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none" />
               </div>
 

@@ -486,7 +486,7 @@ export default function SuratJalanDetailPage() {
           </div>
           <div className="min-w-0 space-y-3">
             <InfoRow label="Tanggal" value={displaySJ.tanggal} />
-            <InfoRow label="Nama PIC Pemohon" value={displaySJ.namaPicPemohon} />
+            <InfoRow label="Nama PIC Penerima" value={displaySJ.namaPicPemohon} />
             <InfoRow label="Kendaraan" value={displaySJ.kendaraan} />
             <InfoRow label="No Polisi" value={displaySJ.noPolisi} />
             <InfoRow label="Nama Driver" value={displaySJ.namaDriver} />
@@ -573,7 +573,7 @@ export default function SuratJalanDetailPage() {
             </div>
           </div>
           <div>
-            <p className="mb-16 font-medium text-gray-700">PIC Pemohon (Penerima)</p>
+            <p className="mb-16 font-medium text-gray-700">PIC Penerima (Penerima)</p>
             <div className="border-t border-gray-400 pt-1">
               <p className="font-semibold text-gray-900">{displaySJ.namaPicPemohon}</p>
             </div>

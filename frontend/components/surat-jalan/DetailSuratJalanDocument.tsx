@@ -398,7 +398,7 @@ Unit {row.nomor}: {getKondisiLabel(row.kondisi)}
             </div>
             <div className="flex flex-col justify-between h-32">
               <span className="font-medium text-gray-700 min-h-[32px] flex items-center justify-center">
-                PIC Pemohon (Penerima)
+                PIC Penerima (Penerima)
               </span>
               <div>
                 <div className="border-t border-gray-400 pt-1">

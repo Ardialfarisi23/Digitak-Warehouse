@@ -750,7 +750,7 @@ export default function InboundDetailPage() {
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
               <th className="pb-3 pr-4 font-semibold">Kode Barang</th>
               <th className="pb-3 pr-4 font-semibold">Nama Barang</th>
-              <th className="pb-3 pr-4 font-semibold text-right">Qty Rencana</th>
+              <th className="pb-3 pr-4 font-semibold text-right">Qty Surat Jalan</th>
               <th className="pb-3 pr-6 font-semibold text-right">Qty Diterima</th>
               <th className="pb-3 pr-4 font-semibold">Kondisi</th>
               <th className="pb-3 pr-4 font-semibold">Lokasi/Zona</th>
