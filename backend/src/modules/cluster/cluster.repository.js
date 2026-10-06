@@ -26,7 +26,7 @@ const findByProjectId = async (projectId) => {
   });
 };
 
-const findAll = async ({ search } = {}) => {
+const findAll = async ({ search, status_aktif, project_id } = {}) => {
   let normalizedSearch = "";
   if (typeof search === "string") {
     normalizedSearch = search.trim();
@@ -34,9 +34,19 @@ const findAll = async ({ search } = {}) => {
     normalizedSearch = search[0].trim();
   }
 
-  const where = {
-    status_aktif: true,
-  };
+  const where = {};
+
+  if (project_id !== undefined && project_id !== null && project_id !== "") {
+    where.project_id = Number(project_id);
+  }
+
+  if (status_aktif === "true") {
+    where.status_aktif = true;
+  } else if (status_aktif === "false") {
+    where.status_aktif = false;
+  } else {
+    where.status_aktif = true;
+  }
 
   if (normalizedSearch) {
       where.OR = [

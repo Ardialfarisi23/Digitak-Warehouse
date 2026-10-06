@@ -70,6 +70,8 @@ const findAll = async ({
   search,
   sortBy = "updated_at",
   sortOrder = "desc",
+  jenis_kendaraan,
+  gudang_id,
 } = {}) => {
   const sanitizedPage = Math.max(
     parseInt(page, 10) || DEFAULT_PAGE,
@@ -92,6 +94,14 @@ const findAll = async ({
     : "desc";
 
   const where = {};
+
+  if (jenis_kendaraan) {
+    where.jenis_kendaraan = jenis_kendaraan;
+  }
+
+  if (gudang_id !== undefined && gudang_id !== null && gudang_id !== "") {
+    where.gudang_id = Number(gudang_id);
+  }
 
   if (search) {
     where.OR = [

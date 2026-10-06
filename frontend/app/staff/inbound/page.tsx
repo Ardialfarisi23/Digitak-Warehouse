@@ -998,7 +998,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">PIC / Pemohon</label>
+            <label className="mb-1 block text-xs font-medium text-gray-600">PIC / Penerima</label>
             <input
               type="text"
               value={picPemohon}

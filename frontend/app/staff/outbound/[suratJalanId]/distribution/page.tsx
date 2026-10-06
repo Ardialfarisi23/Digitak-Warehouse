@@ -618,7 +618,7 @@ export default function DistributionDetailPage() {
               <p className="text-gray-600">Project: <span className="font-semibold text-gray-900">{data.project.nama_project}</span></p>
             )}
             {data.pic_pemohon_nama && (
-              <p className="text-gray-600">PIC Pemohon: <span className="font-semibold text-gray-900">{data.pic_pemohon_nama}</span></p>
+              <p className="text-gray-600">PIC Penerima: <span className="font-semibold text-gray-900">{data.pic_pemohon_nama}</span></p>
             )}
             {isTibaTransit && (
               <span className="inline-flex items-center gap-2 rounded-full bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700">

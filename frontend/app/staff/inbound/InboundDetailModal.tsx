@@ -125,7 +125,7 @@ export default function InboundDetailModal({
                 <InfoRow label="Project" value={record.project?.nama_project} />
                 <InfoRow label="Asal Pengiriman" value={record.tipe_pengirim === "external" ? `${record.supplier?.kode} - ${record.supplier?.nama}` : record.gudang_asal?.nama_gudang} />
                 <InfoRow label="Tipe Pengirim" value={record.tipe_pengirim === "external" ? "External" : record.tipe_pengirim === "internal" ? "Internal" : "-"} />
-                <InfoRow label="PIC Pemohon" value={record.pic_pemohon_nama} />
+                <InfoRow label="PIC Penerima" value={record.pic_pemohon_nama} />
               </div>
               <div className="space-y-3">
                 <InfoRow label="Tanggal" value={formatDate(record.tanggal)} />

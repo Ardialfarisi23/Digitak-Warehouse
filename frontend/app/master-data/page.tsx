@@ -1919,6 +1919,23 @@ function MasterDataPageContent() {
   const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(1);
 
+  const [posisiFilter, setPosisiFilter] = useState("");
+  const [gudangFilter, setGudangFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [tipeFilter, setTipeFilter] = useState("");
+  const [gudangStatusFilter, setGudangStatusFilter] = useState("");
+  const [kategoriFilter, setKategoriFilter] = useState("");
+  const [satuanFilter, setSatuanFilter] = useState("");
+  const [jenisKendaraanFilter, setJenisKendaraanFilter] = useState("");
+  const [kendaraanGudangFilter, setKendaraanGudangFilter] = useState("");
+  const [projectStatusFilter, setProjectStatusFilter] = useState("");
+  const [clusterProjectFilter, setClusterProjectFilter] = useState("");
+  const [supplierStatusFilter, setSupplierStatusFilter] = useState("");
+  const [warehouseOptions, setWarehouseOptions] = useState<Array<{ value: number; label: string }>>([]);
+  const [categoryOptions, setCategoryOptions] = useState<Array<{ value: number; label: string }>>([]);
+  const [unitOptions, setUnitOptions] = useState<Array<{ value: number; label: string }>>([]);
+  const [projectOptions, setProjectOptions] = useState<Array<{ value: number; label: string }>>([]);
+
   // Modal state
   const [formModal, setFormModal] = useState<{
     mode: "create" | "edit";
@@ -1945,6 +1962,50 @@ function MasterDataPageContent() {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
   };
+
+  useEffect(() => {
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    get(new URL("/api/warehouses", baseUrl).toString())
+      .then((res) => res.json())
+      .then((json) => {
+        const list = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
+        setWarehouseOptions(list.map((w: any) => ({ value: Number(w.gudang_id), label: w.nama_gudang })));
+      })
+      .catch(() => setWarehouseOptions([]));
+  }, [get]);
+
+  useEffect(() => {
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    get(new URL("/api/categories", baseUrl).toString())
+      .then((res) => res.json())
+      .then((result) => {
+        const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+        setCategoryOptions(list.map((cat: any) => ({ value: Number(cat.kategori_id), label: cat.nama_kategori })));
+      })
+      .catch(() => setCategoryOptions([]));
+  }, [get]);
+
+  useEffect(() => {
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    get(new URL("/api/units", baseUrl).toString())
+      .then((res) => res.json())
+      .then((result) => {
+        const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+        setUnitOptions(list.map((u: any) => ({ value: Number(u.satuan_id), label: u.kode_satuan })));
+      })
+      .catch(() => setUnitOptions([]));
+  }, [get]);
+
+  useEffect(() => {
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    get(new URL("/api/projects", baseUrl).toString())
+      .then((res) => res.json())
+      .then((result) => {
+        const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+        setProjectOptions(list.map((p: any) => ({ value: Number(p.project_id), label: p.nama_project || p.title || `Project ${p.project_id}` })));
+      })
+      .catch(() => setProjectOptions([]));
+  }, [get]);
 
   // -------------------------------------------------------------------------
   // Active tab config & permissions
@@ -2052,6 +2113,39 @@ function MasterDataPageContent() {
         url.searchParams.set("search", trimmedSearch);
       }
 
+      if (activeTab === "personnel") {
+        if (posisiFilter) url.searchParams.set("posisi", posisiFilter);
+        if (gudangFilter) url.searchParams.set("gudang_id", gudangFilter);
+        if (statusFilter) url.searchParams.set("is_aktif", statusFilter);
+      }
+
+      if (activeTab === "warehouses") {
+        if (tipeFilter) url.searchParams.set("tipe", tipeFilter);
+        if (gudangStatusFilter) url.searchParams.set("is_aktif", gudangStatusFilter);
+      }
+
+      if (activeTab === "items") {
+        if (kategoriFilter) url.searchParams.set("kategori_id", kategoriFilter);
+        if (satuanFilter) url.searchParams.set("satuan_default_id", satuanFilter);
+      }
+
+      if (activeTab === "vehicles") {
+        if (jenisKendaraanFilter) url.searchParams.set("jenis_kendaraan", jenisKendaraanFilter);
+        if (kendaraanGudangFilter) url.searchParams.set("gudang_id", kendaraanGudangFilter);
+      }
+
+      if (activeTab === "projects") {
+        if (projectStatusFilter) url.searchParams.set("status_aktif", projectStatusFilter);
+      }
+
+      if (activeTab === "clusters") {
+        if (clusterProjectFilter) url.searchParams.set("project_id", clusterProjectFilter);
+      }
+
+      if (activeTab === "suppliers") {
+        if (supplierStatusFilter) url.searchParams.set("is_aktif", supplierStatusFilter);
+      }
+
       const response = await get(url.toString());
       const result = await response.json();
 
@@ -2106,7 +2200,7 @@ function MasterDataPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, page, search]);
+  }, [activeTab, page, search, posisiFilter, gudangFilter, statusFilter, tipeFilter, gudangStatusFilter, kategoriFilter, satuanFilter, jenisKendaraanFilter, kendaraanGudangFilter, projectStatusFilter, clusterProjectFilter, supplierStatusFilter]);
 
   useEffect(() => {
     fetchMasterData();
@@ -2130,6 +2224,18 @@ function MasterDataPageContent() {
     setPage(1);
     setSearch("");
     setSearchInput("");
+    setPosisiFilter("");
+    setGudangFilter("");
+    setStatusFilter("");
+    setTipeFilter("");
+    setGudangStatusFilter("");
+    setKategoriFilter("");
+    setSatuanFilter("");
+    setJenisKendaraanFilter("");
+    setKendaraanGudangFilter("");
+    setProjectStatusFilter("");
+    setClusterProjectFilter("");
+    setSupplierStatusFilter("");
     setError(null);
   }
 
@@ -2209,7 +2315,163 @@ function MasterDataPageContent() {
                Tambah
              </button>
            )}
-        </div>
+         </div>
+
+        {activeTab === "personnel" && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <select
+              value={posisiFilter}
+              onChange={(e) => { setPosisiFilter(e.target.value); setPage(1); }}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            >
+              <option value="">Semua Posisi</option>
+              <option value="Supervisor">Supervisor</option>
+              <option value="Staf Gudang">Staf Gudang</option>
+            </select>
+
+            <select
+              value={gudangFilter}
+              onChange={(e) => { setGudangFilter(e.target.value); setPage(1); }}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            >
+              <option value="">Semua Gudang</option>
+              {warehouseOptions.map((w) => (
+                <option key={w.value} value={String(w.value)}>{w.label}</option>
+              ))}
+            </select>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            >
+              <option value="">Semua Status</option>
+              <option value="true">Aktif</option>
+              <option value="false">Tidak Aktif</option>
+            </select>
+          </div>
+        )}
+
+        {activeTab === "warehouses" && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <select
+              value={tipeFilter}
+              onChange={(e) => { setTipeFilter(e.target.value); setPage(1); }}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            >
+              <option value="">Semua Tipe</option>
+              <option value="tetap">Tetap</option>
+              <option value="transit">Transit</option>
+            </select>
+
+            <select
+              value={gudangStatusFilter}
+              onChange={(e) => { setGudangStatusFilter(e.target.value); setPage(1); }}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            >
+              <option value="">Semua Status</option>
+              <option value="true">Aktif</option>
+              <option value="false">Nonaktif</option>
+            </select>
+          </div>
+        )}
+
+        {activeTab === "items" && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <select
+              value={kategoriFilter}
+              onChange={(e) => { setKategoriFilter(e.target.value); setPage(1); }}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            >
+              <option value="">Semua Kategori</option>
+              {categoryOptions.map((cat) => (
+                <option key={cat.value} value={String(cat.value)}>{cat.label}</option>
+              ))}
+            </select>
+
+            <select
+              value={satuanFilter}
+              onChange={(e) => { setSatuanFilter(e.target.value); setPage(1); }}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            >
+              <option value="">Semua Satuan</option>
+              {unitOptions.map((u) => (
+                <option key={u.value} value={String(u.value)}>{u.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {activeTab === "vehicles" && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <select
+              value={jenisKendaraanFilter}
+              onChange={(e) => { setJenisKendaraanFilter(e.target.value); setPage(1); }}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            >
+              <option value="">Semua Jenis Kendaraan</option>
+              <option value="truk">Truk</option>
+              <option value="pickup">Pickup</option>
+              <option value="van">Van</option>
+              <option value="motor">Motor</option>
+              <option value="lainnya">Lainnya</option>
+            </select>
+
+            <select
+              value={kendaraanGudangFilter}
+              onChange={(e) => { setKendaraanGudangFilter(e.target.value); setPage(1); }}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            >
+              <option value="">Semua Gudang</option>
+              {warehouseOptions.map((w) => (
+                <option key={w.value} value={String(w.value)}>{w.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {activeTab === "projects" && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <select
+              value={projectStatusFilter}
+              onChange={(e) => { setProjectStatusFilter(e.target.value); setPage(1); }}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            >
+              <option value="">Semua Status</option>
+              <option value="true">Aktif</option>
+              <option value="false">Nonaktif</option>
+            </select>
+          </div>
+        )}
+
+        {activeTab === "clusters" && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <select
+              value={clusterProjectFilter}
+              onChange={(e) => { setClusterProjectFilter(e.target.value); setPage(1); }}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            >
+              <option value="">Semua Project</option>
+              {projectOptions.map((p) => (
+                <option key={p.value} value={String(p.value)}>{p.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {activeTab === "suppliers" && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <select
+              value={supplierStatusFilter}
+              onChange={(e) => { setSupplierStatusFilter(e.target.value); setPage(1); }}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            >
+              <option value="">Semua Status</option>
+              <option value="true">Aktif</option>
+              <option value="false">Nonaktif</option>
+            </select>
+          </div>
+        )}
 
         {/* Table */}
 
