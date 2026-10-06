@@ -21,6 +21,16 @@ interface ReconciliationRecord {
   project_id: string;
   project_nama: string;
   cluster_id: string;
+  nama_cluster: string | null;
+  cluster_type: string | null;
+  project_type: string | null;
+  alamat_lengkap: string | null;
+  kso_partner: string | null;
+  kso_contact: string | null;
+  no_tiket_release: string | null;
+  vendor: string | null;
+  homepass_plan: number | null;
+  status_aktif: boolean | null;
   area: string;
   tiket_id: string;
   kode_tiket: string;
@@ -175,6 +185,16 @@ export default function SupervisorReconciliationPage() {
           project_id: String(item.project_id ?? ""),
           project_nama: item.project_nama ?? "-",
           cluster_id: item.cluster_id ?? "-",
+          nama_cluster: item.nama_cluster ?? null,
+          cluster_type: item.cluster_type ?? null,
+          project_type: item.project_type ?? null,
+          alamat_lengkap: item.alamat_lengkap ?? null,
+          kso_partner: item.kso_partner ?? null,
+          kso_contact: item.kso_contact ?? null,
+          no_tiket_release: item.no_tiket_release ?? null,
+          vendor: item.vendor ?? null,
+          homepass_plan: item.homepass_plan ?? null,
+          status_aktif: item.status_aktif ?? null,
           area: item.area ?? "-",
           tiket_id: String(item.tiket_id ?? ""),
           kode_tiket: item.kode_tiket ?? "-",
@@ -447,94 +467,97 @@ export default function SupervisorReconciliationPage() {
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1100px] text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50">
-                      <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
-                      <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
-                      <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
-                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
-                       <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
-                       <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
-                       <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
-                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Remains</th>
-                      <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                      <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
-                    </tr>
-                  </thead>
+                 <table className="w-full min-w-[1100px] text-left text-sm">
+                   <thead>
+                     <tr className="border-b border-slate-100 bg-slate-50">
+                       <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
+                       <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Cluster Name</th>
+                       <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
+                       <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
+                       <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
+                        <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
+                        <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
+                        <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
+                       <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Remains</th>
+                       <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+                       <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
+                     </tr>
+                   </thead>
 
-                  <tbody className="divide-y divide-slate-50">
-                    {isLoading ? (
-                      Array.from({ length: 7 }).map((_, rowIndex) => (
-                        <tr key={rowIndex}>
-                          {Array.from({ length: 12 }).map((_, colIndex) => (
-                            <td key={colIndex} className="px-6 py-4">
-                              <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
-                            </td>
-                          ))}
-                        </tr>
-                      ))
-                    ) : filteredRecords.length === 0 ? (
-                      <tr>
-                        <td colSpan={12} className="px-6 py-16 text-center">
-                          <Package size={28} className="mx-auto text-slate-300" />
-                          <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data rekonsiliasi</p>
-                          <p className="mt-1 text-xs text-slate-400">Coba ubah filter, atau pastikan Anda sudah ditugaskan sebagai PIC gudang.</p>
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredRecords.map((record) => {
-                        const statusBadge = getStatusBadge(record.status);
-                        return (
-                          <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
-                            <td className="px-6 py-4">
-                              <p className="font-medium text-slate-900">{record.project_nama}</p>
-                              <p className="text-xs text-slate-400">
-                                {record.area}
-                                {record.cluster_id !== "-" && ` • ${record.cluster_id}`}
-                              </p>
-                            </td>
+                   <tbody className="divide-y divide-slate-50">
+                     {isLoading ? (
+                       Array.from({ length: 7 }).map((_, rowIndex) => (
+                         <tr key={rowIndex}>
+                           {Array.from({ length: 11 }).map((_, colIndex) => (
+                             <td key={colIndex} className="px-6 py-4">
+                               <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
+                             </td>
+                           ))}
+                         </tr>
+                       ))
+                     ) : filteredRecords.length === 0 ? (
+                       <tr>
+                         <td colSpan={11} className="px-6 py-16 text-center">
+                           <Package size={28} className="mx-auto text-slate-300" />
+                           <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data rekonsiliasi</p>
+                           <p className="mt-1 text-xs text-slate-400">Coba ubah filter, atau pastikan Anda sudah ditugaskan sebagai PIC gudang.</p>
+                         </td>
+                       </tr>
+                     ) : (
+                       filteredRecords.map((record) => {
+                         const statusBadge = getStatusBadge(record.status);
+                         return (
+                           <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
+                             <td className="px-6 py-4">
+                               <p className="font-medium text-slate-900">{record.project_nama || "-"}</p>
+                               <p className="text-xs text-slate-400">{record.area || "-"}</p>
+                             </td>
 
-                            <td className="px-6 py-4">
-                              <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{record.kode_tiket}</span>
-                            </td>
+                             <td className="px-6 py-4">
+                               <p className="font-medium text-slate-900">{record.nama_cluster || "-"}</p>
+                               <p className="text-xs text-slate-400">{record.cluster_id || "-"}</p>
+                             </td>
 
-                            <td className="px-6 py-4">
-                              <p className="font-medium text-slate-800">{record.nama_barang}</p>
-                              <p className="text-xs text-slate-400">
-                                {record.kode_perangkat} • {record.gudang_nama}
-                              </p>
-                            </td>
+                             <td className="px-6 py-4">
+                               <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{record.kode_tiket}</span>
+                             </td>
 
-                            <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.boq)}</td>
-                            <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.additional)}</td>
-                            <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos)}</td>
-                            <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.used)}</td>
+                             <td className="px-6 py-4">
+                               <p className="font-medium text-slate-800">{record.nama_barang}</p>
+                               <p className="text-xs text-slate-400">
+                                 {record.kode_perangkat} • {record.gudang_nama}
+                               </p>
+                             </td>
 
-                            <td className="px-6 py-4 text-right">
-                              <span className={record.remains < 0 ? "font-semibold text-rose-600" : "font-semibold text-emerald-700"}>{formatNumber(record.remains)}</span>
-                            </td>
+                             <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.boq)}</td>
+                             <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.additional)}</td>
+                             <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos)}</td>
+                             <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.used)}</td>
 
-                            <td className="px-6 py-4">
-                              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
-                                <statusBadge.icon size={12} />
-                                {statusBadge.label}
-                              </span>
-                            </td>
+                             <td className="px-6 py-4 text-right">
+                               <span className={record.remains < 0 ? "font-semibold text-rose-600" : "font-semibold text-emerald-700"}>{formatNumber(record.remains)}</span>
+                             </td>
 
-                            <td className="px-4 py-4">
-                              <div className="flex items-center justify-end gap-1">
-                                <button type="button" onClick={() => setSelectedRecord(record)} title="Lihat detail" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
-                                  <ClipboardCheck size={15} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                             <td className="px-6 py-4">
+                               <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
+                                 <statusBadge.icon size={12} />
+                                 {statusBadge.label}
+                               </span>
+                             </td>
+
+                             <td className="px-4 py-4">
+                               <div className="flex items-center justify-end gap-1">
+                                 <button type="button" onClick={() => setSelectedRecord(record)} title="Lihat detail" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                                   <ClipboardCheck size={15} />
+                                 </button>
+                               </div>
+                             </td>
+                           </tr>
+                         );
+                       })
+                     )}
+                   </tbody>
+                 </table>
               </div>
             </div>
 
@@ -677,6 +700,46 @@ export default function SupervisorReconciliationPage() {
             </div>
 
             <div className="space-y-5 px-6 py-5">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs font-medium text-slate-400">Master Cluster</p>
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-[11px] text-slate-400">Nama Cluster</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.nama_cluster || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Cluster ID</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.cluster_id || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Tipe Cluster</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.cluster_type || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Tipe Project</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.project_type || "-"}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-[11px] text-slate-400">Alamat Lengkap</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.alamat_lengkap || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">No. Tiket Release</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.no_tiket_release || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Homepass Plan</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.homepass_plan ?? "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Status</p>
+                    <p className="text-sm font-medium text-slate-900">
+                      {selectedRecord.status_aktif === true ? "Aktif" : selectedRecord.status_aktif === false ? "Nonaktif" : "-"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs font-medium text-slate-400">Project</p>
                 <p className="mt-1 font-semibold text-slate-900">{selectedRecord.project_nama}</p>

@@ -45,6 +45,15 @@ interface ReconciliationRecord {
   project_nama: string;
   cluster_id: string;
   nama_cluster: string;
+  cluster_type: string | null;
+  project_type: string | null;
+  alamat_lengkap: string | null;
+  kso_partner: string | null;
+  kso_contact: string | null;
+  no_tiket_release: string | null;
+  vendor: string | null;
+  homepass_plan: number | null;
+  status_aktif: boolean | null;
   pic_nama: string | null;
   pic_sumber: string | null;
   area: string;
@@ -231,6 +240,15 @@ export default function ReconciliationInventoryPage() {
           project_nama: item.project_nama ?? item.project?.nama_project ?? "-",
           cluster_id: item.cluster_id ?? item.project?.cluster_id ?? "-",
           nama_cluster: item.nama_cluster ?? "-",
+          cluster_type: item.cluster_type ?? null,
+          project_type: item.project_type ?? null,
+          alamat_lengkap: item.alamat_lengkap ?? null,
+          kso_partner: item.kso_partner ?? null,
+          kso_contact: item.kso_contact ?? null,
+          no_tiket_release: item.no_tiket_release ?? null,
+          vendor: item.vendor ?? null,
+          homepass_plan: item.homepass_plan ?? null,
+          status_aktif: item.status_aktif ?? null,
           pic_nama: item.pic_nama ?? null,
           pic_sumber: item.pic_sumber ?? null,
           area: item.area ?? item.project?.area ?? "-",
@@ -765,24 +783,25 @@ export default function ReconciliationInventoryPage() {
 
           <div className="overflow-x-auto">
               <table className="min-w-[1250px] w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50">
-                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[190px]">Cluster</th>
-                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px]">PIC</th>
-                    <th className="px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Kode Tiket</th>
-                    <th className="px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">BOQ</th>
-                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
-                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
-                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
-                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
-                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
-                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px]">Remains</th>
-                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap min-w-[100px]">Status</th>
-                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[70px] sticky right-0 bg-slate-50 border-l border-slate-100">
-                      Aksi
-                    </th>
-                  </tr>
-                </thead>
+                 <thead>
+                   <tr className="border-b border-slate-100 bg-slate-50">
+                     <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[160px]">Project</th>
+                     <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[150px]">Cluster Name</th>
+                     <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px]">PIC</th>
+                     <th className="px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Kode Tiket</th>
+                     <th className="px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">BOQ</th>
+                     <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
+                     <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
+                     <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
+                     <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
+                     <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
+                     <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px]">Remains</th>
+                     <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap min-w-[100px]">Status</th>
+                     <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[70px] sticky right-0 bg-slate-50 border-l border-slate-100">
+                       Aksi
+                     </th>
+                   </tr>
+                 </thead>
 
               <tbody className="divide-y divide-slate-50">
                 {isLoading ? (
@@ -812,14 +831,16 @@ export default function ReconciliationInventoryPage() {
                 ) : (
                   filteredRecords.map((record) => {
                     const statusBadge = getStatusBadge(record.status);
-                    const isClusterNameSameAsProject = record.nama_cluster && record.project_nama && record.nama_cluster.toLowerCase() === record.project_nama.toLowerCase();
                     return (
                       <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
                         <td className="px-3 py-2">
-                          <p className="font-medium text-slate-900">{record.nama_cluster}</p>
-                          <p className="text-xs text-slate-400">
-                            {isClusterNameSameAsProject ? record.area : `${record.project_nama} • ${record.area}`}
-                          </p>
+                          <p className="font-medium text-slate-900">{record.project_nama || "-"}</p>
+                          <p className="text-xs text-slate-400">{record.area || "-"}</p>
+                        </td>
+
+                        <td className="px-3 py-2">
+                          <p className="font-medium text-slate-900">{record.nama_cluster || "-"}</p>
+                          <p className="text-xs text-slate-400">{record.cluster_id || "-"}</p>
                         </td>
 
                         <td className="px-3 py-2 text-sm text-slate-600 whitespace-nowrap">
@@ -868,7 +889,7 @@ export default function ReconciliationInventoryPage() {
                         </td>
 
                         <td className="px-3 py-2 whitespace-nowrap min-w-[100px] pr-10">
-                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
                             <statusBadge.icon size={12} />
                             {statusBadge.label}
                           </span>
@@ -956,21 +977,59 @@ export default function ReconciliationInventoryPage() {
 
             <div className="px-6 py-5 space-y-5">
               <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs font-medium text-slate-400">Cluster</p>
-                <p className="mt-1 font-semibold text-slate-900">{selectedRecord.nama_cluster}</p>
-                <p className="text-xs text-slate-500">
-                  {selectedRecord.nama_cluster && selectedRecord.project_nama && selectedRecord.nama_cluster.toLowerCase() === selectedRecord.project_nama.toLowerCase()
-                    ? selectedRecord.area
-                    : `${selectedRecord.project_nama} • ${selectedRecord.area}`}
-                </p>
-                <p className="text-xs text-slate-500">
-                  {selectedRecord.cluster_id}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  PIC: {selectedRecord.pic_nama || "-"}
-                  {selectedRecord.pic_sumber ? ` (${selectedRecord.pic_sumber})` : ""}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
+                <p className="text-xs font-medium text-slate-400">Master Cluster</p>
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-[11px] text-slate-400">Nama Cluster</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.nama_cluster || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Cluster ID</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.cluster_id || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Project</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.project_nama || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Area</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.area || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Tipe Cluster</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.cluster_type || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Tipe Project</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.project_type || "-"}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-[11px] text-slate-400">Alamat Lengkap</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.alamat_lengkap || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">No. Tiket Release</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.no_tiket_release || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Homepass Plan</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.homepass_plan ?? "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Status</p>
+                    <p className="text-sm font-medium text-slate-900">
+                      {selectedRecord.status_aktif === true ? "Aktif" : selectedRecord.status_aktif === false ? "Nonaktif" : "-"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">PIC</p>
+                    <p className="text-sm font-medium text-slate-900">
+                      {selectedRecord.pic_nama || "-"}
+                      {selectedRecord.pic_sumber ? ` (${selectedRecord.pic_sumber})` : ""}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
                   <span className="rounded-lg bg-white px-2.5 py-1 text-[11px] text-slate-500">
                     Tiket: {selectedRecord.kode_tiket}
                   </span>

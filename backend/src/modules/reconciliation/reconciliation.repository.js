@@ -732,6 +732,7 @@ const getInventory = async (filters = {}, actor = null) => {
   }
 
   // Project mode
+  const clusterIdsByProjectBarangKey = new Map();
   for (const [ticketBarangKey, laporanUsed] of laporanUsedByTicketBarang.entries()) {
     if (laporanUsed <= 0) continue;
 
@@ -739,37 +740,48 @@ const getInventory = async (filters = {}, actor = null) => {
     const [, barangId] = ticketBarangKey.split("-");
     const projectBarangKey = `${projectIdNum}-${barangId}`;
 
-    usedByProjectBarang.set(projectBarangKey, (usedByProjectBarang.get(projectBarangKey) || 0) + laporanUsed);
+    usedByProjectBarang.set(projectBarangKey, Number(laporanUsed));
+
+    const clusterId = laporan.cluster_id || null;
+    if (clusterId) {
+      if (!clusterIdsByProjectBarangKey.has(projectBarangKey)) {
+        clusterIdsByProjectBarangKey.set(projectBarangKey, new Set());
+      }
+      clusterIdsByProjectBarangKey.get(projectBarangKey).add(clusterId);
+    }
   }
 
   for (const item of boqItems) {
     const tiket = item.boq?.tiket;
     const tiketProject = tiket?.project;
-    const clusterProject = item.boq?.cluster?.project;
     const projectIdNum = Number(tiketProject?.project_id || 0);
     const barangId = String(item.barang_id);
     const key = `${projectIdNum}-${barangId}`;
 
-    if (!aggregatedMap.has(key)) {
-      const cluster = item.boq?.cluster;
-      const clusterId = cluster?.cluster_id || tiketProject?.cluster_id || "-";
-      const area = clusterProject?.area || tiketProject?.area || "-";
+    const clusterId = item.boq?.cluster?.cluster_id || null;
+    if (clusterId) {
+      if (!clusterIdsByProjectBarangKey.has(key)) {
+        clusterIdsByProjectBarangKey.set(key, new Set());
+      }
+      clusterIdsByProjectBarangKey.get(key).add(clusterId);
+    }
 
+    if (!aggregatedMap.has(key)) {
       aggregatedMap.set(key, {
         project_id: String(projectIdNum),
         project_nama: tiketProject?.nama_project || "-",
-        cluster_id: clusterId,
-        nama_cluster: cluster?.nama_cluster || "-",
-        cluster_type: cluster?.cluster_type || null,
-        project_type: cluster?.project_type || null,
-        alamat_lengkap: cluster?.alamat_lengkap || null,
-        kso_partner: cluster?.kso_partner || null,
-        kso_contact: cluster?.kso_contact || null,
-        no_tiket_release: cluster?.no_tiket_release || null,
-        vendor: cluster?.vendor || null,
-        homepass_plan: cluster?.homepass_plan ?? null,
-        status_aktif: cluster?.status_aktif ?? null,
-        area: area,
+        cluster_id: null,
+        nama_cluster: null,
+        cluster_type: null,
+        project_type: null,
+        alamat_lengkap: null,
+        kso_partner: null,
+        kso_contact: null,
+        no_tiket_release: null,
+        vendor: null,
+        homepass_plan: null,
+        status_aktif: null,
+        area: tiketProject?.area || "-",
         barang_id: barangId,
         kode_perangkat: item.barang?.kode_perangkat || "-",
         nama_barang: item.barang?.nama_barang || "-",
@@ -804,6 +816,45 @@ const getInventory = async (filters = {}, actor = null) => {
       boqList[existingBoqIndex] = boqEntry;
     } else {
       boqList.push(boqEntry);
+    }
+  }
+
+  const clusterById = new Map();
+  for (const item of boqItems) {
+    const c = item.boq?.cluster;
+    if (c?.cluster_id) clusterById.set(c.cluster_id, c);
+  }
+
+  for (const [key, agg] of aggregatedMap.entries()) {
+    const clusterIds = clusterIdsByProjectBarangKey.get(key);
+    if (clusterIds && clusterIds.size === 1) {
+      const cid = Array.from(clusterIds)[0];
+      const c = clusterById.get(cid);
+      if (c) {
+        agg.cluster_id = c.cluster_id;
+        agg.nama_cluster = c.nama_cluster || "-";
+        agg.cluster_type = c.cluster_type || null;
+        agg.project_type = c.project_type || null;
+        agg.alamat_lengkap = c.alamat_lengkap || null;
+        agg.kso_partner = c.kso_partner || null;
+        agg.kso_contact = c.kso_contact || null;
+        agg.no_tiket_release = c.no_tiket_release || null;
+        agg.vendor = c.vendor || null;
+        agg.homepass_plan = c.homepass_plan ?? null;
+        agg.status_aktif = c.status_aktif ?? null;
+      }
+    } else {
+      agg.cluster_id = null;
+      agg.nama_cluster = null;
+      agg.cluster_type = null;
+      agg.project_type = null;
+      agg.alamat_lengkap = null;
+      agg.kso_partner = null;
+      agg.kso_contact = null;
+      agg.no_tiket_release = null;
+      agg.vendor = null;
+      agg.homepass_plan = null;
+      agg.status_aktif = null;
     }
   }
 
