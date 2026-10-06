@@ -68,46 +68,53 @@ const getInventory = async (filters = {}, actor = null) => {
   const boqItems = await prisma.boq_item.findMany({
     where: whereBoq,
     include: {
-      boq: {
-        include: {
-          tiket: {
-            select: {
-              tiket_id: true,
-              kode_tiket: true,
-              used: true,
-              project: {
+          boq: {
+            include: {
+              tiket: {
                 select: {
-                  project_id: true,
-                  nama_project: true,
-                  area: true,
+                  tiket_id: true,
+                  kode_tiket: true,
+                  used: true,
+                  project: {
+                    select: {
+                      project_id: true,
+                      nama_project: true,
+                      area: true,
+                      cluster_id: true,
+                    },
+                  },
+                },
+              },
+              cluster: {
+                select: {
                   cluster_id: true,
+                  nama_cluster: true,
+                  cluster_type: true,
+                  project_type: true,
+                  alamat_lengkap: true,
+                  kso_partner: true,
+                  kso_contact: true,
+                  no_tiket_release: true,
+                  vendor: true,
+                  homepass_plan: true,
+                  status_aktif: true,
+                  project: {
+                    select: {
+                      cluster_id: true,
+                      area: true,
+                      nama_project: true,
+                    },
+                  },
+                  pic: {
+                    select: {
+                      personil_id: true,
+                      nama: true,
+                    },
+                  },
                 },
               },
             },
           },
-          ...(isCluster
-            ? {
-                cluster: {
-                  include: {
-                    project: {
-                      select: {
-                        cluster_id: true,
-                        area: true,
-                        nama_project: true,
-                      },
-                    },
-                    pic: {
-                      select: {
-                        personil_id: true,
-                        nama: true,
-                      },
-                    },
-                  },
-                },
-              }
-            : {}),
-        },
-      },
       barang: {
         select: {
           kode_perangkat: true,
@@ -241,7 +248,7 @@ const getInventory = async (filters = {}, actor = null) => {
 
     temuanPenerimaanByItem.set(itemId, {
       qty_dipick_total: totalPick,
-      qty_diterima,
+      qty_diterima: qtyDiterima,
       selisih_qty: qtyMatch ? 0 : qtyDiterima - totalPick,
       kondisi_diterima: kondisiDiterima,
       kondisi_diambil_list: kondisiList,
@@ -469,6 +476,15 @@ const getInventory = async (filters = {}, actor = null) => {
           project_nama: tiket?.project?.nama_project || "-",
           cluster_id: clusterId,
           nama_cluster: cluster?.nama_cluster || "-",
+          cluster_type: cluster?.cluster_type || null,
+          project_type: cluster?.project_type || null,
+          alamat_lengkap: cluster?.alamat_lengkap || null,
+          kso_partner: cluster?.kso_partner || null,
+          kso_contact: cluster?.kso_contact || null,
+          no_tiket_release: cluster?.no_tiket_release || null,
+          vendor: cluster?.vendor || null,
+          homepass_plan: cluster?.homepass_plan ?? null,
+          status_aktif: cluster?.status_aktif ?? null,
           area: cluster?.project?.area || tiket?.project?.area || "-",
           barang_id: barangId,
           kode_perangkat: item.barang?.kode_perangkat || "-",
@@ -517,6 +533,15 @@ const getInventory = async (filters = {}, actor = null) => {
           project_nama: "-",
           cluster_id: null,
           nama_cluster: "Belum ditentukan",
+          cluster_type: null,
+          project_type: null,
+          alamat_lengkap: null,
+          kso_partner: null,
+          kso_contact: null,
+          no_tiket_release: null,
+          vendor: null,
+          homepass_plan: null,
+          status_aktif: null,
           area: "-",
           barang_id: barangId,
           kode_perangkat: "-",
@@ -660,6 +685,15 @@ const getInventory = async (filters = {}, actor = null) => {
         project_nama: agg.project_nama,
         cluster_id: agg.cluster_id,
         nama_cluster: agg.nama_cluster,
+        cluster_type: agg.cluster_type,
+        project_type: agg.project_type,
+        alamat_lengkap: agg.alamat_lengkap,
+        kso_partner: agg.kso_partner,
+        kso_contact: agg.kso_contact,
+        no_tiket_release: agg.no_tiket_release,
+        vendor: agg.vendor,
+        homepass_plan: agg.homepass_plan,
+        status_aktif: agg.status_aktif,
         pic_nama: picNama,
         pic_sumber: picSumber,
         cluster_attribution: agg.cluster_attribution || (isUnassigned ? "unassigned" : null),
@@ -717,13 +751,24 @@ const getInventory = async (filters = {}, actor = null) => {
     const key = `${projectIdNum}-${barangId}`;
 
     if (!aggregatedMap.has(key)) {
-      const clusterId = clusterProject?.cluster_id || tiketProject?.cluster_id || "-";
+      const cluster = item.boq?.cluster;
+      const clusterId = cluster?.cluster_id || tiketProject?.cluster_id || "-";
       const area = clusterProject?.area || tiketProject?.area || "-";
 
       aggregatedMap.set(key, {
         project_id: String(projectIdNum),
         project_nama: tiketProject?.nama_project || "-",
         cluster_id: clusterId,
+        nama_cluster: cluster?.nama_cluster || "-",
+        cluster_type: cluster?.cluster_type || null,
+        project_type: cluster?.project_type || null,
+        alamat_lengkap: cluster?.alamat_lengkap || null,
+        kso_partner: cluster?.kso_partner || null,
+        kso_contact: cluster?.kso_contact || null,
+        no_tiket_release: cluster?.no_tiket_release || null,
+        vendor: cluster?.vendor || null,
+        homepass_plan: cluster?.homepass_plan ?? null,
+        status_aktif: cluster?.status_aktif ?? null,
         area: area,
         barang_id: barangId,
         kode_perangkat: item.barang?.kode_perangkat || "-",
@@ -850,7 +895,16 @@ const getInventory = async (filters = {}, actor = null) => {
       project_id: agg.project_id,
       project_nama: agg.project_nama,
       cluster_id: agg.cluster_id,
-      nama_cluster: null,
+      nama_cluster: agg.nama_cluster || null,
+      cluster_type: agg.cluster_type || null,
+      project_type: agg.project_type || null,
+      alamat_lengkap: agg.alamat_lengkap || null,
+      kso_partner: agg.kso_partner || null,
+      kso_contact: agg.kso_contact || null,
+      no_tiket_release: agg.no_tiket_release || null,
+      vendor: agg.vendor || null,
+      homepass_plan: agg.homepass_plan ?? null,
+      status_aktif: agg.status_aktif ?? null,
       pic_nama: null,
       pic_sumber: null,
       cluster_attribution: null,

@@ -124,6 +124,8 @@ interface Boq {
   ticketNumber: string;
   projectId: string;
   project: Project;
+  clusterId?: string;
+  cluster?: { cluster_id: string; nama_cluster?: string; cluster_type?: string } | null;
   area: string;
   status: BoqStatus;
   source: BoqSource;
@@ -1126,6 +1128,9 @@ export default function BoqPage() {
                     Dokumen
                   </th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Cluster
+                  </th>
+                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                     Status
                   </th>
                   <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">
@@ -1147,13 +1152,13 @@ export default function BoqPage() {
                   ))
                 ) : error ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-16 text-center text-sm text-rose-500">
+                    <td colSpan={10} className="px-6 py-16 text-center text-sm text-rose-500">
                       {error}
                     </td>
                   </tr>
                 ) : boqs.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-16 text-center text-sm text-slate-400">
+                    <td colSpan={10} className="px-6 py-16 text-center text-sm text-slate-400">
                       {activeTab === "draft"
                         ? "Belum ada BOQ draft. BOQ baru dari email/PO akan muncul di sini."
                         : "Tidak ada data BOQ."}
@@ -1226,6 +1231,14 @@ export default function BoqPage() {
                             </a>
                           ) : (
                             <span className="text-xs text-slate-300">-</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-slate-700">
+                          <div className="text-sm font-medium text-slate-800">
+                            {boq.clusterId || boq.cluster?.cluster_id || "-"}
+                          </div>
+                          {boq.cluster?.nama_cluster && (
+                            <div className="text-xs text-slate-400">{boq.cluster.nama_cluster}</div>
                           )}
                         </td>
                         <td className="px-6 py-4">
@@ -1799,6 +1812,16 @@ export default function BoqPage() {
                       {getSourceBadge(detailBoq.source).label}
                     </span>
                   </div>
+                  <div>
+                    <p className="text-xs font-medium text-slate-400">Cluster ID</p>
+                    <p className="text-sm font-medium text-slate-800">{detailBoq.clusterId || detailBoq.cluster?.cluster_id || "-"}</p>
+                  </div>
+                  {detailBoq.cluster?.nama_cluster && (
+                    <div>
+                      <p className="text-xs font-medium text-slate-400">Nama Cluster</p>
+                      <p className="text-sm font-medium text-slate-800">{detailBoq.cluster.nama_cluster}</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Referensi email/PO */}

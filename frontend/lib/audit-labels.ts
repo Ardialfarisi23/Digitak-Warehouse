@@ -68,7 +68,7 @@ export const FIELD_LABELS: Record<string, string> = {
   nik: "NIK",
   email: "Email",
   gudang_id: "Gudang",
-  bisa_menyetir: "Bisa Menyetir",
+  bisa_menyetir: "Punya SIM",
   is_material_handler: "Material Handler",
   jenis_kendaraan: "Jenis Kendaraan",
   merk: "Merk",

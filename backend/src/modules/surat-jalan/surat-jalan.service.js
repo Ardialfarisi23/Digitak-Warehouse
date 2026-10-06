@@ -1343,6 +1343,7 @@ if (!Array.isArray(items) || items.length === 0) {
           data: {
             surat_jalan_item_id: suratItem.item_id,
             barang_id: barangId,
+            cluster_id: suratItem.cluster_id || null,
             jenis_mutasi: "out",
             qty: qty,
             saldo_setelah: Math.max(0, newGenericQty),
@@ -1384,6 +1385,7 @@ if (!Array.isArray(items) || items.length === 0) {
           data: {
             surat_jalan_item_id: suratItem.item_id,
             barang_id: barangId,
+            cluster_id: suratItem.cluster_id || null,
             jenis_mutasi: "in",
             qty: qty,
             saldo_setelah: saldoSetelahZona,
@@ -1639,6 +1641,7 @@ if (!Array.isArray(items) || items.length === 0) {
           data: {
             surat_jalan_item_id: suratItem.item_id,
             barang_id: barangId,
+            cluster_id: suratItem.cluster_id || null,
             jenis_mutasi: "out",
             qty: qty,
             saldo_setelah: Math.max(0, newQty),

@@ -915,7 +915,7 @@ export default function SupervisorOperasionalPage() {
                 <div className="sm:col-span-2 flex items-center gap-6">
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={personilForm.bisa_menyetir} onChange={(e) => setPersonilForm((p) => ({ ...p, bisa_menyetir: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#E8632C] focus:ring-[#E8632C]" />
-                    Bisa Menyetir
+                    Punya SIM
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={personilForm.is_material_handler} onChange={(e) => setPersonilForm((p) => ({ ...p, is_material_handler: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#E8632C] focus:ring-[#E8632C]" />
@@ -1056,7 +1056,7 @@ export default function SupervisorOperasionalPage() {
                 <div className="sm:col-span-2 flex items-center gap-6">
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={personilForm.bisa_menyetir} onChange={(e) => setPersonilForm((p) => ({ ...p, bisa_menyetir: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#E8632C] focus:ring-[#E8632C]" />
-                    Bisa Menyetir
+                    Punya SIM
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={personilForm.is_material_handler} onChange={(e) => setPersonilForm((p) => ({ ...p, is_material_handler: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#E8632C] focus:ring-[#E8632C]" />

@@ -14,6 +14,7 @@ const createSuratJalanSchema = z
     driver_nama_teks: z.string().trim().max(200, "Nama driver maksimal 200 karakter.").optional().nullable(),
     project_id: z.string().optional().nullable(),
     boq_id: z.string().optional().nullable(),
+    cluster_id: z.string().optional().nullable(),
     kategori_approval: z.string().optional().nullable(),
     pic_pemohon_nama: z.string().optional().nullable(),
     nomor_tiket: z.string().optional().nullable(),

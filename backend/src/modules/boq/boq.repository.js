@@ -1,16 +1,18 @@
 const prisma = require("../../config/prisma");
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
+const { normalizeClusterId } = require("../../utils/clusterResolver");
 
 const DEFAULT_LIMIT = 10;
 const DEFAULT_PAGE = 1;
 const ALLOWED_SORT_FIELDS = ["boq_id", "status", "tanggal_aktivasi", "created_at", "updated_at"];
 const EXCLUDED_BOQ_STATUSES_FOR_SJ = ["draft", "selesai", "ditolak"];
 
-const create = async (data) => {
+const create = async (data, tx = prisma) => {
+  const normalizedData = { ...data, cluster_id: normalizeClusterId(data.cluster_id) };
   // 1. Cek dulu apakah tiket_id yang dikirim dari form sudah punya BOQ
-  const existingBoq = await prisma.boq.findUnique({
-    where: { tiket_id: Number(data.tiket_id) },
+  const existingBoq = await tx.boq.findUnique({
+    where: { tiket_id: Number(normalizedData.tiket_id) },
   });
 
   // 2. Kalau datanya ketemu (berarti sudah ada BOQ-nya), lemparkan error
@@ -19,8 +21,8 @@ const create = async (data) => {
   }
 
   // 3. Kalau aman, lanjutkan simpan
-  return await prisma.boq.create({
-    data,
+  return await tx.boq.create({
+    data: normalizedData,
     include: {
       tiket: {
         include: {
@@ -44,6 +46,11 @@ const findById = async (boq_id) => {
     where: { boq_id: Number(boq_id) },
     include: {
       tiket: {
+        include: {
+          project: true,
+        },
+      },
+      cluster: {
         include: {
           project: true,
         },
@@ -170,6 +177,7 @@ const update = async (boq_id, data) => {
     const itemData = items.map((item) => ({
       ...item,
       boq_id: Number(boq_id),
+      cluster_id: normalizeClusterId(item.cluster_id),
     }));
 
     await prisma.boq_item.createMany({
