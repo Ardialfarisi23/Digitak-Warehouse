@@ -1,5 +1,6 @@
 const prisma = require("../../config/prisma");
 const AppError = require("../../shared/errors");
+const { resolveFromTiket, resolveFromSuratJalanItem, warnNull } = require("../../utils/clusterResolver");
 const { getBusinessDate, toPrismaDecimal, withSerializableRetry } = require("./return.utils");
 
 const resolveMasterBarang = async (barangId) => {
@@ -329,6 +330,15 @@ const createReturn = async (data) => {
       barang_id: BigInt(data.barangId),
       baseline_laporan_id: BigInt(data.baselineLaporanId),
       surat_jalan_item_id: data.suratJalanItemId ? BigInt(data.suratJalanItemId) : null,
+      cluster_id: (async () => {
+        const fromTiket = await resolveFromTiket(prisma, data.tiketId);
+        if (fromTiket) return fromTiket;
+        if (data.suratJalanItemId) {
+          const fromSji = await resolveFromSuratJalanItem(prisma, data.suratJalanItemId);
+          if (fromSji) return fromSji;
+        }
+        return null;
+      })(),
       qty: qtyDecimal,
       status: "draft",
       effective_return_at: effectiveReturnAt,
@@ -685,6 +695,14 @@ const addReturnStock = async (returnRecord, gudangTujuanId, tx) => {
       surat_jalan_item_id: returnRecord.surat_jalan_item_id ? Number(returnRecord.surat_jalan_item_id) : null,
       return_transaction_id: Number(returnRecord.return_id),
       barang_id: barangId,
+      cluster_id: (async () => {
+        const fromSji = returnRecord.surat_jalan_item_id
+          ? await prisma.surat_jalan_item.findUnique({ where: { item_id: Number(returnRecord.surat_jalan_item_id) }, select: { cluster_id: true } })
+          : null;
+        if (fromSji?.cluster_id) return fromSji.cluster_id;
+        const fromRt = await prisma.return_transaction.findUnique({ where: { return_id: Number(returnRecord.return_id) }, select: { cluster_id: true } });
+        return fromRt?.cluster_id || null;
+      })(),
       jenis_mutasi: "in",
       qty: qtyDecimal,
       saldo_setelah: saldoSetelah,

@@ -177,7 +177,7 @@ const create = async (data, userId) => {
   }
 
   const cluster = await prisma.cluster.findUnique({
-    where: { cluster_id: String(clusterId) },
+    where: { cluster_id: normalizeClusterId(clusterId) },
   });
 
   if (!cluster) {
@@ -186,7 +186,7 @@ const create = async (data, userId) => {
 
   const existingActiveBoqForCluster = await prisma.boq.findFirst({
     where: {
-      cluster_id: String(clusterId),
+      cluster_id: normalizeClusterId(clusterId),
       status: "aktif",
     },
   });
@@ -210,6 +210,7 @@ const create = async (data, userId) => {
         kode_tiket: ticketNumber,
         project_id: projectId ? Number(projectId) : null,
         area: area || null,
+        cluster_id: normalizeClusterId(clusterId),
         created_by: userId,
       },
     });
@@ -221,7 +222,7 @@ const create = async (data, userId) => {
     ...boqData,
     boq_number: boqNumber,
     tiket_id: tiket.tiket_id,
-    cluster_id: String(clusterId),
+    cluster_id: normalizeClusterId(clusterId),
     created_by: userId,
     updated_by: userId,
     status: normalizeStatus(boqData.status),
@@ -292,6 +293,7 @@ const create = async (data, userId) => {
           qty_rencana: item.quantity || item.qty_rencana || 0,
           satuan_id: satuanId,
           gudang_tujuan_id: item.destinationWarehouseId ? Number(item.destinationWarehouseId) : null,
+          cluster_id: normalizeClusterId(boqDataWithMeta.cluster_id),
         };
       }),
     };

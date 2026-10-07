@@ -1,6 +1,7 @@
 const permintaanBoqRepository = require("./permintaan-boq.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
+const { resolveFromTiket, warnNull } = require("../../utils/clusterResolver");
 
 const normalizeStatus = (status) => {
   if (!status) return status;
@@ -27,13 +28,23 @@ const create = async (data, userId) => {
     throw new AppError("Data personil untuk user ini tidak ditemukan.", 400);
   }
 
+  const tiketId = data.tiket_id ? Number(data.tiket_id) : null;
+  const clusterId = tiketId
+    ? await resolveFromTiket(prisma, tiketId)
+    : (data.cluster_id ? String(data.cluster_id) : null);
+
+  if (!clusterId) {
+    warnNull("permintaan_boq", { tiket_id: tiketId, project_id: data.projectId });
+  }
+
   const record = await prisma.permintaanBoq.create({
     data: {
       project_id: Number(data.projectId),
       barang_id: Number(data.barang_id),
       qty_usulan: Number(data.qty_usulan),
       alasan: data.alasan || null,
-      tiket_id: data.tiket_id ? Number(data.tiket_id) : null,
+      tiket_id: tiketId,
+      cluster_id: clusterId,
       diajukan_oleh: Number(personil.personil_id),
     },
     include: {

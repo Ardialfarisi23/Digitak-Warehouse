@@ -183,6 +183,7 @@ model cluster {
   no_tiket_release String?  @db.Text
   vendor           String?  @db.Text
   alamat_lengkap   String?  @db.Text
+  homepass_plan    Int?
   status_aktif     Boolean  @default(true)
   created_at       DateTime @default(now())
   updated_at       DateTime @default(now())
@@ -193,6 +194,14 @@ model cluster {
   project          project   @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
   pic              personil? @relation("ClusterPic", fields: [pic_id], references: [personil_id])
   boqs             boq[]
+  boq_items        boq_item[]
+  surat_jalans_direct surat_jalan[]
+  surat_jalan_items   surat_jalan_item[]
+  permintaan_boqs     permintaan_boq[]
+  return_transactions return_transaction[] @relation("ReturnCluster")
+  laporans            laporan_mitra[]      @relation("ClusterLaporan")
+  stok_ledgers        stok_ledger[]
+  tikets              tiket_material[]     @relation("ClusterTiket")
 
   @@unique([project_id, nama_cluster])
   @@index([project_id])
@@ -364,6 +373,7 @@ model tiket_material {
   permintaan_boqs     permintaan_boq[]
   laporans            laporan_mitra[]      @relation("LaporanMitraTiket")
   return_transactions return_transaction[]
+  cluster             cluster?             @relation("ClusterTiket", fields: [cluster_id], references: [cluster_id], onDelete: Restrict)
   creator             user_account         @relation("tiket_material_created_by", fields: [created_by], references: [user_id])
   project             project              @relation(fields: [project_id], references: [project_id])
 
@@ -373,7 +383,7 @@ model tiket_material {
 model boq {
   boq_id                       BigInt                       @id @default(autoincrement())
   tiket_id                     BigInt                       @unique
-  cluster_id                   String?                      @db.Text
+  cluster_id                   String                       @db.Text
   boq_number                   String?                      @unique
   status                       boq_status                   @default(draft)
   source                       boq_source                   @default(top_down)
@@ -389,7 +399,7 @@ model boq {
   updated_by                   BigInt
   creator                      user_account                 @relation("boq_created_by", fields: [created_by], references: [user_id])
   diaktifkan_user              user_account?                @relation("boq_diaktifkan", fields: [diaktifkan_oleh], references: [user_id])
-  cluster                      cluster?                     @relation(fields: [cluster_id], references: [cluster_id])
+  cluster                      cluster                     @relation(fields: [cluster_id], references: [cluster_id], onDelete: Restrict)
   tiket                        tiket_material               @relation(fields: [tiket_id], references: [tiket_id])
   updater                      user_account                 @relation("boq_updated_by", fields: [updated_by], references: [user_id])
   items                        boq_item[]
@@ -407,10 +417,12 @@ model boq_item {
   qty_rencana      Decimal  @db.Decimal(14, 2)
   satuan_id        BigInt?
   gudang_tujuan_id BigInt?
+  cluster_id       String?  @db.Text
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
   barang           barang   @relation(fields: [barang_id], references: [barang_id])
   boq              boq      @relation(fields: [boq_id], references: [boq_id], onDelete: Cascade)
+  cluster          cluster? @relation(fields: [cluster_id], references: [cluster_id], onDelete: Restrict)
   gudang_tujuan    gudang?  @relation(fields: [gudang_tujuan_id], references: [gudang_id])
   satuan           satuan?  @relation(fields: [satuan_id], references: [satuan_id])
 
@@ -418,6 +430,7 @@ model boq_item {
   @@index([barang_id])
   @@index([satuan_id])
   @@index([gudang_tujuan_id])
+  @@index([cluster_id])
 }
 
 model permintaan_boq {
@@ -430,6 +443,7 @@ model permintaan_boq {
   status        permintaan_boq_status @default(diajukan)
   diajukan_oleh BigInt
   ditinjau_oleh BigInt?
+  cluster_id    String?               @db.Text
   created_at    DateTime              @default(now())
   updated_at    DateTime              @default(now())
   barang        barang                @relation(fields: [barang_id], references: [barang_id])
@@ -437,9 +451,11 @@ model permintaan_boq {
   ditinjau_user personil?             @relation("permintaan_ditinjai_oleh", fields: [ditinjau_oleh], references: [personil_id])
   project       project               @relation(fields: [project_id], references: [project_id])
   tiket         tiket_material?       @relation(fields: [tiket_id], references: [tiket_id])
+  cluster       cluster?              @relation(fields: [cluster_id], references: [cluster_id], onDelete: Restrict)
 
   @@index([project_id])
   @@index([status])
+  @@index([cluster_id])
 }
 
 model surat_jalan {
@@ -449,11 +465,11 @@ model surat_jalan {
   boq_id                   BigInt?
   gudang_asal_id           BigInt?
   gudang_tujuan_id         BigInt?
-  // Free text: dipakai untuk inbound yang pengirimnya bukan dari master data internal.
-  // Nullable: kalau kosong, reader fallback ke relasi kendaraan_id / personil_pengantar_id.
+  cluster_id               String?             @db.Text
   kendaraan_id             BigInt?
   personil_pengantar_id    BigInt?
   kendaraan_nama_teks      String?             @db.Text
+  kendaraan_jenis_teks     String?             @db.Text
   kendaraan_no_polisi_teks String?             @db.Text
   driver_nama_teks         String?             @db.Text
   status                   surat_jalan_status  @default(draft_diajukan)
@@ -486,6 +502,7 @@ model surat_jalan {
   dikonfirmasi_at          DateTime?
   bukti_tiba_url           String?
   boq                      boq?                @relation(fields: [boq_id], references: [boq_id])
+  cluster                  cluster?            @relation(fields: [cluster_id], references: [cluster_id], onDelete: Restrict)
   creator                  user_account        @relation("surat_jalan_created_by", fields: [created_by], references: [user_id])
   gudang_asal              gudang?             @relation("surat_jalan_asal", fields: [gudang_asal_id], references: [gudang_id])
   gudang_tujuan            gudang?             @relation("surat_jalan_tujuan", fields: [gudang_tujuan_id], references: [gudang_id])
@@ -504,6 +521,7 @@ model surat_jalan {
   @@index([project_id])
   @@index([tipe])
   @@index([created_at])
+  @@index([cluster_id])
 }
 
 model surat_jalan_item {
@@ -517,6 +535,7 @@ model surat_jalan_item {
   foto_url            String?
   is_kelebihan        Boolean                 @default(false)
   is_di_luar_boq      Boolean                 @default(false)
+  cluster_id          String?                 @db.Text
   catatan             String?
   qty_diterima        Decimal?                @db.Decimal(14, 2)
   kondisi_diterima    kondisi_barang?
@@ -529,6 +548,7 @@ model surat_jalan_item {
   barang              barang                  @relation(fields: [barang_id], references: [barang_id])
   satuan              satuan                  @relation(fields: [satuan_id], references: [satuan_id])
   surat_jalan         surat_jalan             @relation(fields: [surat_jalan_id], references: [surat_jalan_id], onDelete: Cascade)
+  cluster             cluster?                @relation(fields: [cluster_id], references: [cluster_id], onDelete: Restrict)
   zona                zona_gudang?            @relation(fields: [zona_id], references: [zona_id])
   diperiksa_oleh_user user_account?           @relation("SuratJalanItemDiperiksaOleh", fields: [diperiksa_oleh], references: [user_id])
   fotos               surat_jalan_item_foto[]
@@ -538,6 +558,7 @@ model surat_jalan_item {
 
   @@index([surat_jalan_id])
   @@index([barang_id])
+  @@index([cluster_id])
 }
 
 model surat_jalan_item_foto {
@@ -640,6 +661,7 @@ model stok_ledger {
   surat_jalan_item_id   BigInt?
   return_transaction_id BigInt?
   barang_id             BigInt
+  cluster_id            String?             @db.Text
   jenis_mutasi          mutasi_jenis
   qty                   Decimal             @db.Decimal(14, 2)
   saldo_setelah         Decimal             @db.Decimal(14, 2)
@@ -647,10 +669,12 @@ model stok_ledger {
   barang                barang              @relation(fields: [barang_id], references: [barang_id])
   surat_jalan_item      surat_jalan_item?   @relation(fields: [surat_jalan_item_id], references: [item_id])
   return_transaction    return_transaction? @relation(fields: [return_transaction_id], references: [return_id], onDelete: SetNull)
+  cluster               cluster?            @relation(fields: [cluster_id], references: [cluster_id], onDelete: Restrict)
 
   @@index([barang_id, waktu_mutasi])
   @@index([surat_jalan_item_id])
   @@index([return_transaction_id])
+  @@index([cluster_id])
 }
 
 model approval_log {
@@ -738,6 +762,7 @@ model laporan_mitra {
   remains_lapangan Decimal?           @db.Decimal(14, 2)
   catatan          String?            @db.Text
   kondisi          String?            @db.Text
+  cluster_id       String?            @db.Text
   uploaded_by      BigInt
   uploaded_at      DateTime           @default(now())
   is_aktif         Boolean            @default(true)
@@ -745,6 +770,7 @@ model laporan_mitra {
   tiket            tiket_material       @relation("LaporanMitraTiket", fields: [tiket_id], references: [tiket_id])
   project          project              @relation("LaporanMitraProject", fields: [project_id], references: [project_id])
   barang           barang?              @relation("LaporanMitraBarang", fields: [barang_id], references: [barang_id], onDelete: SetNull)
+  cluster          cluster?             @relation("ClusterLaporan", fields: [cluster_id], references: [cluster_id], onDelete: Restrict)
   uploader         user_account         @relation("LaporanMitraUploader", fields: [uploaded_by], references: [user_id])
   return_baselines return_transaction[] @relation("ReturnBaselineLaporan")
 
@@ -753,6 +779,7 @@ model laporan_mitra {
   @@index([tanggal_laporan])
   @@index([barang_id])
   @@index([uploaded_at])
+  @@index([cluster_id])
 }
 
 model return_transaction {
@@ -762,6 +789,7 @@ model return_transaction {
   barang_id           BigInt
   baseline_laporan_id BigInt
   surat_jalan_item_id BigInt?
+  cluster_id          String? @db.Text
 
   qty                 Decimal       @db.Decimal(14, 2)
   status              return_status @default(draft)
@@ -784,6 +812,7 @@ model return_transaction {
   barang           barang            @relation(fields: [barang_id], references: [barang_id])
   baseline_laporan laporan_mitra     @relation("ReturnBaselineLaporan", fields: [baseline_laporan_id], references: [laporan_id], onDelete: Restrict)
   surat_jalan_item surat_jalan_item? @relation(fields: [surat_jalan_item_id], references: [item_id], onDelete: SetNull)
+  cluster          cluster?          @relation("ReturnCluster", fields: [cluster_id], references: [cluster_id], onDelete: Restrict)
   creator          user_account      @relation("ReturnCreatedBy", fields: [created_by], references: [user_id])
   approver         user_account?     @relation("ReturnApprovedBy", fields: [approved_by], references: [user_id])
   receiver         user_account?     @relation("ReturnReceivedBy", fields: [received_by], references: [user_id])
@@ -793,6 +822,7 @@ model return_transaction {
   @@index([baseline_laporan_id])
   @@index([surat_jalan_item_id])
   @@index([created_at])
+  @@index([cluster_id])
 }
 
 enum jenis_laporan_enum {

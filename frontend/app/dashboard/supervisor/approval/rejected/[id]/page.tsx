@@ -240,7 +240,7 @@ export default function SupervisorRejectedDetailPage() {
             }
           />
           <Field
-            label="PIC Pemohon"
+            label="PIC Penerima"
             value={detail.pic_pemohon_nama ?? <span className="italic text-slate-400">-</span>}
           />
           <Field label="Status" value={<span className="font-semibold text-rose-700">Ditolak</span>} />

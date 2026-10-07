@@ -50,6 +50,7 @@ const findAll = async ({
   sortOrder = "desc",
   is_aktif,
   is_internal,
+  tipe,
 } = {}) => {
   const sanitizedPage = Math.max(
     parseInt(page, 10) || DEFAULT_PAGE,
@@ -86,6 +87,10 @@ const findAll = async ({
     where.is_internal = true;
   } else if (is_internal === "false") {
     where.is_internal = false;
+  }
+
+  if (tipe) {
+    where.tipe = tipe;
   }
 
   if (search) {

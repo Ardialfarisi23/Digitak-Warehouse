@@ -170,7 +170,7 @@ const exportStockHistoryExcel = async (req, res, next) => {
       right: { style: "thin" },
     };
 
-    const headers = ["Tanggal", "Kode Tiket", "Jenis Transaksi", "Status", "Diproses Oleh", "Kode Perangkat", "Nama Barang", "Qty", "Zona", "Asal", "Tujuan"];
+    const headers = ["Tanggal", "Kode Tiket", "No. Surat Jalan", "Jenis Transaksi", "Status", "Diproses Oleh", "Kode Perangkat", "Nama Barang", "Qty", "Zona", "Asal", "Tujuan"];
     headers.forEach((header, index) => {
       const cell = worksheet.getCell(1, index + 1);
       cell.value = header;
@@ -185,6 +185,7 @@ const exportStockHistoryExcel = async (req, res, next) => {
       const values = [
         row.waktu_mutasi ? new Date(row.waktu_mutasi).toLocaleString("id-ID") : "-",
         row.kode_tiket || "-",
+        row.nomor_surat_jalan && row.nomor_surat_jalan !== "-" ? row.nomor_surat_jalan : row.return_transaction_id ? `Return #${row.return_transaction_id}` : "",
         row.tipe_surat_jalan || "-",
         row.status_surat_jalan || "-",
         row.diproses_oleh || "-",
@@ -666,6 +667,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
           }
 
         try {
+          const clusterFromTiket = await tx.cluster.findFirst({ where: { cluster_id: tiket.cluster_id }, select: { cluster_id: true } });
           await tx.laporan_mitra.create({
             data: {
               tiket_id: BigInt(tiketId),
@@ -681,6 +683,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
               used: Number(item.used || 0),
               catatan: catatan || item.catatan || null,
               kondisi: normalizeKondisi(kondisi || item.kondisi),
+              cluster_id: clusterFromTiket?.cluster_id || null,
               uploaded_by: BigInt(actorId),
               is_aktif: true,
             },

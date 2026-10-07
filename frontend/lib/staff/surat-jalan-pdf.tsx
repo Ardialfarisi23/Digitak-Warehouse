@@ -171,7 +171,7 @@ export async function downloadSuratJalanPdf(
                 <Text style={styles.infoValue}>{data.tanggal}</Text>
               </View>
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Nama PIC Pemohon</Text>
+                <Text style={styles.infoLabel}>Nama PIC Penerima</Text>
                 <Text style={styles.infoColon}>:</Text>
                 <Text style={styles.infoValue}>{data.namaPicPemohon}</Text>
               </View>
@@ -234,7 +234,7 @@ export async function downloadSuratJalanPdf(
               </View>
             </View>
             <View style={styles.signCol}>
-              <Text style={styles.signLabel}>PIC Pemohon (Penerima)</Text>
+              <Text style={styles.signLabel}>PIC Penerima (Penerima)</Text>
               <View style={styles.signLine}>
                 <Text style={styles.signName}>{data.namaPicPemohon}</Text>
               </View>

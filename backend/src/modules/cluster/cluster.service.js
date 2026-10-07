@@ -58,6 +58,7 @@ const update = async (clusterId, data) => {
     nama_cluster: data.nama_cluster,
     cluster_type: data.cluster_type,
     alamat_lengkap: data.alamat_lengkap,
+    homepass_plan: data.homepass_plan,
   };
 
   return await clusterRepository.update(clusterId, updateData);
