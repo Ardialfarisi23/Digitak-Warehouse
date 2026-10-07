@@ -42,6 +42,12 @@ type ApiSuratJalan = {
   project?: { nama_project: string } | null;
   project_id?: number | string | null;
   kendaraan?: { jenis_kendaraan: string; no_polisi: string } | null;
+  kendaraan_teks?: string | null;
+  kendaraan_jenis_teks?: string | null;
+  no_polisi_teks?: string | null;
+  kendaraan_label?: string | null;
+  driver_teks?: string | null;
+  driver_label?: string | null;
   personil_pengantar?: { personil_id: number; nama: string; jenis: string; no_hp?: string | null } | null;
   estimasi_tiba?: string | null;
   catatan_distribusi?: string | null;
@@ -585,16 +591,16 @@ export default function DistributionDetailPage() {
           <div className="space-y-3 text-sm">
             <div>
               <p className="text-gray-400">Jenis</p>
-              <p className="font-semibold text-gray-900">{data.kendaraan?.jenis_kendaraan || "-"}</p>
+              <p className="font-semibold text-gray-900">{data.kendaraan_jenis_teks || data.kendaraan_label || data.kendaraan?.jenis_kendaraan || "-"}</p>
             </div>
             <div>
               <p className="text-gray-400">No Polisi</p>
-              <p className="font-semibold text-gray-900">{data.kendaraan?.no_polisi || "-"}</p>
+              <p className="font-semibold text-gray-900">{data.no_polisi_teks || data.kendaraan?.no_polisi || "-"}</p>
             </div>
             <div>
               <p className="text-gray-400">Driver</p>
               <p className="font-semibold text-gray-900">
-                {data.personil_pengantar?.nama || "-"}
+                {data.driver_label || data.driver_teks || data.personil_pengantar?.nama || "-"}
                 {data.personil_pengantar?.no_hp ? (
                   <a href={`tel:${data.personil_pengantar.no_hp}`} className="ml-2 flex items-center gap-1 text-xs text-[#E8632C] hover:underline">
                     <Phone size={12} />

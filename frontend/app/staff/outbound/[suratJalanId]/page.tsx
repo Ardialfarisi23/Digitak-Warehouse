@@ -58,6 +58,12 @@ interface SuratJalan {
   project?: { nama_project: string };
   kendaraan?: { jenis_kendaraan: string; no_polisi: string };
   personil_pengantar?: { nama: string };
+  kendaraan_teks?: string | null;
+  kendaraan_jenis_teks?: string | null;
+  no_polisi_teks?: string | null;
+  kendaraan_label?: string | null;
+  driver_teks?: string | null;
+  driver_label?: string | null;
   boq?: {
     boq_id: number;
     boq_number?: string;
@@ -216,9 +222,9 @@ export default function SuratJalanDetailPage() {
     tanggal,
     projectName: suratJalan.project?.nama_project || "-",
     namaPicPemohon: suratJalan.pic_pemohon_nama || "-",
-    kendaraan: suratJalan.kendaraan?.jenis_kendaraan || "-",
-    noPolisi: suratJalan.kendaraan?.no_polisi || "-",
-    namaDriver: suratJalan.personil_pengantar?.nama || "-",
+    kendaraan: suratJalan.kendaraan_label || suratJalan.kendaraan?.jenis_kendaraan || "-",
+    noPolisi: suratJalan.no_polisi_teks || suratJalan.kendaraan?.no_polisi || "-",
+    namaDriver: suratJalan.driver_label || suratJalan.driver_teks || suratJalan.personil_pengantar?.nama || "-",
     items: mappedItems,
     alamatLapangan: suratJalan.alamat_lapangan || undefined,
   };

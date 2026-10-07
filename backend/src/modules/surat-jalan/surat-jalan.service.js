@@ -317,6 +317,19 @@ const create = async (data, actorId) => {
     serial_number: normalizeSerial(item.serial_number),
   }));
 
+  const normalizedKendaraan = {
+    kendaraan_id: data.kendaraan_id || null,
+    kendaraan_nama_teks: data.kendaraan_id ? null : data.kendaraan_nama_teks ? String(data.kendaraan_nama_teks).trim() : null,
+    kendaraan_jenis_teks: data.kendaraan_id ? null : data.kendaraan_jenis_teks ? String(data.kendaraan_jenis_teks).trim() : null,
+    kendaraan_no_polisi_teks: data.kendaraan_id
+      ? null
+      : data.kendaraan_no_polisi_teks
+        ? String(data.kendaraan_no_polisi_teks).trim().replace(/\s+/g, " ").toUpperCase()
+        : null,
+    personil_pengantar_id: data.personil_pengantar_id || null,
+    driver_nama_teks: data.personil_pengantar_id ? null : data.driver_nama_teks ? String(data.driver_nama_teks).trim() : null,
+  };
+
   // Item non-master: buat record barang di master data lebih dulu supaya
   // surat_jalan_item tetap punya barang_id yang valid (kolomnya non-null).
   for (const item of normalizedItems) {
@@ -373,7 +386,7 @@ const create = async (data, actorId) => {
           }
         }
 
-        const created = await suratJalanRepository.create({ ...data, items: normalizedItems }, actorId, tx);
+        const created = await suratJalanRepository.create({ ...data, ...normalizedKendaraan, items: normalizedItems }, actorId, tx);
 
         const aksi = data.tipe === "inbound" ? "create_inbound" : "create_outbound";
 
@@ -389,6 +402,12 @@ const create = async (data, actorId) => {
               surat_jalan_id: created.surat_jalan_id,
               tipe: created.tipe,
               nomor_surat_jalan: created.nomor_surat_jalan,
+              kendaraan_id: created.kendaraan_id,
+              kendaraan_nama_teks: created.kendaraan_nama_teks,
+              kendaraan_jenis_teks: created.kendaraan_jenis_teks,
+              kendaraan_no_polisi_teks: created.kendaraan_no_polisi_teks,
+              personil_pengantar_id: created.personil_pengantar_id,
+              driver_nama_teks: created.driver_nama_teks,
               ...(created.tipe === "inbound"
                 ? { gudang_tujuan_id: created.gudang_tujuan_id }
                 : {

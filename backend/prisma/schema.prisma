@@ -469,6 +469,7 @@ model surat_jalan {
   kendaraan_id             BigInt?
   personil_pengantar_id    BigInt?
   kendaraan_nama_teks      String?             @db.Text
+  kendaraan_jenis_teks     String?             @db.Text
   kendaraan_no_polisi_teks String?             @db.Text
   driver_nama_teks         String?             @db.Text
   status                   surat_jalan_status  @default(draft_diajukan)

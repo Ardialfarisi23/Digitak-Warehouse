@@ -742,14 +742,6 @@ const getInventory = async (filters = {}, actor = null) => {
     const projectBarangKey = `${projectIdNum}-${barangId}`;
 
     usedByProjectBarang.set(projectBarangKey, Number(laporanUsed));
-
-    const clusterId = laporan.cluster_id || null;
-    if (clusterId) {
-      if (!clusterIdsByProjectBarangKey.has(projectBarangKey)) {
-        clusterIdsByProjectBarangKey.set(projectBarangKey, new Set());
-      }
-      clusterIdsByProjectBarangKey.get(projectBarangKey).add(clusterId);
-    }
   }
 
   for (const item of boqItems) {
