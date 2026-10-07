@@ -262,6 +262,7 @@ function withKendaraanDriverFallback(record) {
   if (!record) return record;
 
   const namaKendaraan = (record.kendaraan_nama_teks || "").trim();
+  const jenisKendaraan = (record.kendaraan_jenis_teks || "").trim();
   const noPolisi = (record.kendaraan_no_polisi_teks || "").trim();
   const namaDriver = (record.driver_nama_teks || "").trim();
 
@@ -271,6 +272,7 @@ function withKendaraanDriverFallback(record) {
   return {
     ...record,
     kendaraan_teks: namaKendaraan || null,
+    kendaraan_jenis_teks: jenisKendaraan || null,
     no_polisi_teks: noPolisi || null,
     driver_teks: namaDriver || null,
     // Label siap pakai supaya frontend tidak perlu logika fallback berulang.
@@ -278,6 +280,7 @@ function withKendaraanDriverFallback(record) {
       [namaKendaraan || [kendaraan?.merk, kendaraan?.jenis_kendaraan].filter(Boolean).join(" - "), noPolisi || kendaraan?.no_polisi]
         .filter(Boolean)
         .join(" — ") || null,
+    kendaraan_jenis_label: jenisKendaraan || kendaraan?.jenis_kendaraan || null,
     driver_label: namaDriver || personil?.nama || null,
   };
 }
@@ -318,6 +321,7 @@ const create = async (data, actorId, tx = prisma) => {
       kendaraan_id: data.kendaraan_id ? Number(data.kendaraan_id) : null,
       personil_pengantar_id: data.personil_pengantar_id ? Number(data.personil_pengantar_id) : null,
       kendaraan_nama_teks: data.kendaraan_nama_teks || null,
+      kendaraan_jenis_teks: data.kendaraan_jenis_teks || null,
       kendaraan_no_polisi_teks: data.kendaraan_no_polisi_teks || null,
       driver_nama_teks: data.driver_nama_teks || null,
       status: status,
