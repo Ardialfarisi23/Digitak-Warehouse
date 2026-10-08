@@ -6,7 +6,6 @@ import { ClipboardList, ChevronDown, ChevronRight, Loader2, AlertCircle, Truck, 
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import BoqPicker, { type BoqPickerItem } from "@/components/BoqPicker";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
 
 type Project = {
@@ -26,9 +25,7 @@ type ItemBarang = {
   unit?: string;
   satuan_default_id?: string | number;
   qty_rencana?: number;
-  // Qty inbound kelurahan (di luar alokasi BOQ Plan) — dari backend.
   additional?: number;
-  // Qty yang sudah pernah dikirim (outbound final) — dari backend.
   mos?: number;
 };
 
@@ -72,18 +69,11 @@ type WarehouseStockItem = {
   nama_zona: string;
 };
 
-// ---------------------------------------------------------------------------
-// Generate nomor Surat Jalan di frontend — backend (surat-jalan.validation.js)
-// mewajibkan field `nomor_surat_jalan` diisi dari client, TIDAK ada
-// auto-generate di service/controller-nya (sudah dicek langsung ke
-// surat-jalan.service.js). Format mengikuti pola Inbound (roman month +
-// tahun), dibedakan segmen "SJ/OUT" biar gampang dibedain dari Inbound.
-//
-// TODO(backend): idealnya nomor ini digenerate di backend (dalam transaksi
-// yang sama pas create), supaya tidak ada risiko dua staf dapat nomor sama
-// kalau submit hampir bersamaan. Timestamp di sini cuma practically-unique,
-// bukan jaminan atomic seperti sequence di database.
-// ---------------------------------------------------------------------------
+type Cluster = {
+  cluster_id: string;
+  nama_cluster: string;
+};
+
 const ROMAN_MONTH = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
 
 function generateNomorSuratJalanOutbound(): string {
@@ -103,6 +93,9 @@ function ConfirmModal({
   selectedGudangAsal,
   selectedGudangTujuan,
   selectedProject,
+  selectedClusterIds,
+  clusters,
+  boqNumber,
   picPemohon,
   selectedVehicle,
   selectedPersonil,
@@ -128,6 +121,9 @@ function ConfirmModal({
   selectedGudangAsal: Warehouse | null;
   selectedGudangTujuan: Warehouse | null;
   selectedProject: Project | null;
+  selectedClusterIds: string[];
+  clusters: Cluster[];
+  boqNumber: string;
   picPemohon: string;
   selectedVehicle: Vehicle | null;
   selectedPersonil: Personil | null;
@@ -156,128 +152,150 @@ function ConfirmModal({
 
   if (!open) return null;
 
+  const selectedClusters = clusters.filter((c) => selectedClusterIds.includes(c.cluster_id));
+  const clusterLabels = selectedClusters.map((c) => c.nama_cluster).join(", ") || "-";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
           <div>
-            <h3 className="text-base font-semibold text-slate-900">Periksa Kembali Data Barang</h3>
-            <p className="mt-0.5 text-xs text-slate-400">Pastikan semua data sudah benar sebelum diajukan.</p>
+            <h3 className="text-base font-semibold text-slate-900">Review Surat Jalan</h3>
+            <p className="mt-0.5 text-xs text-slate-400">Periksa kembali semua data sebelum mengajukan surat jalan.</p>
           </div>
           <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
             <X size={16} />
           </button>
         </div>
 
-        <div className="px-6 py-5">
-          <p className="mb-4 text-sm text-slate-600">Pastikan daftar barang, jumlah, dan tujuan pengiriman sudah sesuai sebelum melanjutkan. Perubahan setelah submit memerlukan proses ulang.</p>
+        <div className="px-6 py-5 space-y-4">
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Ringkasan Project & Cluster</p>
+            <div className="space-y-1 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Project</span>
+                <span className="font-medium text-slate-700">{selectedProject?.nama_project || "-"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Cluster ID</span>
+                <span className="font-medium text-slate-700">{clusterLabels}</span>
+              </div>
+              {boqNumber && (
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">No BOQ / Tiket</span>
+                  <span className="font-medium text-slate-700">{boqNumber}</span>
+                </div>
+              )}
+            </div>
+          </div>
 
-          <div className="space-y-3">
-            <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Daftar Barang</p>
-              <div className="space-y-2">
-                {selectedItems.map((item, idx) => {
-                  const key = String(item.barang_id || item.id || "");
-                  const fotoUrl = fotoUrlsByItem[key];
-                  return (
-                    <div key={idx} className="flex items-center justify-between text-sm">
-                      <div className="flex flex-col">
-                        <span className="font-medium text-slate-800">{item.nama_barang || item.kode_perangkat || "-"}</span>
-                        <span className="text-xs text-slate-400">{item.kode_perangkat || "-"}</span>
-                        {fotoUrl && <img src={fotoUrl} alt="Foto barang" className="mt-1 h-10 w-10 rounded-md border border-gray-200 object-cover" />}
-                      </div>
-                      <div className="text-right">
-                        <div className="font-medium text-slate-700">
-                          {item.qty} {item.unit || "unit"}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Rute Pengiriman</p>
+            <div className="space-y-1 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Gudang Pengirim</span>
+                <span className="font-medium text-slate-700">{selectedPengirimKategori === "external" ? `External: ${pengirimEksternalNama || "-"}` : selectedGudangAsal?.nama_gudang || "-"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Gudang Tujuan</span>
+                <span className="font-medium text-slate-700">
+                  {selectedTujuanKategori === "lapangan"
+                    ? (() => {
+                        const namaTitik = titikLapangan.find((tl) => String(tl.titik_lapangan_id) === selectedTitikLapanganId)?.nama_lokasi || "";
+                        const parts = [namaTitik, alamatLapangan.trim()].filter(Boolean);
+                        return parts.length ? parts.join(" — ") : "-";
+                      })()
+                    : selectedGudangTujuan?.nama_gudang || "-"}
+                </span>
               </div>
             </div>
+          </div>
 
+          {(picPemohon || selectedVehicle || selectedPersonil) && (
             <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Rute Pengiriman</p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Detail Pengiriman</p>
               <div className="space-y-1 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Pengirim</span>
-                  <span className="font-medium text-slate-700">{selectedPengirimKategori === "external" ? `External: ${pengirimEksternalNama || "-"}` : selectedGudangAsal?.nama_gudang || "-"}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Tujuan</span>
-                  <span className="font-medium text-slate-700">
-                    {selectedTujuanKategori === "lapangan"
-                      ? (() => {
-                          const namaTitik = titikLapangan.find((tl) => String(tl.titik_lapangan_id) === selectedTitikLapanganId)?.nama_lokasi || "";
-                          const parts = [namaTitik, alamatLapangan.trim()].filter(Boolean);
-                          return parts.length ? parts.join(" — ") : "-";
-                        })()
-                      : selectedGudangTujuan?.nama_gudang || "-"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Project</span>
-                  <span className="font-medium text-slate-700">{selectedProject?.nama_project || "-"}</span>
-                </div>
+                {picPemohon && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">PIC Penerima</span>
+                    <span className="font-medium text-slate-700">{picPemohon}</span>
+                  </div>
+                )}
+                {selectedVehicle && !kendaraanManual && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Kendaraan</span>
+                    <span className="font-medium text-slate-700">
+                      {selectedVehicle.jenis_kendaraan}
+                      {selectedVehicle.merk ? ` (${selectedVehicle.merk})` : ""} — {selectedVehicle.no_polisi}
+                    </span>
+                  </div>
+                )}
+                {kendaraanManual && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Kendaraan (manual)</span>
+                    <span className="font-medium text-slate-700">
+                      {kendaraanNamaTeks} — {kendaraanJenisTeks} — {kendaraanNoPolisiTeks}
+                    </span>
+                  </div>
+                )}
+                {selectedPersonil && !driverManual && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Driver</span>
+                    <span className="font-medium text-slate-700">
+                      {selectedPersonil.nama}
+                      {selectedPersonil.posisi ? ` — ${selectedPersonil.posisi}` : ""}
+                    </span>
+                  </div>
+                )}
+                {driverManual && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Driver (manual)</span>
+                    <span className="font-medium text-slate-700">{driverNamaTeks}</span>
+                  </div>
+                )}
               </div>
             </div>
+          )}
 
-            {(picPemohon || selectedVehicle || selectedPersonil) && (
-              <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Detail Pengiriman</p>
-                <div className="space-y-1 text-sm">
-                  {picPemohon && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">PIC Penerima</span>
-                      <span className="font-medium text-slate-700">{picPemohon}</span>
-                    </div>
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Tabel Ringkasan Barang</p>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[400px] text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 text-left text-[10px] uppercase leading-tight tracking-wide text-gray-400">
+                    <th className="pb-2 pr-3 font-semibold">Kode</th>
+                    <th className="pb-2 pr-3 font-semibold">Nama Barang</th>
+                    <th className="pb-2 pr-3 text-right font-semibold">Qty</th>
+                    <th className="pb-2 font-semibold">Satuan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedItems.map((item, idx) => (
+                    <tr key={idx} className="border-b border-gray-50 last:border-0">
+                      <td className="py-2 pr-3 font-medium text-gray-800">{item.kode_perangkat || "-"}</td>
+                      <td className="py-2 pr-3 text-gray-600">{item.nama_barang || "-"}</td>
+                      <td className="py-2 pr-3 text-right text-gray-700">{item.qty}</td>
+                      <td className="py-2 text-gray-500">{item.unit || "unit"}</td>
+                    </tr>
+                  ))}
+                  {selectedItems.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="py-4 text-center text-gray-400">Tidak ada barang yang dipilih.</td>
+                    </tr>
                   )}
-                  {selectedVehicle && !kendaraanManual && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Kendaraan</span>
-                      <span className="font-medium text-slate-700">
-                        {selectedVehicle.jenis_kendaraan}
-                        {selectedVehicle.merk ? ` (${selectedVehicle.merk})` : ""} — {selectedVehicle.no_polisi}
-                      </span>
-                    </div>
-                  )}
-                  {kendaraanManual && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Kendaraan (manual)</span>
-                      <span className="font-medium text-slate-700">
-                        {kendaraanNamaTeks} — {kendaraanJenisTeks} — {kendaraanNoPolisiTeks}
-                      </span>
-                    </div>
-                  )}
-                  {selectedPersonil && !driverManual && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Driver</span>
-                      <span className="font-medium text-slate-700">
-                        {selectedPersonil.nama}
-                        {selectedPersonil.posisi ? ` — ${selectedPersonil.posisi}` : ""}
-                      </span>
-                    </div>
-                  )}
-                  {driverManual && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Driver (manual)</span>
-                      <span className="font-medium text-slate-700">{driverNamaTeks}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+                </tbody>
+              </table>
+            </div>
           </div>
+        </div>
 
-          <div className="mt-6 flex items-center justify-end gap-3">
-            <button type="button" onClick={onClose} disabled={submitting} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40">
-              Periksa Kembali
-            </button>
-            <button type="button" onClick={onConfirm} disabled={submitting} className="rounded-xl bg-[#E8632C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40">
-              {submitting ? "Mengajukan..." : "Ya, Ajukan Surat Jalan"}
-            </button>
-          </div>
+        <div className="mt-4 flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4">
+          <button type="button" onClick={onClose} disabled={submitting} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+            Kembali / Edit
+          </button>
+          <button type="button" onClick={onConfirm} disabled={submitting} className="rounded-xl bg-[#E8632C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40">
+            {submitting ? "Menyimpan..." : "Konfirmasi & Simpan"}
+          </button>
         </div>
       </div>
     </div>
@@ -298,7 +316,10 @@ export default function AjukanSuratJalanPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
-  const [selectedBoqId, setSelectedBoqId] = useState<string>("");
+  const [selectedClusterIds, setSelectedClusterIds] = useState<string[]>([]);
+  const [clusters, setClusters] = useState<Cluster[]>([]);
+  const [clustersLoading, setClustersLoading] = useState(false);
+  const [boqNumber, setBoqNumber] = useState<string>("");
   const [qtyByItem, setQtyByItem] = useState<Record<string, number>>({});
   const [picPemohon, setPicPemohon] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
@@ -316,7 +337,6 @@ export default function AjukanSuratJalanPage() {
   const [submitting, setSubmitting] = useState(false);
   const [boqItems, setBoqItems] = useState<ItemBarang[]>([]);
   const [boqItemsLoading, setBoqItemsLoading] = useState(false);
-  const [boqs, setBoqs] = useState<{ boq_id: string; boq_number: string }[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -443,6 +463,121 @@ export default function AjukanSuratJalanPage() {
     return () => { mounted = false; };
   }, [selectedProjectId, apiBase, get]);
 
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setClusters([]);
+      setSelectedClusterIds([]);
+      setBoqNumber("");
+      return;
+    }
+
+    let mounted = true;
+    setClustersLoading(true);
+    setClusters([]);
+    setSelectedClusterIds([]);
+    setBoqNumber("");
+
+    get(`${apiBase}/api/clusters?project_id=${selectedProjectId}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Gagal mengambil daftar cluster.");
+        const json = await res.json();
+        const raw = Array.isArray(json?.data) ? json.data : [];
+        if (mounted) {
+          setClusters(raw.map((c: any) => ({ cluster_id: String(c.cluster_id), nama_cluster: c.nama_cluster || c.cluster_id })));
+        }
+      })
+      .catch(() => {
+        if (mounted) setClusters([]);
+      })
+      .finally(() => {
+        if (mounted) setClustersLoading(false);
+      });
+
+    return () => { mounted = false; };
+  }, [selectedProjectId, apiBase, get]);
+
+  useEffect(() => {
+    if (selectedClusterIds.length === 0) {
+      setBoqNumber("");
+      setBoqItems([]);
+      setQtyByItem({});
+      return;
+    }
+
+    let mounted = true;
+    setBoqItemsLoading(true);
+    setBoqNumber("");
+
+    const params = new URLSearchParams();
+    params.set("projectId", selectedProjectId);
+    params.set("clusterIds", selectedClusterIds.join(","));
+    params.set("status", "aktif");
+
+    get(`${apiBase}/api/boqs?${params.toString()}`)
+      .then(async (res) => {
+        if (!res.ok) return;
+        const json = await res.json();
+        const raw = Array.isArray(json?.data?.data) ? json.data.data : Array.isArray(json?.data) ? json.data : [];
+        if (mounted && raw.length > 0) {
+          const first = raw[0];
+          setBoqNumber(first.boqNumber || first.boq_number || first.kode_tiket || first.ticketNumber || "");
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (mounted) setBoqItemsLoading(false);
+      });
+
+    return () => { mounted = false; };
+  }, [selectedClusterIds, selectedProjectId, apiBase, get]);
+
+  useEffect(() => {
+    if (!selectedProjectId || selectedClusterIds.length === 0) {
+      setBoqItems([]);
+      setQtyByItem({});
+      return;
+    }
+
+    let mounted = true;
+    setBoqItemsLoading(true);
+    setFormError(null);
+
+    const params = new URLSearchParams();
+    params.set("projectId", selectedProjectId);
+    params.set("clusterIds", selectedClusterIds.join(","));
+    params.set("statuses", "aktif");
+
+    get(`${apiBase}/api/boqs/items?${params.toString()}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Gagal mengambil daftar item BOQ Plan.");
+        const json = await res.json();
+        const rawList = Array.isArray(json?.data) ? json.data : [];
+        const mapped: ItemBarang[] = rawList.map((it: any) => ({
+          id: String(it.barang_id || it.id || ""),
+          barang_id: String(it.barang_id || it.id || ""),
+          kode_perangkat: it.kode_perangkat || "",
+          nama_barang: it.nama_barang || "",
+          unit: it.satuan_kode || it.satuan_default?.kode_satuan || it.satuan_default_id || "",
+          satuan_default_id: it.satuan_id || it.satuan_default_id || "",
+          qty_rencana: Number(it.qty_rencana || 0),
+          additional: Number(it.additional || 0),
+          mos: Number(it.mos || 0),
+        }));
+        if (mounted) setBoqItems(mapped);
+      })
+      .catch((err) => {
+        if (mounted) {
+          setFormError(err instanceof Error ? err.message : "Gagal memuat item BOQ.");
+          setBoqItems([]);
+        }
+      })
+      .finally(() => {
+        if (mounted) setBoqItemsLoading(false);
+      });
+
+    return () => { mounted = false; };
+  }, [selectedProjectId, selectedClusterIds, apiBase, get]);
+
   const selectedVehicle = useMemo(() => vehicles.find((v) => String(v.kendaraan_id || v.id) === selectedVehicleId) || null, [vehicles, selectedVehicleId]);
 
   const selectedPersonil = useMemo(() => personnel.find((p) => String(p.personil_id || p.id) === selectedPersonilId) || null, [personnel, selectedPersonilId]);
@@ -451,10 +586,6 @@ export default function AjukanSuratJalanPage() {
 
   const selectedGudangTujuan = useMemo(() => warehouses.find((w) => String(w.gudang_id) === selectedGudangTujuanId) || null, [warehouses, selectedGudangTujuanId]);
 
-  // Gudang dadakan (transit) milik project yang sedang dipilih tetap boleh dipilih
-  // sebagai gudang tujuan - ini jalur transit sementara, misalnya pengiriman malam
-  // hari yang tujuan akhirnya masih jauh. Gudang lain tidak dibatasi, hanya diberi
-  // label supaya staff mudah mengenali mana transit milik project ini.
   const gudangTujuanOptions = useMemo(() => {
     return warehouses.map((w) => {
       const isTransit = w.tipe === "dadakan";
@@ -487,14 +618,12 @@ export default function AjukanSuratJalanPage() {
     return canDrive.length > 0 ? canDrive : personnel;
   }, [personnel]);
 
-  // Fetch warehouse stock when gudang asal is selected (internal category)
   useEffect(() => {
     let mounted = true;
 
     const loadWarehouseStock = async () => {
       const warehouseId = selectedGudangAsalId;
 
-      // Only fetch for internal category with a valid warehouse
       if (selectedPengirimKategori !== "internal" || !warehouseId) {
         setWarehouseStock([]);
         setStockLoading(false);
@@ -506,7 +635,6 @@ export default function AjukanSuratJalanPage() {
       setStockError(null);
 
       try {
-        // Fetch warehouse layout to get zonas
         const layoutResp = await get(`${apiBase}/api/warehouses/${warehouseId}/layout`);
         const layoutJson = await layoutResp.json();
 
@@ -524,7 +652,6 @@ export default function AjukanSuratJalanPage() {
           return;
         }
 
-        // Fetch stock snapshot for each zona
         const stockPromises = zonas.map((zone: any) =>
           get(`${apiBase}/api/warehouses/${warehouseId}/zona/${zone.zona_id}/stock-snapshot`)
             .then(async (res) => {
@@ -607,72 +734,31 @@ export default function AjukanSuratJalanPage() {
     return Array.from(map.values());
   }, [filteredStock]);
 
-  async function handleSelectProject(projectId: string, boqId?: string) {
+  function handleProjectChange(projectId: string) {
     setSelectedProjectId(projectId);
-    setSelectedBoqId(boqId || "");
+    setSelectedClusterIds([]);
+    setBoqNumber("");
     setQtyByItem({});
     setBoqItems([]);
-    setBoqs([]);
     setSelectedTujuanKategori("");
     setSelectedPengirimKategori("");
     setPengirimEksternalNama("");
     setAlamatLapangan("");
+    setSelectedGudangAsalId("");
+    setSelectedGudangTujuanId("");
+  }
 
-    if (!projectId) return;
-
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-    setBoqItemsLoading(true);
-    try {
-const [itemsRes, boqsRes] = await Promise.all([
-        get(`${baseUrl}/api/boqs/items?projectId=${projectId}`),
-        get(`${baseUrl}/api/boqs?projectId=${projectId}&status=aktif`),
-      ]);
-
-      if (!itemsRes.ok) throw new Error("Gagal mengambil daftar item BOQ Plan.");
-      const itemsJson = await itemsRes.json();
-      const rawList = Array.isArray(itemsJson?.data) ? itemsJson.data : [];
-      const mapped: ItemBarang[] = rawList.map((it: any) => ({
-        id: String(it.barang_id || it.id || ""),
-        barang_id: String(it.barang_id || it.id || ""),
-        kode_perangkat: it.kode_perangkat || "",
-        nama_barang: it.nama_barang || "",
-        unit: it.satuan_kode || it.satuan_default?.kode_satuan || it.satuan_default_id || "",
-        satuan_default_id: it.satuan_id || it.satuan_default_id || "",
-        qty_rencana: Number(it.qty_rencana || 0),
-        additional: Number(it.additional || 0),
-        mos: Number(it.mos || 0),
-      }));
-      setBoqItems(mapped);
-
-      if (boqsRes.ok) {
-        const boqsJson = await boqsRes.json();
-        const rawBoqs = Array.isArray(boqsJson?.data?.data)
-          ? boqsJson.data.data
-          : Array.isArray(boqsJson?.data)
-            ? boqsJson.data
-            : [];
-        setBoqs(
-          rawBoqs.map((b: any) => ({
-            boq_id: String(b.id ?? b.boq_id ?? ""),
-            boq_number: b.boqNumber || b.boq_number || `BOQ-${b.id ?? b.boq_id}`,
-          }))
-        );
-      } else {
-        setBoqs([]);
+  function toggleCluster(clusterId: string) {
+    setSelectedClusterIds((prev) => {
+      if (prev.includes(clusterId)) {
+        return prev.filter((id) => id !== clusterId);
       }
-    } catch (err) {
-      console.error(err);
-      setBoqItems([]);
-      setBoqs([]);
-    } finally {
-      setBoqItemsLoading(false);
-    }
+      return [...prev, clusterId];
+    });
   }
 
   function setQty(itemKey: string, value: number) {
     setFormError(null);
-    // Tidak lagi di-clamp ke alokasi BOQ: input melebihi "Sisa Dapat Dikirim"
-    // hanya menampilkan peringatan halus, tetap bisa disubmit.
     const safeValue = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
     setQtyByItem((prev) => ({ ...prev, [itemKey]: safeValue }));
   }
@@ -696,10 +782,15 @@ const [itemsRes, boqsRes] = await Promise.all([
   const kendaraanManualValid = !kendaraanManual || (kendaraanNamaTeks.trim() && kendaraanJenisTeks.trim() && kendaraanNoPolisiTeks.trim());
   const driverManual = selectedPersonilId === "__manual_driver__";
   const driverManualValid = !driverManual || driverNamaTeks.trim() !== "";
-  const canSubmit = !!selectedProject && selectedItems.length > 0 && !!selectedPersonil && Object.keys(fotoUrlsByItem).length > 0 && tujuanValid && pengirimValid && kendaraanManualValid && driverManualValid;
 
-  async function handleSubmit() {
-    if (!canSubmit || !selectedProject || !selectedPersonil) return;
+  const isInterWarehouse = selectedTujuanKategori === "gudang" && selectedPengirimKategori === "internal" && selectedGudangAsalId && selectedGudangTujuanId && selectedGudangAsalId !== selectedGudangTujuanId;
+  const projectRequired = !isInterWarehouse;
+  const clusterRequired = !isInterWarehouse;
+
+  const canSubmit = selectedItems.length > 0 && !!selectedPersonil && Object.keys(fotoUrlsByItem).length > 0 && tujuanValid && pengirimValid && kendaraanManualValid && driverManualValid && (projectRequired ? !!selectedProjectId : true) && (clusterRequired ? selectedClusterIds.length > 0 : true);
+
+  function handleSubmit() {
+    if (!canSubmit || !selectedPersonil) return;
     if (formError) return;
 
     if (selectedVehicleId === "__manual__") {
@@ -780,8 +871,8 @@ const [itemsRes, boqsRes] = await Promise.all([
   async function confirmSubmit() {
     if (!selectedProject || !selectedPersonil) return;
 
-    if (!selectedBoqId) {
-      showToast("Pilih BOQ terlebih dahulu.", "error");
+    if (selectedClusterIds.length === 0 && clusterRequired) {
+      showToast("Pilih Cluster ID terlebih dahulu.", "error");
       return;
     }
     if (!selectedTujuanKategori) {
@@ -814,15 +905,15 @@ const [itemsRes, boqsRes] = await Promise.all([
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-      const payload = {
+      const payload: any = {
         tipe: "outbound",
         nomor_surat_jalan: generateNomorSuratJalanOutbound(),
         gudang_asal_id: selectedPengirimKategori === "internal" ? selectedGudangAsalId : null,
         gudang_tujuan_id: selectedTujuanKategori === "gudang" ? selectedGudangTujuanId : null,
         kendaraan_id: selectedVehicleId && selectedVehicleId !== "__manual__" ? selectedVehicleId : null,
         personil_pengantar_id: selectedPersonilId && selectedPersonilId !== "__manual_driver__" ? selectedPersonilId : null,
-        project_id: selectedProjectId,
-        boq_id: selectedBoqId || null,
+        project_id: selectedProjectId || null,
+        cluster_id: selectedClusterIds.length > 0 ? selectedClusterIds[0] : null,
         tujuan_tipe: selectedTujuanKategori || null,
         titik_lapangan_id: selectedTujuanKategori === "lapangan" ? (selectedTitikLapanganId || null) : null,
         alamat_lapangan: selectedTujuanKategori === "lapangan" ? alamatLapangan.trim() : null,
@@ -911,23 +1002,82 @@ const [itemsRes, boqsRes] = await Promise.all([
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="flex flex-col gap-5 lg:col-span-2">
-          {/* BOQ / Tiket */}
+          {/* Project & Cluster ID */}
           <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
             <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
               <ClipboardList size={16} />
-              BOQ / Tiket
+              Project
             </p>
-            <BoqPicker
-              value={selectedBoqId}
-              onSelect={(picked) => {
-                handleSelectProject(String(picked.project_id || selectedProjectId), picked.boq_id);
-              }}
-              placeholder="Pilih BOQ / Tiket"
-              tipe="outbound"
-              excludeStatus="draft,selesai,ditolak"
-              emptyMessage="Tidak ada BOQ yang dapat diajukan."
-            />
-            {selectedBoqId && <p className="mt-2 text-xs text-gray-500">Tiket: {selectedProject?.nama_project || `Project ID ${selectedProjectId}`}</p>}
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">
+                  Project <span className={projectRequired ? "text-rose-500" : "text-gray-400"}>*</span>
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedProjectId}
+                    onChange={(e) => handleProjectChange(e.target.value)}
+                    className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+                  >
+                    <option value="">Pilih Project...</option>
+                    {projects.map((p) => (
+                      <option key={p.project_id} value={String(p.project_id)}>
+                        {p.nama_project}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                </div>
+              </div>
+
+              {selectedProjectId && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">
+                    Cluster ID <span className={clusterRequired ? "text-rose-500" : "text-gray-400"}>*
+                    </span>
+                    {!clusterRequired && <span className="ml-1 text-[10px] text-gray-400">(Opsional untuk Gudang ke Gudang)</span>}
+                  </label>
+                  {clustersLoading ? (
+                    <div className="flex items-center gap-2 text-xs text-gray-400">
+                      <Loader2 size={14} className="animate-spin" />
+                      Memuat cluster...
+                    </div>
+                  ) : clusters.length === 0 ? (
+                    <p className="text-xs text-gray-400">Project ini belum memiliki cluster.</p>
+                  ) : (
+                    <div className="max-h-[160px] space-y-1.5 overflow-y-auto rounded-lg border border-gray-100 bg-slate-50/40 p-2">
+                      {clusters.map((c) => {
+                        const checked = selectedClusterIds.includes(c.cluster_id);
+                        return (
+                          <label
+                            key={c.cluster_id}
+                            className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors ${checked ? "bg-orange-50 text-orange-900" : "hover:bg-white hover:text-gray-700"}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleCluster(c.cluster_id)}
+                              className="h-3.5 w-3.5 rounded border-gray-300 text-[#E8632C] focus:ring-[#E8632C]"
+                            />
+                            <span className="font-medium">{c.cluster_id}</span>
+                            <span className="text-gray-500">{c.nama_cluster}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {selectedClusterIds.length > 0 && (
+                    <p className="mt-1 text-[10px] text-gray-400">{selectedClusterIds.length} cluster dipilih</p>
+                  )}
+                </div>
+              )}
+
+              {boqNumber && (
+                <div className="rounded-lg border border-orange-100 bg-orange-50/60 px-3 py-2 text-xs text-orange-800">
+                  <span className="font-semibold">No BOQ / Tiket:</span> {boqNumber}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Gudang Pengirim & Tujuan */}
@@ -969,7 +1119,7 @@ const [itemsRes, boqsRes] = await Promise.all([
                       className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
                     >
                       <option value="">Pilih Gudang Asal...</option>
-{warehouses.filter((w) => w.is_internal === true).map((w) => (
+                      {warehouses.filter((w) => w.is_internal === true).map((w) => (
                         <option key={w.gudang_id} value={String(w.gudang_id)}>
                           {w.nama_gudang} {w.tipe === "dadakan" ? "(Dadakan)" : ""}
                         </option>
@@ -979,76 +1129,76 @@ const [itemsRes, boqsRes] = await Promise.all([
                   </div>
                   {warehouses.filter((w) => w.is_internal === true).length === 0 && <p className="mt-2 text-xs text-gray-400">Belum ada data Gudang Internal di master data.</p>}
 
-                {/* Cek Stok Gudang Panel */}
-                {selectedGudangAsalId && (
-                  <div className="mt-4 border-t border-gray-100 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => setStockExpanded((prev) => !prev)}
-                      className="flex items-center gap-2 text-xs font-medium text-gray-600 hover:text-gray-800"
-                    >
-                      {stockExpanded ? (
-                        <ChevronRight size={14} className="rotate-90 text-[#E8632C]" />
-                      ) : (
-                        <ChevronRight size={14} className="text-gray-400" />
-                      )}
-                      <span>Cek Stok Gudang</span>
-                      {stockLoading && (
-                        <Loader2 size={12} className="ml-auto animate-spin text-[#E8632C]" />
-                      )}
-                    </button>
+                  {/* Cek Stok Gudang Panel */}
+                  {selectedGudangAsalId && (
+                    <div className="mt-4 border-t border-gray-100 pt-4">
+                      <button
+                        type="button"
+                        onClick={() => setStockExpanded((prev) => !prev)}
+                        className="flex items-center gap-2 text-xs font-medium text-gray-600 hover:text-gray-800"
+                      >
+                        {stockExpanded ? (
+                          <ChevronRight size={14} className="rotate-90 text-[#E8632C]" />
+                        ) : (
+                          <ChevronRight size={14} className="text-gray-400" />
+                        )}
+                        <span>Cek Stok Gudang</span>
+                        {stockLoading && (
+                          <Loader2 size={12} className="ml-auto animate-spin text-[#E8632C]" />
+                        )}
+                      </button>
 
-                    {stockExpanded && (
-                      <div className="mt-3 space-y-3">
-                        {/* Search */}
-                        <div className="relative">
-                          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                          <input
-                            type="text"
-                            placeholder="Cari nama barang / SKU / zona..."
-                            value={stockSearch}
-                            onChange={(e) => setStockSearch(e.target.value)}
-                            className="w-full pl-9 pr-3.5 py-2 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#E8632C] focus:outline-none"
-                          />
+                      {stockExpanded && (
+                        <div className="mt-3 space-y-3">
+                          {/* Search */}
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                            <input
+                              type="text"
+                              placeholder="Cari nama barang / SKU / zona..."
+                              value={stockSearch}
+                              onChange={(e) => setStockSearch(e.target.value)}
+                              className="w-full pl-9 pr-3.5 py-2 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#E8632C] focus:outline-none"
+                            />
+                          </div>
+
+                          {/* Stock List */}
+                          {stockLoading ? (
+                            <div className="flex min-h-[150px] flex-col items-center justify-center">
+                              <Loader2 size={24} className="animate-spin text-gray-400" />
+                              <p className="mt-2 text-xs text-gray-500">Memuat data stok gudang...</p>
+                            </div>
+                          ) : stockError ? (
+                            <div className="flex min-h-[150px] flex-col items-center justify-center text-center">
+                              <AlertCircle size={28} className="text-red-500 mb-2" />
+                              <p className="text-xs text-gray-600">{stockError}</p>
+                            </div>
+                          ) : stockByBarang.length === 0 ? (
+                            <div className="flex min-h-[150px] flex-col items-center justify-center text-center">
+                              <p className="text-xs text-gray-500">Tidak ada stok barang di gudang ini.</p>
+                            </div>
+                           ) : (
+                            <div className="max-h-[350px] overflow-y-auto space-y-2 pr-1">
+                              {stockByBarang.map((item) => (
+                                <div key={item.barang_id} className="flex items-center justify-between rounded-xl border border-gray-200 p-3">
+                                  <div>
+                                    <p className="text-xs font-bold text-gray-800">{item.nama_barang}</p>
+                                    <p className="text-[10px] text-gray-500">SKU: {item.kode_perangkat} {item.nama_zona !== "-" ? `· ${item.nama_zona}` : ""}</p>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-xs font-bold text-gray-900">{Number(item.qty || 0).toLocaleString("id-ID")}</p>
+                                    <p className="text-[10px] text-gray-500">{item.satuan}</p>
+                                    <div className="mt-1"><KondisiBadge value={item.kondisi} /></div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-
-                        {/* Stock List */}
-                        {stockLoading ? (
-                          <div className="flex min-h-[150px] flex-col items-center justify-center">
-                            <Loader2 size={24} className="animate-spin text-gray-400" />
-                            <p className="mt-2 text-xs text-gray-500">Memuat data stok gudang...</p>
-                          </div>
-                        ) : stockError ? (
-                          <div className="flex min-h-[150px] flex-col items-center justify-center text-center">
-                            <AlertCircle size={28} className="text-red-500 mb-2" />
-                            <p className="text-xs text-gray-600">{stockError}</p>
-                          </div>
-                        ) : stockByBarang.length === 0 ? (
-                          <div className="flex min-h-[150px] flex-col items-center justify-center text-center">
-                            <p className="text-xs text-gray-500">Tidak ada stok barang di gudang ini.</p>
-                          </div>
-                         ) : (
-                           <div className="max-h-[350px] overflow-y-auto space-y-2 pr-1">
-                             {stockByBarang.map((item) => (
-                               <div key={item.barang_id} className="flex items-center justify-between rounded-xl border border-gray-200 p-3">
-                                 <div>
-                                   <p className="text-xs font-bold text-gray-800">{item.nama_barang}</p>
-                                   <p className="text-[10px] text-gray-500">SKU: {item.kode_perangkat} {item.nama_zona !== "-" ? `· ${item.nama_zona}` : ""}</p>
-                                 </div>
-                                 <div className="text-right">
-                                   <p className="text-xs font-bold text-gray-900">{Number(item.qty || 0).toLocaleString("id-ID")}</p>
-                                   <p className="text-[10px] text-gray-500">{item.satuan}</p>
-                                   <div className="mt-1"><KondisiBadge value={item.kondisi} /></div>
-                                 </div>
-                               </div>
-                             ))}
-                           </div>
-                         )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
 
               {selectedPengirimKategori === "external" && (
@@ -1078,22 +1228,22 @@ const [itemsRes, boqsRes] = await Promise.all([
 
               <label className="mb-1.5 block text-xs font-medium text-gray-500">Kategori Tujuan</label>
                <div className="relative mb-3">
-                 <select
-                   value={selectedTujuanKategori}
-                   onChange={(e) => {
-                     setSelectedTujuanKategori(e.target.value);
-                     setSelectedGudangTujuanId("");
-                     setAlamatLapangan("");
-                     setSelectedTitikLapanganId("");
-                   }}
-                   className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
-                 >
-                  <option value="">Pilih Kategori...</option>
-                  <option value="gudang">Gudang</option>
-                  <option value="lapangan">Lapangan</option>
-                </select>
-                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              </div>
+                  <select
+                    value={selectedTujuanKategori}
+                    onChange={(e) => {
+                      setSelectedTujuanKategori(e.target.value);
+                      setSelectedGudangTujuanId("");
+                      setAlamatLapangan("");
+                      setSelectedTitikLapanganId("");
+                    }}
+                    className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+                  >
+                   <option value="">Pilih Kategori...</option>
+                   <option value="gudang">Gudang</option>
+                   <option value="lapangan">Lapangan</option>
+                 </select>
+                 <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+               </div>
 
               {selectedTujuanKategori === "gudang" && (
                 <div>
@@ -1124,7 +1274,7 @@ const [itemsRes, boqsRes] = await Promise.all([
                 </div>
               )}
 
-{selectedTujuanKategori === "lapangan" && (
+              {selectedTujuanKategori === "lapangan" && (
                 <div className="space-y-3">
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-600">
@@ -1169,7 +1319,7 @@ const [itemsRes, boqsRes] = await Promise.all([
           </div>
 
           {/* Daftar barang */}
-          {selectedProject && (
+          {selectedProjectId && (
             <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
               <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Pilih Barang & Kuantitas</p>
 
@@ -1205,7 +1355,6 @@ const [itemsRes, boqsRes] = await Promise.all([
                         const key = item.barang_id || item.id;
                         const qty = qtyByItem[key] || 0;
                         const boqPlan = item.qty_rencana ?? 0;
-                        // Sisa Dapat Dikirim = BOQ Plan (sudah neto) + Additional.
                         const sisa = boqPlan + (item.additional ?? 0);
                         const exceedsSisa = qty > sisa;
                         return (
@@ -1293,14 +1442,16 @@ const [itemsRes, boqsRes] = await Promise.all([
                       {boqItems.length === 0 && (
                         <tr>
                           <td colSpan={7} className="py-8 text-center text-gray-400">
-                            Project ini belum memiliki BOQ aktif atau belum ada item di BOQ Plan.
+                            {selectedClusterIds.length === 0 && selectedProjectId
+                              ? "Pilih cluster untuk melihat daftar barang."
+                              : "Project/Cluster ini belum memiliki BOQ aktif atau belum ada item di BOQ Plan."}
                           </td>
                         </tr>
                       )}
                     </tbody>
                   </table>
 
-                  {Object.keys(fotoUrlsByItem).length === 0 && selectedProject && <p className="mt-3 text-xs text-gray-400">Upload minimal 1 foto barang sebelum dapat mengajukan Surat Jalan.</p>}
+                  {Object.keys(fotoUrlsByItem).length === 0 && selectedProjectId && <p className="mt-3 text-xs text-gray-400">Upload minimal 1 foto barang sebelum dapat mengajukan Surat Jalan.</p>}
 
                   {formError && (
                     <div className="mt-3 flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">
@@ -1458,7 +1609,7 @@ const [itemsRes, boqsRes] = await Promise.all([
           </div>
 
           <Button disabled={!canSubmit || submitting} onClick={handleSubmit} className="h-auto rounded-xl bg-[#E8632C] py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40">
-            {submitting ? "Memproses..." : "Ajukan Surat Jalan"}
+            {submitting ? "Memproses..." : "Review Surat Jalan"}
           </Button>
         </div>
 
@@ -1471,6 +1622,9 @@ const [itemsRes, boqsRes] = await Promise.all([
           selectedGudangAsal={selectedGudangAsal}
           selectedGudangTujuan={selectedGudangTujuan}
           selectedProject={selectedProject}
+          selectedClusterIds={selectedClusterIds}
+          clusters={clusters}
+          boqNumber={boqNumber}
           picPemohon={picPemohon}
           selectedVehicle={selectedVehicle}
           selectedPersonil={selectedPersonil}
