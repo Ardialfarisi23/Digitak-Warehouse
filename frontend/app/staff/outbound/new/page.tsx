@@ -113,6 +113,7 @@ function ConfirmModal({
   kendaraanNoPolisiTeks,
   driverManual,
   driverNamaTeks,
+  onImageClick,
 }: {
   open: boolean;
   onClose: () => void;
@@ -142,6 +143,7 @@ function ConfirmModal({
   kendaraanNoPolisiTeks: string;
   driverManual: boolean;
   driverNamaTeks: string;
+  onImageClick: (url: string) => void;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -155,7 +157,7 @@ function ConfirmModal({
   if (!open) return null;
 
   const selectedClusters = clusters.filter((c) => selectedClusterIds.includes(c.cluster_id));
-  const clusterLabels = selectedClusters.map((c) => c.nama_cluster).join(", ") || "-";
+  const clusterLabels = selectedClusters.map((c) => `${c.cluster_id} - ${c.nama_cluster}`).join(", ") || "-";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
@@ -274,21 +276,35 @@ function ConfirmModal({
                     <th className="pb-2 pr-3 font-semibold">Kode</th>
                     <th className="pb-2 pr-3 font-semibold">Nama Barang</th>
                     <th className="pb-2 pr-3 text-right font-semibold">Qty</th>
-                    <th className="pb-2 font-semibold">Satuan</th>
+                    <th className="pb-2 pr-3 font-semibold">Satuan</th>
+                    <th className="pb-2 font-semibold">Foto</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedItems.map((item, idx) => (
-                    <tr key={idx} className="border-b border-gray-50 last:border-0">
-                      <td className="py-2 pr-3 font-medium text-gray-800">{item.kode_perangkat || "-"}</td>
-                      <td className="py-2 pr-3 text-gray-600">{item.nama_barang || "-"}</td>
-                      <td className="py-2 pr-3 text-right text-gray-700">{item.qty}</td>
-                      <td className="py-2 text-gray-500">{item.unit || "unit"}</td>
-                    </tr>
-                  ))}
+                  {selectedItems.map((item, idx) => {
+                    const key = String(item.barang_id || item.id);
+                    const fotoUrl = fotoUrlsByItem[key];
+                    return (
+                      <tr key={idx} className="border-b border-gray-50 last:border-0 odd:bg-white even:bg-slate-50">
+                        <td className="py-2 pr-3 font-medium text-gray-800">{item.kode_perangkat || "-"}</td>
+                        <td className="py-2 pr-3 text-gray-600">{item.nama_barang || "-"}</td>
+                        <td className="py-2 pr-3 text-right text-gray-700">{item.qty}</td>
+                        <td className="py-2 text-gray-500">{item.unit || "unit"}</td>
+                        <td className="py-2">
+                          {fotoUrl ? (
+                            <button type="button" onClick={() => onImageClick(fotoUrl)} className="h-10 w-10 overflow-hidden rounded-md border border-gray-200">
+                              <img src={fotoUrl} alt="Preview" className="h-full w-full object-cover" />
+                            </button>
+                          ) : (
+                            <span className="text-xs text-gray-400">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {selectedItems.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="py-4 text-center text-gray-400">Tidak ada barang yang dipilih.</td>
+                      <td colSpan={5} className="py-4 text-center text-gray-400">Tidak ada barang yang dipilih.</td>
                     </tr>
                   )}
                 </tbody>
@@ -351,6 +367,7 @@ export default function AjukanSuratJalanPage() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
   const [fotoUrlsByItem, setFotoUrlsByItem] = useState<Record<string, string>>({});
   const [fotoPreviewsByItem, setFotoPreviewsByItem] = useState<Record<string, string>>({});
@@ -1448,8 +1465,10 @@ export default function AjukanSuratJalanPage() {
                                     </span>
                                   </div>
                                 ) : fotoUrlsByItem[key] ? (
-                                  <div className="relative">
-                                    <img src={fotoUrlsByItem[key]} alt="Preview" className="h-10 w-10 rounded-md border border-gray-200 object-cover" />
+                                  <div className="relative h-10 w-10">
+                                    <button type="button" onClick={() => setLightboxImage(fotoUrlsByItem[key])} className="h-full w-full">
+                                      <img src={fotoUrlsByItem[key]} alt="Preview" className="h-full w-full rounded-md border border-gray-200 object-cover" />
+                                    </button>
                                     <button type="button" onClick={() => handleFotoRemove(key)} className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-white hover:bg-rose-600">
                                       <X size={10} />
                                     </button>
@@ -1664,6 +1683,7 @@ export default function AjukanSuratJalanPage() {
           kendaraanNoPolisiTeks={kendaraanNoPolisiTeks}
           driverManual={selectedPersonilId === "__manual_driver__"}
           driverNamaTeks={driverNamaTeks}
+          onImageClick={setLightboxImage}
         />
       </div>
 
@@ -1711,6 +1731,17 @@ export default function AjukanSuratJalanPage() {
                 OK
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {lightboxImage && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/80 p-4" onClick={() => setLightboxImage(null)}>
+          <div className="relative max-h-[90vh] max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
+            <img src={lightboxImage} alt="Preview foto" className="max-h-[85vh] max-w-[85vw] rounded-lg object-contain" />
+            <button type="button" onClick={() => setLightboxImage(null)} className="absolute -right-3 -top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white text-slate-700 shadow hover:bg-slate-100">
+              <X size={16} />
+            </button>
           </div>
         </div>
       )}
