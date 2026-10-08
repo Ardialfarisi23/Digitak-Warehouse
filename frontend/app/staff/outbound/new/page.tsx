@@ -96,6 +96,7 @@ function ConfirmModal({
   selectedClusterIds,
   clusters,
   boqNumber,
+  tiketNumber,
   picPemohon,
   selectedVehicle,
   selectedPersonil,
@@ -124,6 +125,7 @@ function ConfirmModal({
   selectedClusterIds: string[];
   clusters: Cluster[];
   boqNumber: string;
+  tiketNumber: string;
   picPemohon: string;
   selectedVehicle: Vehicle | null;
   selectedPersonil: Personil | null;
@@ -182,8 +184,14 @@ function ConfirmModal({
               </div>
               {boqNumber && (
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500">No BOQ / Tiket</span>
+                  <span className="text-slate-500">BOQ</span>
                   <span className="font-medium text-slate-700">{boqNumber}</span>
+                </div>
+              )}
+              {tiketNumber && (
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">No. Tiket</span>
+                  <span className="font-medium text-slate-700">{tiketNumber}</span>
                 </div>
               )}
             </div>
@@ -320,7 +328,9 @@ export default function AjukanSuratJalanPage() {
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [clustersLoading, setClustersLoading] = useState(false);
   const [boqNumber, setBoqNumber] = useState<string>("");
+  const [tiketNumber, setTiketNumber] = useState<string>("");
   const [qtyByItem, setQtyByItem] = useState<Record<string, number>>({});
+  const [clusterDropdownOpen, setClusterDropdownOpen] = useState(false);
   const [picPemohon, setPicPemohon] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [kendaraanNamaTeks, setKendaraanNamaTeks] = useState<string>("");
@@ -497,8 +507,20 @@ export default function AjukanSuratJalanPage() {
   }, [selectedProjectId, apiBase, get]);
 
   useEffect(() => {
+    if (!clusterDropdownOpen) return;
+    function handleClick(e: MouseEvent) {
+      const target = e.target as HTMLElement;
+      if (target.closest("[data-cluster-dropdown]")) return;
+      setClusterDropdownOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [clusterDropdownOpen]);
+
+  useEffect(() => {
     if (selectedClusterIds.length === 0) {
       setBoqNumber("");
+      setTiketNumber("");
       setBoqItems([]);
       setQtyByItem({});
       return;
@@ -507,6 +529,7 @@ export default function AjukanSuratJalanPage() {
     let mounted = true;
     setBoqItemsLoading(true);
     setBoqNumber("");
+    setTiketNumber("");
 
     const params = new URLSearchParams();
     params.set("projectId", selectedProjectId);
@@ -520,7 +543,8 @@ export default function AjukanSuratJalanPage() {
         const raw = Array.isArray(json?.data?.data) ? json.data.data : Array.isArray(json?.data) ? json.data : [];
         if (mounted && raw.length > 0) {
           const first = raw[0];
-          setBoqNumber(first.boqNumber || first.boq_number || first.kode_tiket || first.ticketNumber || "");
+          setBoqNumber(first.boqNumber || first.boq_number || "");
+          setTiketNumber(first.kode_tiket || first.ticketNumber || "");
         }
       })
       .catch(() => {})
@@ -738,6 +762,7 @@ export default function AjukanSuratJalanPage() {
     setSelectedProjectId(projectId);
     setSelectedClusterIds([]);
     setBoqNumber("");
+    setTiketNumber("");
     setQtyByItem({});
     setBoqItems([]);
     setSelectedTujuanKategori("");
@@ -746,15 +771,6 @@ export default function AjukanSuratJalanPage() {
     setAlamatLapangan("");
     setSelectedGudangAsalId("");
     setSelectedGudangTujuanId("");
-  }
-
-  function toggleCluster(clusterId: string) {
-    setSelectedClusterIds((prev) => {
-      if (prev.includes(clusterId)) {
-        return prev.filter((id) => id !== clusterId);
-      }
-      return [...prev, clusterId];
-    });
   }
 
   function setQty(itemKey: string, value: number) {
@@ -1045,36 +1061,74 @@ export default function AjukanSuratJalanPage() {
                   ) : clusters.length === 0 ? (
                     <p className="text-xs text-gray-400">Project ini belum memiliki cluster.</p>
                   ) : (
-                    <div className="max-h-[160px] space-y-1.5 overflow-y-auto rounded-lg border border-gray-100 bg-slate-50/40 p-2">
-                      {clusters.map((c) => {
-                        const checked = selectedClusterIds.includes(c.cluster_id);
+                    <div className="relative" data-cluster-dropdown>
+                      <button
+                        type="button"
+                        onClick={() => setClusterDropdownOpen((prev) => !prev)}
+                        className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 hover:border-gray-300 focus:border-[#E8632C] focus:outline-none"
+                      >
+                        <span className={selectedClusterIds.length === 0 ? "text-gray-400" : "text-gray-800"}>
+                          {selectedClusterIds.length === 0 ? "Pilih Cluster ID..." : `${selectedClusterIds.length} cluster dipilih`}
+                        </span>
+                        <ChevronDown size={16} className="text-gray-400" />
+                      </button>
+                      {clusterDropdownOpen && (
+                        <div className="absolute left-0 top-full z-50 mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                          {clusters.map((c) => {
+                            const checked = selectedClusterIds.includes(c.cluster_id);
+                            return (
+                              <button
+                                key={c.cluster_id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedClusterIds((prev) => {
+                                    if (prev.includes(c.cluster_id)) {
+                                      return prev.filter((id) => id !== c.cluster_id);
+                                    }
+                                    return [...prev, c.cluster_id];
+                                  });
+                                  setClusterDropdownOpen(false);
+                                }}
+                                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-slate-50 ${checked ? "bg-orange-50 text-orange-900" : "text-gray-700"}`}
+                              >
+                                <span className="font-medium">{c.cluster_id}</span>
+                                <span className="text-gray-500">{c.nama_cluster}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {selectedClusterIds.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {selectedClusterIds.map((cid) => {
+                        const cluster = clusters.find((c) => c.cluster_id === cid);
                         return (
-                          <label
-                            key={c.cluster_id}
-                            className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors ${checked ? "bg-orange-50 text-orange-900" : "hover:bg-white hover:text-gray-700"}`}
+                          <span
+                            key={cid}
+                            className="inline-flex items-center gap-1 rounded-md border border-orange-100 bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-800"
                           >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleCluster(c.cluster_id)}
-                              className="h-3.5 w-3.5 rounded border-gray-300 text-[#E8632C] focus:ring-[#E8632C]"
-                            />
-                            <span className="font-medium">{c.cluster_id}</span>
-                            <span className="text-gray-500">{c.nama_cluster}</span>
-                          </label>
+                            {cid}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedClusterIds((prev) => prev.filter((id) => id !== cid))}
+                              className="rounded-full text-orange-500 hover:text-orange-700"
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
                         );
                       })}
                     </div>
                   )}
-                  {selectedClusterIds.length > 0 && (
-                    <p className="mt-1 text-[10px] text-gray-400">{selectedClusterIds.length} cluster dipilih</p>
-                  )}
                 </div>
               )}
 
-              {boqNumber && (
-                <div className="rounded-lg border border-orange-100 bg-orange-50/60 px-3 py-2 text-xs text-orange-800">
-                  <span className="font-semibold">No BOQ / Tiket:</span> {boqNumber}
+              {(boqNumber || tiketNumber) && (
+                <div className="rounded-lg border border-orange-100 bg-orange-50/60 px-3 py-2 text-xs text-orange-800 space-y-0.5">
+                  {boqNumber && <p><span className="font-semibold">BOQ:</span> {boqNumber}</p>}
+                  {tiketNumber && <p><span className="font-semibold">No. Tiket:</span> {tiketNumber}</p>}
                 </div>
               )}
             </div>
@@ -1358,7 +1412,7 @@ export default function AjukanSuratJalanPage() {
                         const sisa = boqPlan + (item.additional ?? 0);
                         const exceedsSisa = qty > sisa;
                         return (
-                          <tr key={key} className="border-b border-gray-50 last:border-0">
+                          <tr key={key} className="border-b border-gray-50 last:border-0 odd:bg-white even:bg-slate-50">
                             <td className="py-3 pr-3 font-medium text-gray-800">{item.kode_perangkat}</td>
                             <td className="py-3 pr-3 text-gray-600">{item.nama_barang}</td>
                             <td className="py-3 pr-3 text-right text-xs whitespace-nowrap text-gray-500">{boqPlan > 0 ? `${boqPlan} unit` : "-"}</td>
@@ -1625,6 +1679,7 @@ export default function AjukanSuratJalanPage() {
           selectedClusterIds={selectedClusterIds}
           clusters={clusters}
           boqNumber={boqNumber}
+          tiketNumber={tiketNumber}
           picPemohon={picPemohon}
           selectedVehicle={selectedVehicle}
           selectedPersonil={selectedPersonil}
