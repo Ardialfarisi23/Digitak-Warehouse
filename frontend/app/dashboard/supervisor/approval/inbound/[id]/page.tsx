@@ -81,77 +81,6 @@ export default function SupervisorApprovalInboundDetailPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const openApproveConfirm = () => {
-    setShowConfirm(true);
-  };
-
-  const cancelApproveConfirm = () => {
-    setShowConfirm(false);
-  };
-
-  const executeApprove = async () => {
-    setShowConfirm(false);
-    setActionLoading(true);
-    try {
-      const resp = await put(`${apiBase}/api/surat-jalan/${params.id}/approve-inbound`, {
-        notes,
-        itemAdjustments: [],
-      });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => null);
-        throw new Error(err?.message || "Gagal approve inbound.");
-      }
-      setShowSuccessModal(true);
-      setToast({ message: "Inbound berhasil disetujui.", type: "success" });
-    } catch (error) {
-      console.error(error);
-      setToast({
-        message: (error as Error)?.message || "Gagal approve inbound.",
-        type: "error",
-      });
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleBack = () => {
-    router.push("/dashboard/supervisor/approval/inbound");
-  };
-
-  const openRejectConfirm = () => {
-    setShowRejectConfirm(true);
-  };
-
-  const cancelRejectConfirm = () => {
-    setShowRejectConfirm(false);
-    setRejectReason("");
-  };
-
-  const executeReject = async () => {
-    setShowRejectConfirm(false);
-    setActionLoading(true);
-    try {
-      const resp = await put(`${apiBase}/api/surat-jalan/${params.id}/reject-inbound`, {
-        catatan: rejectReason || null,
-      });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => null);
-        throw new Error(err?.message || "Gagal menolak inbound.");
-      }
-      setRejectReason("");
-      setToast({ message: "Inbound berhasil ditolak.", type: "success" });
-      setTimeout(() => router.push("/dashboard/supervisor/approval/inbound"), 1500);
-    } catch (error) {
-      console.error(error);
-      setToast({
-        message: (error as Error)?.message || "Gagal menolak inbound.",
-        type: "error",
-      });
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const handlePrint = () => {
     window.print();
   };
@@ -226,91 +155,24 @@ export default function SupervisorApprovalInboundDetailPage() {
         </div>
       </div>
 
-      {/* 2. SECTION AKSI SUPERVISOR (RATA TENGAH DIBAWAH KEDUA SURAT) */}
+      {/* 2. SECTION DETAIL PENERIMAAN (RATA TENGAH DIBAWAH KEDUA SURAT) */}
       <div className="w-full max-w-2xl mx-auto mt-8">
         <div className="bg-slate-50/80 p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
-          <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full mb-2">AKSI SUPERVISOR</span>
+          <span className="px-3 py-1 bg-sky-100 text-sky-800 text-xs font-bold rounded-full mb-2">DETAIL PENERIMAAN</span>
 
-          <p className="text-xs text-slate-500 max-w-lg mb-4">Tinjau dan setujui surat jalan inbound di atas. Stok akan otomatis ditambahkan setelah persetujuan.</p>
+          <p className="text-xs text-slate-500 max-w-lg mb-4">Halaman ini menampilkan data barang masuk yang sudah diproses staf (read-only).</p>
 
           <div className="w-full text-left mb-4">
-            <label className="block text-xs font-bold text-slate-600 mb-1">CATATAN SUPERVISOR</label>
+            <label className="block text-xs font-bold text-slate-600 mb-1">CATATAN</label>
             <textarea
               rows={3}
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Tuliskan catatan selisih/kondisi di sini..."
-              className="w-full p-3 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+              readOnly
+              className="w-full p-3 text-sm bg-slate-100 border border-slate-200 rounded-xl text-slate-600 focus:outline-none"
             />
-          </div>
-
-          <p className="text-xs font-medium text-slate-500 mb-3">Pilih aksi persetujuan untuk dokumen surat jalan inbound ini:</p>
-
-          <div className="flex items-center justify-center gap-3 w-full max-w-md">
-            <Button
-              onClick={openRejectConfirm}
-              disabled={actionLoading}
-              variant="outline"
-              className="flex-1 rounded-xl border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60 flex items-center justify-center gap-2"
-            >
-              Tolak / Revisi
-            </Button>
-            <Button
-              onClick={openApproveConfirm}
-              disabled={actionLoading}
-              className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 flex items-center justify-center gap-2"
-            >
-              {actionLoading ? "Memproses..." : "Setujui Inbound"}
-            </Button>
           </div>
         </div>
       </div>
-
-      {/* Modal Konfirmasi Persetujuan — samakan pola dengan list page */}
-      {showConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <h3 className="text-base font-semibold text-slate-900">Setujui Inbound?</h3>
-            <p className="mt-1 text-sm text-slate-500">Apakah Anda yakin ingin menyetujui inbound ini? Aksi ini akan mengubah status surat jalan dan menambahkan stok barang ke gudang.</p>
-            <div className="mt-6 flex items-center justify-end gap-2">
-              <button type="button" onClick={cancelApproveConfirm} disabled={actionLoading} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60">
-                Batal
-              </button>
-              <button type="button" onClick={executeApprove} disabled={actionLoading} className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-emerald-600 disabled:opacity-60">
-                {actionLoading ? "Memproses..." : "Ya, Setujui"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Konfirmasi Penolakan — samakan pola dengan approve */}
-      {showRejectConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <h3 className="text-base font-semibold text-slate-900">Tolak Inbound?</h3>
-            <p className="mt-1 text-sm text-slate-500">Surat Jalan akan berstatus &quot;ditolak&quot; dan stok tidak akan ditambahkan. Staf Gudang perlu membuat pengajuan inbound baru untuk transaksi ini.</p>
-            <div className="mt-4">
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">Alasan Penolakan</label>
-              <textarea
-                rows={3}
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="Tuliskan alasan penolakan/klarifikasi..."
-                className="w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-rose-500 focus:outline-none"
-              />
-            </div>
-            <div className="mt-6 flex items-center justify-end gap-2">
-              <button type="button" onClick={cancelRejectConfirm} disabled={actionLoading} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60">
-                Batal
-              </button>
-              <button type="button" onClick={executeReject} disabled={actionLoading} className="rounded-full bg-rose-600 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-rose-700 disabled:opacity-60">
-                {actionLoading ? "Memproses..." : "Ya, Tolak"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Toast — reuse pola BOQ (top-right, slide-in) */}
       {toast && (
@@ -341,26 +203,6 @@ export default function SupervisorApprovalInboundDetailPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
-        </div>
-      )}
-
-      {/* Pop-up Modal Sukses Custom */}
-      {showSuccessModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-sm rounded-3xl border border-slate-100 bg-white p-6 text-center shadow-xl space-y-5 animate-in zoom-in-95 duration-200">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-inner">
-              <CheckCircle2 className="h-9 w-9" />
-            </div>
-
-            <div className="space-y-1">
-              <h3 className="text-xl font-bold text-slate-900">Persetujuan Berhasil!</h3>
-              <p className="text-xs text-slate-500 leading-relaxed">Surat Jalan inbound berhasil disetujui dan stok barang telah ditambahkan.</p>
-            </div>
-
-            <Button onClick={handleBack} className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white hover:bg-emerald-700 shadow-sm shadow-emerald-600/20">
-              Kembali ke Daftar Antrean
-            </Button>
-          </div>
         </div>
       )}
 

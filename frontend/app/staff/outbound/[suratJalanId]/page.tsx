@@ -34,6 +34,7 @@ interface SuratJalanItem {
   barang_id: number;
   qty: number;
   satuan_id: number;
+  foto_url?: string | null;
   barang?: {
     nama_barang: string;
     kode_perangkat: string;
@@ -203,6 +204,7 @@ export default function SuratJalanDetailPage() {
       namaBarang: item.barang?.nama_barang || "-",
       qty: item.qty,
       uom: item.satuan?.kode_satuan || item.barang?.satuan_default?.kode_satuan || "Unit",
+      fotoUrl: item.foto_url || null,
       keterangan: null,
       isKritis: kritisLevel === "kritis",
       isMenipis: kritisLevel === "menipis",
@@ -527,6 +529,7 @@ export default function SuratJalanDetailPage() {
               <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">QTY</th>
               <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">UOM</th>
               <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Kondisi</th>
+              <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">Foto</th>
             </tr>
           </thead>
           <tbody>
@@ -548,11 +551,25 @@ export default function SuratJalanDetailPage() {
                 <td className="border border-gray-200 px-3 py-2.5 text-center font-semibold">{item.qty}</td>
                 <td className="border border-gray-200 px-3 py-2.5 text-center">{item.uom}</td>
                 <td className="border border-gray-200 px-3 py-2.5 text-gray-500">{item.keterangan || "-"}</td>
+                <td className="border border-gray-200 px-3 py-2.5 text-center">
+                  {item.fotoUrl ? (
+                    <a
+                      href={item.fotoUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs font-semibold text-[#E8632C] hover:underline"
+                    >
+                      Lihat Foto
+                    </a>
+                  ) : (
+                    <span className="text-xs text-gray-400">-</span>
+                  )}
+                </td>
               </tr>
             ))}
             {Array.from({ length: Math.max(0, 3 - mappedItems.length) }).map((_, i) => (
               <tr key={`empty-${i}`}>
-                <td className="border border-gray-200 px-3 py-6" colSpan={6} />
+                <td className="border border-gray-200 px-3 py-6" colSpan={7} />
               </tr>
             ))}
           </tbody>

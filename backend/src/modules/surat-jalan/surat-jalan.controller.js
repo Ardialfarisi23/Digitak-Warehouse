@@ -46,15 +46,6 @@ const findInboundList = async (req, res, next) => {
   }
 };
 
-const findVerificationQueue = async (req, res, next) => {
-  try {
-    const result = await suratJalanService.findVerificationQueue(req.query);
-    return response.success(res, "Daftar verifikasi surat jalan berhasil diambil.", result);
-  } catch (err) {
-    next(err);
-  }
-};
-
 const findOutboundForApproval = async (req, res, next) => {
   try {
     const result = await suratJalanService.findOutboundForApproval(req.query);
@@ -118,15 +109,6 @@ const findOutboundDetail = async (req, res, next) => {
   }
 };
 
-const approveInbound = async (req, res, next) => {
-  try {
-    const result = await suratJalanService.approveInbound(req.params.id, req.body.itemAdjustments, req.user.id);
-    return response.success(res, "Inbound berhasil diverifikasi dan siap untuk putaway.", result);
-  } catch (err) {
-    next(err);
-  }
-};
-
 const approveOutbound = async (req, res, next) => {
   try {
     const result = await suratJalanService.approveOutbound(req.params.id, req.user.id);
@@ -140,15 +122,6 @@ const confirmDistributed = async (req, res, next) => {
   try {
     const result = await suratJalanService.confirmDistributed(req.params.id, req.user.id);
     return response.success(res, "Surat Jalan berhasil ditandai sebagai diterima/didistribusikan.", result);
-  } catch (err) {
-    next(err);
-  }
-};
-
-const rejectInbound = async (req, res, next) => {
-  try {
-    const result = await suratJalanService.rejectInbound(req.params.id, req.body.catatan, req.user.id);
-    return response.success(res, "Inbound berhasil ditolak.", result);
   } catch (err) {
     next(err);
   }
@@ -256,13 +229,10 @@ module.exports = {
   findInboundList,
   findById,
   findOutboundDetail,
-  findVerificationQueue,
   findOutboundForApproval,
   findOutboundForDelivery,
-  approveInbound,
   approveOutbound,
   confirmDistributed,
-  rejectInbound,
   rejectOutbound,
   cancelDraft,
   putaway,

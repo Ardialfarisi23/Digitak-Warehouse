@@ -26,8 +26,8 @@ export default function SupervisorApprovalIndexPage() {
               <ArrowDownLeft size={20} />
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-700">Form Persetujuan Inbound</p>
-              <p className="mt-2 text-sm text-slate-500">Review barang masuk, cek serial, kondisi, dan catat kelebihan jika ada.</p>
+              <p className="text-sm font-semibold text-slate-700">Riwayat Inbound</p>
+              <p className="mt-2 text-sm text-slate-500">Daftar barang masuk yang sudah diproses staf (read-only).</p>
             </div>
           </div>
           <div className="mt-6">
@@ -35,7 +35,7 @@ export default function SupervisorApprovalIndexPage() {
               type="button"
               className="flex w-full items-center justify-between rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-900 transition-all duration-150 group-hover:border-sky-300 group-hover:bg-sky-100"
             >
-              <span>Buka Antrian Inbound</span>
+              <span>Buka Riwayat Inbound</span>
               <ArrowRight
                 size={16}
                 className="transition-transform duration-150 group-hover:translate-x-0.5"

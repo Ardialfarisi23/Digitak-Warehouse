@@ -48,7 +48,25 @@ describe("retrieve", () => {
     items: [{ item_id: 1, barang_id: 1, qty: 10, kondisi: "baik" }],
   };
 
-  function makeTx(shipment) {
+  // `retrieve` kini mencari stok per kondisi lewat findMany (stockDiminta /
+  // stockDiambil) lalu satu findMany lagi tanpa filter kondisi untuk fallback.
+  // Karena itu findMany harus mengikuti `where`-nya, bukan selalu [].
+  const STOK_BAIK = [
+    { stok_id: 1, qty: 10, kondisi: "baik", gudang_id: 1, barang_id: 1, zona_id: 1 },
+  ];
+
+  function matchStok(rows, where = {}) {
+    return rows.filter(
+      (r) =>
+        (where.stok_id === undefined || r.stok_id === where.stok_id) &&
+        (where.gudang_id === undefined || r.gudang_id === where.gudang_id) &&
+        (where.barang_id === undefined || r.barang_id === where.barang_id) &&
+        (where.zona_id === undefined || r.zona_id === where.zona_id) &&
+        (where.kondisi === undefined || r.kondisi === where.kondisi)
+    );
+  }
+
+  function makeTx(shipment, { stokRows = STOK_BAIK } = {}) {
     return {
       surat_jalan: {
         findUnique: async () => ({ ...shipment, picking_selesai: false }),
@@ -58,8 +76,8 @@ describe("retrieve", () => {
         findMany: async () => shipment.items,
       },
       stok_gudang: {
-        findFirst: async () => ({ stok_id: 1, qty: 10 }),
-        findMany: async () => [],
+        findFirst: async ({ where } = {}) => matchStok(stokRows, where)[0] || null,
+        findMany: async ({ where } = {}) => matchStok(stokRows, where),
         updateMany: async () => ({ count: 1 }),
         delete: async () => {},
       },
@@ -116,13 +134,11 @@ describe("retrieve", () => {
   it("override tanpa catatan: is_override=true dengan catatan auto", async () => {
     const shipment = { ...baseShipment, items: [{ item_id: 1, barang_id: 1, qty: 10, kondisi: "baik" }] };
     setup(shipment);
-    const tx = makeTx(shipment);
-    tx.stok_gudang = {
-      findFirst: async () => ({ stok_id: 2, qty: 10 }),
-      findMany: async () => [],
-      updateMany: async () => ({ count: 1 }),
-      delete: async () => {},
-    };
+    // Stok Baik kosong; hanya stok Rusak Ringan yang tersedia, sehingga pick
+    // dengan kondisi rusak_ringan jadi override (bukan NO_STOCK).
+    const tx = makeTx(shipment, {
+      stokRows: [{ stok_id: 2, qty: 10, kondisi: "rusak_ringan", gudang_id: 1, barang_id: 1, zona_id: 1 }],
+    });
     prismaMock.$transaction = async (fn) => fn(tx);
 
     const result = await retrieve(1, [{ item_id: 1, qty: 2, zona_id: 1, kondisi: "rusak_ringan" }], 1);
@@ -673,6 +689,212 @@ describe("updateDeliveryStatus", () => {
     const shipment = { ...baseShipment, status: "diterima_didistribusikan" };
     setup(shipment);
     const result = await confirmDistributed(1, 1);
+    assert.ok(result);
+    teardown();
+  });
+});
+
+// Aturan penerimaan inbound (I.1/I.2) dan guard putaway:
+// qty_diterima + qty_ditolak === qty surat jalan, alasan wajib saat ada
+// penolakan, qty kolom asli tidak diubah, dan qty_ditempatkan dibatasi
+// qty_diterima.
+describe("receiveInbound & putaway guards", () => {
+  let receiveInbound;
+  let putaway;
+  let prismaMock;
+  let repositoryMock;
+  let lastItemUpdateData;
+
+  const baseShipment = {
+    surat_jalan_id: 21,
+    tipe: "inbound",
+    status: "ready_putaway",
+    gudang_tujuan_id: 3,
+    nomor_surat_jalan: "SJ-IN-21",
+    items: [
+      {
+        item_id: 210,
+        barang_id: 8,
+        qty: 5,
+        kondisi: "baik",
+        zona_id: null,
+        qty_diterima: null,
+        barang: { nama_barang: "Router", wajib_sn: false },
+      },
+    ],
+  };
+
+  function makeTx() {
+    lastItemUpdateData = null;
+    return {
+      barang: {
+        findMany: async () => [{ barang_id: 8, nama_barang: "Router", wajib_sn: false }],
+      },
+      surat_jalan_item: {
+        update: async ({ data }) => {
+          lastItemUpdateData = data;
+          return data;
+        },
+        updateMany: async () => ({ count: 1 }),
+        findUnique: async () => ({ qty: 10 }),
+      },
+      surat_jalan_item_unit: {
+        deleteMany: async () => ({}),
+        createMany: async () => ({ count: 0 }),
+      },
+      stok_gudang: {
+        findFirst: async ({ where } = {}) => (where?.zona_id === null ? { stok_id: 1, qty: 10 } : null),
+        delete: async () => ({}),
+        update: async () => ({}),
+        create: async ({ data }) => data,
+      },
+      stok_ledger: { create: async () => ({}) },
+      audit_log: { create: async () => ({}), findMany: async () => [] },
+      surat_jalan: { updateMany: async () => ({ count: 1 }) },
+      zona_gudang: { findUnique: async () => ({ gudang_id: 3, nama_zona: "Z1" }) },
+    };
+  }
+
+  function setup(shipment = baseShipment) {
+    delete require.cache[require.resolve("./surat-jalan.service")];
+    prismaMock = {
+      $transaction: async (fn) => fn(makeTx()),
+      user_account: {
+        findUnique: async () => ({ nama: "Actor", role: "staf_gudang" }),
+        findMany: async () => [],
+      },
+      personil: { findMany: async () => [] },
+    };
+    repositoryMock = {
+      findById: async () => ({ ...shipment, items: shipment.items.map((it) => ({ ...it })) }),
+      createApprovalLog: async () => ({}),
+      updateStatus: async () => ({}),
+      findInboundItemsBySerial: async () => [],
+    };
+
+    mockModule("../../config/prisma", () => prismaMock);
+    mockModule("./surat-jalan.repository", () => repositoryMock);
+    mockModule("../notifications/notifications.service", () => ({ create: async () => ({}) }));
+    mockModule("../capacity/capacity.service", () => ({ recalculateZonaStatus: async () => ({}) }));
+
+    const service = require("./surat-jalan.service");
+    receiveInbound = denganScopeBebas(service.receiveInbound);
+    putaway = denganScopeBebas(service.putaway);
+  }
+
+  function teardown() {
+    for (const modulePath of [
+      "../../config/prisma",
+      "./surat-jalan.repository",
+      "../notifications/notifications.service",
+      "../capacity/capacity.service",
+      "./surat-jalan.service",
+    ]) {
+      delete require.cache[require.resolve(modulePath)];
+    }
+  }
+
+  it("diterima + ditolak tidak sama dengan qty SJ: ditolak", async () => {
+    setup();
+    let error;
+    try {
+      await receiveInbound(21, [{ item_id: 210, qty: 3, qty_ditolak: 1 }], 4);
+    } catch (err) {
+      error = err;
+    }
+    assert.ok(error);
+    assert.match(error.message, /harus sama dengan qty surat jalan/);
+    teardown();
+  });
+
+  it("ada penolakan tanpa alasan: ditolak", async () => {
+    setup();
+    let error;
+    try {
+      await receiveInbound(21, [{ item_id: 210, qty: 3, qty_ditolak: 2 }], 4);
+    } catch (err) {
+      error = err;
+    }
+    assert.ok(error);
+    assert.match(error.message, /Alasan penolakan wajib diisi/);
+    teardown();
+  });
+
+  it("penerimaan seimbang: lolos, qty_ditolak + alasan tersimpan, qty SJ tidak diubah", async () => {
+    setup();
+    const result = await receiveInbound(
+      21,
+      [{ item_id: 210, qty: 3, qty_ditolak: 2, alasan_penolakan: "Kemasan rusak" }],
+      4
+    );
+    assert.ok(result);
+    assert.strictEqual(lastItemUpdateData.qty_diterima, 3);
+    assert.strictEqual(lastItemUpdateData.qty_ditolak, 2);
+    assert.strictEqual(lastItemUpdateData.alasan_penolakan, "Kemasan rusak");
+    assert.strictEqual(lastItemUpdateData.qty, undefined, "kolom qty surat jalan tidak boleh ditimpa");
+    teardown();
+  });
+
+  it("penerimaan penuh tanpa penolakan: qty_ditolak 0, alasan dikosongkan", async () => {
+    setup();
+    await receiveInbound(21, [{ item_id: 210, qty: 5, qty_ditolak: 0 }], 4);
+    assert.strictEqual(lastItemUpdateData.qty_diterima, 5);
+    assert.strictEqual(lastItemUpdateData.qty_ditolak, 0);
+    assert.strictEqual(lastItemUpdateData.alasan_penolakan, null);
+    teardown();
+  });
+
+  it("penerimaan saat sudah ada zona (setelah putaway): ditolak", async () => {
+    setup({
+      ...baseShipment,
+      items: [{ ...baseShipment.items[0], zona_id: 6, qty_diterima: 5 }],
+    });
+    let error;
+    try {
+      await receiveInbound(21, [{ item_id: 210, qty: 5, qty_ditolak: 0 }], 4);
+    } catch (err) {
+      error = err;
+    }
+    assert.ok(error);
+    assert.match(error.message, /tidak bisa diubah setelah putaway/);
+    teardown();
+  });
+
+  it("putaway tanpa penerimaan tercatat: ditolak", async () => {
+    setup();
+    let error;
+    try {
+      await putaway(21, [{ item_id: 210, zona_id: 6, qty_ditempatkan: 5 }], 4);
+    } catch (err) {
+      error = err;
+    }
+    assert.ok(error);
+    assert.match(error.message, /Penerimaan barang belum dicatat/);
+    teardown();
+  });
+
+  it("putaway melebihi qty diterima: ditolak", async () => {
+    setup({
+      ...baseShipment,
+      items: [{ ...baseShipment.items[0], qty_diterima: 3, qty_ditolak: 2 }],
+    });
+    let error;
+    try {
+      await putaway(21, [{ item_id: 210, zona_id: 6, qty_ditempatkan: 4 }], 4);
+    } catch (err) {
+      error = err;
+    }
+    assert.ok(error);
+    assert.match(error.message, /melebihi qty diterima/);
+    teardown();
+  });
+
+  it("putaway dalam batas qty diterima: lolos", async () => {
+    setup({
+      ...baseShipment,
+      items: [{ ...baseShipment.items[0], qty_diterima: 3, qty_ditolak: 2 }],
+    });
+    const result = await putaway(21, [{ item_id: 210, zona_id: 6, qty_ditempatkan: 3 }], 4);
     assert.ok(result);
     teardown();
   });

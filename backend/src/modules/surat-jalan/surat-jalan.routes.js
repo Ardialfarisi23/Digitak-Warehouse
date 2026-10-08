@@ -6,8 +6,6 @@ const suratJalanController = require("./surat-jalan.controller");
 const {
   createSuratJalanSchema,
   receiveInboundSchema,
-  approveInboundSchema,
-  rejectInboundSchema,
   rejectOutboundSchema,
   cancelDraftSchema,
   putawaySchema,
@@ -48,7 +46,6 @@ router.get(
 );
 
 router.get("/inbound", authenticate, suratJalanController.findInboundList);
-router.get("/verification/queue", authenticate, suratJalanController.findVerificationQueue);
 router.get("/staff/history", authenticate, suratJalanController.findStaffHistory);
 router.get("/rejected", authenticate, authorize("SUPERVISOR"), suratJalanController.findRejectedList);
 router.get(
@@ -56,22 +53,6 @@ router.get(
   authenticate,
   attachGudangScope,
   suratJalanController.findById
-);
-
-router.put(
-  "/:id/approve-inbound",
-  authenticate,
-  authorize("SUPERVISOR"),
-  validate(approveInboundSchema),
-  suratJalanController.approveInbound
-);
-
-router.post(
-  "/:id/approve-inbound",
-  authenticate,
-  authorize("SUPERVISOR"),
-  validate(approveInboundSchema),
-  suratJalanController.approveInbound
 );
 
 router.put(
@@ -115,14 +96,6 @@ router.post(
   attachGudangScope,
   validate(lanjutDariTransitSchema),
   suratJalanController.lanjutDariTransit
-);
-
-router.put(
-  "/:id/reject-inbound",
-  authenticate,
-  authorize("SUPERVISOR"),
-  validate(rejectInboundSchema),
-  suratJalanController.rejectInbound
 );
 
 router.put(

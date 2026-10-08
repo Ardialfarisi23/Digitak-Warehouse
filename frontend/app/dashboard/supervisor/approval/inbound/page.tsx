@@ -30,19 +30,14 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export default function SupervisorApprovalPage() {
   const router = useRouter();
-  const { get, put } = useApi();
+  const { get } = useApi();
 
   const [requests, setRequests] = useState<InboundRequest[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [query, setQuery] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [confirmTarget, setConfirmTarget] = useState<InboundRequest | null>(null);
-  const [approveLoading, setApproveLoading] = useState<boolean>(false);
-  const [showRejectConfirm, setShowRejectConfirm] = useState(false);
-  const [rejectTarget, setRejectTarget] = useState<InboundRequest | null>(null);
-  const [rejectReason, setRejectReason] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
-  const [activeTab, setActiveTab] = useState<"pending" | "history">("pending");
+  const [activeTab, setActiveTab] = useState<"all" | "history">("all");
 
   const fetchInboundList = async () => {
     setLoading(true);
@@ -80,10 +75,10 @@ export default function SupervisorApprovalPage() {
     if (!Array.isArray(requests)) return [];
 
     const tabFiltered = requests.filter((r) => {
-      if (activeTab === "pending") {
-        return r.status === "menunggu_verifikasi";
+      if (activeTab === "all") {
+        return true;
       }
-      return ["ready_putaway", "disetujui", "ditolak", "diterima_didistribusikan"].includes(r.status);
+      return ["ready_putaway", "disetujui", "digenerate", "diterima_didistribusikan", "ditolak"].includes(r.status);
     });
 
     return tabFiltered.filter((r) => {
@@ -108,10 +103,10 @@ export default function SupervisorApprovalPage() {
 
   const stats = useMemo(() => {
     const tabRequests = requests.filter((r) => {
-      if (activeTab === "pending") {
-        return r.status === "menunggu_verifikasi";
+      if (activeTab === "all") {
+        return true;
       }
-      return ["ready_putaway", "disetujui", "ditolak", "diterima_didistribusikan"].includes(r.status);
+      return ["ready_putaway", "disetujui", "digenerate", "diterima_didistribusikan", "ditolak"].includes(r.status);
     });
 
     const totalAntrean = tabRequests.length;
@@ -148,73 +143,6 @@ export default function SupervisorApprovalPage() {
     return { totalAntrean, fisikRusak, selisihPo, diLuarPo };
   }, [requests, activeTab]);
 
-  const openApproveConfirm = (req: InboundRequest) => {
-    setConfirmTarget(req);
-  };
-
-  const cancelApproveConfirm = () => {
-    setConfirmTarget(null);
-  };
-
-  const openRejectConfirm = (req: InboundRequest) => {
-    setRejectTarget(req);
-    setShowRejectConfirm(true);
-  };
-
-  const cancelRejectConfirm = () => {
-    setShowRejectConfirm(false);
-    setRejectReason("");
-  };
-
-  const executeReject = async () => {
-    const target = rejectTarget;
-    if (!target || !rejectReason.trim()) return;
-    setShowRejectConfirm(false);
-    setApproveLoading(true);
-    try {
-      const res = await put(`${API_BASE_URL}/api/surat-jalan/${target.id}/reject-inbound`, {
-        catatan: rejectReason.trim() || null,
-      });
-      if (res.ok) {
-        setRequests((prev) => (Array.isArray(prev) ? prev.map((item) => item.id === target.id ? { ...item, status: "ditolak" } : item) : []));
-        await fetchInboundList();
-        setToast({ message: "Inbound berhasil ditolak.", type: "success" });
-      } else {
-        const err = await res.json().catch(() => null);
-        setToast({ message: err?.message || "Gagal menolak dokumen.", type: "error" });
-      }
-    } catch (error) {
-      console.error("Error rejecting request:", error);
-      setToast({ message: "Gagal menolak dokumen.", type: "error" });
-    } finally {
-      setApproveLoading(false);
-      setRejectTarget(null);
-    }
-  };
-
-  const executeApprove = async () => {
-    const target = confirmTarget;
-    if (!target) return;
-    setConfirmTarget(null);
-    setApproveLoading(true);
-    try {
-      const res = await put(`${API_BASE_URL}/api/surat-jalan/${target.id}/approve-inbound`, {});
-      if (res.ok) {
-        setRequests((prev) => (Array.isArray(prev) ? prev.map((item) => item.id === target.id ? { ...item, status: "ready_putaway" } : item) : []));
-        await fetchInboundList();
-        setToast({ message: "Inbound berhasil disetujui.", type: "success" });
-      } else {
-        const err = await res.json().catch(() => null);
-        setToast({ message: err?.message || "Gagal menyetujui dokumen.", type: "error" });
-      }
-    } catch (error) {
-      console.error("Error approving request:", error);
-      setToast({ message: "Gagal menyetujui dokumen.", type: "error" });
-    } finally {
-      setApproveLoading(false);
-    }
-  };
-
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6 bg-[#FAFAFA] min-h-screen text-slate-800">
       <div className="flex items-center gap-4">
@@ -222,21 +150,21 @@ export default function SupervisorApprovalPage() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold tracking-wider text-emerald-600 uppercase">
+          <div className="flex items-center gap-2 text-xs font-semibold tracking-wider text-sky-600 uppercase">
             <span>SUPERVISOR PORTAL</span>
             <span className="text-slate-300">•</span>
-            <span className="text-slate-400 font-normal capitalize">Validasi Penerimaan</span>
+            <span className="text-slate-400 font-normal capitalize">Riwayat Penerimaan</span>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Form Persetujuan Penerimaan Barang (Inbound)</h1>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Riwayat Barang Masuk (Inbound)</h1>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex justify-between items-start">
           <div>
-            <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">TOTAL ANTREAN</p>
-            <h3 className="text-3xl font-bold text-slate-900 mb-1">{stats.totalAntrean}</h3>
-            <p className="text-xs text-slate-400">Barang masuk antrean</p>
+          <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">TOTAL INBOUND</p>
+          <h3 className="text-3xl font-bold text-slate-900 mb-1">{stats.totalAntrean}</h3>
+          <p className="text-xs text-slate-400">Total barang masuk</p>
           </div>
           <div className="p-2 bg-slate-50 rounded-lg text-slate-400">
             <Clock className="w-5 h-5" />
@@ -311,24 +239,24 @@ export default function SupervisorApprovalPage() {
 
       <div className="flex items-center gap-2">
         <button
-          onClick={() => setActiveTab("pending")}
+          onClick={() => setActiveTab("all")}
           className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
-            activeTab === "pending"
-              ? "bg-emerald-600 text-white shadow-sm"
+            activeTab === "all"
+              ? "bg-sky-600 text-white shadow-sm"
               : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
           }`}
         >
-          Perlu Persetujuan
+          Semua
         </button>
         <button
           onClick={() => setActiveTab("history")}
           className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
             activeTab === "history"
-              ? "bg-emerald-600 text-white shadow-sm"
+              ? "bg-sky-600 text-white shadow-sm"
               : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
           }`}
         >
-          Riwayat Persetujuan
+          Riwayat
         </button>
       </div>
 
@@ -377,50 +305,31 @@ export default function SupervisorApprovalPage() {
                 >
                   Review Detail
                 </button>
-                {activeTab === "pending" ? (
-                  <>
-                    <button
-                      onClick={() => openApproveConfirm(req)}
-                      disabled={approveLoading}
-                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm shadow-emerald-600/20 disabled:opacity-60"
-                    >
-                      Setujui &amp; Tambah Stok
-                    </button>
-                    <button
-                      onClick={() => openRejectConfirm(req)}
-                      disabled={approveLoading}
-                      className="px-4 py-2.5 border border-rose-200 text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-semibold transition-colors disabled:opacity-60"
-                    >
-                      Tolak
-                    </button>
-                  </>
-                ) : (
-                  <span className={`px-3 py-2 rounded-xl text-xs font-semibold border ${
-                    req.status === "ready_putaway"
-                      ? "bg-amber-50 text-amber-700 border-amber-200"
-                      : req.status === "disetujui"
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        : req.status === "digenerate"
-                          ? "bg-slate-100 text-slate-600 border-slate-200"
-                          : req.status === "ditolak"
-                            ? "bg-rose-50 text-rose-700 border-rose-200"
-                            : req.status === "diterima_didistribusikan"
-                              ? "bg-blue-50 text-blue-700 border-blue-200"
-                              : "bg-slate-100 text-slate-600 border-slate-200"
-                  }`}>
-                    {req.status === "ready_putaway"
-                      ? "Siap Putaway"
-                      : req.status === "disetujui"
-                        ? "Disetujui"
-                        : req.status === "digenerate"
-                          ? "Digenerate"
-                          : req.status === "ditolak"
-                            ? "Ditolak"
-                            : req.status === "diterima_didistribusikan"
-                              ? "Diterima & Didistribusikan"
-                              : req.status}
-                  </span>
-                )}
+                <span className={`px-3 py-2 rounded-xl text-xs font-semibold border ${
+                  req.status === "ready_putaway"
+                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                    : req.status === "disetujui"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : req.status === "digenerate"
+                        ? "bg-slate-100 text-slate-600 border-slate-200"
+                        : req.status === "ditolak"
+                          ? "bg-rose-50 text-rose-700 border-rose-200"
+                          : req.status === "diterima_didistribusikan"
+                            ? "bg-blue-50 text-blue-700 border-blue-200"
+                            : "bg-slate-100 text-slate-600 border-slate-200"
+                }`}>
+                  {req.status === "ready_putaway"
+                    ? "Siap Putaway"
+                    : req.status === "disetujui"
+                      ? "Disetujui"
+                      : req.status === "digenerate"
+                        ? "Digenerate"
+                        : req.status === "ditolak"
+                          ? "Ditolak"
+                          : req.status === "diterima_didistribusikan"
+                            ? "Diterima & Didistribusikan"
+                            : req.status}
+                </span>
               </div>
             </div>
           );
@@ -428,79 +337,9 @@ export default function SupervisorApprovalPage() {
         </div>
       ) : (
         <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400 font-medium shadow-sm">
-          {activeTab === "pending"
-            ? "Tidak ada pengajuan inbound yang menunggu persetujuan."
-            : "Tidak ada riwayat persetujuan inbound."}
-        </div>
-      )}
-
-      {confirmTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <h3 className="text-base font-semibold text-slate-900">Setujui Inbound?</h3>
-            <p className="mt-1 text-sm text-slate-500">
-               Surat Jalan <span className="font-semibold text-slate-700">{confirmTarget.nomor_surat_jalan}</span> akan disetujui dan stok barang akan ditambahkan ke gudang.
-            </p>
-            <div className="mt-6 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={cancelApproveConfirm}
-                disabled={approveLoading}
-                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={executeApprove}
-                disabled={approveLoading}
-                className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-emerald-600 disabled:opacity-60"
-              >
-                {approveLoading ? "Memproses..." : "Ya, Setujui"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showRejectConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <h3 className="text-base font-semibold text-slate-900">Tolak Inbound?</h3>
-            <p className="mt-1 text-sm text-slate-500">
-               Surat Jalan akan berstatus "ditolak" dan stok tidak akan ditambahkan. Staf Gudang perlu membuat pengajuan inbound baru untuk transaksi ini.
-            </p>
-            <div className="mt-4">
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">
-                Alasan Penolakan
-              </label>
-              <textarea
-                rows={3}
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="Tuliskan alasan penolakan/klarifikasi..."
-                className="w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-rose-500 focus:outline-none"
-              />
-            </div>
-            <div className="mt-6 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={cancelRejectConfirm}
-                disabled={approveLoading}
-                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={executeReject}
-                disabled={approveLoading || !rejectReason.trim()}
-                className="rounded-full bg-rose-600 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-rose-700 disabled:opacity-60"
-              >
-                {approveLoading ? "Memproses..." : "Ya, Tolak"}
-              </button>
-            </div>
-          </div>
+          {activeTab === "all"
+            ? "Belum ada data inbound."
+            : "Belum ada riwayat inbound."}
         </div>
       )}
 

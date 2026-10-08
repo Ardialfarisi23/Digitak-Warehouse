@@ -21,7 +21,7 @@ type ApiSuratJalanItem = {
     pick_id: number;
     gudang_id: number;
     zona_id?: number | null;
-    zona_nama?: string | null;
+    zona?: { nama_zona?: string | null; kode_zona?: string | null } | null;
     qty: number;
     kondisi_diminta: string;
     kondisi_diambil: string;
@@ -41,6 +41,12 @@ type ApiSuratJalan = {
   gudang_tujuan?: { nama_gudang: string } | null;
   project?: { nama_project: string } | null;
   project_id?: number | string | null;
+  boq?: {
+    boq_id: number;
+    boq_number?: string;
+    cluster?: { cluster_id?: string; nama_cluster?: string } | null;
+    tiket?: { kode_tiket: string };
+  } | null;
   kendaraan?: { jenis_kendaraan: string; no_polisi: string } | null;
   personil_pengantar?: { personil_id: number; nama: string; jenis: string; no_hp?: string | null } | null;
   estimasi_tiba?: string | null;
@@ -56,6 +62,7 @@ type ApiSuratJalan = {
   dikonfirmasi_at?: string | null;
   // Field tambahan dari hasil fast-forward (upstream).
   pic_pemohon_nama?: string | null;
+  cluster?: { cluster_id?: string; nama_cluster?: string } | null;
   surat_jalan_url?: string | null;
   keberangkatan?: { waktu: string; oleh_id: number; oleh_nama: string } | null;
   picking_selesai?: boolean;
@@ -620,6 +627,15 @@ export default function DistributionDetailPage() {
             {data.pic_pemohon_nama && (
               <p className="text-gray-600">PIC Pemohon: <span className="font-semibold text-gray-900">{data.pic_pemohon_nama}</span></p>
             )}
+            {data.boq?.cluster?.cluster_id && (
+              <p className="text-gray-600">Cluster: <span className="font-semibold text-gray-900">{data.boq.cluster.cluster_id} — {data.boq.cluster?.nama_cluster || "-"}</span></p>
+            )}
+            {data.cluster?.cluster_id && !data.boq?.cluster?.cluster_id && (
+              <p className="text-gray-600">Cluster: <span className="font-semibold text-gray-900">{data.cluster.cluster_id} — {data.cluster?.nama_cluster || "-"}</span></p>
+            )}
+            {data.alamat_lapangan && (
+              <p className="text-gray-600">Nama Alamat: <span className="font-semibold text-gray-900">{data.alamat_lapangan}</span></p>
+            )}
             {isTibaTransit && (
               <span className="inline-flex items-center gap-2 rounded-full bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700">
                 <MapPin size={14} />
@@ -631,9 +647,6 @@ export default function DistributionDetailPage() {
                 <Clock size={14} />
                 Menunggu Konfirmasi SPV
               </span>
-            )}
-            {data.alamat_lapangan && (
-              <p className="text-gray-600">Alamat Lapangan: <span className="font-semibold text-gray-900">{data.alamat_lapangan}</span></p>
             )}
             {data.surat_jalan_url && (
               <p className="text-gray-600">
@@ -709,41 +722,61 @@ export default function DistributionDetailPage() {
         <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
           Daftar Barang
         </p>
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[1100px] text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
-              <th className="pb-3 pr-4 font-semibold">Barang</th>
+              <th className="pb-3 pr-4 font-semibold">Kode Barang</th>
+              <th className="pb-3 pr-4 font-semibold">Nama Barang</th>
+              <th className="pb-3 pr-4 font-semibold">Zona</th>
               <th className="pb-3 pr-4 font-semibold">Kondisi</th>
               <th className="pb-3 pr-4 font-semibold text-right">Qty</th>
+              <th className="pb-3 pr-4 font-semibold text-right">Qty Diterima</th>
+              <th className="pb-3 pr-4 font-semibold">Kondisi Diterima</th>
+              <th className="pb-3 pr-4 font-semibold">Catatan Penerimaan</th>
             </tr>
           </thead>
           <tbody>
-            {data.items.map((item) => (
-              <tr key={item.item_id} className="border-b border-gray-50 last:border-0">
+            {data.items.map((item, _ri) => (
+              <tr key={item.item_id} className={`border-b border-gray-50 last:border-0 ${_ri % 2 === 1 ? "bg-gray-50/60" : "bg-white"}`}>
+                <td className="py-3 pr-4 font-medium text-gray-800">
+                  {item.barang?.kode_perangkat || "-"}
+                </td>
+                <td className="py-3 pr-4 text-gray-600">
+                  {item.barang?.nama_barang || "-"}
+                </td>
                 <td className="py-3 pr-4">
-                  <p className="font-medium text-gray-800">{item.barang?.nama_barang || "-"}</p>
-                  <p className="text-xs text-gray-400">{item.barang?.kode_perangkat || "-"}</p>
                   {(() => {
                     const zones = Array.from(
                       new Set(
                         item.picks
-                          ?.map((p) => p.zona_nama)
+                          ?.map((p) => p.zona?.nama_zona || p.zona?.kode_zona)
                           .filter((z): z is string => Boolean(z)) ?? []
                       )
                     );
                     return zones.length > 0 ? (
-                      <p className="text-xs text-gray-500">Zona: {zones.join(", ")}</p>
-                    ) : null;
+                      <span className="text-gray-600">{zones.join(", ")}</span>
+                    ) : (
+                      <span className="text-xs text-gray-400">-</span>
+                    );
                   })()}
                 </td>
                 <td className="py-3 pr-4 text-gray-600">{item.kondisi || "-"}</td>
                 <td className="py-3 pr-4 text-right text-gray-600">
                   {item.qty} {satuanLabel(item)}
                 </td>
+                <td className="py-3 pr-4 text-right text-gray-600">
+                  {item.qty_diterima !== null && item.qty_diterima !== undefined
+                    ? Number(item.qty_diterima)
+                    : "-"}
+                </td>
+                <td className="py-3 pr-4 text-gray-600">{item.kondisi_diterima || "-"}</td>
+                <td className="py-3 pr-4 text-gray-600">{item.catatan_penerimaan || "-"}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Kronologi titipan Gudang Transit (0..n checkpoint). */}
@@ -753,7 +786,7 @@ export default function DistributionDetailPage() {
         </p>
         {checkpoints.length === 0 ? (
           <p className="text-sm text-gray-500">
-            Belum ada titipan di Gudang Transit. Pengiriman langsung ke tujuan akhir.
+            Riwayat perjalanan belum ada.
           </p>
         ) : (
           <ol className="space-y-3">
@@ -1156,7 +1189,7 @@ export default function DistributionDetailPage() {
                 onClick={handleReportArrival}
                 className="h-auto rounded-xl bg-[#E8632C] px-6 py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
               >
-                {submitting ? "Menyimpan..." : "Kirim Laporan Tiba"}
+                {submitting ? "Menyimpan..." : "Kirim Laporan/Serah Terima"}
               </Button>
               <button
                 type="button"

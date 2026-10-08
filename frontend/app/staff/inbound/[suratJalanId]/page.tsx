@@ -26,6 +26,9 @@ type ApiSuratJalanItem = {
   item_id: number;
   barang_id: number;
   qty: number;
+  qty_diterima?: number | string | null;
+  qty_ditolak?: number | string | null;
+  alasan_penolakan?: string | null;
   kondisi?: string | null;
   serial_number?: string | null;
   catatan?: string | null;
@@ -95,6 +98,10 @@ type EditableItem = {
   namaBarang: string;
   qtyRencana: number;
   qtyDiterima: number;
+  // qtyDitolak selalu = qtyRencana - qtyDiterima (aturan diterima + ditolak
+  // harus sama dengan qty surat jalan); disimpan eksplisit supaya jelas di UI.
+  qtyDitolak: number;
+  alasanPenolakan: string;
   kondisi: string;
   units: UnitInput[];
   serialNumber: string;
@@ -209,8 +216,6 @@ export default function InboundDetailPage() {
   const [fotoModalMessage, setFotoModalMessage] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
-  const [showExcessModal, setShowExcessModal] = useState(false);
-  const [excessNotesDraft, setExcessNotesDraft] = useState<Record<number, string>>({});
   // Panel daftar unit per item (indexer baris, bukan item_id).
   const [unitPanelOpen, setUnitPanelOpen] = useState<Record<number, boolean>>({});
   // Nilai dari tombol "Set semua unit ke ..." per item.
@@ -273,25 +278,42 @@ export default function InboundDetailPage() {
 
         setData(record);
         // Snapshot qty rencana SEKARANG, sebelum staf mulai edit apa pun.
+        // Item yang sudah pernah diterima memakai nilai tersimpan
+        // (qty_diterima/qty_ditolak/alasan_penolakan); item baru default
+        // diterima penuh (ditolak 0).
         setItems(
-          record.items.map((it) => ({
-            itemId: it.item_id,
-            kodeBarang: it.barang?.kode_perangkat || "-",
-            namaBarang: it.barang?.nama_barang || "-",
-            qtyRencana: it.qty,
-            qtyDiterima: it.qty,
-            kondisi: it.kondisi || "",
-            units: mapUnitRowsFromApi(it.units, it.qty),
-            serialNumber: it.serial_number || "",
-            isKelebihan: false,
-            catatanKelebihan: it.catatan || "",
-            wajibSn: Boolean(it.barang?.wajib_sn),
-            fotos: (it.fotos || []).map((f) => ({
-              foto_id: f.foto_id,
-              url: f.url,
-              filename: f.filename,
-            })),
-          })),
+          record.items.map((it) => {
+            const qtyRencana = it.qty;
+            const storedReceived =
+              it.qty_diterima !== null && it.qty_diterima !== undefined
+                ? Number(it.qty_diterima)
+                : null;
+            const qtyDiterima = storedReceived ?? qtyRencana;
+            const qtyDitolak =
+              it.qty_ditolak !== null && it.qty_ditolak !== undefined
+                ? Number(it.qty_ditolak)
+                : qtyRencana - qtyDiterima;
+            return {
+              itemId: it.item_id,
+              kodeBarang: it.barang?.kode_perangkat || "-",
+              namaBarang: it.barang?.nama_barang || "-",
+              qtyRencana,
+              qtyDiterima,
+              qtyDitolak,
+              alasanPenolakan: it.alasan_penolakan || "",
+              kondisi: it.kondisi || "",
+              units: mapUnitRowsFromApi(it.units, qtyDiterima),
+              serialNumber: it.serial_number || "",
+              isKelebihan: false,
+              catatanKelebihan: it.catatan || "",
+              wajibSn: Boolean(it.barang?.wajib_sn),
+              fotos: (it.fotos || []).map((f) => ({
+                foto_id: f.foto_id,
+                url: f.url,
+                filename: f.filename,
+              })),
+            };
+          }),
         );
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : "Terjadi kesalahan mengambil data.");
@@ -384,13 +406,26 @@ export default function InboundDetailPage() {
   }
 
   function handleQtyDiterimaChange(index: number, value: number) {
-    const qty = Math.max(0, value);
     const item = items[index];
-    if (qty <= item.qtyRencana && item.isKelebihan) {
-      updateItem(index, { qtyDiterima: qty, isKelebihan: false, catatanKelebihan: "" });
-    } else {
-      updateItem(index, { qtyDiterima: qty });
+    // Batasi 0..qtyRencana supaya diterima + ditolak selalu = qty surat jalan.
+    const qty = Math.min(item.qtyRencana, Math.max(0, value));
+    const patch: Partial<EditableItem> = {
+      qtyDiterima: qty,
+      qtyDitolak: item.qtyRencana - qty,
+    };
+    if (qty > item.qtyRencana && item.isKelebihan) {
+      patch.isKelebihan = false;
+      patch.catatanKelebihan = "";
     }
+    if (patch.qtyDitolak === 0) {
+      // Tidak ada penolakan -> alasan tidak relevan.
+      patch.alasanPenolakan = "";
+    }
+    updateItem(index, patch);
+  }
+
+  function handleAlasanPenolakanChange(index: number, value: string) {
+    updateItem(index, { alasanPenolakan: value });
   }
 
   async function handleFotoUpload(index: number, file: File) {
@@ -491,15 +526,18 @@ export default function InboundDetailPage() {
   const allKondisiFilled = items.every(
     (i) => i.qtyDiterima === 0 || (i.qtyDiterima > 1 ? true : i.kondisi !== ""),
   );
-  const unresolvedExcessIndexes = items
-    .map((i, idx) => ({ i, idx }))
-    .filter(({ i }) => i.qtyDiterima > i.qtyRencana && !i.isKelebihan)
-    .map(({ idx }) => idx);
-  const hasUnresolvedExcess = unresolvedExcessIndexes.length > 0;
   const serialRequiredMissing = items.some((i) => i.qtyDiterima > 0 && i.wajibSn && !i.serialNumber.trim());
+  // Aturan penerimaan: diterima + ditolak = qty surat jalan (dijaga oleh
+  // handleQtyDiterimaChange), dan alasan wajib bila ada penolakan.
+  const missingAlasanIndexes = items
+    .map((i, idx) => ({ i, idx }))
+    .filter(({ i }) => i.qtyDitolak > 0 && !i.alasanPenolakan.trim())
+    .map(({ idx }) => idx);
+  const hasMissingAlasan = missingAlasanIndexes.length > 0;
   const canSubmit =
     allKondisiFilled &&
     !hasMissingUnitConditions &&
+    !hasMissingAlasan &&
     items.some((i) => i.qtyDiterima > 0) &&
     !serialRequiredMissing;
 
@@ -526,33 +564,7 @@ export default function InboundDetailPage() {
       return;
     }
 
-    if (hasUnresolvedExcess) {
-      const defaults: Record<number, string> = {};
-      unresolvedExcessIndexes.forEach((idx) => {
-        defaults[idx] = excessNotesDraft[idx] || `Kelebihan kiriman dari Surat Jalan #${data.nomor_surat_jalan}`;
-      });
-      setExcessNotesDraft(defaults);
-      setShowExcessModal(true);
-      return;
-    }
-
     doSave(items);
-  }
-
-  function handleConfirmExcessAndSave() {
-    const updated = items.map((item, idx) => {
-      if (unresolvedExcessIndexes.includes(idx)) {
-        return {
-          ...item,
-          isKelebihan: true,
-          catatanKelebihan: (excessNotesDraft[idx] || "").trim(),
-        };
-      }
-      return item;
-    });
-    setItems(updated);
-    setShowExcessModal(false);
-    doSave(updated);
   }
 
   async function doSave(finalItems: EditableItem[]) {
@@ -560,24 +572,25 @@ export default function InboundDetailPage() {
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
       const payload = {
-        items: finalItems
-          .filter((i) => i.qtyDiterima > 0)
-          .map((i) => ({
-            item_id: i.itemId,
-            qty: i.qtyDiterima,
-            kondisi: i.qtyDiterima > 1 ? null : i.kondisi || null,
-            units:
-              i.qtyDiterima > 1
-                ? i.units.map((u) => ({
-                    nomor_unit: u.nomorUnit,
-                    kondisi: u.kondisi,
-                    catatan: u.catatan.trim() || null,
-                  }))
-                : null,
-            serial_number: i.serialNumber || null,
-            catatan: i.catatanKelebihan || null,
-            is_kelebihan: i.isKelebihan,
-          })),
+        items: finalItems.map((i) => ({
+          item_id: i.itemId,
+          qty: i.qtyDiterima,
+          qty_diterima: i.qtyDiterima,
+          qty_ditolak: i.qtyDitolak,
+          alasan_penolakan: i.qtyDitolak > 0 ? i.alasanPenolakan.trim() || null : null,
+          kondisi: i.qtyDiterima > 1 ? null : i.kondisi || null,
+          units:
+            i.qtyDiterima > 1
+              ? i.units.map((u) => ({
+                  nomor_unit: u.nomorUnit,
+                  kondisi: u.kondisi,
+                  catatan: u.catatan.trim() || null,
+                }))
+              : null,
+          serial_number: i.serialNumber || null,
+          catatan: i.catatanKelebihan || null,
+          is_kelebihan: i.isKelebihan,
+        })),
       };
 
       const res = await post(`${baseUrl}/api/surat-jalan/${params.suratJalanId}/receive-inbound`, payload);
@@ -595,7 +608,7 @@ export default function InboundDetailPage() {
         return;
       }
 
-      router.push("/staff/inbound");
+      router.push(`/staff/putaway/${params.suratJalanId}`);
     } catch (err) {
       setToast({ message: err instanceof Error ? err.message : "Terjadi kesalahan saat menyimpan.", type: "error" });
     } finally {
@@ -637,7 +650,7 @@ export default function InboundDetailPage() {
           kondisi: i.qtyDiterima > 1 ? summarizeUnitConditions(i.units).map((c) => c.label).join(", ") : i.kondisi,
           serialNumbers: i.serialNumber ? [i.serialNumber] : [],
         })),
-        status: "MENUNGGU_VERIFIKASI",
+        status: "TERVERIFIKASI",
       };
 
       await downloadInboundPdf(pdfShape, user?.name ?? "Staf Gudang");
@@ -645,8 +658,6 @@ export default function InboundDetailPage() {
       setDownloadingPdf(false);
     }
   }
-
-  const excessNoteFilled = unresolvedExcessIndexes.every((idx) => (excessNotesDraft[idx] || "").trim().length > 0);
 
   // Helper untuk menentukan label pengirim (internal: gudang_asal, external: pengirim_eksternal_nama)
   const pengirimLabel = data
@@ -750,8 +761,8 @@ export default function InboundDetailPage() {
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
               <th className="pb-3 pr-4 font-semibold">Kode Barang</th>
               <th className="pb-3 pr-4 font-semibold">Nama Barang</th>
-              <th className="pb-3 pr-4 font-semibold text-right">Qty Rencana</th>
-              <th className="pb-3 pr-6 font-semibold text-right">Qty Diterima</th>
+              <th className="pb-3 pr-4 font-semibold text-right">Qty Surat Jalan</th>
+              <th className="pb-3 pr-6 font-semibold text-right">Qty Diterima / Ditolak</th>
               <th className="pb-3 pr-4 font-semibold">Kondisi</th>
               <th className="pb-3 pr-4 font-semibold">Lokasi/Zona</th>
               <th className="pb-3 font-semibold">Serial Number</th>
@@ -772,10 +783,34 @@ export default function InboundDetailPage() {
                     <input
                       type="number"
                       min={0}
+                      max={item.qtyRencana}
                       value={item.qtyDiterima}
                       onChange={(e) => handleQtyDiterimaChange(index, Number(e.target.value))}
                       className="w-20 rounded-md border border-gray-200 px-2 py-1.5 text-right text-sm focus:border-[#E8632C] focus:outline-none"
                     />
+                    <div className="mt-1 text-[11px] text-gray-500">
+                      Ditolak:{" "}
+                      <span className={item.qtyDitolak > 0 ? "font-semibold text-rose-600" : "font-semibold text-gray-700"}>
+                        {item.qtyDitolak}
+                      </span>
+                    </div>
+                    {item.qtyDitolak > 0 && (
+                      <div className="mt-1.5">
+                        <input
+                          value={item.alasanPenolakan}
+                          onChange={(e) => handleAlasanPenolakanChange(index, e.target.value)}
+                          placeholder="Alasan penolakan (wajib)"
+                          className={`w-44 rounded-md border px-2 py-1.5 text-xs focus:outline-none ${
+                            item.alasanPenolakan.trim()
+                              ? "border-gray-200 focus:border-[#E8632C]"
+                              : "border-rose-300 focus:border-rose-400"
+                          }`}
+                        />
+                        {!item.alasanPenolakan.trim() && (
+                          <span className="mt-1 block text-[11px] font-medium text-rose-600">Alasan wajib diisi.</span>
+                        )}
+                      </div>
+                    )}
                     {adaKelebihan && (
                       <div className="mt-1.5">
                         {item.isKelebihan ? (
@@ -985,58 +1020,20 @@ export default function InboundDetailPage() {
       </div>
 
       <Button disabled={!canSubmit || submitting} onClick={handleSubmitClick} className="mt-5 h-auto rounded-xl bg-[#E8632C] px-6 py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40">
-        {submitting ? "Menyimpan..." : "Simpan & Ajukan Verifikasi"}
+        {submitting ? "Menyimpan..." : "Simpan Penerimaan & Lanjut Putaway"}
       </Button>
       {hasMissingUnitConditions && (
         <p className="mt-2 text-xs text-rose-600">
           Masih ada {unitRowsMissingIndexes.length} barang dengan unit yang belum dinilai kondisinya. Buka tombol Nilai unit pada masing-masing barang.
         </p>
       )}
-
-      {/* Modal gabungan catatan kelebihan */}
-      {showExcessModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowExcessModal(false)}>
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6" onClick={(e) => e.stopPropagation()}>
-            <p className="mb-1 flex items-center gap-2 text-sm font-semibold text-gray-900">
-              <PackagePlus size={16} className="text-[#E8632C]" />
-              Catat Kelebihan Barang
-            </p>
-            <p className="mb-4 text-xs text-gray-500">Ada {unresolvedExcessIndexes.length} barang yang qty diterimanya melebihi rencana. Isi catatan kelebihan buat masing-masing sebelum bisa disimpan.</p>
-
-            <div className="max-h-80 space-y-4 overflow-y-auto pr-1">
-              {unresolvedExcessIndexes.map((idx) => {
-                const item = items[idx];
-                const selisih = item.qtyDiterima - item.qtyRencana;
-                return (
-                  <div key={item.itemId} className="rounded-xl border border-gray-100 p-3">
-                    <p className="text-sm font-semibold text-gray-800">{item.namaBarang}</p>
-                    <p className="mb-2 text-xs text-gray-500">
-                      Diterima {item.qtyDiterima} unit, rencana {item.qtyRencana} unit — selisih <span className="font-semibold text-gray-900">{selisih} unit</span>
-                    </p>
-                    <textarea
-                      value={excessNotesDraft[idx] || ""}
-                      onChange={(e) => setExcessNotesDraft((prev) => ({ ...prev, [idx]: e.target.value }))}
-                      rows={2}
-                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
-                    />
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setShowExcessModal(false)} className="rounded-full border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">
-                Batal
-              </button>
-              <Button onClick={handleConfirmExcessAndSave} disabled={!excessNoteFilled || submitting} className="h-auto rounded-full bg-[#E8632C] px-5 py-2 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40">
-                {submitting ? "Menyimpan..." : "Simpan & Ajukan Verifikasi"}
-              </Button>
-            </div>
-          </div>
-        </div>
+      {hasMissingAlasan && (
+        <p className="mt-2 text-xs text-rose-600">
+          Masih ada {missingAlasanIndexes.length} barang yang ditolak sebagian tanpa alasan penolakan. Isi alasan pada kolom Qty Diterima/Ditolak.
+        </p>
       )}
 
-      {showFotoSuccessModal && (
+{showFotoSuccessModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
           onClick={() => setShowFotoSuccessModal(false)}

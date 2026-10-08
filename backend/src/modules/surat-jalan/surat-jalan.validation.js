@@ -156,6 +156,9 @@ const receiveInboundSchema = z.object({
         .object({
           item_id: z.coerce.number(),
           qty: z.coerce.number().nonnegative("Qty tidak boleh negatif.").optional(),
+          qty_diterima: z.coerce.number().nonnegative("Qty diterima tidak boleh negatif.").optional(),
+          qty_ditolak: z.coerce.number().nonnegative("Qty ditolak tidak boleh negatif.").optional(),
+          alasan_penolakan: z.string().max(500).optional().nullable(),
           kondisi: z.string().optional().nullable(),
           serial_number: z.string().optional().nullable(),
           catatan: z.string().max(500).optional().nullable(),
@@ -216,22 +219,6 @@ const receiveInboundSchema = z.object({
         }),
     )
     .min(1, "Minimal satu item harus diupdate."),
-});
-
-const approveInboundSchema = z.object({
-  itemAdjustments: z
-    .array(
-      z.object({
-        item_id: z.coerce.number(),
-        wajar: z.boolean().optional(),
-        catatan: z.string().max(500).optional().nullable(),
-      }),
-    )
-    .optional(),
-});
-
-const rejectInboundSchema = z.object({
-  catatan: z.string().max(500).optional().nullable(),
 });
 
 const rejectOutboundSchema = z.object({
@@ -427,8 +414,6 @@ const lanjutDariTransitSchema = z.object({
 module.exports = {
   createSuratJalanSchema,
   receiveInboundSchema,
-  approveInboundSchema,
-  rejectInboundSchema,
   rejectOutboundSchema,
   cancelDraftSchema,
   putawaySchema,

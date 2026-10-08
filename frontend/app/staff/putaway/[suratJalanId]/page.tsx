@@ -17,6 +17,9 @@ import { useApi, ensureOk } from "@/lib/api";
 type ApiSuratJalanItem = {
   item_id: number;
   qty: number;
+  qty_diterima?: number | string | null;
+  qty_ditolak?: number | string | null;
+  alasan_penolakan?: string | null;
   kondisi?: string | null;
   // Penilaian kondisi per unit dari proses inbound (relasi `units`).
   units?: KondisiUnit[] | null;
@@ -94,7 +97,7 @@ function ConfirmModal({
       const zona = zonas.find((z) => String(z.zona_id) === String(zid));
       return { item: it, zona };
     })
-    .filter((row) => row.zona);
+    .filter((row) => row.zona && Number(row.item.qty_diterima ?? row.item.qty) > 0);
 
   return (
     <div
@@ -147,7 +150,9 @@ function ConfirmModal({
                     </div>
                     <div className="text-right">
                       <div className="font-medium text-slate-700">{zonaLabel(zona!)}</div>
-                      <div className="text-xs text-slate-400">Qty: {item.qty}</div>
+                      <div className="text-xs text-slate-400">
+                        Qty: {Number(item.qty_diterima ?? item.qty)}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -331,7 +336,17 @@ export default function PutawayDetailPage() {
 
   const isSelesai = data.status === "diterima_didistribusikan";
 
-  const allAssigned = data.items.every((it) => !!zonaByItem[it.item_id]);
+  // Qty yang ditempatkan = qty diterima dari penerimaan (bukan qty surat
+  // jalan). Item yang ditolak penuh (diterima 0) tidak perlu ditempatkan.
+  const qtyDiterimaOf = (item: ApiSuratJalanItem) => {
+    if (item.qty_diterima !== null && item.qty_diterima !== undefined) {
+      return Number(item.qty_diterima);
+    }
+    return Number(item.qty);
+  };
+  const itemsToPlace = data.items.filter((it) => qtyDiterimaOf(it) > 0);
+
+  const allAssigned = itemsToPlace.every((it) => !!zonaByItem[it.item_id]);
 
   function showToast(message: string, type: "success" | "error") {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -347,9 +362,9 @@ export default function PutawayDetailPage() {
   async function confirmSubmit() {
     if (!allAssigned || !data) return;
 
-    const resolvedItems = data.items.map((it) => {
+    const resolvedItems = itemsToPlace.map((it) => {
       const zonaId = zonaByItem[it.item_id];
-      return { item_id: it.item_id, zona_id: Number(zonaId), qty_ditempatkan: Number(it.qty) };
+      return { item_id: it.item_id, zona_id: Number(zonaId), qty_ditempatkan: qtyDiterimaOf(it) };
     });
 
     setSubmitting(true);
@@ -368,7 +383,7 @@ export default function PutawayDetailPage() {
         throw new Error(err?.message || "Gagal menyimpan penempatan barang.");
       }
 
-      const successDetails = data.items.map((it) => {
+      const successDetails = itemsToPlace.map((it) => {
         const zona = zonas.find((z) => String(z.zona_id) === String(zonaByItem[it.item_id]));
         const name = it.barang?.nama_barang || it.barang?.kode_perangkat || `Item #${it.item_id}`;
         const zoneName = zona ? zonaLabel(zona) : `Zona ${zonaByItem[it.item_id]}`;
@@ -440,6 +455,8 @@ export default function PutawayDetailPage() {
             {data.items.map((item) => {
               const fotoUrls = getItemFotoUrls(item);
               const extraFoto = Math.max(fotoUrls.length - 1, 0);
+              const diterima = qtyDiterimaOf(item);
+              const ditolakPenuh = diterima <= 0;
               return (
               <tr key={item.item_id} className="border-b border-gray-50 last:border-0 align-top">
                 <td className="py-3 pr-4">
@@ -485,9 +502,24 @@ export default function PutawayDetailPage() {
                     <KondisiBadge value={item.kondisi} />
                   )}
                 </td>
-                <td className="py-3 pr-4 text-right text-gray-600">{item.qty}</td>
+                <td className="py-3 pr-4 text-right text-gray-600">
+                  {ditolakPenuh ? (
+                    <span className="font-semibold text-rose-600">0</span>
+                  ) : (
+                    <>
+                      {diterima}
+                      {Number(item.qty) !== diterima && (
+                        <span className="ml-1 text-xs text-gray-400">/{item.qty}</span>
+                      )}
+                    </>
+                  )}
+                </td>
                 <td className="py-3">
-                  {isSelesai ? (
+                  {ditolakPenuh ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-600">
+                      Ditolak penuh — tidak ditempatkan
+                    </span>
+                  ) : isSelesai ? (
                     item.zona ? (
                       <span className="text-sm text-gray-700">
                         {item.zona.gudang?.nama_gudang ?? "-"} / {item.zona.nama_zona || item.zona.kode_zona}
