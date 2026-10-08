@@ -330,7 +330,6 @@ export default function AjukanSuratJalanPage() {
   const [boqNumber, setBoqNumber] = useState<string>("");
   const [tiketNumber, setTiketNumber] = useState<string>("");
   const [qtyByItem, setQtyByItem] = useState<Record<string, number>>({});
-  const [clusterDropdownOpen, setClusterDropdownOpen] = useState(false);
   const [picPemohon, setPicPemohon] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [kendaraanNamaTeks, setKendaraanNamaTeks] = useState<string>("");
@@ -505,17 +504,6 @@ export default function AjukanSuratJalanPage() {
 
     return () => { mounted = false; };
   }, [selectedProjectId, apiBase, get]);
-
-  useEffect(() => {
-    if (!clusterDropdownOpen) return;
-    function handleClick(e: MouseEvent) {
-      const target = e.target as HTMLElement;
-      if (target.closest("[data-cluster-dropdown]")) return;
-      setClusterDropdownOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [clusterDropdownOpen]);
 
   useEffect(() => {
     if (selectedClusterIds.length === 0) {
@@ -1061,43 +1049,23 @@ export default function AjukanSuratJalanPage() {
                   ) : clusters.length === 0 ? (
                     <p className="text-xs text-gray-400">Project ini belum memiliki cluster.</p>
                   ) : (
-                    <div className="relative" data-cluster-dropdown>
-                      <button
-                        type="button"
-                        onClick={() => setClusterDropdownOpen((prev) => !prev)}
-                        className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 hover:border-gray-300 focus:border-[#E8632C] focus:outline-none"
+                    <div className="relative">
+                      <select
+                        value={selectedClusterIds[0] || ""}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setSelectedClusterIds(value ? [value] : []);
+                        }}
+                        className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
                       >
-                        <span className={selectedClusterIds.length === 0 ? "text-gray-400" : "text-gray-800"}>
-                          {selectedClusterIds.length === 0 ? "Pilih Cluster ID..." : `${selectedClusterIds.length} cluster dipilih`}
-                        </span>
-                        <ChevronDown size={16} className="text-gray-400" />
-                      </button>
-                      {clusterDropdownOpen && (
-                        <div className="absolute left-0 top-full z-50 mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
-                          {clusters.map((c) => {
-                            const checked = selectedClusterIds.includes(c.cluster_id);
-                            return (
-                              <button
-                                key={c.cluster_id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedClusterIds((prev) => {
-                                    if (prev.includes(c.cluster_id)) {
-                                      return prev.filter((id) => id !== c.cluster_id);
-                                    }
-                                    return [...prev, c.cluster_id];
-                                  });
-                                  setClusterDropdownOpen(false);
-                                }}
-                                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-slate-50 ${checked ? "bg-orange-50 text-orange-900" : "text-gray-700"}`}
-                              >
-                                <span className="font-medium">{c.cluster_id}</span>
-                                <span className="text-gray-500">{c.nama_cluster}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
+                        <option value="">Pilih Cluster ID...</option>
+                        {clusters.map((c) => (
+                          <option key={c.cluster_id} value={c.cluster_id}>
+                            {c.cluster_id} - {c.nama_cluster}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     </div>
                   )}
                   {selectedClusterIds.length > 0 && (
