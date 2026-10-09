@@ -14,6 +14,13 @@ export interface InboundRecord {
   gudang_tujuan?: { nama_gudang: string };
   personil_pengantar?: { nama: string };
   kendaraan?: { jenis_kendaraan: string; merk?: string; no_polisi: string };
+  // Kolom teks bebas (inbound dari vendor/supir eksternal) — sumber utama,
+  // relasi master data di atas hanya cadangan. Lihat fallback di backend
+  // surat-jalan.repository.js (withKendaraanDriverFallback).
+  kendaraan_teks?: string | null;
+  no_polisi_teks?: string | null;
+  driver_teks?: string | null;
+  pengirim_eksternal_nama?: string | null;
   pic_pemohon_nama?: string;
   creator?: { nama: string };
   items: {
@@ -122,16 +129,27 @@ export default function InboundDetailModal({
               <div className="space-y-3">
                 <InfoRow label="No Surat Jalan" value={record.nomor_surat_jalan} />
                 <InfoRow label="Project" value={record.project?.nama_project} />
-                <InfoRow label="Asal Pengiriman" value={record.tipe_pengirim === "external" ? `${record.supplier?.kode} - ${record.supplier?.nama}` : record.gudang_asal?.nama_gudang} />
+                <InfoRow label="Asal Pengiriman" value={record.tipe_pengirim === "external" ? (record.supplier?.nama ? `${record.supplier.kode} - ${record.supplier.nama}` : record.pengirim_eksternal_nama || "-") : record.gudang_asal?.nama_gudang} />
                 <InfoRow label="Tipe Pengirim" value={record.tipe_pengirim === "external" ? "External" : record.tipe_pengirim === "internal" ? "Internal" : "-"} />
                 <InfoRow label="PIC Penerima" value={record.pic_pemohon_nama} />
               </div>
               <div className="space-y-3">
                 <InfoRow label="Tanggal" value={formatDate(record.tanggal)} />
                 <InfoRow label="Gudang Tujuan" value={record.gudang_tujuan?.nama_gudang} />
-                <InfoRow label="Kendaraan" value={`${record.kendaraan?.merk || ""} ${record.kendaraan?.jenis_kendaraan || ""}`.trim()} />
-                <InfoRow label="No Polisi" value={record.kendaraan?.no_polisi} />
-                <InfoRow label="Driver" value={record.personil_pengantar?.nama} />
+                <InfoRow
+                  label="Kendaraan"
+                  value={
+                    record.kendaraan_teks ||
+                    (record.kendaraan
+                      ? record.kendaraan.merk && record.kendaraan.merk.trim()
+                        ? `${record.kendaraan.merk} - ${record.kendaraan.jenis_kendaraan}`
+                        : record.kendaraan.jenis_kendaraan
+                      : null) ||
+                    "-"
+                  }
+                />
+                <InfoRow label="No Polisi" value={record.no_polisi_teks || record.kendaraan?.no_polisi || "-"} />
+                <InfoRow label="Driver" value={record.driver_teks || record.personil_pengantar?.nama || "-"} />
               </div>
             </div>
 
@@ -174,7 +192,7 @@ export default function InboundDetailModal({
               <div>
                 <p className="mb-16 font-medium text-gray-700">Driver</p>
                 <div className="border-t border-gray-400 pt-1">
-                  <p className="font-semibold text-gray-900">{record.personil_pengantar?.nama || "-"}</p>
+                  <p className="font-semibold text-gray-900">{record.driver_teks || record.personil_pengantar?.nama || "-"}</p>
                 </div>
               </div>
               <div>

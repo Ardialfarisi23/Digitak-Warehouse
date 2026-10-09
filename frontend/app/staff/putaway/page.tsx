@@ -8,6 +8,7 @@ import { useApi } from "@/lib/api";
 type ApiItem = {
   item_id: number;
   qty: number;
+  qty_diterima?: number | string | null;
   kondisi?: string | null;
   is_kelebihan?: boolean;
   barang?: { kode_perangkat?: string; nama_barang?: string };
@@ -55,7 +56,23 @@ export default function PutawayListPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filtered = useMemo(() => list.filter((sj) => (activeTab === "MENUNGGU" ? sj.status === "ready_putaway" : sj.status === "diterima_didistribusikan")), [list, activeTab]);
+  // Penerimaan wajib tercatat (qty_diterima terisi di semua item) sebelum
+  // sebuah inbound masuk tab "menunggu ditempatkan" — konsisten dengan guard
+  // backend di service.putaway.
+  const received = (sj: ApiSuratJalan) =>
+    (sj.items || []).every(
+      (i) => i.qty_diterima !== null && i.qty_diterima !== undefined,
+    );
+
+  const filtered = useMemo(
+    () =>
+      list.filter((sj) =>
+        activeTab === "MENUNGGU"
+          ? sj.status === "ready_putaway" && received(sj)
+          : sj.status === "diterima_didistribusikan",
+      ),
+    [list, activeTab],
+  );
 
   if (loading) {
     return (
@@ -98,91 +115,88 @@ export default function PutawayListPage() {
         </button>
       </div>
 
-      {/* List Surat Jalan */}
-      {/* Card view for mobile */}
-      <div className="md:hidden space-y-3">
-        {filtered.length === 0 ? (
-          <div className="px-6 py-12 text-center text-gray-400">
-            {activeTab === "MENUNGGU" ? "Tidak ada Surat Jalan yang menunggu ditempatkan." : "Belum ada riwayat penempatan."}
-          </div>
-        ) : (
-          filtered.map((sj) => (
-            <div key={sj.surat_jalan_id} className="rounded-xl border border-[#F3D9C7] bg-white p-4">
-              <div className="flex items-center gap-2">
-                <MapPin size={16} className="text-[#E8632C]" />
-                <p className="font-semibold text-gray-800">{sj.nomor_surat_jalan}</p>
-              </div>
-              <div className="mt-3 space-y-1 text-sm text-gray-600">
-                <p><span className="text-gray-400">Asal:</span> {sj.gudang_asal?.nama_gudang || "-"}</p>
-                <p><span className="text-gray-400">Tujuan:</span> {sj.gudang_tujuan?.nama_gudang || "-"}</p>
-                <p><span className="text-gray-400">Tanggal:</span> {sj.tanggal ? new Date(sj.tanggal).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "-"}</p>
-                <p><span className="text-gray-400">Item:</span> {sj.items.length} jenis</p>
-              </div>
-              <Link
-                href={`/staff/putaway/${sj.surat_jalan_id}`}
-                className="mt-3 flex min-h-11 w-full items-center justify-center rounded-lg bg-[#E8632C] text-sm font-semibold text-white hover:bg-[#D9591F]"
-              >
-                {activeTab === "MENUNGGU" ? "Tempatkan" : "Lihat"}
-              </Link>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Desktop table view */}
-      <div className="rounded-2xl border border-[#F3D9C7] bg-white hidden md:block">
-        <div className="overflow-x-auto overscroll-x-contain">
-        <table className="min-w-[640px] w-full text-sm">
+      <div className="rounded-2xl border border-[#F3D9C7] bg-white">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[1100px] text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
               <th className="px-6 py-4 font-semibold">Nomor Surat Jalan</th>
               <th className="px-6 py-4 font-semibold">Asal</th>
               <th className="px-6 py-4 font-semibold">Tujuan Gudang</th>
               <th className="px-6 py-4 font-semibold">Tanggal</th>
-              <th className="px-6 py-4 font-semibold">Jumlah Item</th>
+              <th className="px-6 py-4 font-semibold">Kode Barang</th>
+              <th className="px-6 py-4 font-semibold">Nama Barang</th>
+              <th className="px-6 py-4 font-semibold text-right">Qty Surat Jalan</th>
+              <th className="px-6 py-4 font-semibold text-right">Qty Diterima</th>
               <th className="px-6 py-4 font-semibold text-right">Aksi</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((sj) => (
-              <tr key={sj.surat_jalan_id} className="border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30">
-                <td className="px-6 py-4 font-medium text-gray-800">
-                  <span className="flex items-center gap-2">
-                    <MapPin size={16} className="text-[#E8632C]" />
-                    {sj.nomor_surat_jalan}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-gray-600">{sj.gudang_asal?.nama_gudang || "-"}</td>
-                <td className="px-6 py-4 text-gray-600">{sj.gudang_tujuan?.nama_gudang || "-"}</td>
-                <td className="px-6 py-4 text-gray-500">
-                  {sj.tanggal
-                    ? new Date(sj.tanggal).toLocaleDateString("id-ID", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })
-                    : "-"}
-                </td>
-                <td className="px-6 py-4 text-gray-600">{sj.items.length} jenis</td>
-                <td className="px-6 py-4 text-right">
-                  <Link href={`/staff/putaway/${sj.surat_jalan_id}`} className="text-sm font-semibold text-[#E8632C] hover:underline">
-                    {activeTab === "MENUNGGU" ? "Tempatkan" : "Lihat"}
-                  </Link>
-                </td>
-              </tr>
-            ))}
-
-            {filtered.length === 0 && (
+            {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={9} className="px-6 py-12 text-center text-gray-400">
                   {activeTab === "MENUNGGU" ? "Tidak ada Surat Jalan yang menunggu ditempatkan." : "Belum ada riwayat penempatan."}
                 </td>
               </tr>
+            ) : (
+              filtered.map((sj) => {
+                const itemRows = sj.items && sj.items.length > 0 ? sj.items : [null];
+                const rowSpan = itemRows.length;
+                const tanggal = sj.tanggal
+                  ? new Date(sj.tanggal).toLocaleDateString("id-ID", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                    })
+                  : "-";
+                const diterimaLabel = (item: ApiItem | null) => {
+                  if (item == null || item.qty_diterima === null || item.qty_diterima === undefined) return "-";
+                  return Number(item.qty_diterima);
+                };
+                return itemRows.map((item, itemIdx) => {
+                  const isFirst = itemIdx === 0;
+                  return (
+                    <tr
+                      key={`${sj.surat_jalan_id}-${item ? item.item_id : "empty"}-${itemIdx}`}
+                      className={`border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30 ${itemIdx % 2 === 1 ? "bg-gray-50/50" : ""}`}
+                    >
+                      {isFirst && (
+                        <>
+                          <td className="px-6 py-4 align-top font-medium text-gray-800" rowSpan={rowSpan}>
+                            <span className="flex items-center gap-2">
+                              <MapPin size={16} className="text-[#E8632C]" />
+                              {sj.nomor_surat_jalan}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 align-top text-gray-600" rowSpan={rowSpan}>{sj.gudang_asal?.nama_gudang || "-"}</td>
+                          <td className="px-6 py-4 align-top text-gray-600" rowSpan={rowSpan}>{sj.gudang_tujuan?.nama_gudang || "-"}</td>
+                          <td className="px-6 py-4 align-top text-gray-500" rowSpan={rowSpan}>{tanggal}</td>
+                        </>
+                      )}
+                      <td className="px-6 py-3 align-top font-medium text-gray-800">
+                        {item?.barang?.kode_perangkat || "-"}
+                      </td>
+                      <td className="px-6 py-3 align-top text-gray-600">{item?.barang?.nama_barang || "-"}</td>
+                      <td className="px-6 py-3 align-top text-right text-gray-600">
+                        {item ? Number(item.qty || 0) : "-"}
+                      </td>
+                      <td className="px-6 py-3 align-top text-right text-gray-600">{diterimaLabel(item)}</td>
+                      {isFirst && (
+                        <td className="px-6 py-4 align-top text-right" rowSpan={rowSpan}>
+                          <Link href={`/staff/putaway/${sj.surat_jalan_id}`} className="text-sm font-semibold text-[#E8632C] hover:underline">
+                            {activeTab === "MENUNGGU" ? "Tempatkan" : "Lihat"}
+                          </Link>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                });
+              })
             )}
-           </tbody>
-         </table>
-         </div>
-       </div>
-     </div>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
   );
 }

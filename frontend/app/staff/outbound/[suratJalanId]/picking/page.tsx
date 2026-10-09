@@ -7,6 +7,18 @@ import { Button } from "@/components/ui/button";
 import { useApi, ensureOk } from "@/lib/api";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
 
+type ApiPickRow = {
+  pick_id: number;
+  gudang_id: number;
+  zona_id?: number | null;
+  kondisi_diminta?: string;
+  kondisi_diambil?: string;
+  qty?: number;
+  is_override?: boolean;
+  catatan_override?: string | null;
+  picked_at?: string;
+};
+
 type ApiSuratJalanItem = {
   item_id: number;
   barang_id: number;
@@ -14,6 +26,7 @@ type ApiSuratJalanItem = {
   kondisi?: string | null;
   is_kelebihan?: boolean;
   barang?: { kode_perangkat?: string; nama_barang?: string };
+  picks?: ApiPickRow[];
 };
 
 type ApiSuratJalan = {
@@ -811,7 +824,8 @@ export default function PickingDetailPage() {
               <th className="pb-3 pr-4 font-semibold">Barang</th>
               <th className="pb-3 pr-4 font-semibold">Kondisi</th>
               <th className="pb-3 pr-4 font-semibold text-right">Qty</th>
-              {!isSelesai && <th className="pb-3 font-semibold">Zona Pengambilan</th>}
+              <th className="pb-3 font-semibold">{isSelesai ? "Hasil Picking" : "Zona Pengambilan"}</th>
+              <th className="pb-3 font-semibold">Catatan</th>
             </tr>
           </thead>
           <tbody>
@@ -1007,6 +1021,70 @@ export default function PickingDetailPage() {
                            </div>
                          );
                       })()}
+                   </td>
+                 )}
+
+                 {isSelesai && (() => {
+                   // Readback hasil picking tersimpan (surat_jalan_item_pick).
+                   const picks = item.picks || [];
+                   if (picks.length === 0) {
+                     return (
+                       <td className="py-3">
+                         <span className="text-xs text-gray-400">-</span>
+                       </td>
+                     );
+                   }
+                   return (
+                     <td className="py-3">
+                       <div className="space-y-1.5">
+                         {picks.map((pick) => {
+                           const zona = zonas.find((z) => z.zona_id === Number(pick.zona_id));
+                           return (
+                             <div key={pick.pick_id} className="text-xs text-gray-600">
+                               {zona ? zonaLabel(zona) : `Zona ${pick.zona_id ?? "-"}`} — {Number(pick.qty || 0)} unit
+                               {pick.kondisi_diambil ? ` (${pick.kondisi_diambil})` : ""}
+                               {pick.is_override && (
+                                 <span className="ml-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
+                                   Override
+                                 </span>
+                               )}
+                             </div>
+                           );
+                         })}
+                       </div>
+                     </td>
+                   );
+                 })()}
+
+                 {!isSelesai && (
+                   <td className="py-3">
+                     <textarea
+                       value={catatanKondisiByItem[item.item_id] || ""}
+                       onChange={(e) =>
+                         setCatatanKondisiByItem((prev) => ({ ...prev, [item.item_id]: e.target.value }))
+                       }
+                       placeholder="Catatan pengambilan (opsional)"
+                       className="w-48 rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
+                       rows={2}
+                     />
+                   </td>
+                 )}
+
+                 {isSelesai && (
+                   <td className="py-3">
+                     {(item.picks || []).some((pick) => pick.catatan_override) ? (
+                       <div className="space-y-1">
+                         {(item.picks || [])
+                           .filter((pick) => pick.catatan_override)
+                           .map((pick) => (
+                             <p key={pick.pick_id} className="text-xs text-gray-600">
+                               {pick.catatan_override}
+                             </p>
+                           ))}
+                       </div>
+                     ) : (
+                       <span className="text-xs text-gray-400">-</span>
+                     )}
                    </td>
                  )}
               </tr>

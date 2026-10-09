@@ -54,6 +54,12 @@ const baseInclude = {
   boq: {
     include: {
       tiket: true,
+      cluster: {
+        select: {
+          cluster_id: true,
+          nama_cluster: true,
+        },
+      },
       items: {
         include: {
           barang: {
@@ -524,40 +530,6 @@ const findInboundList = async (filters = {}) => {
   );
 };
 
-const findVerificationQueue = async ({ status, tipe, kategori_approval, search, startDate, endDate, page = 1, limit = 10 } = {}) => {
-  const where = {};
-
-  if (status) {
-    where.status = status;
-  } else {
-    where.status = "draft_diajukan";
-  }
-
-  if (tipe && ["inbound", "outbound"].includes(tipe)) {
-    where.tipe = tipe;
-  }
-
-  applyListFilters(where, { kategori_approval, search, startDate, endDate });
-
-  const { page: sanitizedPage, limit: sanitizedLimit } = sanitizePagination(page, limit);
-
-  const [total, data] = await Promise.all([
-    prisma.surat_jalan.count({ where }),
-    prisma.surat_jalan.findMany({
-      where,
-      include: modalListInclude,
-      orderBy: [{ created_at: "desc" }],
-      skip: (sanitizedPage - 1) * sanitizedLimit,
-      take: sanitizedLimit,
-    }),
-  ]);
-
-  return {
-    data: withKendaraanDriverFallbackList(data),
-    meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }),
-  };
-};
-
 const findOutboundForApproval = async (params = {}) => {
   const { kategori_approval, search, startDate, endDate, page, limit } = params;
 
@@ -626,6 +598,47 @@ const findOutboundForDelivery = async (params = {}) => {
   };
 };
 
+/**
+ * Sisipkan info zona (nama/kode) ke setiap pick.
+ * `surat_jalan_item_pick` hanya menyimpan `zona_id` polos (tanpa relasi Prisma
+ * ke `zona_gudang`), jadi namanya di-lookup terpisah sekali di sini — dipakai
+ * tabel halaman staf (distribusi & picking) untuk readback zona pengambilan.
+ */
+const attachPickZonaInfo = async (record) => {
+  if (!record || !Array.isArray(record.items)) return record;
+
+  const zonaIds = [
+    ...new Set(
+      record.items
+        .flatMap((item) => (Array.isArray(item.picks) ? item.picks : []))
+        .map((pick) => Number(pick.zona_id))
+        .filter((zonaId) => Number.isFinite(zonaId) && zonaId > 0)
+    ),
+  ];
+  if (zonaIds.length === 0) return record;
+
+  const zonas = await prisma.zona_gudang.findMany({
+    where: { zona_id: { in: zonaIds } },
+    select: { zona_id: true, nama_zona: true, kode_zona: true },
+  });
+  const zonaMap = new Map(zonas.map((z) => [Number(z.zona_id), z]));
+
+  return {
+    ...record,
+    items: record.items.map((item) =>
+      Array.isArray(item.picks) && item.picks.length > 0
+        ? {
+            ...item,
+            picks: item.picks.map((pick) => {
+              const zona = zonaMap.get(Number(pick.zona_id));
+              return zona ? { ...pick, zona } : pick;
+            }),
+          }
+        : item
+    ),
+  };
+};
+
 const findById = async (id) => {
   const record = await prisma.surat_jalan.findUnique({
     where: {
@@ -634,7 +647,7 @@ const findById = async (id) => {
     include: findByIdInclude,
   });
 
-  return withKendaraanDriverFallback(record);
+  return withKendaraanDriverFallback(await attachPickZonaInfo(record));
 };
 
 const findOutboundDetail = async (id) => {
@@ -820,19 +833,6 @@ const updateTransitDeparture = async (transitId, actorId, catatan, tx = prisma) 
     },
   });
   return result.count === 1;
-};
-
-const updateInboundItems = async (adjustments) => {
-  for (const item of adjustments) {
-    await prisma.surat_jalan_item.update({
-      where: {
-        item_id: Number(item.item_id),
-      },
-      data: {
-        catatan: item.catatan || null,
-      },
-    });
-  }
 };
 
 /**
@@ -1490,11 +1490,9 @@ module.exports = {
   findInboundList,
   findById,
   findOutboundDetail,
-  findVerificationQueue,
   findOutboundForApproval,
   findOutboundForDelivery,
   updateStatus,
-  updateInboundItems,
   deductOutboundStock,
   addInboundStock,
   createApprovalLog,

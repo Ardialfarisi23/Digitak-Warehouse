@@ -17,6 +17,9 @@ import { useApi, ensureOk } from "@/lib/api";
 type ApiSuratJalanItem = {
   item_id: number;
   qty: number;
+  qty_diterima?: number | string | null;
+  qty_ditolak?: number | string | null;
+  alasan_penolakan?: string | null;
   kondisi?: string | null;
   // Penilaian kondisi per unit dari proses inbound (relasi `units`).
   units?: KondisiUnit[] | null;
@@ -56,6 +59,119 @@ type ApiZona = {
 function zonaLabel(z: ApiZona): string {
   const nama = z.nama_zona || z.kode_zona;
   return z.tipe_zona ? `${nama} — ${z.tipe_zona}` : nama;
+}
+
+function ConfirmModal({
+  open,
+  onClose,
+  onConfirm,
+  submitting,
+  data,
+  zonas,
+  zonaByItem,
+}: ConfirmModalProps) {
+  useEffect(() => {
+    if (!open) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
+  if (!open || !data) return null;
+
+  const selectedZones = data.items
+    .map((it) => {
+      const zid = zonaByItem[it.item_id];
+      const zona = zonas.find((z) => String(z.zona_id) === String(zid));
+      return { item: it, zona };
+    })
+    .filter((row) => row.zona && Number(row.item.qty_diterima ?? row.item.qty) > 0);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">Konfirmasi Lokasi Penempatan</h3>
+            <p className="mt-0.5 text-xs text-slate-400">
+              Periksa kembali data penempatan sebelum submit.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="px-6 py-5">
+          <p className="mb-4 text-sm text-slate-600">
+            Pastikan lokasi penempatan sudah benar sebelum melanjutkan. Perubahan lokasi setelah
+            submit memerlukan proses ulang.
+          </p>
+
+          <div className="space-y-3">
+            <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Detail Penempatan
+              </p>
+              <div className="space-y-2">
+                {selectedZones.map(({ item, zona }) => (
+                  <div
+                    key={item.item_id}
+                    className="flex items-center justify-between text-sm"
+                  >
+                    <div className="flex flex-col">
+                      <span className="font-medium text-slate-800">
+                        {item.barang?.nama_barang || "-"}
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        {item.barang?.kode_perangkat || "-"}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-medium text-slate-700">{zonaLabel(zona!)}</div>
+                      <div className="text-xs text-slate-400">
+                        Qty: {Number(item.qty_diterima ?? item.qty)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+            >
+              Periksa Kembali
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={submitting}
+              className="rounded-xl bg-[#E8632C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
+            >
+              {submitting ? "Menyimpan..." : "Ya, Submit Putaway"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function PutawayDetailPage() {
@@ -211,7 +327,17 @@ export default function PutawayDetailPage() {
 
   const isSelesai = data.status === "diterima_didistribusikan";
 
-  const allAssigned = data.items.every((it) => !!zonaByItem[it.item_id]);
+  // Qty yang ditempatkan = qty diterima dari penerimaan (bukan qty surat
+  // jalan). Item yang ditolak penuh (diterima 0) tidak perlu ditempatkan.
+  const qtyDiterimaOf = (item: ApiSuratJalanItem) => {
+    if (item.qty_diterima !== null && item.qty_diterima !== undefined) {
+      return Number(item.qty_diterima);
+    }
+    return Number(item.qty);
+  };
+  const itemsToPlace = data.items.filter((it) => qtyDiterimaOf(it) > 0);
+
+  const allAssigned = itemsToPlace.every((it) => !!zonaByItem[it.item_id]);
 
   function showToast(message: string, type: "success" | "error") {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -227,15 +353,9 @@ export default function PutawayDetailPage() {
   async function confirmSubmit() {
     if (!allAssigned || !data) return;
 
-    const resolvedItems = data.items.map((it) => {
+    const resolvedItems = itemsToPlace.map((it) => {
       const zonaId = zonaByItem[it.item_id];
-      return {
-        item_id: it.item_id,
-        zona_id: Number(zonaId),
-        qty_ditempatkan: Number(it.qty),
-        qty_aktual: Number(qtyAktualByItem[it.item_id] || it.qty),
-        catatan: catatanByItem[it.item_id]?.trim() || null,
-      };
+      return { item_id: it.item_id, zona_id: Number(zonaId), qty_ditempatkan: qtyDiterimaOf(it) };
     });
 
     setSubmitting(true);
@@ -253,7 +373,7 @@ export default function PutawayDetailPage() {
         throw new Error(err?.message || "Gagal menyimpan penempatan barang.");
       }
 
-      const successDetails = data.items.map((it) => {
+      const successDetails = itemsToPlace.map((it) => {
         const zona = zonas.find((z) => String(z.zona_id) === String(zonaByItem[it.item_id]));
         const name = it.barang?.nama_barang || it.barang?.kode_perangkat || `Item #${it.item_id}`;
         const zoneName = zona ? zonaLabel(zona) : `Zona ${zonaByItem[it.item_id]}`;
@@ -328,6 +448,8 @@ export default function PutawayDetailPage() {
             {data.items.map((item) => {
               const fotoUrls = getItemFotoUrls(item);
               const extraFoto = Math.max(fotoUrls.length - 1, 0);
+              const diterima = qtyDiterimaOf(item);
+              const ditolakPenuh = diterima <= 0;
               return (
               <tr key={item.item_id} className="border-b border-gray-50 last:border-0 align-top">
                 <td className="py-3 pr-4">
@@ -373,31 +495,24 @@ export default function PutawayDetailPage() {
                     <KondisiBadge value={item.kondisi} />
                   )}
                 </td>
-                <td className="py-3 pr-4 text-right text-gray-600">{item.qty}</td>
-                <td className="py-3 pr-4 text-right">
-                  <input
-                    type="number"
-                    min={0}
-                    value={qtyAktualByItem[item.item_id] ?? item.qty}
-                    onChange={(e) =>
-                      setQtyAktualByItem((prev) => ({ ...prev, [item.item_id]: e.target.value }))
-                    }
-                    className="w-20 rounded-md border border-gray-200 py-1 text-right text-xs text-slate-800 outline-none focus:border-[#E8632C]"
-                  />
-                </td>
-                <td className="py-3 pr-4">
-                  <input
-                    type="text"
-                    value={catatanByItem[item.item_id] || ""}
-                    onChange={(e) =>
-                      setCatatanByItem((prev) => ({ ...prev, [item.item_id]: e.target.value }))
-                    }
-                    placeholder="Catatan..."
-                    className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-[#E8632C]"
-                  />
+                <td className="py-3 pr-4 text-right text-gray-600">
+                  {ditolakPenuh ? (
+                    <span className="font-semibold text-rose-600">0</span>
+                  ) : (
+                    <>
+                      {diterima}
+                      {Number(item.qty) !== diterima && (
+                        <span className="ml-1 text-xs text-gray-400">/{item.qty}</span>
+                      )}
+                    </>
+                  )}
                 </td>
                 <td className="py-3">
-                  {isSelesai ? (
+                  {ditolakPenuh ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-600">
+                      Ditolak penuh — tidak ditempatkan
+                    </span>
+                  ) : isSelesai ? (
                     item.zona ? (
                       <span className="text-sm text-gray-700">
                         {item.zona.gudang?.nama_gudang ?? "-"} / {item.zona.nama_zona || item.zona.kode_zona}

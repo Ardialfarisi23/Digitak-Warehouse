@@ -544,6 +544,8 @@ model surat_jalan_item {
   cluster_id          String?                 @db.Text
   catatan             String?
   qty_diterima        Decimal?                @db.Decimal(14, 2)
+  qty_ditolak         Decimal?                @db.Decimal(14, 2)
+  alasan_penolakan    String?                 @db.Text
   kondisi_diterima    kondisi_barang?
   catatan_penerimaan  String?                 @db.Text
   zona_id             BigInt?
