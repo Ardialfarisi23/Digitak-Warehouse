@@ -45,6 +45,15 @@ interface ReconciliationRecord {
   project_nama: string;
   cluster_id: string;
   nama_cluster: string;
+  cluster_type: string | null;
+  project_type: string | null;
+  alamat_lengkap: string | null;
+  kso_partner: string | null;
+  kso_contact: string | null;
+  no_tiket_release: string | null;
+  vendor: string | null;
+  homepass_plan: number | null;
+  status_aktif: boolean | null;
   pic_nama: string | null;
   pic_sumber: string | null;
   area: string;
@@ -211,12 +220,12 @@ export default function ReconciliationInventoryPage() {
         list = payload.data;
       }
 
-      const mapped: ReconciliationRecord[] = list.map((item: any) => {
-        const boq = Number(item.boq ?? item.qty_boq ?? item.qty_rencana ?? 0);
-        const additional = Number(item.additional ?? item.qty_additional ?? 0);
-        const mos = Number(item.mos ?? item.hardware_on_site ?? item.qty_on_site ?? 0);
-        const used = Number(item.used ?? item.qty_used ?? 0);
-        const remains = Number(item.remains ?? (mos - (boq + additional)));
+const mapped: ReconciliationRecord[] = list.map((item: any) => {
+          const boq = Number(item.boq ?? item.qty_boq ?? item.qty_rencana ?? 0);
+          const additional = Number(item.additional ?? item.qty_additional ?? 0);
+          const mos = Number(item.mos ?? item.hardware_on_site ?? item.qty_on_site ?? 0);
+          const used = Number(item.used ?? item.qty_used ?? 0);
+         const remains = Number(item.remains ?? (mos - (boq + additional)));
 
         const recStatus: ReconciliationRecord["status"] =
           item.status === "sesuai" || item.status === "perhatian" || item.status === "belum_ada_data"
@@ -231,6 +240,15 @@ export default function ReconciliationInventoryPage() {
           project_nama: item.project_nama ?? item.project?.nama_project ?? "-",
           cluster_id: item.cluster_id ?? item.project?.cluster_id ?? "-",
           nama_cluster: item.nama_cluster ?? "-",
+          cluster_type: item.cluster_type ?? null,
+          project_type: item.project_type ?? null,
+          alamat_lengkap: item.alamat_lengkap ?? null,
+          kso_partner: item.kso_partner ?? null,
+          kso_contact: item.kso_contact ?? null,
+          no_tiket_release: item.no_tiket_release ?? null,
+          vendor: item.vendor ?? null,
+          homepass_plan: item.homepass_plan ?? null,
+          status_aktif: item.status_aktif ?? null,
           pic_nama: item.pic_nama ?? null,
           pic_sumber: item.pic_sumber ?? null,
           area: item.area ?? item.project?.area ?? "-",
@@ -529,7 +547,7 @@ export default function ReconciliationInventoryPage() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  useEffect(() => {
+   useEffect(() => {
     const interval = setInterval(() => {
       fetchReconciliation();
     }, 5000);
@@ -540,9 +558,22 @@ export default function ReconciliationInventoryPage() {
 
     window.addEventListener("reconciliation:refresh", handleRefresh);
 
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        fetchReconciliation();
+      }
+    };
+    const onFocus = () => {
+      fetchReconciliation();
+    };
+    window.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+
     return () => {
       clearInterval(interval);
       window.removeEventListener("reconciliation:refresh", handleRefresh);
+      window.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
     };
   }, [get, post]);
 
@@ -625,17 +656,17 @@ export default function ReconciliationInventoryPage() {
           </div>
         </header>
 
-        {/* KPI Cards */}
-        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-7">
-          <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
-          <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
-          <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material on Site" icon={PackageCheck} tone="slate" />
-          <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan" icon={PackageMinus} tone="slate" />
-          <KpiCard title="Remains" value={formatNumber(summary.remains)} description="Sisa pengiriman (MOS - BOQ)" icon={Wallet} tone="slate" />
-          {summary.temuan_jumlah_item > 0 && (
-            <KpiCard title="Temuan Penerimaan" value={`${summary.temuan_jumlah_item} item`} description={`Kekurangan ${formatNumber(summary.temuan_total_selisih)}`} icon={AlertTriangle} tone="rose" />
-          )}
-        </div>
+{/* KPI Cards */}
+          <div className="mb-6 grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 sm:gap-4 lg:grid-cols-6">
+           <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
+           <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
+           <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material on Site (termasuk inbound disetujui)" icon={PackageCheck} tone="slate" />
+           <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan" icon={PackageMinus} tone="slate" />
+           <KpiCard title="Remains" value={formatNumber(summary.remains)} description="Sisa pengiriman (MOS - BOQ)" icon={Wallet} tone="slate" />
+           {summary.temuan_jumlah_item > 0 && (
+             <KpiCard title="Temuan Penerimaan" value={`${summary.temuan_jumlah_item} item`} description={`Kekurangan ${formatNumber(summary.temuan_total_selisih)}`} icon={AlertTriangle} tone="rose" />
+           )}
+         </div>
 
         {/* Tabs */}
         <div className="mb-6 flex items-center gap-2 border-b border-slate-100">
@@ -765,30 +796,31 @@ export default function ReconciliationInventoryPage() {
 
           <div className="overflow-x-auto">
               <table className="min-w-[1250px] w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50">
-                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[190px]">Cluster</th>
-                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px]">PIC</th>
-                    <th className="px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Kode Tiket</th>
-                    <th className="px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">BOQ</th>
-                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
-                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
-                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
-                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
-                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
-                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px]">Remains</th>
-                    <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap min-w-[100px]">Status</th>
-                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[70px] sticky right-0 bg-slate-50 border-l border-slate-100">
-                      Aksi
-                    </th>
-                  </tr>
-                </thead>
+<thead>
+                    <tr className="border-b border-slate-100 bg-slate-50">
+                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[160px]">Project</th>
+                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[150px]">Cluster Name</th>
+                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px]">PIC</th>
+                      <th className="px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Kode Tiket</th>
+                      <th className="px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">BOQ</th>
+                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
+                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
+                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
+                       <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
+                       <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
+                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px]">Remains</th>
+                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap min-w-[100px]">Status</th>
+                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[70px] sticky right-0 bg-slate-50 border-l border-slate-100">
+                        Aksi
+                      </th>
+                    </tr>
+                  </thead>
 
               <tbody className="divide-y divide-slate-50">
                 {isLoading ? (
                   Array.from({ length: 7 }).map((_, rowIndex) => (
                     <tr key={rowIndex}>
-                      {Array.from({ length: 13 }).map((_, colIndex) => (
+                      {Array.from({ length: 12 }).map((_, colIndex) => (
                         <td key={colIndex} className="px-3 py-2">
                           <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                         </td>
@@ -797,13 +829,13 @@ export default function ReconciliationInventoryPage() {
                   ))
                 ) : error ? (
                   <tr>
-                    <td colSpan={13} className="px-6 py-16 text-center text-sm text-rose-500">
+                    <td colSpan={12} className="px-6 py-16 text-center text-sm text-rose-500">
                       {error}
                     </td>
                   </tr>
                 ) : filteredRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="px-6 py-16 text-center">
+                    <td colSpan={12} className="px-6 py-16 text-center">
                       <Package size={28} className="mx-auto text-slate-300" />
                       <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data rekonsiliasi</p>
                       <p className="mt-1 text-xs text-slate-400">Coba ubah filter atau kata pencarian.</p>
@@ -812,14 +844,16 @@ export default function ReconciliationInventoryPage() {
                 ) : (
                   filteredRecords.map((record) => {
                     const statusBadge = getStatusBadge(record.status);
-                    const isClusterNameSameAsProject = record.nama_cluster && record.project_nama && record.nama_cluster.toLowerCase() === record.project_nama.toLowerCase();
                     return (
                       <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
                         <td className="px-3 py-2">
-                          <p className="font-medium text-slate-900">{record.nama_cluster}</p>
-                          <p className="text-xs text-slate-400">
-                            {isClusterNameSameAsProject ? record.area : `${record.project_nama} • ${record.area}`}
-                          </p>
+                          <p className="font-medium text-slate-900">{record.project_nama || "-"}</p>
+                          <p className="text-xs text-slate-400">{record.area || "-"}</p>
+                        </td>
+
+                        <td className="px-3 py-2">
+                          <p className="font-medium text-slate-900">{record.nama_cluster || "-"}</p>
+                          <p className="text-xs text-slate-400">{record.cluster_id || "-"}</p>
                         </td>
 
                         <td className="px-3 py-2 text-sm text-slate-600 whitespace-nowrap">
@@ -858,8 +892,8 @@ export default function ReconciliationInventoryPage() {
 
                         <td className="px-3 py-2 text-right font-medium text-slate-700">{formatNumber(record.boq)}</td>
                         <td className="px-3 py-2 text-right text-slate-600">{formatNumber(record.additional)}</td>
-                        <td className="px-3 py-2 text-right font-medium text-slate-700">{formatNumber(record.mos)}</td>
-                        <td className="px-3 py-2 text-right text-slate-600">{formatNumber(record.used)}</td>
+                         <td className="px-3 py-2 text-right font-medium text-slate-700">{formatNumber(record.mos)}</td>
+                         <td className="px-3 py-2 text-right text-slate-600">{formatNumber(record.used)}</td>
 
                         <td className="px-3 py-2 text-right min-w-[80px]">
                           <span className={record.remains < 0 ? "font-semibold text-rose-600" : "font-semibold text-emerald-700"}>
@@ -868,7 +902,7 @@ export default function ReconciliationInventoryPage() {
                         </td>
 
                         <td className="px-3 py-2 whitespace-nowrap min-w-[100px] pr-10">
-                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
                             <statusBadge.icon size={12} />
                             {statusBadge.label}
                           </span>
@@ -913,10 +947,10 @@ export default function ReconciliationInventoryPage() {
               <p className="text-xs font-semibold text-indigo-800">Additional</p>
                <p className="mt-1 text-[11px] leading-relaxed text-indigo-700">Tambahan material yang diajukan karena kekurangan dari rencana BOQ awal, setelah disetujui dan ditambahkan resmi ke sistem.</p>
             </div>
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+<div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
               <p className="text-xs font-semibold text-blue-800">MOS</p>
-               <p className="mt-1 text-[11px] leading-relaxed text-blue-700">Material yang sudah dikirim dan terkonfirmasi diterima di lapangan.</p>
-            </div>
+               <p className="mt-1 text-[11px] leading-relaxed text-blue-700">Material yang sudah dikirim ke lapangan (outbound) + barang masuk gudang yang sudah disetujui (inbound approved).</p>
+             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs font-semibold text-slate-800">Used</p>
                <p className="mt-1 text-[11px] leading-relaxed text-slate-600">Jumlah material yang sudah dipasang/digunakan di lapangan, berdasarkan laporan harian dari mitra.</p>
@@ -937,7 +971,7 @@ export default function ReconciliationInventoryPage() {
           onClick={() => setSelectedRecord(null)}
         >
           <div
-            className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl"
+            className="w-[calc(100vw-1.5rem)] max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
@@ -956,21 +990,59 @@ export default function ReconciliationInventoryPage() {
 
             <div className="px-6 py-5 space-y-5">
               <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs font-medium text-slate-400">Cluster</p>
-                <p className="mt-1 font-semibold text-slate-900">{selectedRecord.nama_cluster}</p>
-                <p className="text-xs text-slate-500">
-                  {selectedRecord.nama_cluster && selectedRecord.project_nama && selectedRecord.nama_cluster.toLowerCase() === selectedRecord.project_nama.toLowerCase()
-                    ? selectedRecord.area
-                    : `${selectedRecord.project_nama} • ${selectedRecord.area}`}
-                </p>
-                <p className="text-xs text-slate-500">
-                  {selectedRecord.cluster_id}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  PIC: {selectedRecord.pic_nama || "-"}
-                  {selectedRecord.pic_sumber ? ` (${selectedRecord.pic_sumber})` : ""}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
+                <p className="text-xs font-medium text-slate-400">Master Cluster</p>
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-[11px] text-slate-400">Nama Cluster</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.nama_cluster || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Cluster ID</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.cluster_id || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Project</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.project_nama || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Area</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.area || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Tipe Cluster</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.cluster_type || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Tipe Project</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.project_type || "-"}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-[11px] text-slate-400">Alamat Lengkap</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.alamat_lengkap || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">No. Tiket Release</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.no_tiket_release || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Homepass Plan</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.homepass_plan ?? "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Status</p>
+                    <p className="text-sm font-medium text-slate-900">
+                      {selectedRecord.status_aktif === true ? "Aktif" : selectedRecord.status_aktif === false ? "Nonaktif" : "-"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">PIC</p>
+                    <p className="text-sm font-medium text-slate-900">
+                      {selectedRecord.pic_nama || "-"}
+                      {selectedRecord.pic_sumber ? ` (${selectedRecord.pic_sumber})` : ""}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
                   <span className="rounded-lg bg-white px-2.5 py-1 text-[11px] text-slate-500">
                     Tiket: {selectedRecord.kode_tiket}
                   </span>
@@ -988,18 +1060,18 @@ export default function ReconciliationInventoryPage() {
                 </p>
               </div>
 
-                <div>
+<div>
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Rekonsiliasi</p>
-                  <div className="space-y-2">
-                    <DetailRow label="BOQ" value={selectedRecord.boq} />
-                    <DetailRow label="Additional" value={selectedRecord.additional} />
-                    <DetailRow label="MOS" value={selectedRecord.mos} />
-                    <DetailRow label="Used" value={selectedRecord.used} />
-                    <div className="border-t border-slate-100 pt-2">
-                      <DetailRow label="Remains" value={selectedRecord.remains} highlight />
-                    </div>
-                  </div>
-                </div>
+                   <div className="space-y-2">
+                     <DetailRow label="BOQ" value={selectedRecord.boq} />
+                     <DetailRow label="Additional" value={selectedRecord.additional} />
+                     <DetailRow label="MOS" value={selectedRecord.mos} />
+                     <DetailRow label="Used" value={selectedRecord.used} />
+                     <div className="border-t border-slate-100 pt-2">
+                       <DetailRow label="Remains" value={selectedRecord.remains} highlight />
+                     </div>
+                   </div>
+               </div>
 
               <div>
                 <p className="text-xs font-medium text-slate-400">Status Rekonsiliasi</p>
@@ -1081,7 +1153,7 @@ export default function ReconciliationInventoryPage() {
           onClick={closeMitraModal}
         >
           <div
-            className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl"
+            className="w-[calc(100vw-1.5rem)] max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
@@ -1222,8 +1294,8 @@ export default function ReconciliationInventoryPage() {
                         </span>
                       </div>
 
-                       <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200">
-                         <table className="min-w-full text-left text-sm">
+                        <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200 overflow-x-auto overscroll-x-contain">
+                          <table className="w-full min-w-[640px] text-left text-sm">
                            <thead>
                              <tr className="border-b border-slate-100 bg-slate-50">
                                <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
@@ -1626,7 +1698,7 @@ export default function ReconciliationInventoryPage() {
           onClick={() => setHistoryDetail(null)}
         >
           <div
-            className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl"
+            className="w-[calc(100vw-1.5rem)] max-w-3xl max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">

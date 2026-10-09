@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import { Search, PackageCheck, PackageMinus, Package, ClipboardCheck, X, AlertTriangle, Download, History, CheckCircle, Clock, AlertCircle } from "lucide-react";
+import { Search, PackageCheck, PackageMinus, Package, ClipboardCheck, X, AlertTriangle, Download, History, CheckCircle, Clock, AlertCircle, Plus, Wallet } from "lucide-react";
 
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { AdditionalAdjustmentModal } from "@/components/additional/AdditionalAdjustmentModal";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -21,6 +22,16 @@ interface ReconciliationRecord {
   project_id: string;
   project_nama: string;
   cluster_id: string;
+  nama_cluster: string;
+  cluster_type: string | null;
+  project_type: string | null;
+  alamat_lengkap: string | null;
+  kso_partner: string | null;
+  kso_contact: string | null;
+  no_tiket_release: string | null;
+  vendor: string | null;
+  homepass_plan: number | null;
+  status_aktif: boolean | null;
   area: string;
   tiket_id: string;
   kode_tiket: string;
@@ -105,7 +116,7 @@ function DetailRow({ label, value, highlight = false }: { label: string; value: 
 
 export default function SupervisorReconciliationPage() {
   const { user } = useAuth();
-  const { get } = useApi();
+  const { get, post } = useApi();
 
   // Tab Navigation State
   const [activeTab, setActiveTab] = useState<"rekonsiliasi" | "riwayat">("rekonsiliasi");
@@ -118,6 +129,7 @@ export default function SupervisorReconciliationPage() {
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedRecord, setSelectedRecord] = useState<ReconciliationRecord | null>(null);
+  const [adjustmentRecord, setAdjustmentRecord] = useState<ReconciliationRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -155,7 +167,7 @@ export default function SupervisorReconciliationPage() {
       const payload = json?.data ?? [];
       const list: any[] = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
 
-      const mapped: ReconciliationRecord[] = list.map((item: any) => {
+const mapped: ReconciliationRecord[] = list.map((item: any) => {
         const boq = Number(item.boq ?? item.qty_boq ?? item.qty_rencana ?? 0);
         const additional = Number(item.additional ?? item.qty_additional ?? 0);
         const mos = Number(item.mos ?? item.hardware_on_site ?? item.qty_on_site ?? 0);
@@ -167,14 +179,24 @@ export default function SupervisorReconciliationPage() {
           item.status === "sesuai" || item.status === "perhatian" || item.status === "belum_ada_data"
             ? item.status
             : Number(remains) === 0
-              ? "sesuai"
-              : "perhatian";
+            ? "sesuai"
+            : "perhatian";
 
         return {
           id: String(item.id ?? ""),
           project_id: String(item.project_id ?? ""),
           project_nama: item.project_nama ?? "-",
           cluster_id: item.cluster_id ?? "-",
+          nama_cluster: item.nama_cluster ?? null,
+          cluster_type: item.cluster_type ?? null,
+          project_type: item.project_type ?? null,
+          alamat_lengkap: item.alamat_lengkap ?? null,
+          kso_partner: item.kso_partner ?? null,
+          kso_contact: item.kso_contact ?? null,
+          no_tiket_release: item.no_tiket_release ?? null,
+          vendor: item.vendor ?? null,
+          homepass_plan: item.homepass_plan ?? null,
+          status_aktif: item.status_aktif ?? null,
           area: item.area ?? "-",
           tiket_id: String(item.tiket_id ?? ""),
           kode_tiket: item.kode_tiket ?? "-",
@@ -255,9 +277,38 @@ export default function SupervisorReconciliationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, statusFilter]);
 
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        fetchReconciliation();
+      }
+    };
+    const onFocus = () => {
+      fetchReconciliation();
+    };
+    window.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
   const projectOptions = useMemo(() => {
-    return Array.from(new Map(records.map((item) => [item.project_id, item.project_nama])).entries());
-  }, [records]);
+    const baseRecords = adjustmentRecord
+      ? records.filter((item) => {
+          const matchesBarang = item.barang_id === adjustmentRecord.barang_id;
+          const matchesCluster =
+            !adjustmentRecord.cluster_id || adjustmentRecord.cluster_id === "-"
+              ? true
+              : item.cluster_id === adjustmentRecord.cluster_id;
+          return matchesBarang && matchesCluster;
+        })
+      : records;
+
+    return Array.from(new Map(baseRecords.map((item) => [item.project_id, item.project_nama])).entries());
+  }, [records, adjustmentRecord]);
 
   const warehouseOptions = useMemo(() => {
     return Array.from(new Set(records.map((item) => item.gudang_nama).filter(Boolean)));
@@ -375,13 +426,13 @@ export default function SupervisorReconciliationPage() {
             {error && <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
 
             {/* KPI Cards */}
-            <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-7">
-              <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
-              <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
-              <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material on Site" icon={PackageCheck} tone="slate" />
-              <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan" icon={PackageMinus} tone="slate" />
-              <KpiCard title="Remains" value={formatNumber(summary.remains)} description="Sisa ketersediaan" icon={Package} tone={summary.remains < 0 ? "rose" : "slate"} />
-            </div>
+             <div className="mb-6 grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 sm:gap-4 lg:grid-cols-6">
+               <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
+               <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
+               <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material on Site (termasuk inbound disetujui)" icon={PackageCheck} tone="slate" />
+               <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan" icon={PackageMinus} tone="slate" />
+               <KpiCard title="Remains" value={formatNumber(summary.remains)} description="Sisa pengiriman (MOS - BOQ)" icon={Wallet} tone={summary.remains < 0 ? "rose" : "slate"} />
+             </div>
 
             {/* Filters */}
             <div className="mb-6 flex flex-wrap items-center gap-2">
@@ -446,95 +497,101 @@ export default function SupervisorReconciliationPage() {
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1100px] text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50">
-                      <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
-                      <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
-                      <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
-                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
-                       <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
-                       <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
-                       <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
-                      <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Remains</th>
-                      <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                      <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-slate-50">
-                    {isLoading ? (
-                      Array.from({ length: 7 }).map((_, rowIndex) => (
-                        <tr key={rowIndex}>
-                          {Array.from({ length: 12 }).map((_, colIndex) => (
-                            <td key={colIndex} className="px-6 py-4">
-                              <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
-                            </td>
-                          ))}
-                        </tr>
-                      ))
-                    ) : filteredRecords.length === 0 ? (
-                      <tr>
-                        <td colSpan={12} className="px-6 py-16 text-center">
-                          <Package size={28} className="mx-auto text-slate-300" />
-                          <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data rekonsiliasi</p>
-                          <p className="mt-1 text-xs text-slate-400">Coba ubah filter, atau pastikan Anda sudah ditugaskan sebagai PIC gudang.</p>
-                        </td>
+              <div className="overflow-x-auto overscroll-x-contain">
+                 <table className="w-full min-w-[1100px] text-left text-sm">
+<thead>
+                      <tr className="border-b border-slate-100 bg-slate-50">
+                        <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
+                        <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Cluster Name</th>
+                        <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
+                        <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
+                        <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
+                         <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
+                          <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
+                          <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
+                        <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Remains</th>
+                        <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+                        <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
                       </tr>
-                    ) : (
-                      filteredRecords.map((record) => {
-                        const statusBadge = getStatusBadge(record.status);
-                        return (
-                          <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
-                            <td className="px-6 py-4">
-                              <p className="font-medium text-slate-900">{record.project_nama}</p>
-                              <p className="text-xs text-slate-400">
-                                {record.area}
-                                {record.cluster_id !== "-" && ` • ${record.cluster_id}`}
-                              </p>
-                            </td>
+                    </thead>
 
-                            <td className="px-6 py-4">
-                              <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{record.kode_tiket}</span>
-                            </td>
-
-                            <td className="px-6 py-4">
-                              <p className="font-medium text-slate-800">{record.nama_barang}</p>
-                              <p className="text-xs text-slate-400">
-                                {record.kode_perangkat} • {record.gudang_nama}
-                              </p>
-                            </td>
-
-                            <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.boq)}</td>
-                            <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.additional)}</td>
-                            <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos)}</td>
-                            <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.used)}</td>
-
-                            <td className="px-6 py-4 text-right">
-                              <span className={record.remains < 0 ? "font-semibold text-rose-600" : "font-semibold text-emerald-700"}>{formatNumber(record.remains)}</span>
-                            </td>
-
-                            <td className="px-6 py-4">
-                              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
-                                <statusBadge.icon size={12} />
-                                {statusBadge.label}
-                              </span>
-                            </td>
-
-                            <td className="px-4 py-4">
-                              <div className="flex items-center justify-end gap-1">
-                                <button type="button" onClick={() => setSelectedRecord(record)} title="Lihat detail" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
-                                  <ClipboardCheck size={15} />
-                                </button>
-                              </div>
-                            </td>
+                   <tbody className="divide-y divide-slate-50">
+{isLoading ? (
+                        Array.from({ length: 7 }).map((_, rowIndex) => (
+                          <tr key={rowIndex}>
+                            {Array.from({ length: 10 }).map((_, colIndex) => (
+                              <td key={colIndex} className="px-6 py-4">
+                                <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
+                              </td>
+                            ))}
                           </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                        ))
+                      ) : filteredRecords.length === 0 ? (
+                        <tr>
+                          <td colSpan={10} className="px-6 py-16 text-center">
+                           <Package size={28} className="mx-auto text-slate-300" />
+                           <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data rekonsiliasi</p>
+                           <p className="mt-1 text-xs text-slate-400">Coba ubah filter, atau pastikan Anda sudah ditugaskan sebagai PIC gudang.</p>
+                         </td>
+                       </tr>
+                     ) : (
+                       filteredRecords.map((record) => {
+                         const statusBadge = getStatusBadge(record.status);
+                         return (
+                           <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
+                             <td className="px-6 py-4">
+                               <p className="font-medium text-slate-900">{record.project_nama || "-"}</p>
+                               <p className="text-xs text-slate-400">{record.area || "-"}</p>
+                             </td>
+
+                             <td className="px-6 py-4">
+                               <p className="font-medium text-slate-900">{record.nama_cluster || "-"}</p>
+                               <p className="text-xs text-slate-400">{record.cluster_id || "-"}</p>
+                             </td>
+
+                             <td className="px-6 py-4">
+                               <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{record.kode_tiket}</span>
+                             </td>
+
+                             <td className="px-6 py-4">
+                               <p className="font-medium text-slate-800">{record.nama_barang}</p>
+                               <p className="text-xs text-slate-400">
+                                 {record.kode_perangkat} • {record.gudang_nama}
+                               </p>
+                             </td>
+
+<td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.boq)}</td>
+                              <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.additional)}</td>
+                               <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos)}</td>
+                               <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.used)}</td>
+
+                             <td className="px-6 py-4 text-right">
+                               <span className={record.remains < 0 ? "font-semibold text-rose-600" : "font-semibold text-emerald-700"}>{formatNumber(record.remains)}</span>
+                             </td>
+
+                             <td className="px-6 py-4">
+                               <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
+                                 <statusBadge.icon size={12} />
+                                 {statusBadge.label}
+                               </span>
+                             </td>
+
+                              <td className="px-4 py-4">
+                                <div className="flex items-center justify-end gap-1">
+                                  <button type="button" onClick={() => setSelectedRecord(record)} title="Lihat detail" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                                    <ClipboardCheck size={15} />
+                                  </button>
+                                  <button type="button" onClick={() => setAdjustmentRecord(record)} title="Sesuaikan additional" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-orange-600">
+                                    <Plus size={15} />
+                                  </button>
+                                </div>
+                              </td>
+                           </tr>
+                         );
+                       })
+                     )}
+                   </tbody>
+                 </table>
               </div>
             </div>
 
@@ -678,6 +735,46 @@ export default function SupervisorReconciliationPage() {
 
             <div className="space-y-5 px-6 py-5">
               <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs font-medium text-slate-400">Master Cluster</p>
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-[11px] text-slate-400">Nama Cluster</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.nama_cluster || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Cluster ID</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.cluster_id || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Tipe Cluster</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.cluster_type || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Tipe Project</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.project_type || "-"}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-[11px] text-slate-400">Alamat Lengkap</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.alamat_lengkap || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">No. Tiket Release</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.no_tiket_release || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Homepass Plan</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedRecord.homepass_plan ?? "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400">Status</p>
+                    <p className="text-sm font-medium text-slate-900">
+                      {selectedRecord.status_aktif === true ? "Aktif" : selectedRecord.status_aktif === false ? "Nonaktif" : "-"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs font-medium text-slate-400">Project</p>
                 <p className="mt-1 font-semibold text-slate-900">{selectedRecord.project_nama}</p>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -695,18 +792,18 @@ export default function SupervisorReconciliationPage() {
                 </p>
               </div>
 
-              <div>
+<div>
                 <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Rekonsiliasi</p>
-                  <div className="space-y-2">
-                    <DetailRow label="BOQ" value={selectedRecord.boq} />
-                    <DetailRow label="Additional" value={selectedRecord.additional} />
-                    <DetailRow label="MOS" value={selectedRecord.mos} />
-                    <DetailRow label="Used" value={selectedRecord.used} />
-                    <div className="border-t border-slate-100 pt-2">
-                      <DetailRow label="Remains" value={selectedRecord.remains} highlight />
-                    </div>
-                  </div>
-              </div>
+                   <div className="space-y-2">
+                     <DetailRow label="BOQ" value={selectedRecord.boq} />
+                     <DetailRow label="Additional" value={selectedRecord.additional} />
+                     <DetailRow label="MOS" value={selectedRecord.mos} />
+                     <DetailRow label="Used" value={selectedRecord.used} />
+                     <div className="border-t border-slate-100 pt-2">
+                       <DetailRow label="Remains" value={selectedRecord.remains} highlight />
+                     </div>
+                   </div>
+             </div>
 
               <div>
                 <p className="text-xs font-medium text-slate-400">Status Rekonsiliasi</p>
@@ -723,6 +820,20 @@ export default function SupervisorReconciliationPage() {
             </div>
           </div>
         </div>
+      )}
+      {adjustmentRecord && (
+        <AdditionalAdjustmentModal
+          open={!!adjustmentRecord}
+          onClose={() => setAdjustmentRecord(null)}
+          onSuccess={() => {
+            fetchReconciliation();
+            setAdjustmentRecord(null);
+          }}
+          projectOptions={projectOptions}
+          defaultProjectId={adjustmentRecord.project_id}
+          barangId={adjustmentRecord.barang_id}
+          barangNama={adjustmentRecord.nama_barang}
+        />
       )}
     </div>
   );

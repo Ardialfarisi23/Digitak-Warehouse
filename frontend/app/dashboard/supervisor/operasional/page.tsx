@@ -659,7 +659,8 @@ export default function SupervisorOperasionalPage() {
         {/* Tab 1: Personil */}
         {!loading && activeTab === "Personil" && (
           <div className="w-full">
-             <table className="w-full text-left border-collapse table-auto text-sm text-slate-700">
+             <div className="overflow-x-auto overscroll-x-contain">
+              <table className="min-w-[640px] w-full text-left border-collapse table-auto text-sm text-slate-700">
                 <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
                    <tr>
                      <th className="px-3 py-3">Nama</th>
@@ -762,16 +763,18 @@ export default function SupervisorOperasionalPage() {
                         />
                       </td>
                     </tr>
-                  )}
-                </tbody>
-             </table>
-           </div>
-         )}
+                   )}
+                 </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Tab 2: Kendaraan */}
         {!loading && activeTab === "Kendaraan" && (
           <div className="w-full">
-             <table className="w-full text-left border-collapse table-auto text-sm text-slate-700">
+             <div className="overflow-x-auto overscroll-x-contain">
+              <table className="min-w-[640px] w-full text-left border-collapse table-auto text-sm text-slate-700">
                <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
                  <tr>
                    <th className="px-3 py-3">No. Polisi</th>
@@ -821,16 +824,18 @@ export default function SupervisorOperasionalPage() {
                       />
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                   )}
+                 </tbody>
+              </table>
+            </div>
           </div>
         )}
 
         {/* Tab 3: Inventori Perangkat */}
         {!loading && activeTab === "Inventori Perangkat" && (
           <div className="w-full">
-             <table className="w-full text-left border-collapse table-auto text-sm text-slate-700">
+             <div className="overflow-x-auto overscroll-x-contain">
+              <table className="w-full text-left border-collapse table-auto text-sm text-slate-700">
                <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
                  <tr>
                    <th className="px-3 py-3">Kode Perangkat</th>
@@ -862,9 +867,10 @@ export default function SupervisorOperasionalPage() {
                       />
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                 )}
+               </tbody>
+             </table>
+            </div>
           </div>
         )}
       </div>
@@ -915,7 +921,7 @@ export default function SupervisorOperasionalPage() {
                 <div className="sm:col-span-2 flex items-center gap-6">
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={personilForm.bisa_menyetir} onChange={(e) => setPersonilForm((p) => ({ ...p, bisa_menyetir: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#E8632C] focus:ring-[#E8632C]" />
-                    Bisa Menyetir
+                    Punya SIM
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={personilForm.is_material_handler} onChange={(e) => setPersonilForm((p) => ({ ...p, is_material_handler: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#E8632C] focus:ring-[#E8632C]" />
@@ -1056,7 +1062,7 @@ export default function SupervisorOperasionalPage() {
                 <div className="sm:col-span-2 flex items-center gap-6">
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={personilForm.bisa_menyetir} onChange={(e) => setPersonilForm((p) => ({ ...p, bisa_menyetir: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#E8632C] focus:ring-[#E8632C]" />
-                    Bisa Menyetir
+                    Punya SIM
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={personilForm.is_material_handler} onChange={(e) => setPersonilForm((p) => ({ ...p, is_material_handler: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#E8632C] focus:ring-[#E8632C]" />

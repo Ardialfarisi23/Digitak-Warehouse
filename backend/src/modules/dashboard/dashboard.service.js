@@ -4,6 +4,7 @@ const AppError = require("../../shared/errors");
 const reconciliationUtils = require("../reconciliation/reconciliation.utils");
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
+const additionalRepository = require("../additional/additional.repository");
 
 const getStats = async (actor = null) => {
   return await dashboardRepository.getStats(actor);
@@ -196,7 +197,7 @@ const getHardwareReconciliation = async (filters = {}) => {
   }
 
   if (projectId !== "all") {
-    whereBoq.boq.tiket = { project_id: BigInt(projectId) };
+    whereBoq.boq.cluster = { project_id: BigInt(projectId) };
   }
 
   const boqItems = await prisma.boq_item.findMany({
@@ -270,10 +271,27 @@ const getHardwareReconciliation = async (filters = {}) => {
     },
   });
 
-  const inboundByProjectBarang = new Map();
   const outboundByProjectBarang = new Map();
   const additionalByProjectBarang = new Map();
   const mosByProjectBarang = new Map();
+
+  const projectIdsForAdditional =
+    projectId !== "all"
+      ? [BigInt(projectId)]
+      : Array.from(
+          new Set(
+            shipmentItems
+              .map((item) => item.surat_jalan?.project_id)
+              .filter((id) => id != null)
+          )
+        );
+
+  const additionalTotalsByProject =
+    projectIdsForAdditional.length > 0
+      ? await additionalRepository.getAdditionalTotalsByProject(
+          projectIdsForAdditional.map((id) => Number(id))
+        )
+      : new Map();
 
   for (const item of shipmentItems) {
     const projectIdNum = Number(item.surat_jalan?.project_id);
@@ -281,17 +299,14 @@ const getHardwareReconciliation = async (filters = {}) => {
     const qty = Number(item.qty || 0);
     const key = `${projectIdNum}-${barangId}`;
 
-    if (item.surat_jalan?.tipe === "inbound") {
-      if (item.is_kelebihan) {
-        additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + qty);
-      } else {
-        inboundByProjectBarang.set(key, (inboundByProjectBarang.get(key) || 0) + qty);
-      }
-    }
     if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
       outboundByProjectBarang.set(key, (outboundByProjectBarang.get(key) || 0) + qty);
       mosByProjectBarang.set(key, (mosByProjectBarang.get(key) || 0) + qty);
     }
+  }
+
+  for (const [key, val] of additionalTotalsByProject) {
+    additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + val);
   }
 
   const aggregatedMap = new Map();

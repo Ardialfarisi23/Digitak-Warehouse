@@ -54,7 +54,7 @@ export function ConfirmModal({
       {...(dismissProof ? {} : { onClick: onClose })}
     >
       <div
-        className="w-full max-w-md rounded-2xl bg-white shadow-xl"
+        className="w-full w-[calc(100vw-1.5rem)] max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl"
         {...(dismissProof ? {} : { onClick: (e) => e.stopPropagation() })}
       >
         <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">

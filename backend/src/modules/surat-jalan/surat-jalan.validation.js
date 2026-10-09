@@ -10,10 +10,12 @@ const createSuratJalanSchema = z
     personil_pengantar_id: z.string().optional().nullable(),
     // Free text (inbound). Kalau kosong, reader fallback ke relasi di atas.
     kendaraan_nama_teks: z.string().trim().max(200, "Nama kendaraan maksimal 200 karakter.").optional().nullable(),
+    kendaraan_jenis_teks: z.string().trim().max(100, "Jenis kendaraan maksimal 100 karakter.").optional().nullable(),
     kendaraan_no_polisi_teks: z.string().trim().max(50, "Nomor polisi maksimal 50 karakter.").optional().nullable(),
     driver_nama_teks: z.string().trim().max(200, "Nama driver maksimal 200 karakter.").optional().nullable(),
     project_id: z.string().optional().nullable(),
     boq_id: z.string().optional().nullable(),
+    cluster_id: z.string().optional().nullable(),
     kategori_approval: z.string().optional().nullable(),
     pic_pemohon_nama: z.string().optional().nullable(),
     nomor_tiket: z.string().optional().nullable(),
@@ -35,13 +37,16 @@ const createSuratJalanSchema = z
           kategori_id: z.string().optional().nullable(),
           is_non_master: z.boolean().optional().default(false),
           qty: z.number().positive("Qty harus lebih dari 0."),
+          qty_diterima: z.coerce.number().nonnegative("Qty aktual tidak boleh negatif.").optional().nullable(),
           satuan_id: z.string().min(1, "Satuan wajib diisi."),
           kondisi: z.string().optional().nullable(),
+          kondisi_diterima: z.string().optional().nullable(),
           serial_number: z.string().optional().nullable(),
           foto_url: z.string().optional().nullable(),
           is_kelebihan: z.boolean().optional().default(false),
           is_di_luar_boq: z.boolean().optional().default(false),
           catatan: z.string().optional().nullable(),
+          catatan_penerimaan: z.string().optional().nullable(),
           zona_id: z.coerce.number().positive().nullable().optional(),
         }),
       )
@@ -141,6 +146,55 @@ const createSuratJalanSchema = z
             code: z.ZodIssueCode.custom,
             message,
             path: [field],
+          });
+        }
+      }
+    }
+
+    if (data.tipe === "outbound") {
+      const hasMasterKendaraan = !!data.kendaraan_id && data.kendaraan_id !== "" && data.kendaraan_id !== "0";
+
+      if (hasMasterKendaraan) {
+      } else {
+        const nama = (data.kendaraan_nama_teks || "").trim();
+        const jenis = (data.kendaraan_jenis_teks || "").trim();
+        const nopol = (data.kendaraan_no_polisi_teks || "").trim();
+        const hasAnyManual = nama !== "" || jenis !== "" || nopol !== "";
+
+        if (hasAnyManual) {
+          if (!nama) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Nama kendaraan, jenis kendaraan, dan nomor polisi wajib diisi semua untuk input manual.",
+              path: ["kendaraan_nama_teks"],
+            });
+          }
+          if (!jenis) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Nama kendaraan, jenis kendaraan, dan nomor polisi wajib diisi semua untuk input manual.",
+              path: ["kendaraan_jenis_teks"],
+            });
+          }
+          if (!nopol) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Nama kendaraan, jenis kendaraan, dan nomor polisi wajib diisi semua untuk input manual.",
+              path: ["kendaraan_no_polisi_teks"],
+            });
+          }
+        }
+      }
+
+      const hasMasterDriver = !!data.personil_pengantar_id && data.personil_pengantar_id !== "" && data.personil_pengantar_id !== "0";
+      const driverTeks = (data.driver_nama_teks || "").trim();
+
+      if (!hasMasterDriver && driverTeks !== "") {
+        if (driverTeks === "") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Nama driver wajib diisi untuk input manual driver.",
+            path: ["driver_nama_teks"],
           });
         }
       }

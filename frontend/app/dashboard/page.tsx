@@ -662,7 +662,7 @@ function DashboardPageContent() {
   };
 
   return (
-    <div className={`flex gap-6 text-slate-800`}>
+    <div className={`flex gap-4 sm:gap-6 text-slate-800`}>
       {/* KONTEN UTAMA (KIRI) */}
       <div className="flex-1 space-y-6">
         <header>
@@ -674,7 +674,7 @@ function DashboardPageContent() {
         </header>
 
         {/* 1. KPI ROW */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 min-[400px]:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
           {kpiCards.map((k) => (
             <KpiCard key={k.label} {...k} />
           ))}

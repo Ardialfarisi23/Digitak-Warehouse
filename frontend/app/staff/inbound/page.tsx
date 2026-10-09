@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { PackageCheck, Plus, X, ChevronDown, Trash2 } from "lucide-react";
+import { PackageCheck, Plus, X, ChevronDown, Trash2, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import BarangPicker, {
   type BarangPickerItem,
@@ -10,6 +10,7 @@ import BarangPicker, {
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import BoqPicker, { type BoqPickerItem } from "@/components/BoqPicker";
+import { MobileCardList, type MobileCardField, type MobileCardItem } from "@/components/MobileCardList";
 
 type InboundStatus = "draft_diajukan" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "ditolak" | "menunggu_verifikasi" | "ready_putaway" | "sedang_dikirim" | "tiba_menunggu_konfirmasi";
 
@@ -107,19 +108,41 @@ interface CategoryOption {
   nama_kategori?: string;
 }
 
+const KONDISI_OPTIONS: { value: string; label: string }[] = [
+  { value: "baik", label: "Baik" },
+  { value: "rusak_ringan", label: "Rusak Ringan" },
+  { value: "rusak_berat", label: "Rusak Berat" },
+  { value: "tidak_sesuai_spek", label: "Tidak Sesuai Spek" },
+  { value: "doa", label: "DOA" },
+];
+
+const KONDISI_TONE: Record<string, string> = {
+  baik: "bg-emerald-100 text-emerald-700",
+  rusak_ringan: "bg-amber-100 text-amber-700",
+  rusak_berat: "bg-rose-100 text-rose-700",
+  tidak_sesuai_spek: "bg-orange-100 text-[#E8632C]",
+  doa: "bg-gray-100 text-gray-600",
+};
+
 interface ModalItemRow {
   id: string;
   barang_id: string;
   kode_perangkat: string;
   nama_barang: string;
-  qty: number;
+  qtySuratJalan: number;
+  qtyAktual: number;
+  kondisi: string;
+  serialNumber: string;
   satuan_id: string;
   satuan_label: string;
   kategori_id: string;
   catatan: string;
   is_di_luar_boq: boolean;
   is_non_master: boolean;
-  catatanAutoFilled: boolean;
+  fotos: Array<{ foto_id: number | string; url: string; filename?: string }>;
+  fotoPreview: string | null;
+  uploadingFoto: boolean;
+  fotoError: string | null;
 }
 
 function Modal({
@@ -154,7 +177,7 @@ function Modal({
       onClick={onClose}
     >
       <div
-        className={`w-full ${widthClass} max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl`}
+        className={`w-[calc(100vw-1.5rem)] ${widthClass} max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
@@ -209,11 +232,38 @@ export default function InboundListPage() {
   const [pengirimEksternalNama, setPengirimEksternalNama] = useState("");
   const [picPemohon, setPicPemohon] = useState("");
   const [modalItems, setModalItems] = useState<ModalItemRow[]>([]);
+  const [draftItem, setDraftItem] = useState<ModalItemRow>({
+    id: "draft",
+    barang_id: "",
+    kode_perangkat: "",
+    nama_barang: "",
+    qtySuratJalan: 1,
+    qtyAktual: 1,
+    kondisi: "",
+    serialNumber: "",
+    satuan_id: "",
+    satuan_label: "",
+    kategori_id: "",
+    catatan: "",
+    is_di_luar_boq: true,
+    is_non_master: false,
+    fotos: [],
+    fotoPreview: null,
+    uploadingFoto: false,
+    fotoError: null,
+  });
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraftItem, setEditDraftItem] = useState<ModalItemRow | null>(null);
+  const [previewFotoUrl, setPreviewFotoUrl] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [kondisiError, setKondisiError] = useState<string | null>(null);
+  const [editKondisiError, setEditKondisiError] = useState<string | null>(null);
   const [suratJalanPdf, setSuratJalanPdf] = useState<File | null>(null);
   const [suratJalanPdfUrl, setSuratJalanPdfUrl] = useState<string>("");
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const fotoPreviewRef = useRef<Record<string, string>>({});
 
   const fetchList = async () => {
     setIsLoading(true);
@@ -319,7 +369,13 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
     setPengirimEksternalNama("");
     setPicPemohon("");
     setModalItems([]);
+    resetDraftItem();
+    setEditModalOpen(false);
+    setEditingId(null);
+    setEditDraftItem(null);
     setFormError(null);
+    setKondisiError(null);
+    setEditKondisiError(null);
     setSuratJalanPdf(null);
     setSuratJalanPdfUrl("");
     setBoqItemsDetail([]);
@@ -401,147 +457,434 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
     }
   };
 
-  const addModalItem = () => {
-    setModalItems((prev) => [
-      ...prev,
-      {
-        id: `${Date.now()}-${prev.length}`,
-        barang_id: "",
-        kode_perangkat: "",
-        nama_barang: "",
-        qty: 1,
-        satuan_id: "",
-        satuan_label: "",
-        kategori_id: "",
-        catatan: "",
-        is_di_luar_boq: true,
-        is_non_master: false,
-        catatanAutoFilled: false,
-      },
-    ]);
-  };
-
   const removeModalItem = (id: string) => {
     setModalItems((prev) => prev.filter((row) => row.id !== id));
   };
 
-  const toggleModalItemNonMaster = (id: string) => {
-    setModalItems((prev) =>
-      prev.map((row) => {
-        if (row.id !== id) return row;
-        const nextNonMaster = !row.is_non_master;
-        if (nextNonMaster) {
-          return {
-            ...row,
-            is_non_master: true,
-            barang_id: "",
-            kode_perangkat: "",
-            nama_barang: "",
-            satuan_id: "",
-            satuan_label: "",
-            kategori_id: "",
-            is_di_luar_boq: true,
-            catatan: row.catatanAutoFilled ? "" : row.catatan,
-            catatanAutoFilled: false,
-          };
-        }
-        return {
-          ...row,
-          is_non_master: false,
-          nama_barang: "",
-          kategori_id: "",
-        };
-      })
-    );
+  const resetDraftItem = () => {
+    setDraftItem({
+      id: "draft",
+      barang_id: "",
+      kode_perangkat: "",
+      nama_barang: "",
+      qtySuratJalan: 1,
+      qtyAktual: 1,
+      kondisi: "",
+      serialNumber: "",
+      satuan_id: "",
+      satuan_label: "",
+      kategori_id: "",
+      catatan: "",
+      is_di_luar_boq: true,
+      is_non_master: false,
+      fotos: [],
+      fotoPreview: null,
+      uploadingFoto: false,
+      fotoError: null,
+    });
+    setKondisiError(null);
   };
 
-  const setModalItemNama = (id: string, value: string) => {
-    setModalItems((prev) => prev.map((row) => (row.id === id ? { ...row, nama_barang: value } : row)));
+  const handleCheckDraftItem = () => {
+    const row = draftItem;
+    if (row.qtySuratJalan <= 0 || !row.satuan_id) {
+      setFormError("Lengkapi Qty Surat Jalan dan Satuan pada form draft barang.");
+      return;
+    }
+    if (row.is_non_master) {
+      if (!row.nama_barang.trim() || !row.kategori_id) {
+        setFormError("Lengkapi Nama Barang dan Kategori untuk barang non-master.");
+        return;
+      }
+    } else {
+      if (!row.barang_id) {
+        setFormError("Pilih Barang / SKU pada form draft barang.");
+        return;
+      }
+    }
+    if (!row.kondisi) {
+      setKondisiError("Kondisi barang wajib dipilih.");
+      return;
+    }
+
+    setFormError(null);
+    setKondisiError(null);
+    setModalItems((prev) => [
+      ...prev,
+      {
+        ...row,
+        id: `${Date.now()}-${prev.length}`,
+      },
+    ]);
+    resetDraftItem();
   };
 
-  const setModalItemKategori = (id: string, value: string) => {
-    setModalItems((prev) => prev.map((row) => (row.id === id ? { ...row, kategori_id: value } : row)));
+  const handleEditModalItem = (id: string) => {
+    const row = modalItems.find((r) => r.id === id);
+    if (!row) return;
+    setEditingId(id);
+    setEditDraftItem({
+      ...row,
+      fotoPreview: null,
+      uploadingFoto: false,
+      fotoError: null,
+    });
+    setEditModalOpen(true);
+    setFormError(null);
+    setEditKondisiError(null);
   };
 
-  const setModalItemSatuan = (id: string, value: string) => {
+  const handleSaveEditItem = () => {
+    if (!editingId || !editDraftItem) return;
+    const row = editDraftItem;
+    if (row.qtySuratJalan <= 0 || !row.satuan_id) {
+      setFormError("Lengkapi Qty Surat Jalan dan Satuan pada item yang diedit.");
+      return;
+    }
+    if (row.is_non_master) {
+      if (!row.nama_barang.trim() || !row.kategori_id) {
+        setFormError("Lengkapi Nama Barang dan Kategori untuk barang non-master.");
+        return;
+      }
+    } else {
+      if (!row.barang_id) {
+        setFormError("Pilih Barang / SKU pada item yang diedit.");
+        return;
+      }
+    }
+    if (!row.kondisi) {
+      setEditKondisiError("Kondisi barang wajib dipilih.");
+      return;
+    }
+
+    setFormError(null);
+    setEditKondisiError(null);
+    setModalItems((prev) => prev.map((r) => (r.id === editingId ? { ...row, id: editingId } : r)));
+    setEditModalOpen(false);
+    setEditingId(null);
+    setEditDraftItem(null);
+  };
+
+  const handleCancelEditItem = () => {
+    setEditModalOpen(false);
+    setEditingId(null);
+    setEditDraftItem(null);
+    setFormError(null);
+  };
+
+  const setEditDraftItemNama = (value: string) => {
+    setEditDraftItem((prev) => (prev ? { ...prev, nama_barang: value } : prev));
+  };
+
+  const setEditDraftItemKategori = (value: string) => {
+    setEditDraftItem((prev) => (prev ? { ...prev, kategori_id: value } : prev));
+  };
+
+  const setEditDraftItemSatuan = (value: string) => {
     const selected = unitOptions.find((u) => String(u.satuan_id) === String(value));
-    setModalItems((prev) =>
-      prev.map((row) =>
-        row.id === id
-          ? { ...row, satuan_id: value, satuan_label: selected?.kode_satuan || "" }
-          : row
-      )
+    setEditDraftItem((prev) =>
+      prev
+        ? {
+            ...prev,
+            satuan_id: value,
+            satuan_label: selected?.kode_satuan || "",
+          }
+        : prev
     );
   };
 
-  const pickModalItem = (id: string, picked: BarangPickerItem) => {
-    setModalItems((prev) =>
-      prev.map((row) => {
-        if (row.id !== id) return row;
-        if (!picked.id) {
-          return {
-            ...row,
-            barang_id: "",
-            kode_perangkat: picked.kode_perangkat,
-            nama_barang: "",
-            satuan_id: "",
-            satuan_label: "",
-            is_di_luar_boq: true,
-            catatan: row.catatan || "Di luar BOQ",
-            catatanAutoFilled: true,
-          };
-        }
-        const satuanId = picked.satuan_default_id
-          ? String(picked.satuan_default_id)
-          : "";
-        const isInBoq = boqItemsDetail.some(
-          (boqItem) => String(boqItem.barang_id) === String(picked.id)
-        );
-        const catatan =
-          row.catatan && row.catatan !== "Di luar BOQ"
-            ? row.catatan
-            : isInBoq
-              ? ""
-              : "Di luar BOQ";
+  const pickEditDraftItem = (picked: BarangPickerItem) => {
+    setEditDraftItem((prev) => {
+      if (!prev) return prev;
+      if (!picked.id) {
         return {
-          ...row,
-          barang_id: picked.id,
+          ...prev,
+          barang_id: "",
           kode_perangkat: picked.kode_perangkat,
-          nama_barang: picked.nama_barang,
-          satuan_id: satuanId,
-          satuan_label: picked.satuan_default_kode || "",
-          is_di_luar_boq: !isInBoq,
-          catatan,
-          catatanAutoFilled: true,
+          nama_barang: "",
+          satuan_id: "",
+          satuan_label: "",
+          is_di_luar_boq: true,
         };
-      }),
-    );
+      }
+      const satuanId = picked.satuan_default_id ? String(picked.satuan_default_id) : "";
+      const isInBoq = boqItemsDetail.some(
+        (boqItem) => String(boqItem.barang_id) === String(picked.id)
+      );
+      return {
+        ...prev,
+        barang_id: picked.id,
+        kode_perangkat: picked.kode_perangkat,
+        nama_barang: picked.nama_barang,
+        satuan_id: satuanId,
+        satuan_label: picked.satuan_default_kode || "",
+        is_di_luar_boq: !isInBoq,
+      };
+    });
   };
 
-  const setModalItemQty = (id: string, value: number) => {
-    setModalItems((prev) =>
-      prev.map((row) => (row.id === id ? { ...row, qty: Math.max(0, value) } : row)),
-    );
+  const setEditDraftItemQty = (value: number) => {
+    setEditDraftItem((prev) => (prev ? { ...prev, qtySuratJalan: Math.max(0, value) } : prev));
   };
+
+  const setEditDraftItemQtyAktual = (value: number) => {
+    setEditDraftItem((prev) => (prev ? { ...prev, qtyAktual: Math.max(0, value) } : prev));
+  };
+
+  const setEditDraftItemKondisi = (value: string) => {
+    setEditDraftItem((prev) => (prev ? { ...prev, kondisi: value } : prev));
+  };
+
+  const setEditDraftItemSerialNumber = (value: string) => {
+    setEditDraftItem((prev) => (prev ? { ...prev, serialNumber: value } : prev));
+  };
+
+  const setEditDraftItemCatatan = (value: string) => {
+    setEditDraftItem((prev) => (prev ? { ...prev, catatan: value } : prev));
+  };
+
+  const toggleEditDraftItemNonMaster = () => {
+    setEditDraftItem((prev) => {
+      if (!prev) return prev;
+      const nextNonMaster = !prev.is_non_master;
+      if (nextNonMaster) {
+        return {
+          ...prev,
+          is_non_master: true,
+          barang_id: "",
+          kode_perangkat: "",
+          nama_barang: "",
+          satuan_id: "",
+          satuan_label: "",
+          kategori_id: "",
+          is_di_luar_boq: true,
+        };
+      }
+      return {
+        ...prev,
+        is_non_master: false,
+        nama_barang: "",
+        kategori_id: "",
+      };
+    });
+  };
+
+  async function handleEditDraftFotoUpload(file: File) {
+    if (!editDraftItem) return;
+    setEditDraftItem((prev) => (prev ? { ...prev, fotoError: null } : prev));
+
+    const previewUrl = URL.createObjectURL(file);
+    setEditDraftItem((prev) => {
+      if (!prev) return prev;
+      const previous = prev.fotoPreview;
+      if (previous) URL.revokeObjectURL(previous);
+      return { ...prev, fotos: [], fotoPreview: previewUrl, uploadingFoto: true };
+    });
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const uploadRes = await post(`${baseUrl}/api/upload`, formData);
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => null);
+        throw new Error(err?.message || "Gagal upload foto.");
+      }
+
+      const uploadData = await uploadRes.json();
+      const fotoUrl = uploadData?.data?.url || uploadData?.url;
+      if (!fotoUrl) throw new Error("URL foto tidak ditemukan.");
+
+      setEditDraftItem((prev) => {
+        if (!prev) return prev;
+        const previous = prev.fotoPreview;
+        if (previous) URL.revokeObjectURL(previous);
+        return {
+          ...prev,
+          fotos: [{ foto_id: `${Date.now()}`, url: fotoUrl, filename: file.name }],
+          fotoPreview: null,
+          uploadingFoto: false,
+        };
+      });
+    } catch (err) {
+      setEditDraftItem((prev) =>
+        prev
+          ? {
+              ...prev,
+              fotoError: err instanceof Error ? err.message : "Gagal upload foto.",
+              uploadingFoto: false,
+            }
+          : prev
+      );
+    }
+  }
+
+  function handleEditDraftFotoDelete(fotoId: string | number) {
+    setEditDraftItem((prev) => {
+      if (!prev) return prev;
+      const nextFotos = prev.fotos.filter((f) => String(f.foto_id) !== String(fotoId));
+      const nextPreview = prev.fotoPreview && prev.fotos.find((f) => String(f.foto_id) === String(fotoId))
+        ? null
+        : prev.fotoPreview;
+      if (nextPreview) URL.revokeObjectURL(nextPreview);
+      return { ...prev, fotos: nextFotos, fotoPreview: nextPreview };
+    });
+  }
+
+  const setDraftItemNama = (value: string) => {
+    setDraftItem((prev) => ({ ...prev, nama_barang: value }));
+  };
+
+  const setDraftItemKategori = (value: string) => {
+    setDraftItem((prev) => ({ ...prev, kategori_id: value }));
+  };
+
+  const setDraftItemSatuan = (value: string) => {
+    const selected = unitOptions.find((u) => String(u.satuan_id) === String(value));
+    setDraftItem((prev) => ({
+      ...prev,
+      satuan_id: value,
+      satuan_label: selected?.kode_satuan || "",
+    }));
+  };
+
+  const pickDraftItem = (picked: BarangPickerItem) => {
+    setDraftItem((prev) => {
+      if (!picked.id) {
+        return {
+          ...prev,
+          barang_id: "",
+          kode_perangkat: picked.kode_perangkat,
+          nama_barang: "",
+          satuan_id: "",
+          satuan_label: "",
+          is_di_luar_boq: true,
+        };
+      }
+      const satuanId = picked.satuan_default_id ? String(picked.satuan_default_id) : "";
+      const isInBoq = boqItemsDetail.some(
+        (boqItem) => String(boqItem.barang_id) === String(picked.id)
+      );
+      return {
+        ...prev,
+        barang_id: picked.id,
+        kode_perangkat: picked.kode_perangkat,
+        nama_barang: picked.nama_barang,
+        satuan_id: satuanId,
+        satuan_label: picked.satuan_default_kode || "",
+        is_di_luar_boq: !isInBoq,
+      };
+    });
+  };
+
+  const setDraftItemQty = (value: number) => {
+    setDraftItem((prev) => ({ ...prev, qtySuratJalan: Math.max(0, value) }));
+  };
+
+  const setDraftItemQtyAktual = (value: number) => {
+    setDraftItem((prev) => ({ ...prev, qtyAktual: Math.max(0, value) }));
+  };
+
+  const setDraftItemKondisi = (value: string) => {
+    setDraftItem((prev) => ({ ...prev, kondisi: value }));
+  };
+
+  const setDraftItemSerialNumber = (value: string) => {
+    setDraftItem((prev) => ({ ...prev, serialNumber: value }));
+  };
+
+  const setDraftItemCatatan = (value: string) => {
+    setDraftItem((prev) => ({ ...prev, catatan: value }));
+  };
+
+  const toggleDraftItemNonMaster = () => {
+    setDraftItem((prev) => {
+      const nextNonMaster = !prev.is_non_master;
+      if (nextNonMaster) {
+        return {
+          ...prev,
+          is_non_master: true,
+          barang_id: "",
+          kode_perangkat: "",
+          nama_barang: "",
+          satuan_id: "",
+          satuan_label: "",
+          kategori_id: "",
+          is_di_luar_boq: true,
+        };
+      }
+      return {
+        ...prev,
+        is_non_master: false,
+        nama_barang: "",
+        kategori_id: "",
+      };
+    });
+  };
+
+  async function handleDraftFotoUpload(file: File) {
+    setDraftItem((prev) => ({ ...prev, fotoError: null }));
+
+    const previewUrl = URL.createObjectURL(file);
+    setDraftItem((prev) => {
+      const previous = prev.fotoPreview;
+      if (previous) URL.revokeObjectURL(previous);
+      return { ...prev, fotos: [], fotoPreview: previewUrl, uploadingFoto: true };
+    });
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const uploadRes = await post(`${baseUrl}/api/upload`, formData);
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => null);
+        throw new Error(err?.message || "Gagal upload foto.");
+      }
+
+      const uploadData = await uploadRes.json();
+      const fotoUrl = uploadData?.data?.url || uploadData?.url;
+      if (!fotoUrl) throw new Error("URL foto tidak ditemukan.");
+
+      setDraftItem((prev) => {
+        const previous = prev.fotoPreview;
+        if (previous) URL.revokeObjectURL(previous);
+        return {
+          ...prev,
+          fotos: [{ foto_id: `${Date.now()}`, url: fotoUrl, filename: file.name }],
+          fotoPreview: null,
+          uploadingFoto: false,
+        };
+      });
+    } catch (err) {
+      setDraftItem((prev) => ({
+        ...prev,
+        fotoError: err instanceof Error ? err.message : "Gagal upload foto.",
+        uploadingFoto: false,
+      }));
+    }
+  }
+
+  function handleDraftFotoDelete(fotoId: string | number) {
+    setDraftItem((prev) => {
+      const nextFotos = prev.fotos.filter((f) => String(f.foto_id) !== String(fotoId));
+      const nextPreview = prev.fotoPreview && prev.fotos.find((f) => String(f.foto_id) === String(fotoId))
+        ? null
+        : prev.fotoPreview;
+      if (nextPreview) URL.revokeObjectURL(nextPreview);
+      return { ...prev, fotos: nextFotos, fotoPreview: nextPreview };
+    });
+  }
 
   useEffect(() => {
     if (!boqItemsDetail.length) {
       setModalItems((prev) =>
-        prev.map((row) => {
-          const nextIsDiLuarBoq = row.barang_id ? true : row.is_di_luar_boq;
-          const nextCatatan =
-            row.catatanAutoFilled && row.catatan && row.catatan !== "Di luar BOQ"
-              ? row.catatan
-              : row.barang_id
-                ? "Di luar BOQ"
-                : "";
-          return {
-            ...row,
-            is_di_luar_boq: nextIsDiLuarBoq,
-            catatan: nextCatatan,
-            catatanAutoFilled: row.barang_id ? true : row.catatanAutoFilled,
-          };
-        })
+        prev.map((row) => ({
+          ...row,
+          is_di_luar_boq: row.barang_id ? true : row.is_di_luar_boq,
+        }))
       );
       return;
     }
@@ -551,26 +894,13 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
         const isInBoq = boqItemsDetail.some(
           (boqItem) => String(boqItem.barang_id) === String(row.barang_id)
         );
-        const nextIsDiLuarBoq = !isInBoq;
-        const nextCatatan = row.catatanAutoFilled
-          ? isInBoq
-            ? ""
-            : "Di luar BOQ"
-          : row.catatan;
         return {
           ...row,
-          is_di_luar_boq: nextIsDiLuarBoq,
-          catatan: nextCatatan,
+          is_di_luar_boq: !isInBoq,
         };
       })
     );
   }, [boqItemsDetail]);
-
-  const setModalItemCatatan = (id: string, value: string) => {
-    setModalItems((prev) =>
-      prev.map((row) => (row.id === id ? { ...row, catatan: value, catatanAutoFilled: false } : row)),
-    );
-  };
 
   const selectedGudangTujuan = warehouseOptions.find((w) => String(w.gudang_id) === selectedGudangTujuanId);
 
@@ -596,7 +926,7 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
   const driverValid = driverNamaTeks.trim().length > 0;
 
   const isRowValid = (row: ModalItemRow) => {
-    if (row.qty <= 0 || !row.satuan_id) return false;
+    if (row.qtySuratJalan <= 0 || !row.satuan_id) return false;
     if (row.is_non_master) {
       return row.nama_barang.trim().length > 0 && !!row.kategori_id;
     }
@@ -617,7 +947,8 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
     noPolisiValid &&
     driverValid &&
     modalItems.length > 0 &&
-    modalItems.every(isRowValid);
+    modalItems.every(isRowValid) &&
+    modalItems.every((row) => !!row.kondisi);
 
   const validModalItems = useMemo(
     () => modalItems.filter(isRowValid),
@@ -625,7 +956,7 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
   );
 
   const totalModalQty = useMemo(
-    () => validModalItems.reduce((sum, row) => sum + row.qty, 0),
+    () => validModalItems.reduce((sum, row) => sum + row.qtySuratJalan, 0),
     [validModalItems],
   );
 
@@ -682,12 +1013,17 @@ pic_pemohon_nama: picPemohon.trim() || null,
           is_non_master: row.is_non_master,
           nama_barang_teks: row.is_non_master ? row.nama_barang.trim() : null,
           kategori_id: row.is_non_master ? row.kategori_id : null,
-          qty: row.qty,
+          qty: row.qtySuratJalan,
+          qty_diterima: row.qtyAktual != null ? row.qtyAktual : null,
           satuan_id: row.satuan_id,
-          kondisi: "baik",
+          kondisi: row.kondisi || "baik",
+          kondisi_diterima: row.kondisi || null,
+          serial_number: row.serialNumber || null,
+          foto_url: row.fotos.length > 0 ? row.fotos[0].url : null,
           is_kelebihan: false,
           is_di_luar_boq: row.is_non_master ? true : row.is_di_luar_boq,
           catatan: row.catatan?.trim() || null,
+          catatan_penerimaan: row.catatan?.trim() || null,
         })),
       };
 
@@ -739,10 +1075,88 @@ pic_pemohon_nama: picPemohon.trim() || null,
   }
 
   useEffect(() => {
+    return () => {
+      Object.values(fotoPreviewRef.current).forEach((url) => {
+        if (url) URL.revokeObjectURL(url);
+      });
+      fotoPreviewRef.current = {};
+    };
+  }, []);
+
+  useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  const mobileItemsInbound1: MobileCardItem[] = list.map((sj) => {
+    const meta = STATUS_META[sj.status] || STATUS_META.draft_diajukan;
+    const totalUnit = sj.items.reduce((sum, i) => sum + Number(i.qty || 0), 0);
+    const tujuanText = sj.gudang_tujuan?.nama_gudang || "-";
+    const tanggal = new Date(sj.created_at).toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+
+    const fields: MobileCardField[] = [
+      { label: "Asal", value: sj.tipe_pengirim === "external" ? `${sj.supplier?.kode ?? ""} - ${sj.supplier?.nama ?? "-"}` : sj.tipe_pengirim === "internal" ? sj.gudang_asal?.nama_gudang || "-" : "-" },
+      { label: "Tujuan", value: tujuanText },
+      { label: "Tanggal", value: tanggal },
+      { label: "Item", value: `${totalUnit} unit` },
+    ];
+
+    let actionContent: React.ReactNode = null;
+    if (sj.status === "diterima_didistribusikan") {
+      actionContent = <span className="text-sm font-semibold text-gray-400">Selesai</span>;
+    } else if (sj.status === "ready_putaway") {
+      actionContent = <Link href={`/staff/putaway/${sj.surat_jalan_id}`} className="flex min-h-11 w-full items-center justify-center rounded-lg bg-[#E8632C] text-sm font-semibold text-white hover:bg-[#D9591F]">Putaway</Link>;
+    } else if (sj.status === "draft_diajukan" && (String(user?.id) === String(sj.created_by || sj.creator?.user_id) || user?.role === "supervisor" || user?.role === "admin_general")) {
+      actionContent = <button onClick={() => handleCancelDraft(sj.surat_jalan_id)} disabled={cancellingId === sj.surat_jalan_id} className="flex min-h-11 w-full items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60">{cancellingId === sj.surat_jalan_id ? "Membatalkan..." : "Batalkan"}</button>;
+    } else {
+      actionContent = <Link href={`/staff/putaway/${sj.surat_jalan_id}`} className="flex min-h-11 w-full items-center justify-center rounded-lg bg-[#E8632C] text-sm font-semibold text-white hover:bg-[#D9591F]">Detail</Link>;
+    }
+
+    return {
+      key: String(sj.surat_jalan_id),
+      title: (
+        <span className="flex items-center gap-2">
+          <PackageCheck size={16} className="text-[#E8632C]" />
+          {sj.nomor_surat_jalan}
+        </span>
+      ),
+      badge: <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${meta.tone}`}>{meta.label}</span>,
+      fields,
+      actions: actionContent,
+    };
+  });
+
+  const mobileItemsInbound2: MobileCardItem[] = modalItems.map((row) => {
+    const kondisiLabel = KONDISI_OPTIONS.find((k) => k.value === row.kondisi)?.label || row.kondisi || "-";
+    const namaBarang = row.is_non_master ? row.nama_barang : `${row.kode_perangkat} - ${row.nama_barang}`;
+
+    const fields: MobileCardField[] = [
+      { label: "Qty SJ", value: String(row.qtySuratJalan) },
+      { label: "Qty Aktual", value: String(row.qtyAktual) },
+      { label: "Serial", value: row.serialNumber || "-" },
+      { label: "Catatan", value: row.catatan || "-" },
+    ];
+
+    const actions = (
+      <div className="grid grid-cols-2 gap-2">
+        <button type="button" onClick={() => handleEditModalItem(row.id)} className="flex min-h-11 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-sm font-semibold text-blue-700 hover:bg-blue-100">Edit</button>
+        <button type="button" onClick={() => removeModalItem(row.id)} className="flex min-h-11 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-sm font-semibold text-rose-700 hover:bg-rose-100">Hapus</button>
+      </div>
+    );
+
+    return {
+      key: String(row.id),
+      title: namaBarang,
+      badge: <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ${KONDISI_TONE[row.kondisi] || "bg-gray-100 text-gray-600"}`}>{kondisiLabel}</span>,
+      fields,
+      actions,
+    };
+  });
 
   return (
     <div className="px-8 py-6">
@@ -1133,7 +1547,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
            </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">PIC / Pemohon</label>
+            <label className="mb-1 block text-xs font-medium text-gray-600">PIC / Penerima</label>
             <input
               type="text"
               value={picPemohon}
@@ -1224,156 +1638,304 @@ pic_pemohon_nama: picPemohon.trim() || null,
         </div>
 
         <div className="mt-6">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Daftar Barang <span className="text-rose-500">*</span></p>
-            <button
-              type="button"
-              onClick={addModalItem}
-              className="flex items-center gap-1 text-xs font-semibold text-orange-500 hover:text-orange-600"
-            >
-              <Plus size={14} />
-              Tambah Item
-            </button>
-          </div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Daftar Barang <span className="text-rose-500">*</span></p>
 
-          <div className="mt-3 space-y-2">
-            {modalItems.map((row) => (
-              <div
-                key={row.id}
-                className="grid grid-cols-12 gap-2 rounded-xl border border-slate-100 p-3"
-              >
-                <div className="col-span-12 mb-1 flex items-center justify-between">
-                  <label className="flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-slate-500 hover:text-orange-600">
-                    <input
-                      type="checkbox"
-                      checked={row.is_non_master}
-                      onChange={() => toggleModalItemNonMaster(row.id)}
-                      className="h-3.5 w-3.5 accent-orange-500"
-                    />
-                    Barang non-master (di luar master data)
+          {/* FORM DRAFT */}
+          <div className="mt-3 rounded-xl border border-slate-100 p-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-slate-500 hover:text-orange-600">
+                <input
+                  type="checkbox"
+                  checked={draftItem.is_non_master}
+                  onChange={toggleDraftItemNonMaster}
+                  className="h-3.5 w-3.5 accent-orange-500"
+                />
+                Barang non-master (di luar master data)
+              </label>
+              {draftItem.is_non_master && (
+                <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-600">
+                  Non-master
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-12 gap-1.5">
+              <div className="col-span-3">
+                {draftItem.is_non_master ? (
+                  <input
+                    type="text"
+                    value={draftItem.nama_barang}
+                    onChange={(e) => setDraftItemNama(e.target.value)}
+                    placeholder="Nama barang (input manual)"
+                    className="w-full rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
+                  />
+                ) : (
+                  <BarangPicker
+                    value={draftItem.kode_perangkat}
+                    onSelect={(picked) => pickDraftItem(picked)}
+                    placeholder="Kode perangkat"
+                  />
+                )}
+              </div>
+              <div className="col-span-2">
+                <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Qty Surat Jalan</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={draftItem.qtySuratJalan}
+                  onChange={(e) => setDraftItemQty(Number(e.target.value))}
+                  className="w-full rounded-md border border-slate-200 py-1 text-center text-xs text-slate-800 outline-none focus:border-orange-400"
+                />
+              </div>
+              <div className="col-span-1">
+                <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Qty Aktual</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={draftItem.qtyAktual}
+                  onChange={(e) => setDraftItemQtyAktual(Number(e.target.value))}
+                  className="w-full rounded-md border border-slate-200 py-1 text-center text-xs text-slate-800 outline-none focus:border-orange-400"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Kondisi</label>
+                <select
+                  value={draftItem.kondisi}
+                  onChange={(e) => {
+                    setDraftItemKondisi(e.target.value);
+                    if (kondisiError) setKondisiError(null);
+                  }}
+                  className={`w-full rounded-md px-1.5 py-1 text-[11px] text-slate-700 outline-none ${kondisiError ? "border border-red-500 focus:border-red-500" : "border border-slate-200 focus:border-orange-400"}`}
+                >
+                  <option value="">Pilih...</option>
+                  {KONDISI_OPTIONS.map((k) => (
+                    <option key={k.value} value={k.value}>
+                      {k.label}
+                    </option>
+                  ))}
+                </select>
+                {kondisiError && <p className="mt-1 text-[11px] text-red-600">Kondisi barang wajib dipilih.</p>}
+              </div>
+              <div className="col-span-2">
+                <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Serial Number</label>
+                <input
+                  type="text"
+                  value={draftItem.serialNumber}
+                  onChange={(e) => setDraftItemSerialNumber(e.target.value)}
+                  placeholder="Opsional"
+                  className="w-full rounded-md border border-slate-200 px-1.5 py-1 text-[11px] text-slate-700 outline-none focus:border-orange-400"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Upload Foto</label>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <label
+                    htmlFor="draft-foto"
+                    className={`inline-flex h-9 cursor-pointer items-center gap-1 rounded-md border border-dashed border-gray-300 px-1.5 text-[10px] font-medium text-gray-500 hover:border-[#E8632C] hover:text-[#E8632C] ${draftItem.uploadingFoto ? "pointer-events-none opacity-50" : ""}`}
+                  >
+                    {draftItem.uploadingFoto ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                    Pilih Foto
                   </label>
-                  {row.is_non_master && (
-                    <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-600">
-                      Non-master
-                    </span>
-                  )}
+                  <input
+                    id="draft-foto"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={draftItem.uploadingFoto}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        handleDraftFotoUpload(file);
+                      }
+                      e.target.value = "";
+                    }}
+                  />
+                  {draftItem.fotoPreview ? (
+                    <div className="relative h-10 w-10 overflow-hidden rounded-md border border-[#E8632C]">
+                      <img src={draftItem.fotoPreview} alt="Pratinjau foto" className="h-full w-full object-cover" />
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-[9px] font-medium text-white">
+                        Mengunggah
+                      </span>
+                    </div>
+                  ) : draftItem.fotos.length > 0 ? (
+                    <div className="relative h-10 w-10 overflow-visible rounded-md border border-gray-200">
+                      <img
+                        src={draftItem.fotos[0].url}
+                        alt={draftItem.fotos[0].filename || "Preview"}
+                        className="h-10 w-10 cursor-pointer rounded-md border border-gray-200 object-cover"
+                        onClick={() => setPreviewFotoUrl(draftItem.fotos[0].url)}
+                      />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDraftFotoDelete(draftItem.fotos[0].foto_id);
+                        }}
+                        className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-white hover:bg-rose-600"
+                        title="Hapus foto"
+                      >
+                        <X size={10} />
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-                <div className="col-span-4">
-                  {row.is_non_master ? (
-                    <input
-                      type="text"
-                      value={row.nama_barang}
-                      onChange={(e) => setModalItemNama(row.id, e.target.value)}
-                      placeholder="Nama barang (input manual)"
-                      className="w-full rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
-                    />
-                  ) : (
-                    <BarangPicker
-                      value={row.kode_perangkat}
-                      onSelect={(picked) => pickModalItem(row.id, picked)}
-                      placeholder="Kode perangkat"
-                    />
-                  )}
-                </div>
-                <div className="col-span-4">
-                  {row.is_non_master ? (
+                {draftItem.fotoError && <p className="mt-1 text-[10px] text-rose-600">{draftItem.fotoError}</p>}
+              </div>
+            </div>
+            <div className="mt-1.5 grid grid-cols-12 gap-1.5">
+              <div className="col-span-3">
+                {draftItem.is_non_master ? (
+                  <select
+                    value={draftItem.satuan_id}
+                    onChange={(e) => setDraftItemSatuan(e.target.value)}
+                    className="w-full rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
+                  >
+                    <option value="">Pilih satuan...</option>
+                    {unitOptions.map((u) => (
+                      <option key={u.satuan_id} value={String(u.satuan_id)}>
+                        {u.kode_satuan}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={draftItem.nama_barang}
+                    readOnly
+                    placeholder="Nama barang"
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-700 outline-none"
+                  />
+                )}
+              </div>
+              <div className="col-span-9">
+                <input
+                  type="text"
+                  value={draftItem.catatan}
+                  onChange={(e) => setDraftItemCatatan(e.target.value)}
+                  placeholder="Catatan (opsional)"
+                  className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
+                />
+              </div>
+            </div>
+            <div className="mt-1.5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {draftItem.is_non_master && (
+                  <div>
+                    <label className="mb-0.5 block text-[11px] font-medium text-slate-500">
+                      Kategori barang <span className="text-rose-500">*</span>
+                    </label>
                     <select
-                      value={row.satuan_id}
-                      onChange={(e) => setModalItemSatuan(row.id, e.target.value)}
-                      className="w-full rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
+                      value={draftItem.kategori_id}
+                      onChange={(e) => setDraftItemKategori(e.target.value)}
+                      className="rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400 sm:w-48"
                     >
-                      <option value="">Pilih satuan...</option>
-                      {unitOptions.map((u) => (
-                        <option key={u.satuan_id} value={String(u.satuan_id)}>
-                          {u.kode_satuan}
+                      <option value="">Pilih kategori...</option>
+                      {categoryOptions.map((c) => (
+                        <option key={c.kategori_id} value={String(c.kategori_id)}>
+                          {c.nama_kategori}
                         </option>
                       ))}
                     </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={row.nama_barang}
-                      readOnly
-                      placeholder="Nama barang"
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-700 outline-none"
-                    />
-                  )}
-                </div>
-                <div className="col-span-3">
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setModalItemQty(row.id, row.qty - 1)}
-                      className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50"
-                    >
-                      −
-                    </button>
-                    <input
-                      type="number"
-                      min={1}
-                      value={row.qty}
-                      onChange={(e) => setModalItemQty(row.id, Number(e.target.value))}
-                      className="w-16 rounded-md border border-slate-200 py-1 text-center text-xs text-slate-800 outline-none focus:border-orange-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setModalItemQty(row.id, row.qty + 1)}
-                      className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50"
-                    >
-                      +
-                    </button>
                   </div>
-                </div>
-                <div className="col-span-1 flex items-center justify-end">
-                  <button
-                    type="button"
-                    onClick={() => removeModalItem(row.id)}
-                    className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-                <div className="col-span-12">
-                  {row.is_non_master && (
-                    <div className="mb-2">
-                      <label className="mb-1 block text-[11px] font-medium text-slate-500">
-                        Kategori barang <span className="text-rose-500">*</span>
-                      </label>
-                      <select
-                        value={row.kategori_id}
-                        onChange={(e) => setModalItemKategori(row.id, e.target.value)}
-                        className="w-full rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400 sm:w-64"
-                      >
-                        <option value="">Pilih kategori...</option>
-                        {categoryOptions.map((c) => (
-                          <option key={c.kategori_id} value={String(c.kategori_id)}>
-                            {c.nama_kategori}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  <input
-                    type="text"
-                    value={row.catatan}
-                    onChange={(e) => setModalItemCatatan(row.id, e.target.value)}
-                    placeholder="Catatan (opsional)"
-                    className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
-                  />
-                  {row.is_di_luar_boq && !row.is_non_master && (
-                    <span className="mt-1 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
-                      Di luar BOQ
-                    </span>
-                  )}
-                </div>
+                )}
+                {draftItem.is_di_luar_boq && !draftItem.is_non_master && (
+                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
+                    Di luar BOQ
+                  </span>
+                )}
               </div>
-            ))}
-            {modalItems.length === 0 && (
-              <div className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-xs text-slate-400">
-                Belum ada barang. Klik "Tambah Item" untuk menambah.
-              </div>
-            )}
+              <button
+                type="button"
+                onClick={handleCheckDraftItem}
+                className="flex items-center gap-1 rounded-lg bg-[#E8632C] px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-[#D9591F]"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Tambah ke Daftar
+              </button>
+            </div>
           </div>
+
+          {/* TABEL RINGKASAN */}
+          <>
+            <MobileCardList items={mobileItemsInbound2} />
+            {modalItems.length > 0 && (
+              <div className="mt-4 overflow-hidden rounded-xl border border-slate-100 hidden md:block">
+                <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <th className="px-3 py-2 font-semibold">Nama Barang</th>
+                    <th className="px-3 py-2 font-semibold text-center">Qty Surat Jalan</th>
+                    <th className="px-3 py-2 font-semibold text-center">Qty Aktual</th>
+                    <th className="px-3 py-2 font-semibold">Kondisi</th>
+                    <th className="px-3 py-2 font-semibold">SERIAL NUMBER</th>
+                    <th className="px-3 py-2 font-semibold">Foto</th>
+                    <th className="px-3 py-2 font-semibold">Catatan</th>
+                    <th className="px-3 py-2 font-semibold text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {modalItems.map((row, idx) => (
+                    <tr key={row.id} className={`border-t border-slate-50 ${idx % 2 === 0 ? "bg-white" : "bg-slate-50"}`}>
+                      <td className="px-3 py-2.5 font-medium text-gray-800">
+                        {row.is_non_master ? row.nama_barang : `${row.kode_perangkat} - ${row.nama_barang}`}
+                      </td>
+                      <td className="px-3 py-2.5 text-center">{row.qtySuratJalan}</td>
+                      <td className="px-3 py-2.5 text-center">{row.qtyAktual}</td>
+                      <td className="px-3 py-2.5">
+                        <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ${KONDISI_TONE[row.kondisi] || "bg-gray-100 text-gray-600"}`}>
+                          {KONDISI_OPTIONS.find((k) => k.value === row.kondisi)?.label || row.kondisi || "-"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-600">{row.serialNumber || "-"}</td>
+                      <td className="px-3 py-2.5 text-gray-600">
+                        {row.fotos.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewFotoUrl(row.fotos[0].url)}
+                            className="block"
+                          >
+                            <img
+                              src={row.fotos[0].url}
+                              alt={row.fotos[0].filename || "Foto barang"}
+                              className="h-10 w-10 rounded-md border border-gray-200 object-cover transition hover:scale-105 hover:border-[#E8632C]"
+                            />
+                          </button>
+                        ) : (
+                          <span className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-dashed border-gray-200 text-gray-300">-</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-600">{row.catatan || "-"}</td>
+                      <td className="px-3 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleEditModalItem(row.id)}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                            title="Edit"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2-2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeModalItem(row.id)}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                            title="Hapus"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+               </table>
+             </div>
+           )}
+         </>
 
           {modalItems.length > 0 && (
             <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5 text-xs text-slate-600">
@@ -1385,6 +1947,271 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 Total Qty:{" "}
                 <span className="font-semibold text-slate-800">{totalModalQty}</span>
               </span>
+            </div>
+          )}
+
+          {modalItems.length === 0 && (
+            <div className="mt-3 rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-xs text-slate-400">
+              Belum ada barang. Isi form draft di atas lalu klik Tambah ke Daftar untuk menambah.
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <Button variant="outline" onClick={() => setModalOpen(false)} disabled={submitting}>
+            Batal
+          </Button>
+          <Button
+            onClick={handleSubmitInbound}
+            disabled={!canSubmitModal || submitting}
+            className="bg-[#E8632C] hover:bg-[#D9591F]"
+          >
+            {submitting ? "Mengirim..." : "Submit"}
+          </Button>
+        </div>
+      </Modal>
+
+      {editModalOpen && editDraftItem && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4"
+          onClick={handleCancelEditItem}
+        >
+          <div
+            className="w-[calc(100vw-1.5rem)] max-w-3xl max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Edit Item Barang</h3>
+                <p className="mt-0.5 text-xs text-slate-400">Ubah detail item lalu klik Simpan Perubahan</p>
+              </div>
+              <button
+                onClick={handleCancelEditItem}
+                className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="px-6 py-5">
+              {formError && (
+                <div className="mb-4 flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">
+                  {formError}
+                </div>
+              )}
+              <div className="rounded-xl border border-slate-100 p-3">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <label className="flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-slate-500 hover:text-orange-600">
+                    <input
+                      type="checkbox"
+                      checked={editDraftItem.is_non_master}
+                      onChange={toggleEditDraftItemNonMaster}
+                      className="h-3.5 w-3.5 accent-orange-500"
+                    />
+                    Barang non-master (di luar master data)
+                  </label>
+                  {editDraftItem.is_non_master && (
+                    <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-600">
+                      Non-master
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-12 gap-1.5">
+                  <div className="col-span-3">
+                    {editDraftItem.is_non_master ? (
+                      <input
+                        type="text"
+                        value={editDraftItem.nama_barang}
+                        onChange={(e) => setEditDraftItemNama(e.target.value)}
+                        placeholder="Nama barang (input manual)"
+                        className="w-full rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
+                      />
+                    ) : (
+                      <BarangPicker
+                        value={editDraftItem.kode_perangkat}
+                        onSelect={(picked) => pickEditDraftItem(picked)}
+                        placeholder="Kode perangkat"
+                      />
+                    )}
+                  </div>
+                  <div className="col-span-2">
+                    <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Qty Surat Jalan</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={editDraftItem.qtySuratJalan}
+                      onChange={(e) => setEditDraftItemQty(Number(e.target.value))}
+                      className="w-full rounded-md border border-slate-200 py-1 text-center text-xs text-slate-800 outline-none focus:border-orange-400"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Qty Aktual</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={editDraftItem.qtyAktual}
+                      onChange={(e) => setEditDraftItemQtyAktual(Number(e.target.value))}
+                      className="w-full rounded-md border border-slate-200 py-1 text-center text-xs text-slate-800 outline-none focus:border-orange-400"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Kondisi</label>
+                    <select
+                      value={editDraftItem.kondisi}
+                      onChange={(e) => {
+                        setEditDraftItemKondisi(e.target.value);
+                        if (editKondisiError) setEditKondisiError(null);
+                      }}
+                      className={`w-full rounded-md px-1.5 py-1 text-[11px] text-slate-700 outline-none ${editKondisiError ? "border border-red-500 focus:border-red-500" : "border border-slate-200 focus:border-orange-400"}`}
+                    >
+                      <option value="">Pilih...</option>
+                      {KONDISI_OPTIONS.map((k) => (
+                        <option key={k.value} value={k.value}>
+                          {k.label}
+                        </option>
+                      ))}
+                    </select>
+                    {editKondisiError && <p className="mt-1 text-[11px] text-red-600">Kondisi barang wajib dipilih.</p>}
+                  </div>
+                  <div className="col-span-1">
+                    <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Serial Number</label>
+                    <input
+                      type="text"
+                      value={editDraftItem.serialNumber}
+                      onChange={(e) => setEditDraftItemSerialNumber(e.target.value)}
+                      placeholder="Opsional"
+                      className="w-full rounded-md border border-slate-200 px-1.5 py-1 text-[11px] text-slate-700 outline-none focus:border-orange-400"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Upload Foto</label>
+                    <div className="flex flex-row items-center gap-2">
+                      <label
+                        htmlFor="edit-foto"
+                        className={`inline-flex h-9 cursor-pointer items-center gap-1 rounded-md border border-dashed border-gray-300 px-1.5 text-[10px] font-medium text-gray-500 hover:border-[#E8632C] hover:text-[#E8632C] ${editDraftItem.uploadingFoto ? "pointer-events-none opacity-50" : ""}`}
+                      >
+                        {editDraftItem.uploadingFoto ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                        Pilih Foto
+                      </label>
+                      <input
+                        id="edit-foto"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={editDraftItem.uploadingFoto}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            handleEditDraftFotoUpload(file);
+                          }
+                          e.target.value = "";
+                        }}
+                      />
+                      {editDraftItem.fotoPreview ? (
+                        <div className="relative h-10 w-10 overflow-hidden rounded-md border border-[#E8632C]">
+                          <img src={editDraftItem.fotoPreview} alt="Pratinjau foto" className="h-full w-full object-cover" />
+                          <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-[9px] font-medium text-white">
+                            Mengunggah
+                          </span>
+                        </div>
+                      ) : editDraftItem.fotos.length > 0 ? (
+                        <div className="relative h-10 w-10 overflow-visible rounded-md border border-gray-200">
+                          <img
+                            src={editDraftItem.fotos[0].url}
+                            alt={editDraftItem.fotos[0].filename || "Preview"}
+                            className="h-10 w-10 cursor-pointer rounded-md border border-gray-200 object-cover"
+                            onClick={() => setPreviewFotoUrl(editDraftItem.fotos[0].url)}
+                          />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditDraftFotoDelete(editDraftItem.fotos[0].foto_id);
+                            }}
+                            className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-white hover:bg-rose-600"
+                            title="Hapus foto"
+                          >
+                            <X size={10} />
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                    {editDraftItem.fotoError && <p className="mt-1 text-[10px] text-rose-600">{editDraftItem.fotoError}</p>}
+                  </div>
+                </div>
+                <div className="mt-1.5 grid grid-cols-12 gap-1.5">
+                  <div className="col-span-3">
+                    {editDraftItem.is_non_master ? (
+                      <select
+                        value={editDraftItem.satuan_id}
+                        onChange={(e) => setEditDraftItemSatuan(e.target.value)}
+                        className="w-full rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
+                      >
+                        <option value="">Pilih satuan...</option>
+                        {unitOptions.map((u) => (
+                          <option key={u.satuan_id} value={String(u.satuan_id)}>
+                            {u.kode_satuan}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={editDraftItem.nama_barang}
+                        readOnly
+                        placeholder="Nama barang"
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-700 outline-none"
+                      />
+                    )}
+                  </div>
+                  <div className="col-span-9">
+                    <input
+                      type="text"
+                      value={editDraftItem.catatan}
+                      onChange={(e) => setEditDraftItemCatatan(e.target.value)}
+                      placeholder="Catatan (opsional)"
+                      className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
+                    />
+                  </div>
+                </div>
+                <div className="mt-1.5 flex items-center gap-2">
+                  {editDraftItem.is_non_master && (
+                    <div>
+                      <label className="mb-0.5 block text-[11px] font-medium text-slate-500">
+                        Kategori barang <span className="text-rose-500">*</span>
+                      </label>
+                      <select
+                        value={editDraftItem.kategori_id}
+                        onChange={(e) => setEditDraftItemKategori(e.target.value)}
+                        className="rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400 sm:w-48"
+                      >
+                        <option value="">Pilih kategori...</option>
+                        {categoryOptions.map((c) => (
+                          <option key={c.kategori_id} value={String(c.kategori_id)}>
+                            {c.nama_kategori}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {editDraftItem.is_di_luar_boq && !editDraftItem.is_non_master && (
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
+                      Di luar BOQ
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="mt-4 flex items-center justify-end gap-2">
+                <Button variant="outline" onClick={handleCancelEditItem} disabled={submitting}>
+                  Batal
+                </Button>
+                <Button
+                  onClick={handleSaveEditItem}
+                  disabled={submitting}
+                  className="bg-[#E8632C] hover:bg-[#D9591F]"
+                >
+                  Simpan Perubahan
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -1401,7 +2228,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
             {submitting ? "Mengirim..." : "Simpan & Proses Putaway"}
           </Button>
         </div>
-      </Modal>
+      )}
 
       {showSuccessModal && (
         <div
@@ -1409,7 +2236,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
           onClick={handleSuccessModalClose}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-white shadow-xl"
+            className="w-[calc(100vw-1.5rem)] max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex flex-col items-center px-6 py-8 text-center">
@@ -1445,6 +2272,40 @@ pic_pemohon_nama: picPemohon.trim() || null,
           <div className="flex items-center gap-2 text-sm font-medium">
             {toast.type === "success" ? "✓" : "✕"}
             {toast.message}
+          </div>
+        </div>
+      )}
+
+      {previewFotoUrl && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 p-4"
+          onClick={() => setPreviewFotoUrl(null)}
+        >
+          <div
+            className="w-[calc(100vw-1.5rem)] max-w-3xl max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <p className="text-xs font-medium text-slate-500">Preview Foto</p>
+              <button
+                onClick={() => setPreviewFotoUrl(null)}
+                className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-4">
+              <img
+                src={previewFotoUrl}
+                alt="Preview"
+                className="max-h-[70vh] w-full rounded-xl object-contain"
+              />
+            </div>
+            <div className="flex items-center justify-end border-t border-slate-100 px-6 py-4">
+              <Button variant="outline" onClick={() => setPreviewFotoUrl(null)}>
+                Tutup
+              </Button>
+            </div>
           </div>
         </div>
       )}

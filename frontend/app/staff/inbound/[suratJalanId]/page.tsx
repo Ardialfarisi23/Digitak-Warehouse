@@ -1,9 +1,7 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { PackagePlus, AlertTriangle, ArrowLeft, FileDown, Loader2, AlertCircle, ExternalLink, Upload, X, ChevronRight, ChevronDown } from "lucide-react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useApi, ensureOk } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";

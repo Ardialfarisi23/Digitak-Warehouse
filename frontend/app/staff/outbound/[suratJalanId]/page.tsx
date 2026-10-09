@@ -59,6 +59,12 @@ interface SuratJalan {
   project?: { nama_project: string };
   kendaraan?: { jenis_kendaraan: string; no_polisi: string };
   personil_pengantar?: { nama: string };
+  kendaraan_teks?: string | null;
+  kendaraan_jenis_teks?: string | null;
+  no_polisi_teks?: string | null;
+  kendaraan_label?: string | null;
+  driver_teks?: string | null;
+  driver_label?: string | null;
   boq?: {
     boq_id: number;
     boq_number?: string;
@@ -218,9 +224,9 @@ export default function SuratJalanDetailPage() {
     tanggal,
     projectName: suratJalan.project?.nama_project || "-",
     namaPicPemohon: suratJalan.pic_pemohon_nama || "-",
-    kendaraan: suratJalan.kendaraan?.jenis_kendaraan || "-",
-    noPolisi: suratJalan.kendaraan?.no_polisi || "-",
-    namaDriver: suratJalan.personil_pengantar?.nama || "-",
+    kendaraan: suratJalan.kendaraan_label || suratJalan.kendaraan?.jenis_kendaraan || "-",
+    noPolisi: suratJalan.no_polisi_teks || suratJalan.kendaraan?.no_polisi || "-",
+    namaDriver: suratJalan.driver_label || suratJalan.driver_teks || suratJalan.personil_pengantar?.nama || "-",
     items: mappedItems,
     alamatLapangan: suratJalan.alamat_lapangan || undefined,
   };
@@ -488,7 +494,7 @@ export default function SuratJalanDetailPage() {
           </div>
           <div className="min-w-0 space-y-3">
             <InfoRow label="Tanggal" value={displaySJ.tanggal} />
-            <InfoRow label="Nama PIC Pemohon" value={displaySJ.namaPicPemohon} />
+            <InfoRow label="Nama PIC Penerima" value={displaySJ.namaPicPemohon} />
             <InfoRow label="Kendaraan" value={displaySJ.kendaraan} />
             <InfoRow label="No Polisi" value={displaySJ.noPolisi} />
             <InfoRow label="Nama Driver" value={displaySJ.namaDriver} />
@@ -520,7 +526,8 @@ export default function SuratJalanDetailPage() {
         </div>
 
         {/* Tabel item */}
-        <table className="mb-10 w-full border-collapse text-sm">
+        <div className="overflow-x-auto overscroll-x-contain">
+        <table className="min-w-[640px] mb-10 w-full border-collapse text-sm">
           <thead>
             <tr className="bg-[#FFF7ED]">
               <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">No</th>
@@ -572,8 +579,9 @@ export default function SuratJalanDetailPage() {
                 <td className="border border-gray-200 px-3 py-6" colSpan={7} />
               </tr>
             ))}
-          </tbody>
-        </table>
+           </tbody>
+         </table>
+         </div>
 
         {/* Tanda tangan */}
         <div className="mb-8 grid grid-cols-3 gap-6 text-center text-sm">
@@ -590,7 +598,7 @@ export default function SuratJalanDetailPage() {
             </div>
           </div>
           <div>
-            <p className="mb-16 font-medium text-gray-700">PIC Pemohon (Penerima)</p>
+            <p className="mb-16 font-medium text-gray-700">PIC Penerima (Penerima)</p>
             <div className="border-t border-gray-400 pt-1">
               <p className="font-semibold text-gray-900">{displaySJ.namaPicPemohon}</p>
             </div>

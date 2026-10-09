@@ -3,6 +3,7 @@ const AppError = require("../../shared/errors");
 const reconciliationService = require("../reconciliation/reconciliation.service");
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
+const additionalRepository = require("../additional/additional.repository");
 
 const AUDIT_AKSI_VALUES = [
   "create",
@@ -1064,6 +1065,7 @@ const getStockHistory = async (filters = {}) => {
       kondisi: item?.kondisi || "-",
       surat_jalan_id: suratJalan ? String(suratJalan.surat_jalan_id) : "-",
       nomor_surat_jalan: suratJalan?.nomor_surat_jalan || "-",
+      return_transaction_id: ledger.return_transaction_id ? String(ledger.return_transaction_id) : null,
       tipe_surat_jalan: suratJalan?.tipe || "-",
       status_surat_jalan: suratJalan?.status || "-",
       project_nama: suratJalan?.project?.nama_project || "-",
@@ -1422,6 +1424,7 @@ const getStockHistoryForExport = async (filters = {}) => {
       kondisi: item?.kondisi || "-",
       surat_jalan_id: suratJalan ? String(suratJalan.surat_jalan_id) : "-",
       nomor_surat_jalan: suratJalan?.nomor_surat_jalan || "-",
+      return_transaction_id: ledger.return_transaction_id ? String(ledger.return_transaction_id) : null,
       tipe_surat_jalan: suratJalan?.tipe || "-",
       status_surat_jalan: suratJalan?.status || "-",
       project_nama: suratJalan?.project?.nama_project || "-",
@@ -1727,7 +1730,7 @@ const getHardwareReconciliation = async (filters = {}) => {
     where: {
       status: { in: ["draft", "aktif", "selesai"] },
       ...(projectId !== "all" && {
-        tiket: { project_id: BigInt(projectId) },
+        cluster: { project_id: BigInt(projectId) },
       }),
     },
     include: {
@@ -1739,6 +1742,7 @@ const getHardwareReconciliation = async (filters = {}) => {
       cluster: {
         select: {
           cluster_id: true,
+          project_id: true,
         },
       },
       items: {
@@ -1758,7 +1762,7 @@ const getHardwareReconciliation = async (filters = {}) => {
 
   const clusterIdByProject = new Map();
   for (const boq of boqRecords) {
-    const projectIdNum = Number(boq.tiket?.project_id);
+    const projectIdNum = Number(boq.cluster?.project_id);
     if (!projectIdNum) continue;
     if (boq.cluster?.cluster_id && !clusterIdByProject.has(projectIdNum)) {
       clusterIdByProject.set(projectIdNum, boq.cluster.cluster_id);
@@ -1778,7 +1782,6 @@ const getHardwareReconciliation = async (filters = {}) => {
         select: {
           qty: true,
           barang_id: true,
-          is_kelebihan: true,
         },
       },
     },
@@ -1790,7 +1793,7 @@ const getHardwareReconciliation = async (filters = {}) => {
   const usedByProject = new Map();
 
   for (const boq of boqRecords) {
-    const projectIdNum = Number(boq.tiket?.project_id);
+    const projectIdNum = Number(boq.cluster?.project_id);
     if (!projectIdNum) continue;
 
     const currentBoq = boqByProject.get(projectIdNum) || 0;
@@ -1798,31 +1801,26 @@ const getHardwareReconciliation = async (filters = {}) => {
     boqByProject.set(projectIdNum, currentBoq + itemQty);
   }
 
-  const additionalRecords = await prisma.surat_jalan_item.findMany({
-    where: {
-      is_kelebihan: true,
-      surat_jalan: {
-        status: "diterima_didistribusikan",
-        ...(projectId !== "all" && { project_id: BigInt(projectId) }),
-      },
-    },
-    select: {
-      qty: true,
-      surat_jalan: {
-        select: {
-          project_id: true,
-        },
-      },
-    },
-  });
+  const projectIdsForAdditional =
+    projectId !== "all"
+      ? [BigInt(projectId)]
+      : Array.from(
+          new Set(
+            boqRecords
+              .map((boq) => boq.cluster?.project_id)
+              .filter((id) => id != null)
+          )
+        );
 
-  for (const item of additionalRecords) {
-    const projectIdNum = Number(item.surat_jalan?.project_id);
-    if (!projectIdNum) continue;
-    additionalByProject.set(
-      projectIdNum,
-      (additionalByProject.get(projectIdNum) || 0) + Number(item.qty || 0)
-    );
+  const additionalTotals =
+    projectIdsForAdditional.length > 0
+      ? await additionalRepository.getAdditionalTotalsByProjectOnly(
+          projectIdsForAdditional.map((id) => Number(id))
+        )
+      : new Map();
+
+  for (const [projectIdNum, total] of additionalTotals) {
+    additionalByProject.set(projectIdNum, total);
   }
 
   for (const shipment of shipmentTotals) {
@@ -1852,7 +1850,7 @@ const getHardwareReconciliation = async (filters = {}) => {
   for (const project of projects) {
     const projectIdNum = Number(project.project_id);
     const projectBoqRecords = boqRecords.filter(
-      (b) => Number(b.tiket?.project_id || 0) === projectIdNum
+      (b) => Number(b.cluster?.project_id || 0) === projectIdNum
     );
 
     const projectTickets = new Set();
@@ -1982,17 +1980,18 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
   const outboundByProject = new Map();
   const additionalByProject = new Map();
 
+  const additionalTotalsByProject =
+    projectId !== "all"
+      ? await additionalRepository.getAdditionalTotalsByProjectOnly([Number(projectId)])
+      : new Map();
+
   for (const sj of suratJalans) {
     const pid = Number(sj.project_id);
     if (!pid) continue;
     for (const item of sj.items) {
       const qty = Number(item.qty || 0);
       if (sj.tipe === "inbound") {
-        if (item.is_kelebihan) {
-          additionalByProject.set(pid, (additionalByProject.get(pid) || 0) + qty);
-        } else {
-          inboundByProject.set(pid, (inboundByProject.get(pid) || 0) + qty);
-        }
+        inboundByProject.set(pid, (inboundByProject.get(pid) || 0) + qty);
       }
       if (sj.tipe === "outbound" && sj.tujuan_tipe !== "gudang") {
         outboundByProject.set(pid, (outboundByProject.get(pid) || 0) + qty);
@@ -2027,7 +2026,7 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
   let rows = tikets.map((tiket) => {
     const projectIdNum = Number(tiket.project_id);
     const boqPlan = tiket.boq?.items?.reduce((sum, item) => sum + Number(item.qty_rencana || 0), 0) || 0;
-    const additional = Number(additionalByProject.get(projectIdNum) || 0);
+    const additional = Number(additionalTotalsByProject.get(projectIdNum) || 0);
     const mos = Number(outboundByProject.get(projectIdNum) || 0);
     const used = tiket.used ? Number(tiket.used) : Number(outboundByProject.get(projectIdNum) || 0);
     const approvedReturnQty = Number(approvedReturnByTiket.get(tiket.tiket_id) || 0);
@@ -2086,12 +2085,11 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
   const { projectId = "all", search = "" } = filters;
 
   const whereBoq = {
-    status: { in: ["draft", "aktif", "selesai"] },
+    boq: {
+      status: { in: ["draft", "aktif", "selesai"] },
+      ...(projectId !== "all" ? { tiket: { project_id: BigInt(projectId) } } : {}),
+    },
   };
-
-  if (projectId !== "all") {
-    whereBoq.tiket = { project_id: BigInt(projectId) };
-  }
 
   const boqItems = await prisma.boq_item.findMany({
     where: whereBoq,
@@ -2101,9 +2099,14 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
           tiket: {
             select: {
               project_id: true,
-              nama_project: true,
-              area: true,
+              kode_tiket: true,
               cluster_id: true,
+              project: {
+                select: {
+                  nama_project: true,
+                  area: true,
+                },
+              },
             },
           },
           cluster: {
@@ -2150,29 +2153,43 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
   const outboundByBarang = new Map();
   const additionalByBarang = new Map();
 
+  const projectIdsForAdditional =
+    projectId !== "all"
+      ? [Number(projectId)]
+      : Array.from(
+          new Set(
+            shipmentItems
+              .map((item) => item.surat_jalan?.project_id)
+              .filter((id) => id != null)
+          )
+        );
+
+  const additionalTotalsByProject =
+    projectIdsForAdditional.length > 0
+      ? await additionalRepository.getAdditionalTotalsByProject(projectIdsForAdditional)
+      : new Map();
+
+  for (const [key, val] of additionalTotalsByProject) {
+    additionalByBarang.set(key, (additionalByBarang.get(key) || 0) + val);
+  }
+
   for (const item of shipmentItems) {
     const barangId = String(item.barang_id);
     const qty = Number(item.qty || 0);
     const projectIdNum = Number(item.surat_jalan?.project_id);
+    const key = `${projectIdNum}-${barangId}`;
 
     if (item.surat_jalan?.tipe === "inbound") {
-      if (item.is_kelebihan) {
-        additionalByBarang.set(
-          `${projectIdNum}-${barangId}`,
-          (additionalByBarang.get(`${projectIdNum}-${barangId}`) || 0) + qty
-        );
-      } else {
-        inboundByBarang.set(
-          `${projectIdNum}-${barangId}`,
-          (inboundByBarang.get(`${projectIdNum}-${barangId}`) || 0) + qty
-        );
-      }
+      inboundByBarang.set(
+        key,
+        (inboundByBarang.get(key) || 0) + qty
+      );
     }
 
     if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
       outboundByBarang.set(
-        `${projectIdNum}-${barangId}`,
-        (outboundByBarang.get(`${projectIdNum}-${barangId}`) || 0) + qty
+        key,
+        (outboundByBarang.get(key) || 0) + qty
       );
     }
   }
@@ -2426,7 +2443,6 @@ const backfillReconciliation = async (actorId) => {
       items: {
         select: {
           qty: true,
-          is_kelebihan: true,
         },
       },
     },
@@ -2436,17 +2452,22 @@ const backfillReconciliation = async (actorId) => {
   const outboundByProject = new Map();
   const additionalByProject = new Map();
 
+  const projectIdsForAdditional = Array.from(
+    new Set(allSuratJalans.map((sj) => sj.project_id).filter((id) => id != null))
+  ).map((id) => Number(id));
+
+  const additionalTotalsByProject =
+    projectIdsForAdditional.length > 0
+      ? await additionalRepository.getAdditionalTotalsByProjectOnly(projectIdsForAdditional)
+      : new Map();
+
   for (const sj of allSuratJalans) {
     const pid = Number(sj.project_id);
     if (!pid) continue;
     for (const item of sj.items) {
       const qty = Number(item.qty || 0);
       if (sj.tipe === "inbound") {
-        if (item.is_kelebihan) {
-          additionalByProject.set(pid, (additionalByProject.get(pid) || 0) + qty);
-        } else {
-          inboundByProject.set(pid, (inboundByProject.get(pid) || 0) + qty);
-        }
+        inboundByProject.set(pid, (inboundByProject.get(pid) || 0) + qty);
       }
       if (sj.tipe === "outbound" && sj.tujuan_tipe !== "gudang") {
         outboundByProject.set(pid, (outboundByProject.get(pid) || 0) + qty);
@@ -2484,6 +2505,7 @@ const backfillReconciliation = async (actorId) => {
         mos,
         used,
         catatan: "Data migrasi otomatis dari sistem lama — belum dikonfirmasi mitra",
+        cluster_id: tiket.cluster_id || null,
         uploaded_by: BigInt(actorId || 0),
         is_aktif: true,
       },

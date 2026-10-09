@@ -52,6 +52,8 @@ const findAll = async ({
   search,
   sortBy = "updated_at",
   sortOrder = "desc",
+  kategori_id,
+  satuan_default_id,
 } = {}) => {
   const sanitizedPage = Math.max(
     parseInt(page, 10) || DEFAULT_PAGE,
@@ -74,6 +76,14 @@ const findAll = async ({
     : "desc";
 
   const where = {};
+
+  if (kategori_id !== undefined && kategori_id !== null && kategori_id !== "") {
+    where.kategori_id = Number(kategori_id);
+  }
+
+  if (satuan_default_id !== undefined && satuan_default_id !== null && satuan_default_id !== "") {
+    where.satuan_default_id = Number(satuan_default_id);
+  }
 
   if (search) {
     where.OR = [

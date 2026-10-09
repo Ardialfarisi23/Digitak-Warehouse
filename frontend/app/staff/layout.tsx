@@ -77,7 +77,7 @@ export default function StaffLayout({
     <ProtectedRoute>
       <div className="min-h-screen bg-[#FAFAF8] overflow-visible">
         <CompactSidebar userRole={userRole} />
-        <main className="min-h-screen transition-all duration-300" style={{ marginLeft: `${width}px` }}>
+        <main className="min-h-screen p-4 sm:p-6 transition-all duration-300 ml-0 md:ml-[var(--sidebar-w)]" style={{ "--sidebar-w": `${width}px` } as React.CSSProperties}>
           <div className="flex items-center justify-end px-6 pt-4">
             <div className="relative" ref={notifRef}>
               <button
@@ -98,7 +98,7 @@ export default function StaffLayout({
               </button>
 
               {notifOpen && (
-                <div className="absolute right-0 top-12 w-80 rounded-2xl border border-slate-200 bg-white shadow-xl z-50">
+                  <div className="fixed inset-x-3 top-16 md:absolute md:right-0 md:top-full md:mt-2 w-auto md:w-80 md:max-w-80 rounded-2xl border border-slate-200 bg-white shadow-xl z-50">
                   <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Notifikasi</p>
                     <div className="flex items-center gap-1">

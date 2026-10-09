@@ -56,16 +56,6 @@ type ApiZona = {
   tipe_zona?: string | null;
 };
 
-type ConfirmModalProps = {
-  open: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  submitting: boolean;
-  data: ApiSuratJalan | null;
-  zonas: ApiZona[];
-  zonaByItem: Record<number, string>;
-};
-
 function zonaLabel(z: ApiZona): string {
   const nama = z.nama_zona || z.kode_zona;
   return z.tipe_zona ? `${nama} — ${z.tipe_zona}` : nama;
@@ -195,7 +185,8 @@ export default function PutawayDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   // Simpan pilihan zona per item — dikirim sebagai zona_id saat submit.
   const [zonaByItem, setZonaByItem] = useState<Record<number, string>>({});
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [qtyAktualByItem, setQtyAktualByItem] = useState<Record<number, string>>({});
+  const [catatanByItem, setCatatanByItem] = useState<Record<number, string>>({});
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successModalMessage, setSuccessModalMessage] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -356,7 +347,7 @@ export default function PutawayDetailPage() {
 
   async function handleSubmit() {
     if (!allAssigned || !data) return;
-    setShowConfirmModal(true);
+    await confirmSubmit();
   }
 
   async function confirmSubmit() {
@@ -368,7 +359,6 @@ export default function PutawayDetailPage() {
     });
 
     setSubmitting(true);
-    setShowConfirmModal(false);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
       const payload = { items: resolvedItems };
@@ -441,13 +431,16 @@ export default function PutawayDetailPage() {
           {isSelesai ? "Zona Penyimpanan" : "Tentukan Zona Penyimpanan per Barang"}
         </p>
 
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto overscroll-x-contain">
+        <table className="min-w-[640px] w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
               <th className="pb-3 pr-4 font-semibold">Barang</th>
               <th className="pb-3 pr-4 font-semibold">Foto Barang</th>
               <th className="pb-3 pr-4 font-semibold">Kondisi</th>
-              <th className="pb-3 pr-4 font-semibold text-right">Qty</th>
+              <th className="pb-3 pr-4 font-semibold text-right">QTY SURAT JALAN</th>
+              <th className="pb-3 pr-4 font-semibold text-right">QTY AKTUAL</th>
+              <th className="pb-3 pr-4 font-semibold">CATATAN</th>
               <th className="pb-3 font-semibold">Zona</th>
             </tr>
           </thead>
@@ -552,9 +545,10 @@ export default function PutawayDetailPage() {
               </tr>
               );
             })}
-          </tbody>
-        </table>
-      </div>
+           </tbody>
+         </table>
+         </div>
+       </div>
 
       {!isSelesai && (
         <Button
@@ -562,19 +556,9 @@ export default function PutawayDetailPage() {
           onClick={handleSubmit}
           className="mt-5 h-auto rounded-xl bg-[#E8632C] px-6 py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
         >
-          {submitting ? "Menyimpan..." : "Konfirmasi Penempatan"}
+          {submitting ? "Menyimpan..." : "Simpan & Selesaikan Putaway"}
         </Button>
       )}
-
-      <ConfirmModal
-        open={showConfirmModal}
-        onClose={() => setShowConfirmModal(false)}
-        onConfirm={confirmSubmit}
-        submitting={submitting}
-        data={data}
-        zonas={zonas}
-        zonaByItem={zonaByItem}
-      />
 
       {toast && (
         <div
@@ -623,7 +607,7 @@ export default function PutawayDetailPage() {
           onClick={handleSuccessModalClose}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-white shadow-xl"
+            className="w-[calc(100vw-1.5rem)] max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex flex-col items-center px-6 py-8 text-center">
@@ -666,7 +650,7 @@ export default function PutawayDetailPage() {
           </div>
 
           <div
-            className="relative flex max-h-[75vh] w-full max-w-3xl items-center justify-center"
+            className="relative flex w-[calc(100vw-1.5rem)] max-w-3xl max-h-[calc(100dvh-2rem)] items-center justify-center"
             onClick={(e) => e.stopPropagation()}
           >
             <img

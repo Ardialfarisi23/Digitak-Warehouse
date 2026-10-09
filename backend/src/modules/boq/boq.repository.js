@@ -1,16 +1,19 @@
 const prisma = require("../../config/prisma");
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
+const { normalizeClusterId } = require("../../utils/clusterResolver");
+const additionalRepository = require("../additional/additional.repository");
 
 const DEFAULT_LIMIT = 10;
 const DEFAULT_PAGE = 1;
 const ALLOWED_SORT_FIELDS = ["boq_id", "status", "tanggal_aktivasi", "created_at", "updated_at"];
 const EXCLUDED_BOQ_STATUSES_FOR_SJ = ["draft", "selesai", "ditolak"];
 
-const create = async (data) => {
+const create = async (data, tx = prisma) => {
+  const normalizedData = { ...data, cluster_id: normalizeClusterId(data.cluster_id) };
   // 1. Cek dulu apakah tiket_id yang dikirim dari form sudah punya BOQ
-  const existingBoq = await prisma.boq.findUnique({
-    where: { tiket_id: Number(data.tiket_id) },
+  const existingBoq = await tx.boq.findUnique({
+    where: { tiket_id: Number(normalizedData.tiket_id) },
   });
 
   // 2. Kalau datanya ketemu (berarti sudah ada BOQ-nya), lemparkan error
@@ -19,8 +22,8 @@ const create = async (data) => {
   }
 
   // 3. Kalau aman, lanjutkan simpan
-  return await prisma.boq.create({
-    data,
+  return await tx.boq.create({
+    data: normalizedData,
     include: {
       tiket: {
         include: {
@@ -44,6 +47,11 @@ const findById = async (boq_id) => {
     where: { boq_id: Number(boq_id) },
     include: {
       tiket: {
+        include: {
+          project: true,
+        },
+      },
+      cluster: {
         include: {
           project: true,
         },
@@ -170,6 +178,7 @@ const update = async (boq_id, data) => {
     const itemData = items.map((item) => ({
       ...item,
       boq_id: Number(boq_id),
+      cluster_id: normalizeClusterId(item.cluster_id),
     }));
 
     await prisma.boq_item.createMany({
@@ -426,7 +435,8 @@ const findItemsByProject = async (projectId, clusterId, statuses = ["aktif"]) =>
     }
   }
 
-  // Additional = qty inbound yang marked "kelebihan" (di luar alokasi BOQ Plan).
+  // Additional = qty inbound yang marked "kelebihan" (di luar alokasi BOQ Plan)
+  //             + SUM(additional_adjustment.qty).
   // MOS = qty yang sudah pernah dikirim (outbound final, bukan transfer antar gudang).
   // Keduanya dipakai sebagai informasi di form Outbound. Catatan: qty_rencana di
   // atas sudah NETO karena reduceBoqAllocation() memotongnya saat outbound disetujui.
@@ -438,20 +448,19 @@ const findItemsByProject = async (projectId, clusterId, statuses = ["aktif"]) =>
   ];
 
   if (projectIds.length > 0) {
-    const FINAL_SHIPMENT_STATUSES = ["disetujui", "diterima_didistribusikan"];
+    const additionalTotals = await additionalRepository.getAdditionalTotals(projectIds);
 
     const shipmentItems = await prisma.surat_jalan_item.findMany({
       where: {
         barang_id: { in: [...itemMap.keys()] },
         surat_jalan: {
           project_id: { in: projectIds },
-          status: { in: FINAL_SHIPMENT_STATUSES },
+          status: { in: ["disetujui", "diterima_didistribusikan"] },
         },
       },
       select: {
         barang_id: true,
         qty: true,
-        is_kelebihan: true,
         surat_jalan: {
           select: {
             tipe: true,
@@ -466,15 +475,16 @@ const findItemsByProject = async (projectId, clusterId, statuses = ["aktif"]) =>
       const qty = Number(item.qty || 0);
 
       if (item.surat_jalan?.tipe === "inbound") {
-        if (item.is_kelebihan) {
-          additionalByBarang.set(key, (additionalByBarang.get(key) || 0) + qty);
-        }
         continue;
       }
 
       if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
         mosByBarang.set(key, (mosByBarang.get(key) || 0) + qty);
       }
+    }
+
+    for (const [key, val] of additionalTotals) {
+      additionalByBarang.set(key, (additionalByBarang.get(key) || 0) + val);
     }
   }
 
@@ -565,6 +575,23 @@ const getExportMatrixData = async () => {
   const additionalByProjectBarang = new Map();
   const mosByProjectBarang = new Map();
 
+  const additionalTotalsByProject =
+    shipmentItems.length > 0
+      ? await additionalRepository.getAdditionalTotalsByProject(
+          Array.from(
+            new Set(
+              shipmentItems
+                .map((item) => item.surat_jalan?.project_id)
+                .filter((id) => id != null)
+            )
+          ).map((id) => Number(id))
+        )
+      : new Map();
+
+  for (const [key, val] of additionalTotalsByProject) {
+    additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + val);
+  }
+
   for (const item of shipmentItems) {
     const projectIdNum = Number(item.surat_jalan?.project_id);
     const barangId = String(item.barang_id);
@@ -572,17 +599,10 @@ const getExportMatrixData = async () => {
     const key = `${projectIdNum}-${barangId}`;
 
     if (item.surat_jalan?.tipe === "inbound") {
-      if (item.is_kelebihan) {
-        additionalByProjectBarang.set(
-          key,
-          (additionalByProjectBarang.get(key) || 0) + qty
-        );
-      } else {
-        inboundByProjectBarang.set(
-          key,
-          (inboundByProjectBarang.get(key) || 0) + qty
-        );
-      }
+      inboundByProjectBarang.set(
+        key,
+        (inboundByProjectBarang.get(key) || 0) + qty
+      );
     }
 
     if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {

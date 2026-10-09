@@ -113,6 +113,12 @@ function ConfirmModal({
   titikLapangan,
   selectedPengirimKategori,
   pengirimEksternalNama,
+  kendaraanManual,
+  kendaraanNamaTeks,
+  kendaraanJenisTeks,
+  kendaraanNoPolisiTeks,
+  driverManual,
+  driverNamaTeks,
 }: {
   open: boolean;
   onClose: () => void;
@@ -132,6 +138,12 @@ function ConfirmModal({
   titikLapangan: { titik_lapangan_id: string | number; nama_lokasi: string }[];
   selectedPengirimKategori: string;
   pengirimEksternalNama: string;
+  kendaraanManual: boolean;
+  kendaraanNamaTeks: string;
+  kendaraanJenisTeks: string;
+  kendaraanNoPolisiTeks: string;
+  driverManual: boolean;
+  driverNamaTeks: string;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -146,7 +158,7 @@ function ConfirmModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-[calc(100vw-1.5rem)] max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
           <div>
             <h3 className="text-base font-semibold text-slate-900">Periksa Kembali Data Barang</h3>
@@ -217,11 +229,11 @@ function ConfirmModal({
                 <div className="space-y-1 text-sm">
                   {picPemohon && (
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-500">PIC Pemohon</span>
+                      <span className="text-slate-500">PIC Penerima</span>
                       <span className="font-medium text-slate-700">{picPemohon}</span>
                     </div>
                   )}
-                  {selectedVehicle && (
+                  {selectedVehicle && !kendaraanManual && (
                     <div className="flex items-center justify-between">
                       <span className="text-slate-500">Kendaraan</span>
                       <span className="font-medium text-slate-700">
@@ -230,13 +242,27 @@ function ConfirmModal({
                       </span>
                     </div>
                   )}
-                  {selectedPersonil && (
+                  {kendaraanManual && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Kendaraan (manual)</span>
+                      <span className="font-medium text-slate-700">
+                        {kendaraanNamaTeks} — {kendaraanJenisTeks} — {kendaraanNoPolisiTeks}
+                      </span>
+                    </div>
+                  )}
+                  {selectedPersonil && !driverManual && (
                     <div className="flex items-center justify-between">
                       <span className="text-slate-500">Driver</span>
                       <span className="font-medium text-slate-700">
                         {selectedPersonil.nama}
                         {selectedPersonil.posisi ? ` — ${selectedPersonil.posisi}` : ""}
                       </span>
+                    </div>
+                  )}
+                  {driverManual && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Driver (manual)</span>
+                      <span className="font-medium text-slate-700">{driverNamaTeks}</span>
                     </div>
                   )}
                 </div>
@@ -276,7 +302,11 @@ export default function AjukanSuratJalanPage() {
   const [qtyByItem, setQtyByItem] = useState<Record<string, number>>({});
   const [picPemohon, setPicPemohon] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
+  const [kendaraanNamaTeks, setKendaraanNamaTeks] = useState<string>("");
+  const [kendaraanJenisTeks, setKendaraanJenisTeks] = useState<string>("");
+  const [kendaraanNoPolisiTeks, setKendaraanNoPolisiTeks] = useState<string>("");
   const [selectedPersonilId, setSelectedPersonilId] = useState<string>("");
+  const [driverNamaTeks, setDriverNamaTeks] = useState<string>("");
   const [selectedGudangAsalId, setSelectedGudangAsalId] = useState<string>("");
   const [selectedGudangTujuanId, setSelectedGudangTujuanId] = useState<string>("");
   const [selectedTujuanKategori, setSelectedTujuanKategori] = useState<string>("");
@@ -662,11 +692,34 @@ const [itemsRes, boqsRes] = await Promise.all([
   const totalQty = selectedItems.reduce((sum, i) => sum + i.qty, 0);
   const tujuanValid = !selectedTujuanKategori ? false : selectedTujuanKategori === "lapangan" ? !!alamatLapangan.trim() : !!selectedGudangTujuanId;
   const pengirimValid = !selectedPengirimKategori ? false : selectedPengirimKategori === "internal" ? !!selectedGudangAsalId : !!pengirimEksternalNama.trim();
-  const canSubmit = !!selectedProject && selectedItems.length > 0 && !!selectedPersonil && Object.keys(fotoUrlsByItem).length > 0 && tujuanValid && pengirimValid;
+  const kendaraanManual = selectedVehicleId === "__manual__";
+  const kendaraanManualValid = !kendaraanManual || (kendaraanNamaTeks.trim() && kendaraanJenisTeks.trim() && kendaraanNoPolisiTeks.trim());
+  const driverManual = selectedPersonilId === "__manual_driver__";
+  const driverManualValid = !driverManual || driverNamaTeks.trim() !== "";
+  const canSubmit = !!selectedProject && selectedItems.length > 0 && !!selectedPersonil && Object.keys(fotoUrlsByItem).length > 0 && tujuanValid && pengirimValid && kendaraanManualValid && driverManualValid;
 
   async function handleSubmit() {
     if (!canSubmit || !selectedProject || !selectedPersonil) return;
     if (formError) return;
+
+    if (selectedVehicleId === "__manual__") {
+      const nama = kendaraanNamaTeks.trim();
+      const jenis = kendaraanJenisTeks.trim();
+      const nopol = kendaraanNoPolisiTeks.trim();
+      if (!nama || !jenis || !nopol) {
+        showToast("Nama kendaraan, jenis kendaraan, dan nomor polisi wajib diisi semua untuk input manual.", "error");
+        return;
+      }
+    }
+
+    if (selectedPersonilId === "__manual_driver__") {
+      const nama = driverNamaTeks.trim();
+      if (!nama) {
+        showToast("Nama driver wajib diisi untuk input manual driver.", "error");
+        return;
+      }
+    }
+
     setShowConfirmModal(true);
   }
 
@@ -766,8 +819,8 @@ const [itemsRes, boqsRes] = await Promise.all([
         nomor_surat_jalan: generateNomorSuratJalanOutbound(),
         gudang_asal_id: selectedPengirimKategori === "internal" ? selectedGudangAsalId : null,
         gudang_tujuan_id: selectedTujuanKategori === "gudang" ? selectedGudangTujuanId : null,
-        kendaraan_id: selectedVehicleId || null,
-        personil_pengantar_id: selectedPersonilId,
+        kendaraan_id: selectedVehicleId && selectedVehicleId !== "__manual__" ? selectedVehicleId : null,
+        personil_pengantar_id: selectedPersonilId && selectedPersonilId !== "__manual_driver__" ? selectedPersonilId : null,
         project_id: selectedProjectId,
         boq_id: selectedBoqId || null,
         tujuan_tipe: selectedTujuanKategori || null,
@@ -777,6 +830,18 @@ const [itemsRes, boqsRes] = await Promise.all([
         pengirim_eksternal_nama: selectedPengirimKategori === "external" ? pengirimEksternalNama.trim() : null,
         kategori_approval: "manual_override",
         pic_pemohon_nama: picPemohon || null,
+        ...(selectedVehicleId === "__manual__"
+          ? {
+              kendaraan_nama_teks: kendaraanNamaTeks.trim(),
+              kendaraan_jenis_teks: kendaraanJenisTeks.trim(),
+              kendaraan_no_polisi_teks: kendaraanNoPolisiTeks.trim().toUpperCase(),
+            }
+          : {}),
+        ...(selectedPersonilId === "__manual_driver__"
+          ? {
+              driver_nama_teks: driverNamaTeks.trim(),
+            }
+          : {}),
         items: selectedItems.map((i) => {
           const key = String(i.barang_id || i.id);
           return {
@@ -1113,7 +1178,7 @@ const [itemsRes, boqsRes] = await Promise.all([
                   <Loader2 className="h-5 w-5 animate-spin text-[#E8632C]" />
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto overscroll-x-contain">
                   <table className="w-full min-w-[720px] table-fixed text-sm">
                     <colgroup>
                       <col className="w-[116px]" />
@@ -1254,7 +1319,7 @@ const [itemsRes, boqsRes] = await Promise.all([
             <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Detail Pengiriman</p>
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-xs text-gray-500">PIC / Pemohon</label>
+                <label className="mb-1 block text-xs text-gray-500">PIC / Penerima</label>
                 <input value={picPemohon} onChange={(e) => setPicPemohon(e.target.value)} placeholder="Nama pemohon barang" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none" />
               </div>
 
@@ -1267,7 +1332,19 @@ const [itemsRes, boqsRes] = await Promise.all([
                 <div className="relative">
                   <select
                     value={selectedVehicleId}
-                    onChange={(e) => setSelectedVehicleId(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedVehicleId(val);
+                      if (val === "__manual__") {
+                        setKendaraanNamaTeks("");
+                        setKendaraanJenisTeks("");
+                        setKendaraanNoPolisiTeks("");
+                      } else {
+                        setKendaraanNamaTeks("");
+                        setKendaraanJenisTeks("");
+                        setKendaraanNoPolisiTeks("");
+                      }
+                    }}
                     className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 pr-9 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
                   >
                     <option value="">Pilih kendaraan (opsional)...</option>
@@ -1276,10 +1353,47 @@ const [itemsRes, boqsRes] = await Promise.all([
                         {v.jenis_kendaraan} {v.merk ? `(${v.merk})` : ""} — {v.no_polisi}
                       </option>
                     ))}
+                    <option value="__manual__">+ Input manual (kendaraan di luar master data)...</option>
                   </select>
                   <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 </div>
                 {vehicles.length === 0 && <p className="mt-1 text-xs text-gray-400">Belum ada data Kendaraan di master data.</p>}
+
+                {selectedVehicleId === "__manual__" && (
+                  <div className="mt-3 space-y-2">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-700">Nama Kendaraan <span className="text-rose-500">*</span></label>
+                      <input
+                        value={kendaraanNamaTeks}
+                        onChange={(e) => setKendaraanNamaTeks(e.target.value)}
+                        placeholder="Contoh: Pick Up, Colt Diesel, dll"
+                        maxLength={100}
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-700">Jenis Kendaraan <span className="text-rose-500">*</span></label>
+                      <input
+                        value={kendaraanJenisTeks}
+                        onChange={(e) => setKendaraanJenisTeks(e.target.value)}
+                        placeholder="Contoh: Pick Up, Box, Tangki, dll"
+                        maxLength={100}
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-700">Nomor Polisi <span className="text-rose-500">*</span></label>
+                      <input
+                        value={kendaraanNoPolisiTeks}
+                        onChange={(e) => setKendaraanNoPolisiTeks(e.target.value.toUpperCase())}
+                        placeholder="Contoh: B 1234 ABC"
+                        maxLength={20}
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm uppercase focus:border-[#E8632C] focus:outline-none"
+                      />
+                      <p className="mt-1 text-xs text-gray-400">Gunakan untuk kendaraan yang belum ada di master data.</p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Dropdown Driver — dari master data Personil */}
@@ -1291,7 +1405,15 @@ const [itemsRes, boqsRes] = await Promise.all([
                 <div className="relative">
                   <select
                     value={selectedPersonilId}
-                    onChange={(e) => setSelectedPersonilId(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedPersonilId(val);
+                      if (val === "__manual_driver__") {
+                        setDriverNamaTeks("");
+                      } else {
+                        setDriverNamaTeks("");
+                      }
+                    }}
                     className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 pr-9 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
                   >
                     <option value="" disabled>
@@ -1302,10 +1424,25 @@ const [itemsRes, boqsRes] = await Promise.all([
                         {p.nama} {p.posisi ? `— ${p.posisi}` : ""}
                       </option>
                     ))}
+                    <option value="__manual_driver__">+ Input manual (driver di luar master data)...</option>
                   </select>
                   <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 </div>
                 {personnel.length === 0 && <p className="mt-1 text-xs text-gray-400">Belum ada data Personil di master data.</p>}
+
+                {selectedPersonilId === "__manual_driver__" && (
+                  <div className="mt-3">
+                    <label className="mb-1 block text-xs font-medium text-gray-700">Nama Driver <span className="text-rose-500">*</span></label>
+                    <input
+                      value={driverNamaTeks}
+                      onChange={(e) => setDriverNamaTeks(e.target.value)}
+                      placeholder="Contoh: Budi Santoso"
+                      maxLength={100}
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+                    />
+                    <p className="mt-1 text-xs text-gray-400">Gunakan untuk driver yang belum ada di master data.</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1344,6 +1481,12 @@ const [itemsRes, boqsRes] = await Promise.all([
           titikLapangan={titikLapangan}
           selectedPengirimKategori={selectedPengirimKategori}
           pengirimEksternalNama={pengirimEksternalNama}
+          kendaraanManual={selectedVehicleId === "__manual__"}
+          kendaraanNamaTeks={kendaraanNamaTeks}
+          kendaraanJenisTeks={kendaraanJenisTeks}
+          kendaraanNoPolisiTeks={kendaraanNoPolisiTeks}
+          driverManual={selectedPersonilId === "__manual_driver__"}
+          driverNamaTeks={driverNamaTeks}
         />
       </div>
 
@@ -1378,7 +1521,7 @@ const [itemsRes, boqsRes] = await Promise.all([
 
       {showSuccessModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={handleSuccessModalClose}>
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-[calc(100vw-1.5rem)] max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex flex-col items-center px-6 py-8 text-center">
               <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
                 <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>

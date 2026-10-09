@@ -116,6 +116,8 @@ interface Boq {
   ticketNumber: string;
   projectId: string;
   project: Project;
+  clusterId?: string;
+  cluster?: { cluster_id: string; nama_cluster?: string; cluster_type?: string } | null;
   area: string;
   status: BoqStatus;
   source: BoqSource;
@@ -861,6 +863,7 @@ export default function BoqPage() {
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Item</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Total Qty</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Dokumen</th>
+                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Cluster</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
                   <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
                 </tr>
@@ -869,15 +872,15 @@ export default function BoqPage() {
                 {loading ? (
                   Array.from({ length: 5 }).map((_, rowIndex) => (
                     <tr key={rowIndex}>
-                      {Array.from({ length: 9 }).map((_, colIndex) => (
+                      {Array.from({ length: 10 }).map((_, colIndex) => (
                         <td key={colIndex} className="px-6 py-4"><div className="h-4 animate-pulse rounded-lg bg-slate-100" /></td>
                       ))}
                     </tr>
                   ))
                 ) : error ? (
-                  <tr><td colSpan={9} className="px-6 py-16 text-center text-sm text-rose-500">{error}</td></tr>
+                  <tr><td colSpan={10} className="px-6 py-16 text-center text-sm text-rose-500">{error}</td></tr>
                 ) : boqs.length === 0 ? (
-                  <tr><td colSpan={9} className="px-6 py-16 text-center text-sm text-slate-400">
+                  <tr><td colSpan={10} className="px-6 py-16 text-center text-sm text-slate-400">
                     {activeTab === "draft" ? "Belum ada BOQ draft. BOQ baru dari email/PO akan muncul di sini." : "Tidak ada data BOQ."}
                   </td></tr>
                 ) : (
@@ -916,6 +919,14 @@ export default function BoqPage() {
                               <FileText size={14} />PDF
                             </a>
                           ) : (<span className="text-xs text-slate-300">-</span>)}
+                        </td>
+                        <td className="px-6 py-4 text-slate-700">
+                          <div className="text-sm font-medium text-slate-800">
+                            {boq.clusterId || boq.cluster?.cluster_id || "-"}
+                          </div>
+                          {boq.cluster?.nama_cluster && (
+                            <div className="text-xs text-slate-400">{boq.cluster.nama_cluster}</div>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
@@ -1172,6 +1183,16 @@ export default function BoqPage() {
                   <p className="text-xs font-medium text-slate-400">Sumber</p>
                   <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${getSourceBadge(detailBoq.source).bg} ${getSourceBadge(detailBoq.source).text}`}>{getSourceBadge(detailBoq.source).label}</span>
                 </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Cluster ID</p>
+                  <p className="text-sm font-medium text-slate-800">{detailBoq.clusterId || detailBoq.cluster?.cluster_id || "-"}</p>
+                </div>
+                {detailBoq.cluster?.nama_cluster && (
+                  <div>
+                    <p className="text-xs font-medium text-slate-400">Nama Cluster</p>
+                    <p className="text-sm font-medium text-slate-800">{detailBoq.cluster.nama_cluster}</p>
+                  </div>
+                )}
               </div>
 
               {detailBoq.source === "top_down" && detailBoq.emailReference && (
@@ -1203,8 +1224,9 @@ export default function BoqPage() {
 
               <div>
                 <p className="text-xs font-medium text-slate-400 mb-2">Daftar Barang</p>
-                <div className="rounded-xl border border-slate-100 overflow-hidden">
-                  <table className="w-full text-left text-sm">
+                 <div className="rounded-xl border border-slate-100 overflow-hidden">
+                   <div className="overflow-x-auto overscroll-x-contain">
+                   <table className="w-full text-left text-sm">
                     <thead>
                       <tr className="border-b border-slate-100 bg-slate-50">
                         <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Kode</th>
@@ -1231,17 +1253,19 @@ export default function BoqPage() {
                           <td className="px-4 py-2.5 text-right font-semibold text-slate-800">{item.quantity}</td>
                           <td className="px-4 py-2.5 text-slate-500">{item.unit || "-"}</td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                       ))}
+                     </tbody>
+                   </table>
+                   </div>
+                 </div>
+               </div>
 
               <div>
                 <p className="flex items-center gap-1.5 text-xs font-medium text-slate-400 mb-2"><History size={13} />Riwayat Surat Jalan</p>
-                {detailBoq.suratJalanHistory && detailBoq.suratJalanHistory.length > 0 ? (
-                  <div className="rounded-xl border border-slate-100 overflow-hidden">
-                    <table className="w-full text-left text-sm">
+                 {detailBoq.suratJalanHistory && detailBoq.suratJalanHistory.length > 0 ? (
+                   <div className="rounded-xl border border-slate-100 overflow-hidden">
+                     <div className="overflow-x-auto overscroll-x-contain">
+                     <table className="w-full text-left text-sm">
                       <thead>
                         <tr className="border-b border-slate-100 bg-slate-50">
                           <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Nomor Surat Jalan</th>
@@ -1256,11 +1280,12 @@ export default function BoqPage() {
                             <td className="px-4 py-2.5 text-slate-500">{new Date(sj.date).toLocaleDateString("id-ID")}</td>
                             <td className="px-4 py-2.5 text-right font-semibold text-slate-800">{sj.qty}</td>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
+                           ))}
+                         </tbody>
+                       </table>
+                       </div>
+                     </div>
+                   ) : (
                   <p className="text-xs text-slate-400">Belum ada Surat Jalan yang merealisasikan BOQ ini.</p>
                 )}
               </div>

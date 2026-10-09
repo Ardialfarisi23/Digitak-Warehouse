@@ -84,6 +84,9 @@ const findAll = async ({
   sortBy = "updated_at",
   sortOrder = "desc",
   bisa_menyetir,
+  posisi,
+  gudang_id,
+  is_aktif,
 } = {}) => {
   const isDriverFilter = bisa_menyetir === true || bisa_menyetir === "true";
 
@@ -113,6 +116,20 @@ const findAll = async ({
 
   if (isDriverFilter) {
     where.bisa_menyetir = true;
+  }
+
+  if (posisi) {
+    where.posisi = posisi;
+  }
+
+  if (gudang_id !== undefined && gudang_id !== null && gudang_id !== "") {
+    where.gudang_id = Number(gudang_id);
+  }
+
+  if (is_aktif === "true") {
+    where.is_aktif = true;
+  } else if (is_aktif === "false") {
+    where.is_aktif = false;
   }
 
   if (search) {

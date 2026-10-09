@@ -2,14 +2,22 @@ const prisma = require("../../config/prisma");
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
 const { computeRemains, computeReconciliationStatus, buildPickSummary, buildItemPickSummary } = require("./reconciliation.utils");
+const { surat_jalan_status, boq_status } = require("@prisma/client");
+const additionalRepository = require("../additional/additional.repository");
 
 // Stok sudah berkurang saat picking, jadi angka rekonsiliasi tidak boleh naik-turun saat barang di perjalanan.
 const RECONCILIATION_SHIPMENT_STATUSES = [
-  "disetujui",
-  "sedang_dikirim",
-  "tiba_di_transit",
-  "tiba_menunggu_konfirmasi",
-  "diterima_didistribusikan",
+  surat_jalan_status.disetujui,
+  surat_jalan_status.sedang_dikirim,
+  surat_jalan_status.tiba_di_transit,
+  surat_jalan_status.tiba_menunggu_konfirmasi,
+  surat_jalan_status.diterima_didistribusikan,
+].filter(Boolean);
+
+const APPROVED_INBOUND_STATUSES = [
+  surat_jalan_status.ready_putaway,
+  surat_jalan_status.disetujui,
+  surat_jalan_status.diterima_didistribusikan,
 ];
 
 const getInventory = async (filters = {}, actor = null) => {
@@ -48,7 +56,7 @@ const getInventory = async (filters = {}, actor = null) => {
 
   const whereBoq = {
     boq: {
-      status: { in: ["draft", "aktif", "selesai"] },
+      status: { in: [boq_status.draft, boq_status.aktif, boq_status.selesai] },
       source: "top_down",
     },
   };
@@ -58,7 +66,7 @@ const getInventory = async (filters = {}, actor = null) => {
   }
 
   if (projectId !== "all") {
-    if (isCluster) {
+    if (isCluster !== false) {
       whereBoq.boq.cluster = { project_id: BigInt(projectId) };
     } else {
       whereBoq.boq.tiket = { project_id: BigInt(projectId) };
@@ -68,46 +76,53 @@ const getInventory = async (filters = {}, actor = null) => {
   const boqItems = await prisma.boq_item.findMany({
     where: whereBoq,
     include: {
-      boq: {
-        include: {
-          tiket: {
-            select: {
-              tiket_id: true,
-              kode_tiket: true,
-              used: true,
-              project: {
+          boq: {
+            include: {
+              tiket: {
                 select: {
-                  project_id: true,
-                  nama_project: true,
-                  area: true,
+                  tiket_id: true,
+                  kode_tiket: true,
+                  used: true,
+                  project: {
+                    select: {
+                      project_id: true,
+                      nama_project: true,
+                      area: true,
+                      cluster_id: true,
+                    },
+                  },
+                },
+              },
+              cluster: {
+                select: {
                   cluster_id: true,
+                  nama_cluster: true,
+                  cluster_type: true,
+                  project_type: true,
+                  alamat_lengkap: true,
+                  kso_partner: true,
+                  kso_contact: true,
+                  no_tiket_release: true,
+                  vendor: true,
+                  homepass_plan: true,
+                  status_aktif: true,
+                  project: {
+                    select: {
+                      cluster_id: true,
+                      area: true,
+                      nama_project: true,
+                    },
+                  },
+                  pic: {
+                    select: {
+                      personil_id: true,
+                      nama: true,
+                    },
+                  },
                 },
               },
             },
           },
-          ...(isCluster
-            ? {
-                cluster: {
-                  include: {
-                    project: {
-                      select: {
-                        cluster_id: true,
-                        area: true,
-                        nama_project: true,
-                      },
-                    },
-                    pic: {
-                      select: {
-                        personil_id: true,
-                        nama: true,
-                      },
-                    },
-                  },
-                },
-              }
-            : {}),
-        },
-      },
       barang: {
         select: {
           kode_perangkat: true,
@@ -171,6 +186,7 @@ const getInventory = async (filters = {}, actor = null) => {
           project_id: true,
           boq_id: true,
           tujuan_tipe: true,
+          status: true,
           ...shipmentBoqSelect,
         },
       },
@@ -241,7 +257,7 @@ const getInventory = async (filters = {}, actor = null) => {
 
     temuanPenerimaanByItem.set(itemId, {
       qty_dipick_total: totalPick,
-      qty_diterima,
+      qty_diterima: qtyDiterima,
       selisih_qty: qtyMatch ? 0 : qtyDiterima - totalPick,
       kondisi_diterima: kondisiDiterima,
       kondisi_diambil_list: kondisiList,
@@ -269,6 +285,21 @@ const getInventory = async (filters = {}, actor = null) => {
   const mosByProjectBarang = new Map();
   const usedByProjectBarang = new Map();
 
+  const projectIdsForAdditional =
+    projectId !== "all"
+      ? [BigInt(projectId)]
+      : Array.from(
+          new Set(
+            boqItems
+              .map((item) => item.boq?.tiket?.project?.project_id || item.boq?.cluster?.project?.project_id)
+              .filter((id) => id != null)
+          )
+        );
+
+  const additionalTotalsByProject = projectIdsForAdditional.length > 0
+    ? await additionalRepository.getAdditionalTotalsByProject(projectIdsForAdditional.map((id) => Number(id)))
+    : new Map();
+
   for (const item of shipmentItems) {
     const projectIdNum = Number(item.surat_jalan?.project_id);
     const barangId = String(item.barang_id);
@@ -276,10 +307,10 @@ const getInventory = async (filters = {}, actor = null) => {
     const key = `${projectIdNum}-${barangId}`;
 
     if (item.surat_jalan?.tipe === "inbound") {
-      if (item.is_kelebihan) {
-        additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + qty);
-      } else {
-        inboundByProjectBarang.set(key, (inboundByProjectBarang.get(key) || 0) + qty);
+      inboundByProjectBarang.set(key, (inboundByProjectBarang.get(key) || 0) + qty);
+      // inbound internal (transfer antar gudang) tidak menambah MOS — hanya external (penerimaan supplier)
+      if (APPROVED_INBOUND_STATUSES.includes(item.surat_jalan?.status) && item.surat_jalan?.tipe_pengirim === "external") {
+        mosByProjectBarang.set(key, (mosByProjectBarang.get(key) || 0) + qty);
       }
     }
 
@@ -287,6 +318,10 @@ const getInventory = async (filters = {}, actor = null) => {
       outboundByProjectBarang.set(key, (outboundByProjectBarang.get(key) || 0) + qty);
       mosByProjectBarang.set(key, (mosByProjectBarang.get(key) || 0) + qty);
     }
+  }
+
+  for (const [key, val] of additionalTotalsByProject) {
+    additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + val);
   }
 
   const laporanWhere = { is_aktif: true };
@@ -388,6 +423,13 @@ const getInventory = async (filters = {}, actor = null) => {
       latestPicMitraByCluster.set(cid, sorted[0].pic_mitra);
     }
 
+    const inboundByClusterBarang = new Map();
+    const outboundByClusterBarang = new Map();
+    const additionalByClusterBarang = new Map();
+    const mosByClusterBarang = new Map();
+    const usedByClusterBarang = new Map();
+    const unassignedByProjectBarang = new Map();
+
     const clusterByItemId = new Map();
     const itemAttribution = new Map();
     for (const item of shipmentItems) {
@@ -399,12 +441,49 @@ const getInventory = async (filters = {}, actor = null) => {
       }
     }
 
-    const inboundByClusterBarang = new Map();
-    const outboundByClusterBarang = new Map();
-    const additionalByClusterBarang = new Map();
-    const mosByClusterBarang = new Map();
-    const usedByClusterBarang = new Map();
-    const unassignedByProjectBarang = new Map();
+    const projectBarangToClusterBarang = new Map();
+    for (const item of shipmentItems) {
+      const itemId = Number(item.item_id);
+      const clusterId = clusterByItemId.get(itemId);
+      const projectIdNum = Number(item.surat_jalan?.project_id || 0);
+      const barangId = String(item.barang_id);
+      if (!clusterId || !projectIdNum) continue;
+      const projectBarangKey = `${projectIdNum}-${barangId}`;
+      const clusterBarangKey = `${clusterId}-${barangId}`;
+      projectBarangToClusterBarang.set(projectBarangKey, clusterBarangKey);
+    }
+
+    for (const item of boqItems) {
+      const cluster = item.boq?.cluster;
+      const project = cluster?.project || item.boq?.tiket?.project;
+      const clusterId = cluster?.cluster_id;
+      const projectIdNum = Number(project?.project_id || 0);
+      const barangId = String(item.barang_id);
+      if (!clusterId || !projectIdNum) continue;
+      const projectBarangKey = `${projectIdNum}-${barangId}`;
+      const clusterBarangKey = `${clusterId}-${barangId}`;
+      projectBarangToClusterBarang.set(projectBarangKey, clusterBarangKey);
+    }
+
+    const uniqueProjectBarangKeys = Array.from(projectBarangToClusterBarang.keys());
+    const additionalTotalsByProject =
+      uniqueProjectBarangKeys.length > 0
+        ? await additionalRepository.getAdditionalTotalsByProject(
+             uniqueProjectBarangKeys
+               .map((k) => Number(k.split("-")[0]))
+               .filter((id) => id > 0)
+          )
+        : new Map();
+
+    const additionalByClusterBarangFromAdjustment = new Map();
+    for (const [projectBarangKey, val] of additionalTotalsByProject) {
+      const clusterBarangKey = projectBarangToClusterBarang.get(projectBarangKey);
+      if (!clusterBarangKey) continue;
+      additionalByClusterBarangFromAdjustment.set(
+        clusterBarangKey,
+        (additionalByClusterBarangFromAdjustment.get(clusterBarangKey) || 0) + val
+      );
+    }
 
     for (const item of shipmentItems) {
       const itemId = Number(item.item_id);
@@ -417,10 +496,10 @@ const getInventory = async (filters = {}, actor = null) => {
         const key = `${clusterId}-${barangId}`;
 
         if (item.surat_jalan?.tipe === "inbound") {
-          if (item.is_kelebihan) {
-            additionalByClusterBarang.set(key, (additionalByClusterBarang.get(key) || 0) + qty);
-          } else {
-            inboundByClusterBarang.set(key, (inboundByClusterBarang.get(key) || 0) + qty);
+          inboundByClusterBarang.set(key, (inboundByClusterBarang.get(key) || 0) + qty);
+          // inbound internal (transfer antar gudang) tidak menambah MOS — hanya external (penerimaan supplier)
+          if (APPROVED_INBOUND_STATUSES.includes(item.surat_jalan?.status) && item.surat_jalan?.tipe_pengirim === "external") {
+            mosByClusterBarang.set(key, (mosByClusterBarang.get(key) || 0) + qty);
           }
         }
 
@@ -431,10 +510,10 @@ const getInventory = async (filters = {}, actor = null) => {
       } else {
         const key = `unassigned-${projectIdNum}-${barangId}`;
         if (item.surat_jalan?.tipe === "inbound") {
-          if (item.is_kelebihan) {
-            additionalByClusterBarang.set(key, (additionalByClusterBarang.get(key) || 0) + qty);
-          } else {
-            inboundByClusterBarang.set(key, (inboundByClusterBarang.get(key) || 0) + qty);
+          inboundByClusterBarang.set(key, (inboundByClusterBarang.get(key) || 0) + qty);
+          // inbound internal (transfer antar gudang) tidak menambah MOS — hanya external (penerimaan supplier)
+          if (APPROVED_INBOUND_STATUSES.includes(item.surat_jalan?.status) && item.surat_jalan?.tipe_pengirim === "external") {
+            mosByClusterBarang.set(key, (mosByClusterBarang.get(key) || 0) + qty);
           }
         }
         if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
@@ -443,6 +522,10 @@ const getInventory = async (filters = {}, actor = null) => {
         }
         unassignedByProjectBarang.set(key, (unassignedByProjectBarang.get(key) || 0) + 1);
       }
+    }
+
+    for (const [key, val] of additionalByClusterBarangFromAdjustment) {
+      additionalByClusterBarang.set(key, (additionalByClusterBarang.get(key) || 0) + val);
     }
 
     for (const laporan of activeLaporans) {
@@ -469,6 +552,15 @@ const getInventory = async (filters = {}, actor = null) => {
           project_nama: tiket?.project?.nama_project || "-",
           cluster_id: clusterId,
           nama_cluster: cluster?.nama_cluster || "-",
+          cluster_type: cluster?.cluster_type || null,
+          project_type: cluster?.project_type || null,
+          alamat_lengkap: cluster?.alamat_lengkap || null,
+          kso_partner: cluster?.kso_partner || null,
+          kso_contact: cluster?.kso_contact || null,
+          no_tiket_release: cluster?.no_tiket_release || null,
+          vendor: cluster?.vendor || null,
+          homepass_plan: cluster?.homepass_plan ?? null,
+          status_aktif: cluster?.status_aktif ?? null,
           area: cluster?.project?.area || tiket?.project?.area || "-",
           barang_id: barangId,
           kode_perangkat: item.barang?.kode_perangkat || "-",
@@ -517,6 +609,15 @@ const getInventory = async (filters = {}, actor = null) => {
           project_nama: "-",
           cluster_id: null,
           nama_cluster: "Belum ditentukan",
+          cluster_type: null,
+          project_type: null,
+          alamat_lengkap: null,
+          kso_partner: null,
+          kso_contact: null,
+          no_tiket_release: null,
+          vendor: null,
+          homepass_plan: null,
+          status_aktif: null,
           area: "-",
           barang_id: barangId,
           kode_perangkat: "-",
@@ -660,6 +761,15 @@ const getInventory = async (filters = {}, actor = null) => {
         project_nama: agg.project_nama,
         cluster_id: agg.cluster_id,
         nama_cluster: agg.nama_cluster,
+        cluster_type: agg.cluster_type,
+        project_type: agg.project_type,
+        alamat_lengkap: agg.alamat_lengkap,
+        kso_partner: agg.kso_partner,
+        kso_contact: agg.kso_contact,
+        no_tiket_release: agg.no_tiket_release,
+        vendor: agg.vendor,
+        homepass_plan: agg.homepass_plan,
+        status_aktif: agg.status_aktif,
         pic_nama: picNama,
         pic_sumber: picSumber,
         cluster_attribution: agg.cluster_attribution || (isUnassigned ? "unassigned" : null),
@@ -698,6 +808,7 @@ const getInventory = async (filters = {}, actor = null) => {
   }
 
   // Project mode
+  const clusterIdsByProjectBarangKey = new Map();
   for (const [ticketBarangKey, laporanUsed] of laporanUsedByTicketBarang.entries()) {
     if (laporanUsed <= 0) continue;
 
@@ -705,26 +816,40 @@ const getInventory = async (filters = {}, actor = null) => {
     const [, barangId] = ticketBarangKey.split("-");
     const projectBarangKey = `${projectIdNum}-${barangId}`;
 
-    usedByProjectBarang.set(projectBarangKey, (usedByProjectBarang.get(projectBarangKey) || 0) + laporanUsed);
+    usedByProjectBarang.set(projectBarangKey, Number(laporanUsed));
   }
 
   for (const item of boqItems) {
     const tiket = item.boq?.tiket;
     const tiketProject = tiket?.project;
-    const clusterProject = item.boq?.cluster?.project;
     const projectIdNum = Number(tiketProject?.project_id || 0);
     const barangId = String(item.barang_id);
     const key = `${projectIdNum}-${barangId}`;
 
-    if (!aggregatedMap.has(key)) {
-      const clusterId = clusterProject?.cluster_id || tiketProject?.cluster_id || "-";
-      const area = clusterProject?.area || tiketProject?.area || "-";
+    const clusterId = item.boq?.cluster?.cluster_id || null;
+    if (clusterId) {
+      if (!clusterIdsByProjectBarangKey.has(key)) {
+        clusterIdsByProjectBarangKey.set(key, new Set());
+      }
+      clusterIdsByProjectBarangKey.get(key).add(clusterId);
+    }
 
+    if (!aggregatedMap.has(key)) {
       aggregatedMap.set(key, {
         project_id: String(projectIdNum),
         project_nama: tiketProject?.nama_project || "-",
-        cluster_id: clusterId,
-        area: area,
+        cluster_id: null,
+        nama_cluster: null,
+        cluster_type: null,
+        project_type: null,
+        alamat_lengkap: null,
+        kso_partner: null,
+        kso_contact: null,
+        no_tiket_release: null,
+        vendor: null,
+        homepass_plan: null,
+        status_aktif: null,
+        area: tiketProject?.area || "-",
         barang_id: barangId,
         kode_perangkat: item.barang?.kode_perangkat || "-",
         nama_barang: item.barang?.nama_barang || "-",
@@ -759,6 +884,45 @@ const getInventory = async (filters = {}, actor = null) => {
       boqList[existingBoqIndex] = boqEntry;
     } else {
       boqList.push(boqEntry);
+    }
+  }
+
+  const clusterById = new Map();
+  for (const item of boqItems) {
+    const c = item.boq?.cluster;
+    if (c?.cluster_id) clusterById.set(c.cluster_id, c);
+  }
+
+  for (const [key, agg] of aggregatedMap.entries()) {
+    const clusterIds = clusterIdsByProjectBarangKey.get(key);
+    if (clusterIds && clusterIds.size === 1) {
+      const cid = Array.from(clusterIds)[0];
+      const c = clusterById.get(cid);
+      if (c) {
+        agg.cluster_id = c.cluster_id;
+        agg.nama_cluster = c.nama_cluster || "-";
+        agg.cluster_type = c.cluster_type || null;
+        agg.project_type = c.project_type || null;
+        agg.alamat_lengkap = c.alamat_lengkap || null;
+        agg.kso_partner = c.kso_partner || null;
+        agg.kso_contact = c.kso_contact || null;
+        agg.no_tiket_release = c.no_tiket_release || null;
+        agg.vendor = c.vendor || null;
+        agg.homepass_plan = c.homepass_plan ?? null;
+        agg.status_aktif = c.status_aktif ?? null;
+      }
+    } else {
+      agg.cluster_id = null;
+      agg.nama_cluster = null;
+      agg.cluster_type = null;
+      agg.project_type = null;
+      agg.alamat_lengkap = null;
+      agg.kso_partner = null;
+      agg.kso_contact = null;
+      agg.no_tiket_release = null;
+      agg.vendor = null;
+      agg.homepass_plan = null;
+      agg.status_aktif = null;
     }
   }
 
@@ -850,7 +1014,16 @@ const getInventory = async (filters = {}, actor = null) => {
       project_id: agg.project_id,
       project_nama: agg.project_nama,
       cluster_id: agg.cluster_id,
-      nama_cluster: null,
+      nama_cluster: agg.nama_cluster || null,
+      cluster_type: agg.cluster_type || null,
+      project_type: agg.project_type || null,
+      alamat_lengkap: agg.alamat_lengkap || null,
+      kso_partner: agg.kso_partner || null,
+      kso_contact: agg.kso_contact || null,
+      no_tiket_release: agg.no_tiket_release || null,
+      vendor: agg.vendor || null,
+      homepass_plan: agg.homepass_plan ?? null,
+      status_aktif: agg.status_aktif ?? null,
       pic_nama: null,
       pic_sumber: null,
       cluster_attribution: null,
