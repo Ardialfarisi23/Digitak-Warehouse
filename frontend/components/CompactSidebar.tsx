@@ -70,10 +70,8 @@ export function CompactSidebar({ userRole }: CompactSidebarProps) {
   }
 
   useEffect(() => {
-    if (isMobile && mobileOpen) {
-      setMobileOpen(false);
-    }
-  }, [pathname, isMobile, mobileOpen, setMobileOpen]);
+    setMobileOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -188,7 +186,7 @@ export function CompactSidebar({ userRole }: CompactSidebarProps) {
           />
         )}
         <aside
-          className={`fixed left-0 top-0 z-50 h-screen w-64 transform bg-[#F5F3EF] transition-transform duration-300 ease-in-out ${
+          className={`fixed left-0 top-0 z-50 h-dvh w-64 transform bg-[#F5F3EF] transition-transform duration-300 ease-in-out md:hidden ${
             mobileOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -204,7 +202,7 @@ export function CompactSidebar({ userRole }: CompactSidebarProps) {
               />
             </div>
           </div>
-          <nav className="flex h-[calc(100vh-4rem)] flex-col overflow-y-auto px-3 py-4 scrollbar-thin">
+          <nav className="flex h-[calc(100dvh-4rem)] flex-col overflow-y-auto px-3 py-4 scrollbar-thin">
             {renderNavItems(true)}
           </nav>
         </aside>
@@ -230,7 +228,7 @@ export function CompactSidebar({ userRole }: CompactSidebarProps) {
   return (
     <>
       <aside
-        className={`fixed left-0 top-0 z-30 flex h-screen flex-col bg-[#F5F3EF] border-r border-stone-200/60 shadow-xs transition-all duration-300 ease-in-out overflow-x-hidden ${
+        className={`hidden md:flex fixed left-0 top-0 z-30 h-screen flex-col bg-[#F5F3EF] border-r border-stone-200/60 shadow-xs transition-all duration-300 ease-in-out overflow-x-hidden ${
           collapsed ? "w-20" : "w-60"
         }`}
       >

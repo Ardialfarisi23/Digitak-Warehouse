@@ -715,6 +715,7 @@ export default function DistributionDetailPage() {
         <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
           Daftar Barang
         </p>
+        <div className="overflow-x-auto overscroll-x-contain">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
@@ -748,9 +749,10 @@ export default function DistributionDetailPage() {
                 </td>
               </tr>
             ))}
-          </tbody>
-        </table>
-      </div>
+           </tbody>
+         </table>
+         </div>
+       </div>
 
       {/* Kronologi titipan Gudang Transit (0..n checkpoint). */}
       <div className="mt-6 rounded-2xl border border-[#F3D9C7] bg-white p-6">

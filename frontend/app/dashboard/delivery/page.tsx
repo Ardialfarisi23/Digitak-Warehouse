@@ -9,6 +9,7 @@ import { mapRole } from "@/lib/navigation";
 import { DetailSuratJalanDocument, DetailSuratJalanData } from "@/components/surat-jalan/DetailSuratJalanDocument";
 import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
 import { Button } from "@/components/ui/button";
+import TablePagination from "@/components/TablePagination";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -115,6 +116,9 @@ export default function AdminDeliveryPage() {
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [catatanKonfirmasi, setCatatanKonfirmasi] = useState("");
+  const [page, setPage] = useState(1);
+
+  const PAGE_SIZE = 25;
 
   useEffect(() => {
     if (!user) return;
@@ -326,6 +330,14 @@ export default function AdminDeliveryPage() {
     }
   };
 
+  const totalPages = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedRecords = filteredRecords.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, searchQuery, gudangFilter, statusFilter, startDate, endDate]);
+
   return (
       <div>
       <div className="flex flex-1 flex-col p-6">
@@ -338,8 +350,8 @@ export default function AdminDeliveryPage() {
         </header>
 
         {/* Tabs & Search */}
-        <div className="mb-6 flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap items-center gap-2 bg-slate-100 p-1.5 rounded-2xl">
+        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="flex w-full max-w-full md:w-auto flex-nowrap items-center gap-2 bg-slate-100 p-1.5 rounded-2xl overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {[
               { key: "SEMUA", label: "Semua" },
               { key: "INBOUND", label: `Inbound (${inboundCount})` },
@@ -348,14 +360,14 @@ export default function AdminDeliveryPage() {
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as TabType)}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${activeTab === tab.key ? "bg-[#FF5500] text-white shadow-md shadow-orange-500/20" : "text-slate-600 hover:text-slate-900 hover:bg-white"}`}
+                className={`flex shrink-0 whitespace-nowrap min-h-10 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${activeTab === tab.key ? "bg-[#FF5500] text-white shadow-md shadow-orange-500/20" : "text-slate-600 hover:text-slate-900 hover:bg-white"}`}
               >
                 {tab.label}
               </button>
             ))}
           </div>
 
-          <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+          <div className="flex flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
             <Search size={16} className="shrink-0 text-slate-400" />
             <input
               type="text"
@@ -368,12 +380,12 @@ export default function AdminDeliveryPage() {
         </div>
 
         {/* Filters */}
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="relative">
+        <div className="mb-4 grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
+          <div className="relative min-w-0">
             <select
               value={gudangFilter}
               onChange={(e) => setGudangFilter(e.target.value)}
-              className="appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2 pr-9 text-sm font-medium text-slate-700 outline-none focus:border-orange-400"
+              className="w-full md:w-auto min-w-0 truncate appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2 pr-9 text-sm font-medium text-slate-700 outline-none focus:border-orange-400"
             >
               <option value="all">Semua Gudang</option>
               {warehouses.map((w) => (
@@ -385,11 +397,11 @@ export default function AdminDeliveryPage() {
             <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
 
-          <div className="relative">
+          <div className="relative min-w-0">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2 pr-9 text-sm font-medium text-slate-700 outline-none focus:border-orange-400"
+              className="w-full md:w-auto min-w-0 truncate appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2 pr-9 text-sm font-medium text-slate-700 outline-none focus:border-orange-400"
             >
               <option value="all">Semua Status</option>
               {Object.entries(STATUS_META).map(([key, meta]) => (
@@ -401,22 +413,22 @@ export default function AdminDeliveryPage() {
             <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="col-span-2 grid grid-cols-1 gap-2 md:col-span-1 md:flex md:items-center md:w-auto">
             <div className="relative">
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 outline-none focus:border-orange-400"
+                className="w-full min-w-0 md:w-auto rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 outline-none focus:border-orange-400"
               />
             </div>
-            <span className="text-slate-400 text-sm">sampai</span>
+            <span className="text-slate-400 text-sm hidden md:inline">sampai</span>
             <div className="relative">
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 outline-none focus:border-orange-400"
+                className="w-full min-w-0 md:w-auto rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 outline-none focus:border-orange-400"
               />
             </div>
             {(startDate || endDate) && (
@@ -432,16 +444,16 @@ export default function AdminDeliveryPage() {
 
         {/* Table */}
         <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-[1000px] w-full text-left text-sm">
+          <div className="overflow-x-auto overscroll-x-contain">
+            <table className="w-full md:min-w-[1000px] text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tipe</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">No. Surat Jalan</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tanggal</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                  <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
+                  <th className="px-2 py-3 md:px-6 md:py-4 text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap hidden md:table-cell">Tipe</th>
+                  <th className="px-2 py-3 md:px-6 md:py-4 text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-full md:w-auto">No. Surat Jalan</th>
+                  <th className="px-2 py-3 md:px-6 md:py-4 text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap hidden md:table-cell">Project</th>
+                  <th className="px-2 py-3 md:px-6 md:py-4 text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap hidden md:table-cell">Tanggal</th>
+                  <th className="px-2 py-3 md:px-6 md:py-4 text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap hidden md:table-cell">Status</th>
+                  <th className="px-2 py-3 md:px-4 md:py-4 text-right text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-12 md:w-auto">Aksi</th>
                 </tr>
               </thead>
 
@@ -450,7 +462,7 @@ export default function AdminDeliveryPage() {
                   Array.from({ length: 5 }).map((_, rowIndex) => (
                     <tr key={rowIndex}>
                       {Array.from({ length: 6 }).map((_, colIndex) => (
-                        <td key={colIndex} className="px-6 py-4">
+                        <td key={colIndex} className="px-3 py-3 md:px-6 md:py-4">
                           <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                         </td>
                       ))}
@@ -458,39 +470,50 @@ export default function AdminDeliveryPage() {
                   ))
                 ) : error ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-16 text-center text-sm text-rose-500">
+                    <td colSpan={6} className="px-3 py-3 md:px-6 md:py-16 text-center text-sm text-rose-500">
                       {error}
                     </td>
                   </tr>
                 ) : filteredRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-16 text-center">
+                    <td colSpan={6} className="px-3 py-3 md:px-6 md:py-16 text-center">
                       <FileText size={28} className="mx-auto text-slate-300" />
                       <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data surat jalan</p>
                       <p className="mt-1 text-xs text-slate-400">Coba ubah filter atau kata pencarian.</p>
                     </td>
                   </tr>
                 ) : (
-                  filteredRecords.map((record) => {
+                  pagedRecords.map((record) => {
                     const statusMeta = STATUS_META[record.status] || { label: record.status, bg: "bg-slate-100", text: "text-slate-600" };
                     const totalQty = record.items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
                     const isOutbound = (record.tipe || "").toLowerCase() === "outbound";
 
                     return (
                       <tr key={record.surat_jalan_id} className="group transition-colors hover:bg-slate-50">
-                        <td className="px-6 py-4">
+                        <td className="px-2 py-3 md:px-6 md:py-4 hidden md:table-cell">
                           <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${isOutbound ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>
                             {isOutbound ? <ArrowUpRight size={12} /> : <ArrowDownLeft size={12} />}
                             {isOutbound ? "Outbound" : "Inbound"}
                           </span>
                         </td>
 
-                        <td className="px-6 py-4">
-                          <p className="font-medium text-slate-900">{record.nomor_surat_jalan}</p>
+                        <td className="px-2 py-3 md:px-6 md:py-4 w-full md:w-auto break-words">
+                          <p className="text-sm md:text-base font-medium text-slate-900 break-words">{record.nomor_surat_jalan}</p>
                           <p className="text-xs text-slate-400">{record.gudang_asal?.nama_gudang || record.gudang_tujuan?.nama_gudang || "-"}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 md:hidden">
+                            <span className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${isOutbound ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>
+                              {isOutbound ? <ArrowUpRight size={10} /> : <ArrowDownLeft size={10} />}
+                              {isOutbound ? "Outbound" : "Inbound"}
+                            </span>
+                            <span className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusMeta.bg} ${statusMeta.text}`}>
+                              {statusMeta.label}
+                            </span>
+                            <span>{record.project?.nama_project || "-"}</span>
+                            <span>{record.tanggal ? new Date(record.tanggal).toLocaleDateString("id-ID") : "-"}</span>
+                          </div>
                         </td>
 
-                        <td className="px-6 py-4">
+                        <td className="px-2 py-3 md:px-6 md:py-4 hidden md:table-cell">
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-slate-800">{record.project?.nama_project || "-"}</span>
                             {record.project?.status_aktif === false && (
@@ -505,9 +528,9 @@ export default function AdminDeliveryPage() {
                           </p>
                         </td>
 
-                        <td className="px-6 py-4 text-slate-500">{record.tanggal ? new Date(record.tanggal).toLocaleDateString("id-ID") : "-"}</td>
+                        <td className="px-2 py-3 md:px-6 md:py-4 hidden md:table-cell text-slate-500">{record.tanggal ? new Date(record.tanggal).toLocaleDateString("id-ID") : "-"}</td>
 
-                        <td className="px-6 py-4">
+                        <td className="px-2 py-3 md:px-6 md:py-4 hidden md:table-cell">
                           <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusMeta.bg} ${statusMeta.text}`}>
                             {record.status === "draft_diajukan" && <Clock size={14} />}
                             {record.status === "menunggu_verifikasi" && <Clock size={14} />}
@@ -521,9 +544,9 @@ export default function AdminDeliveryPage() {
                           </span>
                         </td>
 
-                        <td className="px-4 py-4">
+                        <td className="px-1 py-3 md:px-6 md:py-4 w-12 md:w-auto">
                           <div className="flex items-center justify-end gap-1">
-                            <button type="button" onClick={() => setSelectedRecord(record)} title="Lihat detail" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                            <button type="button" onClick={() => setSelectedRecord(record)} title="Lihat detail" className="min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700">
                               <Eye size={15} />
                             </button>
                           </div>
@@ -535,6 +558,15 @@ export default function AdminDeliveryPage() {
               </tbody>
             </table>
           </div>
+          <TablePagination
+            page={safePage}
+            pageSize={PAGE_SIZE}
+            total={filteredRecords.length}
+            onPageChange={(p) => {
+              setPage(p);
+              window.scrollTo({ top: 400, behavior: "smooth" });
+            }}
+          />
         </div>
 
         {/* Detail Modal */}

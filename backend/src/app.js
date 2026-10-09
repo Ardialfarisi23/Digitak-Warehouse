@@ -28,6 +28,7 @@ const reportsRoutes = require("./modules/reports/reports.routes");
 const reconciliationRoutes = require("./modules/reconciliation/reconciliation.routes");
 const notificationRoutes = require("./modules/notifications/notifications.routes");
 const settingsRoutes = require("./modules/settings/settings.routes");
+const additionalRoutes = require("./modules/additional/additional.routes");
 const errorMiddleware = require("./middlewares/error.middleware");
 
 const app = express();
@@ -100,6 +101,7 @@ app.use("/api/reports", reportsRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/reconciliation", reconciliationRoutes);
+app.use("/api/additional-adjustments", additionalRoutes);
 
 // Error Handler (HARUS PALING BAWAH)
 app.use(errorMiddleware);

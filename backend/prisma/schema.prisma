@@ -53,6 +53,7 @@ model user_account {
   created_return_transactions     return_transaction[]            @relation("ReturnCreatedBy")
   approved_return_transactions    return_transaction[]            @relation("ReturnApprovedBy")
   received_return_transactions    return_transaction[]            @relation("ReturnReceivedBy")
+  additional_adjustments          additional_adjustment[]
 
   @@index([email])
 }
@@ -142,32 +143,33 @@ model kendaraan {
 }
 
 model project {
-  project_id          BigInt               @id @default(autoincrement())
-  nama_project        String
-  title               String?
-  cluster_id          String?
-  area                String?
-  klien               String?
-  kecamatan           String?
-  desa_kelurahan      String?
-  kota_kabupaten      String?
-  provinsi            String?
-  status_aktif        Boolean              @default(true)
-  created_at          DateTime             @default(now())
-  updated_at          DateTime             @default(now())
-  created_by          BigInt
-  updated_by          BigInt
-  gudangs             gudang[]
-  permintaan_boqs     permintaan_boq[]
-  creator             user_account         @relation("project_created_by", fields: [created_by], references: [user_id])
-  updater             user_account         @relation("project_updated_by", fields: [updated_by], references: [user_id])
-  stok_gudangs        stok_gudang[]
-  surat_jalans        surat_jalan[]
-  tiket_materials     tiket_material[]
-  titik_lapangans     titik_lapangan[]
-  laporans            laporan_mitra[]      @relation("LaporanMitraProject")
-  return_transactions return_transaction[]
-  clusters            cluster[]
+  project_id             BigInt                  @id @default(autoincrement())
+  nama_project           String
+  title                  String?
+  cluster_id             String?
+  area                   String?
+  klien                  String?
+  kecamatan              String?
+  desa_kelurahan         String?
+  kota_kabupaten         String?
+  provinsi               String?
+  status_aktif           Boolean                 @default(true)
+  created_at             DateTime                @default(now())
+  updated_at             DateTime                @default(now())
+  created_by             BigInt
+  updated_by             BigInt
+  gudangs                gudang[]
+  permintaan_boqs        permintaan_boq[]
+  creator                user_account            @relation("project_created_by", fields: [created_by], references: [user_id])
+  updater                user_account            @relation("project_updated_by", fields: [updated_by], references: [user_id])
+  stok_gudangs           stok_gudang[]
+  surat_jalans           surat_jalan[]
+  tiket_materials        tiket_material[]
+  titik_lapangans        titik_lapangan[]
+  laporans               laporan_mitra[]         @relation("LaporanMitraProject")
+  return_transactions    return_transaction[]
+  clusters               cluster[]
+  additional_adjustments additional_adjustment[]
 
   @@index([area])
 }
@@ -191,10 +193,10 @@ model cluster {
   updated_by       BigInt
   pic_id           BigInt?
 
-  project          project   @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
-  pic              personil? @relation("ClusterPic", fields: [pic_id], references: [personil_id])
-  boqs             boq[]
-  boq_items        boq_item[]
+  project             project              @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
+  pic                 personil?            @relation("ClusterPic", fields: [pic_id], references: [personil_id])
+  boqs                boq[]
+  boq_items           boq_item[]
   surat_jalans_direct surat_jalan[]
   surat_jalan_items   surat_jalan_item[]
   permintaan_boqs     permintaan_boq[]
@@ -353,6 +355,7 @@ model barang {
   laporan_mitras                laporan_mitra[]                @relation("LaporanMitraBarang")
   reconciliation_upload_details reconciliation_upload_detail[] @relation("ReconciliationUploadDetailBarang")
   return_transactions           return_transaction[]
+  additional_adjustments        additional_adjustment[]
 
   @@index([kode_perangkat])
   @@index([kategori_id])
@@ -382,7 +385,7 @@ model tiket_material {
 
 model boq {
   boq_id                       BigInt                       @id @default(autoincrement())
-  tiket_id                     BigInt                       @unique
+  tiket_id                     BigInt?                      @unique
   cluster_id                   String                       @db.Text
   boq_number                   String?                      @unique
   status                       boq_status                   @default(draft)
@@ -399,8 +402,8 @@ model boq {
   updated_by                   BigInt
   creator                      user_account                 @relation("boq_created_by", fields: [created_by], references: [user_id])
   diaktifkan_user              user_account?                @relation("boq_diaktifkan", fields: [diaktifkan_oleh], references: [user_id])
-  cluster                      cluster                     @relation(fields: [cluster_id], references: [cluster_id], onDelete: Restrict)
-  tiket                        tiket_material               @relation(fields: [tiket_id], references: [tiket_id])
+  cluster                      cluster                      @relation(fields: [cluster_id], references: [cluster_id], onDelete: Restrict)
+  tiket                        tiket_material?              @relation(fields: [tiket_id], references: [tiket_id])
   updater                      user_account                 @relation("boq_updated_by", fields: [updated_by], references: [user_id])
   items                        boq_item[]
   surat_jalans                 surat_jalan[]
@@ -415,6 +418,9 @@ model boq_item {
   boq_id           BigInt
   barang_id        BigInt
   qty_rencana      Decimal  @db.Decimal(14, 2)
+  qty_additional   Decimal? @db.Decimal(14, 2)
+  qty_mos          Decimal? @db.Decimal(14, 2)
+  qty_used         Decimal? @db.Decimal(14, 2)
   satuan_id        BigInt?
   gudang_tujuan_id BigInt?
   cluster_id       String?  @db.Text
@@ -459,61 +465,61 @@ model permintaan_boq {
 }
 
 model surat_jalan {
-  surat_jalan_id           BigInt              @id @default(autoincrement())
-  nomor_surat_jalan        String              @unique
+  surat_jalan_id           BigInt                @id @default(autoincrement())
+  nomor_surat_jalan        String                @unique
   tipe                     surat_jalan_tipe
   boq_id                   BigInt?
   gudang_asal_id           BigInt?
   gudang_tujuan_id         BigInt?
-  cluster_id               String?             @db.Text
+  cluster_id               String?               @db.Text
   kendaraan_id             BigInt?
   personil_pengantar_id    BigInt?
-  kendaraan_nama_teks      String?             @db.Text
-  kendaraan_jenis_teks     String?             @db.Text
-  kendaraan_no_polisi_teks String?             @db.Text
-  driver_nama_teks         String?             @db.Text
-  status                   surat_jalan_status  @default(draft_diajukan)
+  kendaraan_nama_teks      String?               @db.Text
+  kendaraan_jenis_teks     String?               @db.Text
+  kendaraan_no_polisi_teks String?               @db.Text
+  driver_nama_teks         String?               @db.Text
+  status                   surat_jalan_status    @default(draft_diajukan)
   kategori_approval        String?
   pic_pemohon_nama         String?
-  tanggal                  DateTime            @default(now())
+  tanggal                  DateTime              @default(now())
   tanggal_disetujui        DateTime?
   tanggal_digenerate       DateTime?
   tanggal_diterima         DateTime?
   estimasi_tiba            DateTime?
-  catatan_distribusi       String?             @db.Text
+  catatan_distribusi       String?               @db.Text
   surat_jalan_url          String?
   catatan                  String?
-  picking_selesai          Boolean             @default(false)
+  picking_selesai          Boolean               @default(false)
   project_id               BigInt?
   titik_lapangan_id        BigInt?
   tujuan_tipe              tujuan_tipe_enum?
   tipe_pengirim            tipe_pengirim_enum?
   pengirim_eksternal_nama  String?
   supplier_id              BigInt?
-  supplier                 supplier?           @relation(fields: [supplier_id], references: [supplier_id])
-  created_at               DateTime            @default(now())
-  updated_at               DateTime            @default(now())
+  supplier                 supplier?             @relation(fields: [supplier_id], references: [supplier_id])
+  created_at               DateTime              @default(now())
+  updated_at               DateTime              @default(now())
   created_by               BigInt
   updated_by               BigInt
   dilaporkan_tiba_oleh     BigInt?
   dilaporkan_tiba_at       DateTime?
-  catatan_tiba             String?             @db.Text
+  catatan_tiba             String?               @db.Text
   dikonfirmasi_oleh        BigInt?
   dikonfirmasi_at          DateTime?
   bukti_tiba_url           String?
-  boq                      boq?                @relation(fields: [boq_id], references: [boq_id])
-  cluster                  cluster?            @relation(fields: [cluster_id], references: [cluster_id], onDelete: Restrict)
-  creator                  user_account        @relation("surat_jalan_created_by", fields: [created_by], references: [user_id])
-  gudang_asal              gudang?             @relation("surat_jalan_asal", fields: [gudang_asal_id], references: [gudang_id])
-  gudang_tujuan            gudang?             @relation("surat_jalan_tujuan", fields: [gudang_tujuan_id], references: [gudang_id])
-  kendaraan                kendaraan?          @relation(fields: [kendaraan_id], references: [kendaraan_id])
-  personil_pengantar       personil?           @relation(fields: [personil_pengantar_id], references: [personil_id])
-  project                  project?            @relation(fields: [project_id], references: [project_id])
-  titik_lapangan           titik_lapangan?     @relation(fields: [titik_lapangan_id], references: [titik_lapangan_id])
+  boq                      boq?                  @relation(fields: [boq_id], references: [boq_id])
+  cluster                  cluster?              @relation(fields: [cluster_id], references: [cluster_id], onDelete: Restrict)
+  creator                  user_account          @relation("surat_jalan_created_by", fields: [created_by], references: [user_id])
+  gudang_asal              gudang?               @relation("surat_jalan_asal", fields: [gudang_asal_id], references: [gudang_id])
+  gudang_tujuan            gudang?               @relation("surat_jalan_tujuan", fields: [gudang_tujuan_id], references: [gudang_id])
+  kendaraan                kendaraan?            @relation(fields: [kendaraan_id], references: [kendaraan_id])
+  personil_pengantar       personil?             @relation(fields: [personil_pengantar_id], references: [personil_id])
+  project                  project?              @relation(fields: [project_id], references: [project_id])
+  titik_lapangan           titik_lapangan?       @relation(fields: [titik_lapangan_id], references: [titik_lapangan_id])
   alamat_lapangan          String?
-  updater                  user_account        @relation("surat_jalan_updated_by", fields: [updated_by], references: [user_id])
-  dilaporkan_tiba          user_account?       @relation("surat_jalan_dilaporkan_tiba_oleh", fields: [dilaporkan_tiba_oleh], references: [user_id])
-  dikonfirmasi_tiba        user_account?       @relation("surat_jalan_dikonfirmasi_oleh", fields: [dikonfirmasi_oleh], references: [user_id])
+  updater                  user_account          @relation("surat_jalan_updated_by", fields: [updated_by], references: [user_id])
+  dilaporkan_tiba          user_account?         @relation("surat_jalan_dilaporkan_tiba_oleh", fields: [dilaporkan_tiba_oleh], references: [user_id])
+  dikonfirmasi_tiba        user_account?         @relation("surat_jalan_dikonfirmasi_oleh", fields: [dikonfirmasi_oleh], references: [user_id])
   items                    surat_jalan_item[]
   transit_checkpoints      surat_jalan_transit[]
 
@@ -593,24 +599,24 @@ model surat_jalan_item_pick {
 }
 
 model surat_jalan_transit {
-  transit_id      BigInt   @id @default(autoincrement())
-  surat_jalan_id  BigInt
-  gudang_id       BigInt
-  urutan          Int
-  tiba_at         DateTime @default(now())
-  tiba_by         BigInt
-  berangkat_at    DateTime?
-  berangkat_by    BigInt?
-  catatan_tiba    String?  @db.Text
-  catatan_berangkat String? @db.Text
-  bukti_url       String?  @db.Text
-  items           Json
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  transit_id        BigInt    @id @default(autoincrement())
+  surat_jalan_id    BigInt
+  gudang_id         BigInt
+  urutan            Int
+  tiba_at           DateTime  @default(now())
+  tiba_by           BigInt
+  berangkat_at      DateTime?
+  berangkat_by      BigInt?
+  catatan_tiba      String?   @db.Text
+  catatan_berangkat String?   @db.Text
+  bukti_url         String?   @db.Text
+  items             Json
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
 
-  surat_jalan surat_jalan @relation(fields: [surat_jalan_id], references: [surat_jalan_id], onDelete: Cascade)
-  gudang      gudang      @relation("gudang_transit", fields: [gudang_id], references: [gudang_id])
-  tiba_oleh   user_account @relation("surat_jalan_transit_tiba_oleh", fields: [tiba_by], references: [user_id])
+  surat_jalan    surat_jalan   @relation(fields: [surat_jalan_id], references: [surat_jalan_id], onDelete: Cascade)
+  gudang         gudang        @relation("gudang_transit", fields: [gudang_id], references: [gudang_id])
+  tiba_oleh      user_account  @relation("surat_jalan_transit_tiba_oleh", fields: [tiba_by], references: [user_id])
   berangkat_oleh user_account? @relation("surat_jalan_transit_berangkat_oleh", fields: [berangkat_by], references: [user_id])
 
   @@unique([surat_jalan_id, urutan])
@@ -623,14 +629,14 @@ model surat_jalan_transit {
 // Item lama yang belum punya baris di tabel ini tetap memakai kolom
 // surat_jalan_item.kondisi seperti sebelumnya.
 model surat_jalan_item_unit {
-  unit_id            BigInt           @id @default(autoincrement())
+  unit_id             BigInt           @id @default(autoincrement())
   surat_jalan_item_id BigInt
-  nomor_unit         Int
-  kondisi            kondisi_barang
-  catatan            String?          @db.Text
-  created_at         DateTime         @default(now())
-  updated_at         DateTime         @updatedAt
-  item               surat_jalan_item @relation(fields: [surat_jalan_item_id], references: [item_id], onDelete: Cascade)
+  nomor_unit          Int
+  kondisi             kondisi_barang
+  catatan             String?          @db.Text
+  created_at          DateTime         @default(now())
+  updated_at          DateTime         @updatedAt
+  item                surat_jalan_item @relation(fields: [surat_jalan_item_id], references: [item_id], onDelete: Cascade)
 
   @@unique([surat_jalan_item_id, nomor_unit], map: "surat_jalan_item_unit_item_nomor_unit_key")
   @@index([surat_jalan_item_id], map: "surat_jalan_item_unit_surat_jalan_item_id_idx")
@@ -675,6 +681,23 @@ model stok_ledger {
   @@index([surat_jalan_item_id])
   @@index([return_transaction_id])
   @@index([cluster_id])
+}
+
+model additional_adjustment {
+  adjustment_id BigInt   @id @default(autoincrement())
+  project_id    BigInt
+  barang_id     BigInt
+  qty           Int
+  alasan        String   @db.Text
+  created_by    BigInt
+  created_at    DateTime @default(now())
+
+  project project      @relation(fields: [project_id], references: [project_id])
+  barang  barang       @relation(fields: [barang_id], references: [barang_id])
+  creator user_account @relation(fields: [created_by], references: [user_id])
+
+  @@index([project_id, barang_id])
+  @@index([created_by])
 }
 
 model approval_log {
@@ -733,12 +756,12 @@ model reconciliation_upload_detail {
   status           reconciliation_detail_status
   reason           String?
   kondisi          kondisi_barang?
-  catatan          String?   @db.Text
-  nama_barang      String?   @db.Text
-  kode_barang      String?   @db.Text
-  project_nama     String?   @db.Text
+  catatan          String?                      @db.Text
+  nama_barang      String?                      @db.Text
+  kode_barang      String?                      @db.Text
+  project_nama     String?                      @db.Text
   tanggal_laporan  DateTime?
-  pic_mitra        String?   @db.Text
+  pic_mitra        String?                      @db.Text
 
   upload_log reconciliation_upload_log @relation("ReconciliationUploadLogDetail", fields: [upload_id], references: [upload_id], onDelete: Cascade)
   barang     barang?                   @relation("ReconciliationUploadDetailBarang", fields: [barang_id], references: [barang_id], onDelete: SetNull)

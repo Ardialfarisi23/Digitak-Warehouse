@@ -829,9 +829,9 @@ export default function UsersPage() {
         >
           <div className="flex min-h-full items-center justify-center">
             <div
-              className="relative flex w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+              className="relative flex w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
               style={{
-                maxHeight: "calc(100vh - 32px)",
+                maxHeight: "calc(100dvh - 2rem)",
               }}
               onClick={(event) =>
                 event.stopPropagation()
@@ -990,7 +990,7 @@ export default function UsersPage() {
           }}
         >
           <div
-            className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-xl"
+            className="w-[calc(100vw-1.5rem)] max-w-sm max-h-[calc(100dvh-2rem)] overflow-hidden rounded-2xl bg-white shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="border-b border-slate-100 px-6 py-4">
@@ -1084,10 +1084,7 @@ export default function UsersPage() {
           }}
         >
           <div
-            className="w-full max-w-[540px] overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl"
-            style={{
-              maxHeight: "calc(100vh - 24px)",
-            }}
+            className="w-[calc(100vw-1.5rem)] max-w-[540px] max-h-[calc(100dvh-2rem)] overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl"
             onClick={(event) =>
               event.stopPropagation()
             }
@@ -1125,7 +1122,7 @@ export default function UsersPage() {
                 ISI MODAL
             ================================================= */}
 
-            <div className="max-h-[calc(100vh-105px)] overflow-y-auto px-5 py-4">
+              <div className="max-h-[calc(100dvh-105px)] overflow-y-auto px-5 py-4">
               {/* =================================================
                   IDENTITAS
               ================================================= */}
@@ -1404,11 +1401,8 @@ export default function UsersPage() {
              }
            }}
          >
-           <div
-             className="w-full max-w-[540px] overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl"
-             style={{
-               maxHeight: "calc(100vh - 24px)",
-             }}
+<div
+              className="w-[calc(100vw-1.5rem)] max-w-[540px] max-h-[calc(100dvh-2rem)] overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl"
              onClick={(event) =>
                event.stopPropagation()
              }
@@ -1442,7 +1436,7 @@ export default function UsersPage() {
 
              {/* BODY */}
 
-             <div className="max-h-[calc(100vh-105px)] overflow-y-auto px-5 py-4">
+            <div className="max-h-[calc(100dvh-105px)] overflow-y-auto px-5 py-4">
                {/* IDENTITAS */}
 
                <div>
@@ -1678,7 +1672,7 @@ export default function UsersPage() {
             onClick={() => setShowTempPasswordModal(false)}
           >
             <div
-              className="w-full max-w-[480px] overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl"
+              className="w-[calc(100vw-1.5rem)] max-w-[480px] max-h-[calc(100dvh-2rem)] overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">

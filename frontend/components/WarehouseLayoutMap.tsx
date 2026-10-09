@@ -55,10 +55,9 @@ export function WarehouseLayoutMap({
   );
 
   return (
-    <div className={cn("w-full", className)}>
+    <div className={cn("w-full overflow-x-auto", className)}>
       <div
-        className="grid grid-cols-[1fr_auto_1fr] grid-rows-[1fr_auto_1fr] gap-3"
-        style={{ minWidth: 640 }}
+        className="grid grid-cols-[1fr_auto_1fr] grid-rows-[1fr_auto_1fr] gap-3 min-w-[640px]"
       >
         {/* Row 1 */}
         <ZoneCell zone={zonaA} classes={indoorClasses} />

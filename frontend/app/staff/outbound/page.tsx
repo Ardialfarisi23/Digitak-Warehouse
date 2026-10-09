@@ -147,8 +147,52 @@ export default function SuratJalanListPage() {
       </div>
 
       {/* List Surat Jalan */}
-      <div className="rounded-2xl border border-[#F3D9C7] bg-white">
-        <table className="w-full text-sm">
+      {/* Card view for mobile */}
+      <div className="md:hidden space-y-3">
+        {isLoading ? (
+          <div className="px-6 py-12 text-center text-gray-400">Memuat data...</div>
+        ) : filtered.length === 0 ? (
+          <div className="px-6 py-12 text-center text-gray-400">Tidak ada Surat Jalan pada filter ini.</div>
+        ) : (
+          filtered.map((sj) => {
+            const meta = getStatusMeta(sj.status, sj.picking_selesai);
+            const totalUnit = sj.items.reduce((sum, i) => sum + Number(i.qty || 0), 0);
+            const tujuanText = sj.gudang_tujuan?.nama_gudang || sj.project?.nama_project || "-";
+            const tanggal = new Date(sj.created_at).toLocaleDateString("id-ID", {
+              day: "2-digit", month: "long", year: "numeric",
+            });
+            return (
+              <div key={sj.surat_jalan_id} className="rounded-xl border border-[#F3D9C7] bg-white p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <FileText size={16} className="text-[#E8632C]" />
+                    <p className="font-semibold text-gray-800">{sj.nomor_surat_jalan}</p>
+                  </div>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${meta.tone}`}>
+                    {meta.label}
+                  </span>
+                </div>
+                <div className="mt-3 space-y-1 text-sm text-gray-600">
+                  <p><span className="text-gray-400">Tujuan:</span> {tujuanText}</p>
+                  <p><span className="text-gray-400">Tanggal:</span> {tanggal}</p>
+                  <p><span className="text-gray-400">Item:</span> {totalUnit} unit</p>
+                </div>
+                <Link
+                  href={`/staff/outbound/${sj.surat_jalan_id}`}
+                  className="mt-3 flex min-h-11 w-full items-center justify-center rounded-lg bg-[#E8632C] text-sm font-semibold text-white hover:bg-[#D9591F]"
+                >
+                  Buka
+                </Link>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Desktop table view */}
+      <div className="rounded-2xl border border-[#F3D9C7] bg-white hidden md:block">
+        <div className="overflow-x-auto overscroll-x-contain">
+        <table className="min-w-[640px] w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
               <th className="px-6 py-4 font-semibold">Nomor Surat Jalan</th>
@@ -232,9 +276,10 @@ export default function SuratJalanListPage() {
                 );
               })
             )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+           </tbody>
+         </table>
+         </div>
+       </div>
+     </div>
   );
 }

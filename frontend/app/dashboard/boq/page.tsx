@@ -257,6 +257,9 @@ export default function BoqPage() {
   const [confirmSelesaiBoq, setConfirmSelesaiBoq] = useState<Boq | null>(null);
 
   const [projects, setProjects] = useState<Project[]>([]);
+
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 25;
   const [areas, setAreas] = useState<string[]>([]);
   const [items, setItems] = useState<{ id: string; kode_perangkat: string; nama_barang: string; satuan?: { kode_satuan: string } }[]>([]);
   const [itemSearch, setItemSearch] = useState("");
@@ -968,24 +971,32 @@ export default function BoqPage() {
   /* Render                                                             */
   /* ---------------------------------------------------------------- */
 
+  const totalPages = Math.max(1, Math.ceil(boqs.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedBoqs = boqs.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, search, projectFilter, areaFilter]);
+
   return (
     <div className={`${plusJakartaSans.className}`}>
       <div className="flex flex-1 flex-col p-6">
         {/* 1. Header */}
-        <header className="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">BOQ & Surat Tiket</h1>
-            <p className="mt-1 text-sm text-slate-500">
+        <header className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-900">BOQ & Surat Tiket</h1>
+            <p className="mt-1 text-sm text-slate-500 line-clamp-2 md:line-clamp-none">
               Kelola BOQ (Bill of Quantity) dan Surat Tiket proyek.
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={handleExport}
               disabled={exporting}
-              className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex whitespace-nowrap shrink-0 min-h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
               {exporting ? "Mengekspor..." : "Ekspor"}
@@ -995,7 +1006,7 @@ export default function BoqPage() {
               <button
                 type="button"
                 onClick={openCreateModal}
-                className="flex items-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600"
+                className="flex whitespace-nowrap shrink-0 min-h-10 items-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600"
               >
                 <Plus size={16} />
                 Input BOQ
@@ -1031,7 +1042,7 @@ export default function BoqPage() {
         </div>
 
         {/* 4. Tabs */}
-        <div className="mb-6 flex items-center gap-2 border-b border-slate-100">
+        <div className="mb-6 flex gap-2 overflow-x-auto overscroll-x-contain pb-1 -mx-4 px-4 sm:mx-0 sm:px-0 border-b border-slate-100 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const count = tab.key === "draft" ? summary.draft : tab.key === "selesai" ? summary.selesai : tab.key === "ditolak" ? undefined : null;
@@ -1041,7 +1052,7 @@ export default function BoqPage() {
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                className={`flex shrink-0 whitespace-nowrap min-h-10 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
                   activeTab === tab.key
                     ? "border-orange-500 text-orange-600"
                     : "border-transparent text-slate-500 hover:text-slate-700"
@@ -1060,8 +1071,8 @@ export default function BoqPage() {
         </div>
 
         {/* 3. Filter & pencarian */}
-        <div className="mb-6 flex flex-wrap items-center gap-2">
-          <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+        <div className="mb-6 flex flex-col gap-2 md:flex-row md:items-center">
+          <div className="flex flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
             <Search size={16} className="shrink-0 text-slate-400" />
             <input
               type="text"
@@ -1072,62 +1083,64 @@ export default function BoqPage() {
             />
           </div>
 
-          <select
-            value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
-          >
-            <option value="">Semua Project/Cluster</option>
-            {projects.map((project) => (
-              <option key={project.projectId} value={project.projectId}>
-                {project.projectName || project.title}
-              </option>
-            ))}
-          </select>
+          <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
+            <select
+              value={projectFilter}
+              onChange={(e) => setProjectFilter(e.target.value)}
+              className="w-full md:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            >
+              <option value="">Semua Project/Cluster</option>
+              {projects.map((project) => (
+                <option key={project.projectId} value={project.projectId}>
+                  {project.projectName || project.title}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={areaFilter}
-            onChange={(e) => setAreaFilter(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
-          >
-            <option value="">Semua Area</option>
-            {areas.map((area) => (
-              <option key={area} value={area}>
-                {area}
-              </option>
-            ))}
-          </select>
+            <select
+              value={areaFilter}
+              onChange={(e) => setAreaFilter(e.target.value)}
+              className="w-full md:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            >
+              <option value="">Semua Area</option>
+              {areas.map((area) => (
+                <option key={area} value={area}>
+                  {area}
+                </option>
+              ))}
+            </select>
+          </div>
 
         </div>
 
         {/* 5. Tabel BOQ */}
         <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
+            <table className="w-full text-left text-sm md:min-w-full">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                     Nomor BOQ / Tiket
                   </th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
                     Sumber
                   </th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
                     Project
                   </th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
                     Verifikasi Eksternal
                   </th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                     Item
                   </th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
                     Total Qty
                   </th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
                     Dokumen
                   </th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
                     Cluster
                   </th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
@@ -1144,7 +1157,7 @@ export default function BoqPage() {
                   Array.from({ length: 5 }).map((_, rowIndex) => (
                     <tr key={rowIndex}>
                       {Array.from({ length: 7 }).map((_, colIndex) => (
-                        <td key={colIndex} className="px-6 py-4">
+                        <td key={colIndex} className="px-3 py-3 md:px-6 md:py-4">
                           <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                         </td>
                       ))}
@@ -1152,20 +1165,20 @@ export default function BoqPage() {
                   ))
                 ) : error ? (
                   <tr>
-                    <td colSpan={10} className="px-6 py-16 text-center text-sm text-rose-500">
+                    <td colSpan={10} className="px-3 py-3 md:px-6 md:py-16 text-center text-sm text-rose-500">
                       {error}
                     </td>
                   </tr>
                 ) : boqs.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-6 py-16 text-center text-sm text-slate-400">
+                    <td colSpan={10} className="px-3 py-3 md:px-6 md:py-16 text-center text-sm text-slate-400">
                       {activeTab === "draft"
                         ? "Belum ada BOQ draft. BOQ baru dari email/PO akan muncul di sini."
                         : "Tidak ada data BOQ."}
                     </td>
                   </tr>
                 ) : (
-                  boqs.map((boq) => {
+                  pagedBoqs.map((boq) => {
                     const statusBadge = getStatusBadge(boq.status);
                     const sourceBadge = getSourceBadge(boq.source);
                     const verificationBadge = getVerificationBadge(boq.externalVerificationStatus);
@@ -1180,11 +1193,15 @@ export default function BoqPage() {
                         className="group cursor-pointer transition-colors hover:bg-slate-50"
                         onClick={() => openDetailModal(boq)}
                       >
-                        <td className="px-6 py-4">
-                          <div className="font-semibold text-orange-500">{boq.boqNumber}</div>
+                        <td className="px-3 py-3 md:px-6 md:py-4">
+                          <div className="font-semibold text-orange-500 whitespace-nowrap">{boq.boqNumber}</div>
                           <div className="text-xs text-slate-400">{boq.ticketNumber}</div>
+                          <div className="mt-0.5 text-xs text-slate-500 md:hidden">
+                            {boq.project?.projectName || boq.project?.title || boq.area || "-"}
+                            {boq.project?.status_aktif === false && " (Nonaktif)"}
+                          </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell">
                           <span
                             className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${sourceBadge.bg} ${sourceBadge.text}`}
                           >
@@ -1192,7 +1209,7 @@ export default function BoqPage() {
                             {sourceBadge.label}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-slate-700">
+                        <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell text-slate-700">
                           <div className="flex items-center gap-2">
                             <span>{boq.project?.projectName || boq.project?.title || "-"}</span>
                             {boq.project?.status_aktif === false && (
@@ -1204,7 +1221,7 @@ export default function BoqPage() {
                           </div>
                           <div className="text-xs text-slate-400">{boq.area}</div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell">
                           <span
                             className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${verificationBadge.bg} ${verificationBadge.text}`}
                           >
@@ -1212,11 +1229,12 @@ export default function BoqPage() {
                             {verificationBadge.label}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-right text-sm font-semibold text-slate-800">
+                        <td className="px-3 py-3 md:px-6 md:py-4 text-right text-sm font-semibold text-slate-800">
                           {totalItems} barang
+                          <div className="text-xs text-slate-500 md:hidden">qty {totalQty}</div>
                         </td>
-                        <td className="px-6 py-4 text-right font-semibold text-slate-800">{totalQty}</td>
-                        <td className="px-6 py-4">
+                        <td className="px-3 py-3 md:px-6 md:py-4 text-right font-semibold text-slate-800 hidden md:table-cell">{totalQty}</td>
+                        <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell">
                           {boq.referenceFile ? (
                             <a
                               href={boq.referenceFile}
@@ -1233,7 +1251,7 @@ export default function BoqPage() {
                             <span className="text-xs text-slate-300">-</span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-slate-700">
+                        <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell text-slate-700">
                           <div className="text-sm font-medium text-slate-800">
                             {boq.clusterId || boq.cluster?.cluster_id || "-"}
                           </div>
@@ -1241,7 +1259,7 @@ export default function BoqPage() {
                             <div className="text-xs text-slate-400">{boq.cluster.nama_cluster}</div>
                           )}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-3 py-3 md:px-6 md:py-4">
                           <span
                             className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusBadge.bg} ${statusBadge.text}`}
                           >
@@ -1249,7 +1267,7 @@ export default function BoqPage() {
                             {statusBadge.label}
                           </span>
                         </td>
-                        <td className="px-4 py-4">
+                        <td className="px-3 py-3 md:px-4 md:py-4">
                           <div className="flex items-center justify-end gap-1">
                             <button
                               type="button"
@@ -1258,7 +1276,7 @@ export default function BoqPage() {
                                 openDetailModal(boq);
                               }}
                               title="Lihat detail"
-                              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                              className="min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                             >
                               <Eye size={15} />
                             </button>
@@ -1271,7 +1289,7 @@ export default function BoqPage() {
                                   openEditModal(boq);
                                 }}
                                 title="Edit"
-                                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-orange-600"
+                                className="min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-orange-600"
                               >
                                 <Pencil size={15} />
                               </button>
@@ -1285,7 +1303,7 @@ export default function BoqPage() {
                                   handleRestoreBoq(boq);
                                 }}
                                 title="Pulihkan ke Draft"
-                                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-orange-600"
+                                className="min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-orange-600"
                               >
                                 <RefreshCw size={15} />
                               </button>
@@ -1303,9 +1321,9 @@ export default function BoqPage() {
                                     ? "Belum bisa diaktifkan — menunggu verifikasi eksternal"
                                     : "Aktifkan BOQ"
                                 }
-                                className={`rounded-lg p-1.5 ${
+                                className={`min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg ${
                                   blockedFromActivation
-                                    ? "text-slate-300 hover:bg-slate-50"
+                                    ? "text-slate-300 cursor-not-allowed"
                                     : "text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
                                 }`}
                               >
@@ -1900,8 +1918,8 @@ export default function BoqPage() {
                 {/* Daftar barang */}
                 <div>
                   <p className="text-xs font-medium text-slate-400 mb-2">Daftar Barang</p>
-                  <div className="rounded-xl border border-slate-100 overflow-hidden">
-                    <table className="w-full text-left text-sm">
+                   <div className="rounded-xl border border-slate-100 overflow-hidden overflow-x-auto overscroll-x-contain">
+                     <table className="w-full text-left text-sm">
                       <thead>
                         <tr className="border-b border-slate-100 bg-slate-50">
                           <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Kode</th>
@@ -1955,8 +1973,8 @@ export default function BoqPage() {
                     Riwayat Surat Jalan
                   </p>
                   {detailBoq.suratJalanHistory && detailBoq.suratJalanHistory.length > 0 ? (
-                    <div className="rounded-xl border border-slate-100 overflow-hidden">
-                      <table className="w-full text-left text-sm">
+                     <div className="rounded-xl border border-slate-100 overflow-hidden overflow-x-auto overscroll-x-contain">
+                       <table className="w-full text-left text-sm">
                         <thead>
                           <tr className="border-b border-slate-100 bg-slate-50">
                             <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Nomor Surat Jalan</th>
