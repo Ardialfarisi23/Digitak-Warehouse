@@ -205,7 +205,7 @@ function ConfirmModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl"
+        className="w-[calc(100vw-1.5rem)] max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
@@ -349,8 +349,8 @@ export default function PickingDetailPage() {
 
         setData(record);
         const zonaList: ApiZona[] = Array.isArray(zonaJson?.data)
-          ? zonaJson.data.map((z) => ({ ...z, zona_id: Number(z.zona_id) }))
-          : (zonaJson?.data?.data || []).map((z) => ({ ...z, zona_id: Number(z.zona_id) }));
+          ? zonaJson.data.map((z: ApiZona) => ({ ...z, zona_id: Number(z.zona_id) }))
+          : (zonaJson?.data?.data || []).map((z: ApiZona) => ({ ...z, zona_id: Number(z.zona_id) }));
         setZonas(zonaList);
       } catch (err) {
         setLoadError(
@@ -804,7 +804,8 @@ export default function PickingDetailPage() {
           {isSelesai ? "Barang yang Diambil" : "Pilih Lokasi Pengambilan per Barang"}
         </p>
 
-        <table className="w-full text-sm">
+         <div className="overflow-x-auto overscroll-x-contain">
+         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
               <th className="pb-3 pr-4 font-semibold">Barang</th>
@@ -1010,9 +1011,10 @@ export default function PickingDetailPage() {
                  )}
               </tr>
             ))}
-          </tbody>
-        </table>
-      </div>
+           </tbody>
+         </table>
+         </div>
+       </div>
 
        {!isSelesai && (
          <div>

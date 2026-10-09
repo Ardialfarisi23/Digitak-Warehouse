@@ -98,8 +98,41 @@ export default function PutawayListPage() {
         </button>
       </div>
 
-      <div className="rounded-2xl border border-[#F3D9C7] bg-white">
-        <table className="w-full text-sm">
+      {/* List Surat Jalan */}
+      {/* Card view for mobile */}
+      <div className="md:hidden space-y-3">
+        {filtered.length === 0 ? (
+          <div className="px-6 py-12 text-center text-gray-400">
+            {activeTab === "MENUNGGU" ? "Tidak ada Surat Jalan yang menunggu ditempatkan." : "Belum ada riwayat penempatan."}
+          </div>
+        ) : (
+          filtered.map((sj) => (
+            <div key={sj.surat_jalan_id} className="rounded-xl border border-[#F3D9C7] bg-white p-4">
+              <div className="flex items-center gap-2">
+                <MapPin size={16} className="text-[#E8632C]" />
+                <p className="font-semibold text-gray-800">{sj.nomor_surat_jalan}</p>
+              </div>
+              <div className="mt-3 space-y-1 text-sm text-gray-600">
+                <p><span className="text-gray-400">Asal:</span> {sj.gudang_asal?.nama_gudang || "-"}</p>
+                <p><span className="text-gray-400">Tujuan:</span> {sj.gudang_tujuan?.nama_gudang || "-"}</p>
+                <p><span className="text-gray-400">Tanggal:</span> {sj.tanggal ? new Date(sj.tanggal).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "-"}</p>
+                <p><span className="text-gray-400">Item:</span> {sj.items.length} jenis</p>
+              </div>
+              <Link
+                href={`/staff/putaway/${sj.surat_jalan_id}`}
+                className="mt-3 flex min-h-11 w-full items-center justify-center rounded-lg bg-[#E8632C] text-sm font-semibold text-white hover:bg-[#D9591F]"
+              >
+                {activeTab === "MENUNGGU" ? "Tempatkan" : "Lihat"}
+              </Link>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Desktop table view */}
+      <div className="rounded-2xl border border-[#F3D9C7] bg-white hidden md:block">
+        <div className="overflow-x-auto overscroll-x-contain">
+        <table className="min-w-[640px] w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
               <th className="px-6 py-4 font-semibold">Nomor Surat Jalan</th>
@@ -146,9 +179,10 @@ export default function PutawayListPage() {
                 </td>
               </tr>
             )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+           </tbody>
+         </table>
+         </div>
+       </div>
+     </div>
   );
 }

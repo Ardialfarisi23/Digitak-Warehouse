@@ -311,7 +311,8 @@ export default function PutawayDetailPage() {
           {isSelesai ? "Zona Penyimpanan" : "Tentukan Zona Penyimpanan per Barang"}
         </p>
 
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto overscroll-x-contain">
+        <table className="min-w-[640px] w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
               <th className="pb-3 pr-4 font-semibold">Barang</th>
@@ -429,9 +430,10 @@ export default function PutawayDetailPage() {
               </tr>
               );
             })}
-          </tbody>
-        </table>
-      </div>
+           </tbody>
+         </table>
+         </div>
+       </div>
 
       {!isSelesai && (
         <Button
@@ -490,7 +492,7 @@ export default function PutawayDetailPage() {
           onClick={handleSuccessModalClose}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-white shadow-xl"
+            className="w-[calc(100vw-1.5rem)] max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex flex-col items-center px-6 py-8 text-center">
@@ -533,7 +535,7 @@ export default function PutawayDetailPage() {
           </div>
 
           <div
-            className="relative flex max-h-[75vh] w-full max-w-3xl items-center justify-center"
+            className="relative flex w-[calc(100vw-1.5rem)] max-w-3xl max-h-[calc(100dvh-2rem)] items-center justify-center"
             onClick={(e) => e.stopPropagation()}
           >
             <img

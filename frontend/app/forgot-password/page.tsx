@@ -41,7 +41,7 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#FAF8F5] p-4 font-sans">
+    <div className="min-h-dvh flex items-center justify-center bg-[#FAF8F5] p-4 font-sans">
       <div className="max-w-md w-full bg-white rounded-3xl shadow-xl shadow-slate-200/50 p-6 sm:p-8 border border-slate-100">
         <div className="text-center mb-6">
           <AuthLogo />

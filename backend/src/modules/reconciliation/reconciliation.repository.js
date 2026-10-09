@@ -3,6 +3,7 @@ const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
 const { computeRemains, computeReconciliationStatus, buildPickSummary, buildItemPickSummary } = require("./reconciliation.utils");
 const { surat_jalan_status, boq_status } = require("@prisma/client");
+const additionalRepository = require("../additional/additional.repository");
 
 // Stok sudah berkurang saat picking, jadi angka rekonsiliasi tidak boleh naik-turun saat barang di perjalanan.
 const RECONCILIATION_SHIPMENT_STATUSES = [
@@ -12,6 +13,12 @@ const RECONCILIATION_SHIPMENT_STATUSES = [
   surat_jalan_status.tiba_menunggu_konfirmasi,
   surat_jalan_status.diterima_didistribusikan,
 ].filter(Boolean);
+
+const APPROVED_INBOUND_STATUSES = [
+  surat_jalan_status.ready_putaway,
+  surat_jalan_status.disetujui,
+  surat_jalan_status.diterima_didistribusikan,
+];
 
 const getInventory = async (filters = {}, actor = null) => {
   const { search = "", projectId = "all", warehouseId = "all", status = "all", groupBy = "project", clusterId = "all" } = filters;
@@ -59,7 +66,7 @@ const getInventory = async (filters = {}, actor = null) => {
   }
 
   if (projectId !== "all") {
-    if (isCluster) {
+    if (isCluster !== false) {
       whereBoq.boq.cluster = { project_id: BigInt(projectId) };
     } else {
       whereBoq.boq.tiket = { project_id: BigInt(projectId) };
@@ -179,6 +186,7 @@ const getInventory = async (filters = {}, actor = null) => {
           project_id: true,
           boq_id: true,
           tujuan_tipe: true,
+          status: true,
           ...shipmentBoqSelect,
         },
       },
@@ -277,6 +285,21 @@ const getInventory = async (filters = {}, actor = null) => {
   const mosByProjectBarang = new Map();
   const usedByProjectBarang = new Map();
 
+  const projectIdsForAdditional =
+    projectId !== "all"
+      ? [BigInt(projectId)]
+      : Array.from(
+          new Set(
+            boqItems
+              .map((item) => item.boq?.tiket?.project?.project_id || item.boq?.cluster?.project?.project_id)
+              .filter((id) => id != null)
+          )
+        );
+
+  const additionalTotalsByProject = projectIdsForAdditional.length > 0
+    ? await additionalRepository.getAdditionalTotalsByProject(projectIdsForAdditional.map((id) => Number(id)))
+    : new Map();
+
   for (const item of shipmentItems) {
     const projectIdNum = Number(item.surat_jalan?.project_id);
     const barangId = String(item.barang_id);
@@ -284,10 +307,10 @@ const getInventory = async (filters = {}, actor = null) => {
     const key = `${projectIdNum}-${barangId}`;
 
     if (item.surat_jalan?.tipe === "inbound") {
-      if (item.is_kelebihan) {
-        additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + qty);
-      } else {
-        inboundByProjectBarang.set(key, (inboundByProjectBarang.get(key) || 0) + qty);
+      inboundByProjectBarang.set(key, (inboundByProjectBarang.get(key) || 0) + qty);
+      // inbound internal (transfer antar gudang) tidak menambah MOS — hanya external (penerimaan supplier)
+      if (APPROVED_INBOUND_STATUSES.includes(item.surat_jalan?.status) && item.surat_jalan?.tipe_pengirim === "external") {
+        mosByProjectBarang.set(key, (mosByProjectBarang.get(key) || 0) + qty);
       }
     }
 
@@ -295,6 +318,10 @@ const getInventory = async (filters = {}, actor = null) => {
       outboundByProjectBarang.set(key, (outboundByProjectBarang.get(key) || 0) + qty);
       mosByProjectBarang.set(key, (mosByProjectBarang.get(key) || 0) + qty);
     }
+  }
+
+  for (const [key, val] of additionalTotalsByProject) {
+    additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + val);
   }
 
   const laporanWhere = { is_aktif: true };
@@ -396,6 +423,13 @@ const getInventory = async (filters = {}, actor = null) => {
       latestPicMitraByCluster.set(cid, sorted[0].pic_mitra);
     }
 
+    const inboundByClusterBarang = new Map();
+    const outboundByClusterBarang = new Map();
+    const additionalByClusterBarang = new Map();
+    const mosByClusterBarang = new Map();
+    const usedByClusterBarang = new Map();
+    const unassignedByProjectBarang = new Map();
+
     const clusterByItemId = new Map();
     const itemAttribution = new Map();
     for (const item of shipmentItems) {
@@ -407,12 +441,49 @@ const getInventory = async (filters = {}, actor = null) => {
       }
     }
 
-    const inboundByClusterBarang = new Map();
-    const outboundByClusterBarang = new Map();
-    const additionalByClusterBarang = new Map();
-    const mosByClusterBarang = new Map();
-    const usedByClusterBarang = new Map();
-    const unassignedByProjectBarang = new Map();
+    const projectBarangToClusterBarang = new Map();
+    for (const item of shipmentItems) {
+      const itemId = Number(item.item_id);
+      const clusterId = clusterByItemId.get(itemId);
+      const projectIdNum = Number(item.surat_jalan?.project_id || 0);
+      const barangId = String(item.barang_id);
+      if (!clusterId || !projectIdNum) continue;
+      const projectBarangKey = `${projectIdNum}-${barangId}`;
+      const clusterBarangKey = `${clusterId}-${barangId}`;
+      projectBarangToClusterBarang.set(projectBarangKey, clusterBarangKey);
+    }
+
+    for (const item of boqItems) {
+      const cluster = item.boq?.cluster;
+      const project = cluster?.project || item.boq?.tiket?.project;
+      const clusterId = cluster?.cluster_id;
+      const projectIdNum = Number(project?.project_id || 0);
+      const barangId = String(item.barang_id);
+      if (!clusterId || !projectIdNum) continue;
+      const projectBarangKey = `${projectIdNum}-${barangId}`;
+      const clusterBarangKey = `${clusterId}-${barangId}`;
+      projectBarangToClusterBarang.set(projectBarangKey, clusterBarangKey);
+    }
+
+    const uniqueProjectBarangKeys = Array.from(projectBarangToClusterBarang.keys());
+    const additionalTotalsByProject =
+      uniqueProjectBarangKeys.length > 0
+        ? await additionalRepository.getAdditionalTotalsByProject(
+             uniqueProjectBarangKeys
+               .map((k) => Number(k.split("-")[0]))
+               .filter((id) => id > 0)
+          )
+        : new Map();
+
+    const additionalByClusterBarangFromAdjustment = new Map();
+    for (const [projectBarangKey, val] of additionalTotalsByProject) {
+      const clusterBarangKey = projectBarangToClusterBarang.get(projectBarangKey);
+      if (!clusterBarangKey) continue;
+      additionalByClusterBarangFromAdjustment.set(
+        clusterBarangKey,
+        (additionalByClusterBarangFromAdjustment.get(clusterBarangKey) || 0) + val
+      );
+    }
 
     for (const item of shipmentItems) {
       const itemId = Number(item.item_id);
@@ -425,10 +496,10 @@ const getInventory = async (filters = {}, actor = null) => {
         const key = `${clusterId}-${barangId}`;
 
         if (item.surat_jalan?.tipe === "inbound") {
-          if (item.is_kelebihan) {
-            additionalByClusterBarang.set(key, (additionalByClusterBarang.get(key) || 0) + qty);
-          } else {
-            inboundByClusterBarang.set(key, (inboundByClusterBarang.get(key) || 0) + qty);
+          inboundByClusterBarang.set(key, (inboundByClusterBarang.get(key) || 0) + qty);
+          // inbound internal (transfer antar gudang) tidak menambah MOS — hanya external (penerimaan supplier)
+          if (APPROVED_INBOUND_STATUSES.includes(item.surat_jalan?.status) && item.surat_jalan?.tipe_pengirim === "external") {
+            mosByClusterBarang.set(key, (mosByClusterBarang.get(key) || 0) + qty);
           }
         }
 
@@ -439,10 +510,10 @@ const getInventory = async (filters = {}, actor = null) => {
       } else {
         const key = `unassigned-${projectIdNum}-${barangId}`;
         if (item.surat_jalan?.tipe === "inbound") {
-          if (item.is_kelebihan) {
-            additionalByClusterBarang.set(key, (additionalByClusterBarang.get(key) || 0) + qty);
-          } else {
-            inboundByClusterBarang.set(key, (inboundByClusterBarang.get(key) || 0) + qty);
+          inboundByClusterBarang.set(key, (inboundByClusterBarang.get(key) || 0) + qty);
+          // inbound internal (transfer antar gudang) tidak menambah MOS — hanya external (penerimaan supplier)
+          if (APPROVED_INBOUND_STATUSES.includes(item.surat_jalan?.status) && item.surat_jalan?.tipe_pengirim === "external") {
+            mosByClusterBarang.set(key, (mosByClusterBarang.get(key) || 0) + qty);
           }
         }
         if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
@@ -451,6 +522,10 @@ const getInventory = async (filters = {}, actor = null) => {
         }
         unassignedByProjectBarang.set(key, (unassignedByProjectBarang.get(key) || 0) + 1);
       }
+    }
+
+    for (const [key, val] of additionalByClusterBarangFromAdjustment) {
+      additionalByClusterBarang.set(key, (additionalByClusterBarang.get(key) || 0) + val);
     }
 
     for (const laporan of activeLaporans) {

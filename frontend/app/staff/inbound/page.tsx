@@ -10,6 +10,7 @@ import BarangPicker, {
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import BoqPicker, { type BoqPickerItem } from "@/components/BoqPicker";
+import { MobileCardList, type MobileCardField, type MobileCardItem } from "@/components/MobileCardList";
 
 type InboundStatus = "draft_diajukan" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "ditolak" | "menunggu_verifikasi" | "ready_putaway" | "sedang_dikirim" | "tiba_menunggu_konfirmasi";
 
@@ -149,7 +150,7 @@ function Modal({
       onClick={onClose}
     >
       <div
-        className={`w-full ${widthClass} max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl`}
+        className={`w-[calc(100vw-1.5rem)] ${widthClass} max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
@@ -1061,6 +1062,75 @@ pic_pemohon_nama: picPemohon.trim() || null,
     return () => clearTimeout(timer);
   }, [toast]);
 
+  const mobileItemsInbound1: MobileCardItem[] = list.map((sj) => {
+    const meta = STATUS_META[sj.status] || STATUS_META.draft_diajukan;
+    const totalUnit = sj.items.reduce((sum, i) => sum + Number(i.qty || 0), 0);
+    const tujuanText = sj.gudang_tujuan?.nama_gudang || "-";
+    const tanggal = new Date(sj.created_at).toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+
+    const fields: MobileCardField[] = [
+      { label: "Asal", value: sj.tipe_pengirim === "external" ? `${sj.supplier?.kode ?? ""} - ${sj.supplier?.nama ?? "-"}` : sj.tipe_pengirim === "internal" ? sj.gudang_asal?.nama_gudang || "-" : "-" },
+      { label: "Tujuan", value: tujuanText },
+      { label: "Tanggal", value: tanggal },
+      { label: "Item", value: `${totalUnit} unit` },
+    ];
+
+    let actionContent: React.ReactNode = null;
+    if (sj.status === "diterima_didistribusikan") {
+      actionContent = <span className="text-sm font-semibold text-gray-400">Selesai</span>;
+    } else if (sj.status === "ready_putaway") {
+      actionContent = <Link href={`/staff/putaway/${sj.surat_jalan_id}`} className="flex min-h-11 w-full items-center justify-center rounded-lg bg-[#E8632C] text-sm font-semibold text-white hover:bg-[#D9591F]">Putaway</Link>;
+    } else if (sj.status === "draft_diajukan" && (String(user?.id) === String(sj.created_by || sj.creator?.user_id) || user?.role === "supervisor" || user?.role === "admin_general")) {
+      actionContent = <button onClick={() => handleCancelDraft(sj.surat_jalan_id)} disabled={cancellingId === sj.surat_jalan_id} className="flex min-h-11 w-full items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60">{cancellingId === sj.surat_jalan_id ? "Membatalkan..." : "Batalkan"}</button>;
+    } else {
+      actionContent = <Link href={`/staff/putaway/${sj.surat_jalan_id}`} className="flex min-h-11 w-full items-center justify-center rounded-lg bg-[#E8632C] text-sm font-semibold text-white hover:bg-[#D9591F]">Detail</Link>;
+    }
+
+    return {
+      key: String(sj.surat_jalan_id),
+      title: (
+        <span className="flex items-center gap-2">
+          <PackageCheck size={16} className="text-[#E8632C]" />
+          {sj.nomor_surat_jalan}
+        </span>
+      ),
+      badge: <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${meta.tone}`}>{meta.label}</span>,
+      fields,
+      actions: actionContent,
+    };
+  });
+
+  const mobileItemsInbound2: MobileCardItem[] = modalItems.map((row) => {
+    const kondisiLabel = KONDISI_OPTIONS.find((k) => k.value === row.kondisi)?.label || row.kondisi || "-";
+    const namaBarang = row.is_non_master ? row.nama_barang : `${row.kode_perangkat} - ${row.nama_barang}`;
+
+    const fields: MobileCardField[] = [
+      { label: "Qty SJ", value: String(row.qtySuratJalan) },
+      { label: "Qty Aktual", value: String(row.qtyAktual) },
+      { label: "Serial", value: row.serialNumber || "-" },
+      { label: "Catatan", value: row.catatan || "-" },
+    ];
+
+    const actions = (
+      <div className="grid grid-cols-2 gap-2">
+        <button type="button" onClick={() => handleEditModalItem(row.id)} className="flex min-h-11 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-sm font-semibold text-blue-700 hover:bg-blue-100">Edit</button>
+        <button type="button" onClick={() => removeModalItem(row.id)} className="flex min-h-11 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-sm font-semibold text-rose-700 hover:bg-rose-100">Hapus</button>
+      </div>
+    );
+
+    return {
+      key: String(row.id),
+      title: namaBarang,
+      badge: <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ${KONDISI_TONE[row.kondisi] || "bg-gray-100 text-gray-600"}`}>{kondisiLabel}</span>,
+      fields,
+      actions,
+    };
+  });
+
   return (
     <div className="px-8 py-6">
       <div className="mb-6 flex items-start justify-between">
@@ -1088,7 +1158,9 @@ pic_pemohon_nama: picPemohon.trim() || null,
         </div>
       )}
 
-      <div className="rounded-2xl border border-[#F3D9C7] bg-white">
+      {/* List Inbound */}
+      <MobileCardList items={mobileItemsInbound1} />
+      <div className="rounded-2xl border border-[#F3D9C7] bg-white hidden md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
@@ -1652,9 +1724,11 @@ pic_pemohon_nama: picPemohon.trim() || null,
           </div>
 
           {/* TABEL RINGKASAN */}
-          {modalItems.length > 0 && (
-            <div className="mt-4 overflow-hidden rounded-xl border border-slate-100">
-              <table className="w-full text-sm">
+          <>
+            <MobileCardList items={mobileItemsInbound2} />
+            {modalItems.length > 0 && (
+              <div className="mt-4 overflow-hidden rounded-xl border border-slate-100 hidden md:block">
+                <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                     <th className="px-3 py-2 font-semibold">Nama Barang</th>
@@ -1725,9 +1799,10 @@ pic_pemohon_nama: picPemohon.trim() || null,
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
-          )}
+               </table>
+             </div>
+           )}
+         </>
 
           {modalItems.length > 0 && (
             <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5 text-xs text-slate-600">
@@ -1769,7 +1844,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
           onClick={handleCancelEditItem}
         >
           <div
-            className="w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl"
+            className="w-[calc(100vw-1.5rem)] max-w-3xl max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
@@ -2015,7 +2090,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
           onClick={handleSuccessModalClose}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-white shadow-xl"
+            className="w-[calc(100vw-1.5rem)] max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex flex-col items-center px-6 py-8 text-center">
@@ -2061,7 +2136,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
           onClick={() => setPreviewFotoUrl(null)}
         >
           <div
-            className="max-h-[85vh] max-w-3xl overflow-hidden rounded-2xl bg-white shadow-xl"
+            className="w-[calc(100vw-1.5rem)] max-w-3xl max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">

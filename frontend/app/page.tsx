@@ -158,7 +158,7 @@ export default function Home() {
 
   return (
     <div
-      className={`min-h-screen w-full bg-[#FAF8F5] flex flex-col justify-between p-6 lg:p-12 text-slate-800`}
+      className={`min-h-dvh w-full bg-[#FAF8F5] flex flex-col justify-between p-4 sm:p-6 lg:p-12 text-slate-800`}
     >
       <div className="mx-auto flex w-full max-w-7xl flex-col justify-center gap-12 lg:flex-row lg:items-center my-auto">
 
@@ -181,7 +181,7 @@ export default function Home() {
 
           {/* Heading */}
           <div className="space-y-3">
-            <h1 className="text-4xl font-bold tracking-tight text-slate-900 lg:text-5xl">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-slate-900">
               Warehouse
               <br />
               Management System
@@ -249,10 +249,10 @@ export default function Home() {
 
         <div className="w-full lg:w-[460px] flex flex-col items-center">
 
-          <div className="w-full rounded-3xl bg-white p-8 shadow-xl shadow-slate-200/50 border border-slate-100">
+          <div className="w-full rounded-3xl bg-white p-6 sm:p-8 shadow-xl shadow-slate-200/50 border border-slate-100">
 
             {/* Login Logo */}
-            <div className="relative h-12 w-44 mx-auto mb-6">
+            <div className="relative h-10 w-36 sm:h-12 sm:w-44 mx-auto mb-6">
               <Image
                 src="/logo-digitak-gradasi.png"
                 alt="Digitak Logo"

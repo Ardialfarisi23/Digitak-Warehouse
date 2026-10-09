@@ -604,10 +604,10 @@ export default function StaffDashboardPage() {
   };
 
   return (
-    <div className="px-8 py-6">
+    <div className="px-4 sm:px-6 py-4 sm:py-6">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
           Selamat Datang, {staffName}
         </h1>
         <p className="mt-1 text-sm text-gray-500">Staf Gudang • Digitak WMS</p>
@@ -782,7 +782,26 @@ export default function StaffDashboardPage() {
               Belum ada aktivitas tercatat untuk akun Anda.
             </p>
           ) : (
-            <table className="w-full text-sm">
+            <>
+              {/* Mobile card view */}
+              <div className="space-y-3 md:hidden">
+                {activities.map((row, i) => (
+                  <div key={`card-activity-${i}`} className="rounded-xl border border-gray-200 bg-white p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-gray-800">{row.activity}</p>
+                      <StatusBadge>{row.status}</StatusBadge>
+                    </div>
+                    <div className="mt-3 space-y-1 text-sm text-gray-600">
+                      <p><span className="text-gray-400">Waktu:</span> {row.time}</p>
+                      <p><span className="text-gray-400">Lokasi:</span> {row.location}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop table view */}
+              <div className="hidden md:block overflow-x-auto overscroll-x-contain">
+              <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
                   <th className="pb-3 font-semibold">Waktu</th>
@@ -808,9 +827,10 @@ export default function StaffDashboardPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          )}
-        </div>
+              </table>
+            </div>
+</>
+      )}
 
         {/* Tugas Prioritas Berikutnya */}
         <div className="flex flex-col justify-between rounded-2xl bg-gray-900 p-6 text-white">
@@ -864,9 +884,10 @@ export default function StaffDashboardPage() {
               Mulai Tugas Berikutnya
               <ArrowRight size={16} />
             </a>
-          )}
+)}
         </div>
       </div>
+    </div>
 
       {/* Pengajuan Saya */}
       <div className="mt-6 rounded-2xl border border-[#F3D9C7] bg-white p-6">

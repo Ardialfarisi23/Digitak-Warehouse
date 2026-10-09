@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import { PERSONNEL_PERMISSIONS, canPerformPersonnelAction } from "@/lib/permissions";
 import Image from "next/image";
+import { MobileCardList } from "@/components/MobileCardList";
 
 // ---------------------------------------------------------------------------
 // Roles & Permissions (PRD Bagian 5 & 8.3)
@@ -2071,12 +2072,11 @@ function MasterDataPageContent() {
       is_aktif: "Status",
       foto: "Foto",
       kode: "Kode",
-      deskripsi: "Deskripsi",
-      nama_project: "Project",
+deskripsi: "Deskripsi",
       nama_cluster: "Nama Cluster",
       cluster_id: "Cluster ID",
       cluster_type: "Tipe Cluster",
-      alamat_lengkap: "Alamat Lengkap",
+      alamat_lengkap: "alamat_lengkap",
       homepass_plan: "Homepass Plan",
       cluster_count: "Jumlah Cluster",
     };
@@ -2258,13 +2258,13 @@ function MasterDataPageContent() {
       <div className="flex flex-1 flex-col p-6">
         {/* Header */}
 
-        <header className="mb-6 flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Master Data</h1>
-            <p className="mt-1 text-sm text-slate-500">Kelola dan pantau seluruh data utama dalam sistem warehouse.</p>
+        <header className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Master Data</h1>
+            <p className="mt-1 text-sm text-slate-500 line-clamp-2 md:line-clamp-none">Kelola dan pantau seluruh data utama dalam sistem warehouse.</p>
           </div>
 
-          <form onSubmit={handleSearchSubmit} className="flex w-80 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+          <form onSubmit={handleSearchSubmit} className="flex w-full md:w-80 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
             <Search size={16} className="shrink-0 text-slate-400" />
 
             <input
@@ -2278,7 +2278,7 @@ function MasterDataPageContent() {
 
         {/* Tabs */}
 
-        <div className="mb-5 flex items-center gap-2 overflow-x-auto">
+        <div className="mb-5 flex gap-2 overflow-x-auto overscroll-x-contain pb-1 -mx-4 px-4 sm:mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {MASTER_DATA_TABS.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.key;
@@ -2288,7 +2288,7 @@ function MasterDataPageContent() {
                 key={tab.key}
                 type="button"
                 onClick={() => handleTabChange(tab.key)}
-                className={["flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all", active ? "bg-slate-900 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"].join(" ")}
+                className={["flex shrink-0 whitespace-nowrap min-h-10 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all", active ? "bg-slate-900 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"].join(" ")}
               >
                 <Icon size={16} />
                 {tab.label}
@@ -2299,30 +2299,30 @@ function MasterDataPageContent() {
 
         {/* Action Row */}
 
-        <div className="mb-4 flex items-center justify-between">
+<div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-semibold text-slate-800">{activeConfig?.label}</h2>
             <p className="mt-0.5 text-xs text-slate-400">{meta.total} data</p>
           </div>
 
-           {canCreate && activeTab !== "personnel" && (
-             <button
-               type="button"
-               onClick={() => setFormModal({ mode: "create", record: null })}
-               className="flex items-center gap-2 rounded-full bg-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 transition-colors hover:bg-orange-600"
-             >
-               <Plus size={16} />
-               Tambah
-             </button>
-           )}
-         </div>
+            {canCreate && activeTab !== "personnel" && (
+              <button
+                type="button"
+                onClick={() => setFormModal({ mode: "create", record: null })}
+                className="flex shrink-0 min-h-10 items-center gap-2 rounded-full bg-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 transition-colors hover:bg-orange-600"
+              >
+                <Plus size={16} />
+                Tambah
+              </button>
+            )}
+          </div>
 
         {activeTab === "personnel" && (
-          <div className="mb-4 flex flex-wrap items-center gap-2">
+          <div className="mb-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
             <select
               value={posisiFilter}
               onChange={(e) => { setPosisiFilter(e.target.value); setPage(1); }}
-              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+              className="w-full sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
             >
               <option value="">Semua Posisi</option>
               <option value="Supervisor">Supervisor</option>
@@ -2332,7 +2332,7 @@ function MasterDataPageContent() {
             <select
               value={gudangFilter}
               onChange={(e) => { setGudangFilter(e.target.value); setPage(1); }}
-              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+              className="w-full sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
             >
               <option value="">Semua Gudang</option>
               {warehouseOptions.map((w) => (
@@ -2343,7 +2343,7 @@ function MasterDataPageContent() {
             <select
               value={statusFilter}
               onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+              className="col-span-2 sm:col-auto w-full sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
             >
               <option value="">Semua Status</option>
               <option value="true">Aktif</option>
@@ -2353,11 +2353,11 @@ function MasterDataPageContent() {
         )}
 
         {activeTab === "warehouses" && (
-          <div className="mb-4 flex flex-wrap items-center gap-2">
+          <div className="mb-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
             <select
               value={tipeFilter}
               onChange={(e) => { setTipeFilter(e.target.value); setPage(1); }}
-              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+              className="w-full sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
             >
               <option value="">Semua Tipe</option>
               <option value="tetap">Tetap</option>
@@ -2367,7 +2367,7 @@ function MasterDataPageContent() {
             <select
               value={gudangStatusFilter}
               onChange={(e) => { setGudangStatusFilter(e.target.value); setPage(1); }}
-              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+              className="w-full sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
             >
               <option value="">Semua Status</option>
               <option value="true">Aktif</option>
@@ -2377,11 +2377,11 @@ function MasterDataPageContent() {
         )}
 
         {activeTab === "items" && (
-          <div className="mb-4 flex flex-wrap items-center gap-2">
+          <div className="mb-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
             <select
               value={kategoriFilter}
               onChange={(e) => { setKategoriFilter(e.target.value); setPage(1); }}
-              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+              className="w-full sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
             >
               <option value="">Semua Kategori</option>
               {categoryOptions.map((cat) => (
@@ -2392,7 +2392,7 @@ function MasterDataPageContent() {
             <select
               value={satuanFilter}
               onChange={(e) => { setSatuanFilter(e.target.value); setPage(1); }}
-              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+              className="w-full sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
             >
               <option value="">Semua Satuan</option>
               {unitOptions.map((u) => (
@@ -2403,11 +2403,11 @@ function MasterDataPageContent() {
         )}
 
         {activeTab === "vehicles" && (
-          <div className="mb-4 flex flex-wrap items-center gap-2">
+          <div className="mb-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
             <select
               value={jenisKendaraanFilter}
               onChange={(e) => { setJenisKendaraanFilter(e.target.value); setPage(1); }}
-              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+              className="w-full sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
             >
               <option value="">Semua Jenis Kendaraan</option>
               <option value="truk">Truk</option>
@@ -2420,7 +2420,7 @@ function MasterDataPageContent() {
             <select
               value={kendaraanGudangFilter}
               onChange={(e) => { setKendaraanGudangFilter(e.target.value); setPage(1); }}
-              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+              className="w-full sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
             >
               <option value="">Semua Gudang</option>
               {warehouseOptions.map((w) => (
