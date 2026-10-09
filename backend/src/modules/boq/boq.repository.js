@@ -77,7 +77,7 @@ const findById = async (boq_id) => {
 
 const ALLOWED_STATUS = new Set(["draft", "aktif", "selesai", "ditolak"]);
 
-const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sortBy = "created_at", sortOrder = "desc", status, projectId, area, warehouseId, excludeStatus }) => {
+const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sortBy = "created_at", sortOrder = "desc", status, projectId, area, warehouseId, excludeStatus, clusterId }) => {
   const sanitizedPage = Math.max(parseInt(page, 10) || DEFAULT_PAGE, DEFAULT_PAGE);
   const sanitizedLimit = Math.max(parseInt(limit, 10) || DEFAULT_LIMIT, 1);
   const orderField = ALLOWED_SORT_FIELDS.includes(sortBy) ? sortBy : "created_at";
@@ -117,7 +117,11 @@ const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sor
     where.items = { some: { gudang_tujuan_id: Number(warehouseId) } };
   }
 
-if (search) {
+  if (clusterId) {
+    where.cluster_id = String(clusterId);
+  }
+
+ if (search) {
     where.OR = [{ tiket: { kode_tiket: { contains: search, mode: "insensitive" } } }, { tiket: { area: { contains: search, mode: "insensitive" } } }];
   }
 
@@ -386,7 +390,11 @@ const findItemsByProject = async (projectId, clusterId, statuses = ["aktif"]) =>
   };
 
   if (clusterId) {
-    where.cluster_id = String(clusterId);
+    if (Array.isArray(clusterId)) {
+      where.cluster_id = { in: clusterId.map(String) };
+    } else {
+      where.cluster_id = String(clusterId);
+    }
   } else if (projectId) {
     where.tiket = {
       project_id: Number(projectId),

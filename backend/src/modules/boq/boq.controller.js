@@ -224,21 +224,30 @@ const getAreas = async (req, res, next) => {
 
 const getItems = async (req, res, next) => {
   try {
-  const projectId = req.query.projectId;
-  const statusesParam = req.query.statuses;
-  const statuses = statusesParam
-    ? String(statusesParam)
+    const projectId = req.query.projectId;
+    const statusesParam = req.query.statuses;
+    const clusterId = req.query.clusterId || undefined;
+    const clusterIds = req.query.clusterIds || undefined;
+    const statuses = statusesParam
+      ? String(statusesParam)
         .split(",")
         .map((s) => s.trim().toLowerCase())
         .filter((s) => ["draft", "aktif", "selesai"].includes(s))
-    : ["aktif"];
-  if (!statuses.length) {
-    statuses.push("aktif");
-  }
-  if (!projectId) {
-    return response.success(res, "Daftar item BOQ berhasil diambil.", []);
-  }
-  const result = await boqService.getItems(projectId, statuses);
+      : ["aktif"];
+    if (!statuses.length) {
+      statuses.push("aktif");
+    }
+    if (!projectId && !clusterId && !clusterIds) {
+      return response.success(res, "Daftar item BOQ berhasil diambil.", []);
+    }
+    let effectiveClusterId = clusterId;
+    if (!effectiveClusterId && clusterIds) {
+      effectiveClusterId = String(clusterIds)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+    const result = await boqService.getItems(projectId, statuses, effectiveClusterId);
     return response.success(res, "Daftar item BOQ berhasil diambil.", result);
   } catch (err) {
     next(err);
