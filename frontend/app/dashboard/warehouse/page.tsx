@@ -165,7 +165,7 @@ function ZoneDetailModal({ open, onClose, children }: { open: boolean; onClose: 
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
-      <div className="w-full max-w-[640px] max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-[calc(100vw-1.5rem)] max-w-[640px] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
         {children}
       </div>
     </div>
@@ -1440,7 +1440,7 @@ export default function WarehouseLayoutPage() {
 
       {deleteConfirmOpen && deleteConfirmZone && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/30 p-4" onClick={closeDeleteConfirm}>
-          <div className="w-full max-w-[420px] rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+<div className="w-[calc(100vw-1.5rem)] max-w-[420px] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="border-b border-[#edf0f2] px-6 py-4">
               <h3 className="text-[17px] font-bold text-[#111827]">
                 Hapus Zona {getCleanZoneCode(deleteConfirmZone)}

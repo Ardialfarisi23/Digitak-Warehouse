@@ -524,7 +524,8 @@ export default function SuratJalanDetailPage() {
         </div>
 
         {/* Tabel item */}
-        <table className="mb-10 w-full border-collapse text-sm">
+        <div className="overflow-x-auto overscroll-x-contain">
+        <table className="min-w-[640px] mb-10 w-full border-collapse text-sm">
           <thead>
             <tr className="bg-[#FFF7ED]">
               <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">No</th>
@@ -561,8 +562,9 @@ export default function SuratJalanDetailPage() {
                 <td className="border border-gray-200 px-3 py-6" colSpan={6} />
               </tr>
             ))}
-          </tbody>
-        </table>
+           </tbody>
+         </table>
+         </div>
 
         {/* Tanda tangan */}
         <div className="mb-8 grid grid-cols-3 gap-6 text-center text-sm">

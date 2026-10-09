@@ -78,8 +78,7 @@ export default function InboundDetailModal({
       onClick={onClose}
     >
       <div
-        className="relative flex w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl print:shadow-none"
-        style={{ maxHeight: "90vh" }}
+        className="relative flex w-[calc(100vw-1.5rem)] max-w-4xl flex-col max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-2xl print:shadow-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Toolbar — disembunyikan saat cetak */}
@@ -137,7 +136,8 @@ export default function InboundDetailModal({
             </div>
 
             {/* Tabel Daftar Barang */}
-            <table className="mb-10 w-full border-collapse text-sm">
+            <div className="overflow-x-auto overscroll-x-contain">
+            <table className="min-w-[640px] mb-10 w-full border-collapse text-sm">
               <thead>
                 <tr className="bg-[#FFF7ED]">
                   <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">No</th>
@@ -159,8 +159,9 @@ export default function InboundDetailModal({
                     <td className="border border-gray-200 px-3 py-2.5 text-gray-500">{item.kondisi || item.catatan || "-"}</td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
+               </tbody>
+             </table>
+             </div>
 
             {/* Bagian Tanda Tangan */}
             <div className="mb-8 grid grid-cols-3 gap-6 text-center text-sm">

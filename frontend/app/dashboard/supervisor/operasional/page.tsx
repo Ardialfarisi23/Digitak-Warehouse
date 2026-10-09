@@ -659,7 +659,8 @@ export default function SupervisorOperasionalPage() {
         {/* Tab 1: Personil */}
         {!loading && activeTab === "Personil" && (
           <div className="w-full">
-             <table className="w-full text-left border-collapse table-auto text-sm text-slate-700">
+             <div className="overflow-x-auto overscroll-x-contain">
+              <table className="min-w-[640px] w-full text-left border-collapse table-auto text-sm text-slate-700">
                 <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
                    <tr>
                      <th className="px-3 py-3">Nama</th>
@@ -762,16 +763,18 @@ export default function SupervisorOperasionalPage() {
                         />
                       </td>
                     </tr>
-                  )}
-                </tbody>
-             </table>
-           </div>
-         )}
+                   )}
+                 </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Tab 2: Kendaraan */}
         {!loading && activeTab === "Kendaraan" && (
           <div className="w-full">
-             <table className="w-full text-left border-collapse table-auto text-sm text-slate-700">
+             <div className="overflow-x-auto overscroll-x-contain">
+              <table className="min-w-[640px] w-full text-left border-collapse table-auto text-sm text-slate-700">
                <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
                  <tr>
                    <th className="px-3 py-3">No. Polisi</th>
@@ -821,16 +824,18 @@ export default function SupervisorOperasionalPage() {
                       />
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                   )}
+                 </tbody>
+              </table>
+            </div>
           </div>
         )}
 
         {/* Tab 3: Inventori Perangkat */}
         {!loading && activeTab === "Inventori Perangkat" && (
           <div className="w-full">
-             <table className="w-full text-left border-collapse table-auto text-sm text-slate-700">
+             <div className="overflow-x-auto overscroll-x-contain">
+              <table className="w-full text-left border-collapse table-auto text-sm text-slate-700">
                <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
                  <tr>
                    <th className="px-3 py-3">Kode Perangkat</th>
@@ -862,9 +867,10 @@ export default function SupervisorOperasionalPage() {
                       />
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                 )}
+               </tbody>
+             </table>
+            </div>
           </div>
         )}
       </div>

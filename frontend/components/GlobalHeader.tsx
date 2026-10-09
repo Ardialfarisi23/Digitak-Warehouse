@@ -104,8 +104,8 @@ export function GlobalHeader() {
   return (
     <>
       <header
-        style={{ left: `${width}px` }}
-        className="fixed top-0 right-0 z-40 flex h-16 items-center justify-between bg-[#FAF8F5] px-4 lg:px-6 transition-all duration-300"
+        style={{ "--sidebar-w": `${width}px` } as React.CSSProperties}
+        className="fixed top-0 right-0 z-40 flex h-16 items-center justify-between bg-[#FAF8F5] px-4 lg:px-6 transition-all duration-300 left-0 md:left-[var(--sidebar-w)]"
       >
         {isMobile && (
           <button
@@ -137,7 +137,7 @@ export function GlobalHeader() {
             </button>
 
             {notifOpen && (
-              <div className="absolute right-0 top-full mt-2 w-80 rounded-2xl border border-stone-200 bg-white shadow-xl shadow-stone-200/40 z-50">
+              <div className="fixed inset-x-3 top-16 md:absolute md:right-0 md:top-full md:mt-2 w-auto md:w-80 md:max-w-80 rounded-2xl border border-stone-200 bg-white shadow-xl shadow-stone-200/40 z-50">
                 <div className="flex items-center justify-between border-b border-stone-100 px-4 py-3">
                   <h3 className="text-sm font-bold text-slate-900">Notifikasi</h3>
                   <div className="flex items-center gap-1">
@@ -267,7 +267,7 @@ export function GlobalHeader() {
             </button>
 
             {settingsOpen && (
-              <div className="absolute right-0 top-full mt-2 w-56 rounded-2xl border border-stone-200 bg-white shadow-xl shadow-stone-200/40 z-50 py-1.5">
+              <div className="fixed inset-x-3 top-16 md:absolute md:inset-x-auto md:right-0 md:top-full md:mt-2 md:w-56 rounded-2xl border border-stone-200 bg-white shadow-xl shadow-stone-200/40 z-50 py-1.5">
                 <Link
                   href="/dashboard"
                   className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
@@ -311,7 +311,7 @@ export function GlobalHeader() {
             </button>
 
             {accountOpen && (
-              <div className="absolute right-0 top-full mt-2 w-56 rounded-2xl border border-stone-200 bg-white shadow-xl shadow-stone-200/40 z-50 py-1.5">
+              <div className="absolute right-0 top-full mt-2 w-56 max-w-[calc(100vw-1.5rem)] rounded-2xl border border-stone-200 bg-white shadow-xl shadow-stone-200/40 z-50 py-1.5">
                 <Link
                   href="/profile"
                   className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"

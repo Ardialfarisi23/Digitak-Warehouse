@@ -75,6 +75,7 @@ export default function ApprovalList() {
         </div>
       )}
       <div className="rounded-2xl border border-gray-200 bg-white">
+        <div className="overflow-x-auto overscroll-x-contain">
         <table className="w-full text-sm">
           {/* Table headers */}
           <thead>
@@ -121,6 +122,7 @@ export default function ApprovalList() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

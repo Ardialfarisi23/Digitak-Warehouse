@@ -1224,8 +1224,9 @@ export default function BoqPage() {
 
               <div>
                 <p className="text-xs font-medium text-slate-400 mb-2">Daftar Barang</p>
-                <div className="rounded-xl border border-slate-100 overflow-hidden">
-                  <table className="w-full text-left text-sm">
+                 <div className="rounded-xl border border-slate-100 overflow-hidden">
+                   <div className="overflow-x-auto overscroll-x-contain">
+                   <table className="w-full text-left text-sm">
                     <thead>
                       <tr className="border-b border-slate-100 bg-slate-50">
                         <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Kode</th>
@@ -1252,17 +1253,19 @@ export default function BoqPage() {
                           <td className="px-4 py-2.5 text-right font-semibold text-slate-800">{item.quantity}</td>
                           <td className="px-4 py-2.5 text-slate-500">{item.unit || "-"}</td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                       ))}
+                     </tbody>
+                   </table>
+                   </div>
+                 </div>
+               </div>
 
               <div>
                 <p className="flex items-center gap-1.5 text-xs font-medium text-slate-400 mb-2"><History size={13} />Riwayat Surat Jalan</p>
-                {detailBoq.suratJalanHistory && detailBoq.suratJalanHistory.length > 0 ? (
-                  <div className="rounded-xl border border-slate-100 overflow-hidden">
-                    <table className="w-full text-left text-sm">
+                 {detailBoq.suratJalanHistory && detailBoq.suratJalanHistory.length > 0 ? (
+                   <div className="rounded-xl border border-slate-100 overflow-hidden">
+                     <div className="overflow-x-auto overscroll-x-contain">
+                     <table className="w-full text-left text-sm">
                       <thead>
                         <tr className="border-b border-slate-100 bg-slate-50">
                           <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Nomor Surat Jalan</th>
@@ -1277,11 +1280,12 @@ export default function BoqPage() {
                             <td className="px-4 py-2.5 text-slate-500">{new Date(sj.date).toLocaleDateString("id-ID")}</td>
                             <td className="px-4 py-2.5 text-right font-semibold text-slate-800">{sj.qty}</td>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
+                           ))}
+                         </tbody>
+                       </table>
+                       </div>
+                     </div>
+                   ) : (
                   <p className="text-xs text-slate-400">Belum ada Surat Jalan yang merealisasikan BOQ ini.</p>
                 )}
               </div>

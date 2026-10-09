@@ -2,6 +2,7 @@ const prisma = require("../../config/prisma");
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
 const { normalizeClusterId } = require("../../utils/clusterResolver");
+const additionalRepository = require("../additional/additional.repository");
 
 const DEFAULT_LIMIT = 10;
 const DEFAULT_PAGE = 1;
@@ -442,7 +443,8 @@ const findItemsByProject = async (projectId, clusterId, statuses = ["aktif"]) =>
     }
   }
 
-  // Additional = qty inbound yang marked "kelebihan" (di luar alokasi BOQ Plan).
+  // Additional = qty inbound yang marked "kelebihan" (di luar alokasi BOQ Plan)
+  //             + SUM(additional_adjustment.qty).
   // MOS = qty yang sudah pernah dikirim (outbound final, bukan transfer antar gudang).
   // Keduanya dipakai sebagai informasi di form Outbound. Catatan: qty_rencana di
   // atas sudah NETO karena reduceBoqAllocation() memotongnya saat outbound disetujui.
@@ -454,20 +456,19 @@ const findItemsByProject = async (projectId, clusterId, statuses = ["aktif"]) =>
   ];
 
   if (projectIds.length > 0) {
-    const FINAL_SHIPMENT_STATUSES = ["disetujui", "diterima_didistribusikan"];
+    const additionalTotals = await additionalRepository.getAdditionalTotals(projectIds);
 
     const shipmentItems = await prisma.surat_jalan_item.findMany({
       where: {
         barang_id: { in: [...itemMap.keys()] },
         surat_jalan: {
           project_id: { in: projectIds },
-          status: { in: FINAL_SHIPMENT_STATUSES },
+          status: { in: ["disetujui", "diterima_didistribusikan"] },
         },
       },
       select: {
         barang_id: true,
         qty: true,
-        is_kelebihan: true,
         surat_jalan: {
           select: {
             tipe: true,
@@ -482,15 +483,16 @@ const findItemsByProject = async (projectId, clusterId, statuses = ["aktif"]) =>
       const qty = Number(item.qty || 0);
 
       if (item.surat_jalan?.tipe === "inbound") {
-        if (item.is_kelebihan) {
-          additionalByBarang.set(key, (additionalByBarang.get(key) || 0) + qty);
-        }
         continue;
       }
 
       if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
         mosByBarang.set(key, (mosByBarang.get(key) || 0) + qty);
       }
+    }
+
+    for (const [key, val] of additionalTotals) {
+      additionalByBarang.set(key, (additionalByBarang.get(key) || 0) + val);
     }
   }
 
@@ -581,6 +583,23 @@ const getExportMatrixData = async () => {
   const additionalByProjectBarang = new Map();
   const mosByProjectBarang = new Map();
 
+  const additionalTotalsByProject =
+    shipmentItems.length > 0
+      ? await additionalRepository.getAdditionalTotalsByProject(
+          Array.from(
+            new Set(
+              shipmentItems
+                .map((item) => item.surat_jalan?.project_id)
+                .filter((id) => id != null)
+            )
+          ).map((id) => Number(id))
+        )
+      : new Map();
+
+  for (const [key, val] of additionalTotalsByProject) {
+    additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + val);
+  }
+
   for (const item of shipmentItems) {
     const projectIdNum = Number(item.surat_jalan?.project_id);
     const barangId = String(item.barang_id);
@@ -588,17 +607,10 @@ const getExportMatrixData = async () => {
     const key = `${projectIdNum}-${barangId}`;
 
     if (item.surat_jalan?.tipe === "inbound") {
-      if (item.is_kelebihan) {
-        additionalByProjectBarang.set(
-          key,
-          (additionalByProjectBarang.get(key) || 0) + qty
-        );
-      } else {
-        inboundByProjectBarang.set(
-          key,
-          (inboundByProjectBarang.get(key) || 0) + qty
-        );
-      }
+      inboundByProjectBarang.set(
+        key,
+        (inboundByProjectBarang.get(key) || 0) + qty
+      );
     }
 
     if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
