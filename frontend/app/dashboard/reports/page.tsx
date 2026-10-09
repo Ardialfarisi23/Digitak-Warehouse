@@ -1421,7 +1421,8 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
                 <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Qty</th>
                 <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Zona</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Asal → Tujuan</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Asal</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tujuan</th>
                 <th className="px-6 py-4 w-10"></th>
               </tr>
             </thead>
@@ -1429,18 +1430,18 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4" colSpan={12}>
+                    <td className="px-6 py-4" colSpan={13}>
                       <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                     </td>
                   </tr>
                 ))
               ) : error ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={12}>{error}</td>
+                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={13}>{error}</td>
                 </tr>
               ) : data.length === 0 ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={12}>
+                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={13}>
                     Tidak ada pergerakan stok yang cocok dengan filter ini.
                   </td>
                 </tr>
@@ -1514,7 +1515,8 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-slate-700">
                       {renderAsal(r)}
-                      <span className="mx-1.5 text-slate-400">→</span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-700">
                       {renderTujuan(r)}
                     </td>
                     <td className="px-6 py-4 text-right">

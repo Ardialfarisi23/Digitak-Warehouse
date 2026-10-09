@@ -120,6 +120,7 @@ export default function PutawayListPage() {
         <table className="w-full min-w-[1100px] text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+              <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
               <th className="px-6 py-4 font-semibold">Nomor Surat Jalan</th>
               <th className="px-6 py-4 font-semibold">Asal</th>
               <th className="px-6 py-4 font-semibold">Tujuan Gudang</th>
@@ -134,12 +135,12 @@ export default function PutawayListPage() {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={10} className="px-6 py-12 text-center text-gray-400">
                   {activeTab === "MENUNGGU" ? "Tidak ada Surat Jalan yang menunggu ditempatkan." : "Belum ada riwayat penempatan."}
                 </td>
               </tr>
             ) : (
-              filtered.map((sj) => {
+              filtered.map((sj, sjIndex) => {
                 const itemRows = sj.items && sj.items.length > 0 ? sj.items : [null];
                 const rowSpan = itemRows.length;
                 const tanggal = sj.tanggal
@@ -153,6 +154,7 @@ export default function PutawayListPage() {
                   if (item == null || item.qty_diterima === null || item.qty_diterima === undefined) return "-";
                   return Number(item.qty_diterima);
                 };
+                const rowNumber = sjIndex + 1;
                 return itemRows.map((item, itemIdx) => {
                   const isFirst = itemIdx === 0;
                   return (
@@ -162,6 +164,7 @@ export default function PutawayListPage() {
                     >
                       {isFirst && (
                         <>
+                          <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500" rowSpan={rowSpan}>{rowNumber}</td>
                           <td className="px-6 py-4 align-top font-medium text-gray-800" rowSpan={rowSpan}>
                             <span className="flex items-center gap-2">
                               <MapPin size={16} className="text-[#E8632C]" />

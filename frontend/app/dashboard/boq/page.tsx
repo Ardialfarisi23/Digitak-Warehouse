@@ -1119,6 +1119,7 @@ export default function BoqPage() {
             <table className="w-full text-left text-sm md:min-w-full">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
+                  <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                     Nomor BOQ / Tiket
                   </th>
@@ -1156,7 +1157,10 @@ export default function BoqPage() {
                 {loading ? (
                   Array.from({ length: 5 }).map((_, rowIndex) => (
                     <tr key={rowIndex}>
-                      {Array.from({ length: 7 }).map((_, colIndex) => (
+                      <td className="px-3 py-3 md:px-6 md:py-4">
+                        <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
+                      </td>
+                      {Array.from({ length: 10 }).map((_, colIndex) => (
                         <td key={colIndex} className="px-3 py-3 md:px-6 md:py-4">
                           <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                         </td>
@@ -1165,20 +1169,20 @@ export default function BoqPage() {
                   ))
                 ) : error ? (
                   <tr>
-                    <td colSpan={10} className="px-3 py-3 md:px-6 md:py-16 text-center text-sm text-rose-500">
+                    <td colSpan={11} className="px-3 py-3 md:px-6 md:py-16 text-center text-sm text-rose-500">
                       {error}
                     </td>
                   </tr>
                 ) : boqs.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-3 py-3 md:px-6 md:py-16 text-center text-sm text-slate-400">
+                    <td colSpan={11} className="px-3 py-3 md:px-6 md:py-16 text-center text-sm text-slate-400">
                       {activeTab === "draft"
                         ? "Belum ada BOQ draft. BOQ baru dari email/PO akan muncul di sini."
                         : "Tidak ada data BOQ."}
                     </td>
                   </tr>
                 ) : (
-                  pagedBoqs.map((boq) => {
+                  pagedBoqs.map((boq, index) => {
                     const statusBadge = getStatusBadge(boq.status);
                     const sourceBadge = getSourceBadge(boq.source);
                     const verificationBadge = getVerificationBadge(boq.externalVerificationStatus);
@@ -1186,6 +1190,7 @@ export default function BoqPage() {
                     const totalItems = boq.items.length;
                     const blockedFromActivation =
                       boq.externalVerificationStatus !== "terverifikasi";
+                    const rowNumber = (safePage - 1) * PAGE_SIZE + index + 1;
 
                     return (
                       <tr
@@ -1193,6 +1198,7 @@ export default function BoqPage() {
                         className="group cursor-pointer transition-colors hover:bg-slate-50"
                         onClick={() => openDetailModal(boq)}
                       >
+                        <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap text-center text-xs text-slate-500">{rowNumber}</td>
                         <td className="px-3 py-3 md:px-6 md:py-4">
                           <div className="font-semibold text-orange-500 whitespace-nowrap">{boq.boqNumber}</div>
                           <div className="text-xs text-slate-400">{boq.ticketNumber}</div>
@@ -1915,23 +1921,25 @@ export default function BoqPage() {
                   </div>
                 )}
 
-                {/* Daftar barang */}
+{/* Daftar barang */}
                 <div>
                   <p className="text-xs font-medium text-slate-400 mb-2">Daftar Barang</p>
                    <div className="rounded-xl border border-slate-100 overflow-hidden overflow-x-auto overscroll-x-contain">
-                     <table className="w-full text-left text-sm">
-                      <thead>
-                        <tr className="border-b border-slate-100 bg-slate-50">
-                          <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Kode</th>
-                          <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Nama</th>
-                          <th className="px-4 py-2 text-[11px] font-semibold text-slate-400 text-right">Qty</th>
-                          <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Satuan</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-50">
-                        {detailBoq.items.map((item) => (
-                          <tr key={item.id}>
-                            <td className="px-4 py-2.5 text-slate-700">{item.itemCode}</td>
+                      <table className="w-full text-left text-sm">
+                       <thead>
+                         <tr className="border-b border-slate-100 bg-slate-50">
+                           <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
+                           <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Kode</th>
+                           <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Nama</th>
+                           <th className="px-4 py-2 text-[11px] font-semibold text-slate-400 text-right">Qty</th>
+                           <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Satuan</th>
+                         </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-50">
+                         {detailBoq.items.map((item, index) => (
+                           <tr key={item.id}>
+                             <td className="px-4 py-2.5 whitespace-nowrap text-center text-xs text-slate-500">{index + 1}</td>
+                             <td className="px-4 py-2.5 text-slate-700">{item.itemCode}</td>
                             <td className="px-4 py-2.5 font-medium text-slate-800">
                               <div className="flex items-center gap-2">
                                 {item.barang?.foto && !brokenImages.has(item.barang.foto) && (
@@ -1966,7 +1974,7 @@ export default function BoqPage() {
                   </div>
                 </div>
 
-                {/* Riwayat Surat Jalan */}
+{/* Riwayat Surat Jalan */}
                 <div>
                   <p className="flex items-center gap-1.5 text-xs font-medium text-slate-400 mb-2">
                     <History size={13} />
@@ -1974,18 +1982,20 @@ export default function BoqPage() {
                   </p>
                   {detailBoq.suratJalanHistory && detailBoq.suratJalanHistory.length > 0 ? (
                      <div className="rounded-xl border border-slate-100 overflow-hidden overflow-x-auto overscroll-x-contain">
-                       <table className="w-full text-left text-sm">
-                        <thead>
-                          <tr className="border-b border-slate-100 bg-slate-50">
-                            <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Nomor Surat Jalan</th>
-                            <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Tanggal</th>
-                            <th className="px-4 py-2 text-[11px] font-semibold text-slate-400 text-right">Qty</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {detailBoq.suratJalanHistory.map((sj) => (
-                            <tr key={sj.id}>
-                              <td className="px-4 py-2.5 text-slate-700">{sj.number}</td>
+                        <table className="w-full text-left text-sm">
+                         <thead>
+                           <tr className="border-b border-slate-100 bg-slate-50">
+                             <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
+                             <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Nomor Surat Jalan</th>
+                             <th className="px-4 py-2 text-[11px] font-semibold text-slate-400">Tanggal</th>
+                             <th className="px-4 py-2 text-[11px] font-semibold text-slate-400 text-right">Qty</th>
+                           </tr>
+                         </thead>
+                         <tbody className="divide-y divide-slate-50">
+                           {detailBoq.suratJalanHistory.map((sj, index) => (
+                             <tr key={sj.id}>
+                               <td className="px-4 py-2.5 whitespace-nowrap text-center text-xs text-slate-500">{index + 1}</td>
+                               <td className="px-4 py-2.5 text-slate-700">{sj.number}</td>
                               <td className="px-4 py-2.5 text-slate-500">
                                 {new Date(sj.date).toLocaleDateString("id-ID")}
                               </td>

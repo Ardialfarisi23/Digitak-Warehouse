@@ -732,6 +732,7 @@ export default function DistributionDetailPage() {
         <table className="w-full min-w-[1100px] text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+              <th className="pb-3 pr-4 font-semibold text-center w-12">No</th>
               <th className="pb-3 pr-4 font-semibold">Kode Barang</th>
               <th className="pb-3 pr-4 font-semibold">Nama Barang</th>
               <th className="pb-3 pr-4 font-semibold">Zona</th>
@@ -743,8 +744,9 @@ export default function DistributionDetailPage() {
             </tr>
           </thead>
           <tbody>
-            {data.items.map((item, _ri) => (
-              <tr key={item.item_id} className={`border-b border-gray-50 last:border-0 ${_ri % 2 === 1 ? "bg-gray-50/60" : "bg-white"}`}>
+            {data.items.map((item, idx) => (
+              <tr key={item.item_id} className={`border-b border-gray-50 last:border-0 ${idx % 2 === 1 ? "bg-gray-50/60" : "bg-white"}`}>
+                <td className="py-3 pr-4 text-center text-xs text-slate-500">{idx + 1}</td>
                 <td className="py-3 pr-4 font-medium text-gray-800">
                   {item.barang?.kode_perangkat || "-"}
                 </td>

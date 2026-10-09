@@ -2480,6 +2480,7 @@ deskripsi: "Deskripsi",
             <table className="w-full text-left border-collapse table-auto text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
+                  <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
                   {columns.map((column) => (
                     <th key={column} className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                       {getColumnLabel(column)}
@@ -2494,6 +2495,9 @@ deskripsi: "Deskripsi",
                 {loading ? (
                   Array.from({ length: 7 }).map((_, rowIndex) => (
                     <tr key={rowIndex}>
+                      <td className="px-3 py-3">
+                        <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
+                      </td>
                       {Array.from({ length: columns.length + 1 }).map((_, colIndex) => (
                         <td key={colIndex} className="px-3 py-3">
                           <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
@@ -2503,28 +2507,30 @@ deskripsi: "Deskripsi",
                   ))
                 ) : error ? (
                   <tr>
-                    <td colSpan={columns.length + 1} className="px-3 py-16 text-center text-sm text-rose-500">
+                    <td colSpan={columns.length + 2} className="px-3 py-16 text-center text-sm text-rose-500">
                       {error}
                     </td>
                   </tr>
                 ) : data.length === 0 ? (
                   <tr>
-                    <td colSpan={columns.length + 1} className="px-3 py-16 text-center text-sm text-slate-400">
+                    <td colSpan={columns.length + 2} className="px-3 py-16 text-center text-sm text-slate-400">
                       Tidak ada data {activeConfig?.label.toLowerCase()}.
                     </td>
                   </tr>
                 ) : (
-                   data.map((record, index) => {
-                     const item = record as Item;
+data.map((record, index) => {
+                      const item = record as Item;
+                      const rowNumber = (meta.page - 1) * ITEMS_PER_PAGE + index + 1;
 
-                      const idFields = activeConfig?.idFields || [activeConfig?.idField || "id"];
+                       const idFields = activeConfig?.idFields || [activeConfig?.idField || "id"];
                      const rawId = idFields.map((field) => (record as any)?.[field]).find((value) => value !== undefined && value !== null && value !== "");
                      const basePrimaryKey = rawId !== undefined && rawId !== null && rawId !== "" ? String(rawId) : String((record as any)?.id ?? `record-${index}`);
                      const primaryKey = `${basePrimaryKey}-${index}`;
 
-                     return (
-                       <tr key={primaryKey} onClick={() => setDetailRecord(record)} className="group cursor-pointer transition-colors hover:bg-slate-50">
-                         {columns.map((column) => {
+return (
+                        <tr key={primaryKey} onClick={() => setDetailRecord(record)} className="group cursor-pointer transition-colors hover:bg-slate-50">
+                          <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500">{rowNumber}</td>
+                          {columns.map((column) => {
                            let value = record[column];
 
                            if (column === "cluster_count") {

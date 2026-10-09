@@ -801,22 +801,24 @@ export default function StaffDashboardPage() {
 
               {/* Desktop table view */}
               <div className="hidden md:block overflow-x-auto overscroll-x-contain">
-              <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
-                  <th className="pb-3 font-semibold">Waktu</th>
-                  <th className="pb-3 font-semibold">Aktivitas</th>
-                  <th className="pb-3 font-semibold">Lokasi</th>
-                  <th className="pb-3 font-semibold">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activities.map((row, i) => (
-                  <tr
-                    key={i}
-                    className="border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30"
-                  >
-                    <td className="py-3 pr-4 text-gray-500">{row.time}</td>
+<table className="w-full text-sm">
+               <thead>
+                 <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+                   <th className="pb-3 font-semibold text-center w-12">No</th>
+                   <th className="pb-3 font-semibold">Waktu</th>
+                   <th className="pb-3 font-semibold">Aktivitas</th>
+                   <th className="pb-3 font-semibold">Lokasi</th>
+                   <th className="pb-3 font-semibold">Status</th>
+                 </tr>
+               </thead>
+               <tbody>
+                 {activities.map((row, i) => (
+                   <tr
+                     key={i}
+                     className="border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30"
+                   >
+                     <td className="py-3 pr-4 text-center text-xs text-slate-500">{i + 1}</td>
+                     <td className="py-3 pr-4 text-gray-500">{row.time}</td>
                     <td className="py-3 pr-4 font-medium text-gray-800">
                       {row.activity}
                     </td>

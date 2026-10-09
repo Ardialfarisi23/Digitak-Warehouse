@@ -589,6 +589,7 @@ export default function UsersPage() {
             <table className="min-w-full text-left text-sm text-slate-700">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
+                  <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                     Nama
                   </th>
@@ -623,7 +624,7 @@ export default function UsersPage() {
                 {isLoading ? (
                   Array.from({ length: 7 }).map((_, rowIndex) => (
                     <tr key={rowIndex}>
-                      {Array.from({ length: 7 }).map((_, colIndex) => (
+                      {Array.from({ length: 8 }).map((_, colIndex) => (
                         <td key={colIndex} className="px-6 py-4">
                           <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                         </td>
@@ -632,12 +633,12 @@ export default function UsersPage() {
                   ))
                 ) : filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-16 text-center text-sm text-slate-400">
+                    <td colSpan={8} className="px-6 py-16 text-center text-sm text-slate-400">
                       Tidak ada pengguna yang cocok.
                     </td>
                   </tr>
                 ) : (
-                  paginatedUsers.map((record) => {
+                  paginatedUsers.map((record, index) => {
                     const photoUrl =
                       getPhotoUrl(record.foto);
 
@@ -647,12 +648,14 @@ export default function UsersPage() {
                       !!user?.id &&
                       String(userId) ===
                         String(user.id);
+                    const rowNumber = (currentPage - 1) * itemsPerPage + index + 1;
 
                     return (
                       <tr
                         key={userId}
                         className="group transition-colors hover:bg-slate-50"
                       >
+                        <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500">{rowNumber}</td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             {photoUrl ? (

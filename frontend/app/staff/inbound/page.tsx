@@ -1190,6 +1190,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
         <table className="w-full min-w-[1600px] text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+              <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
               <th className="px-4 py-4 font-semibold">Nomor Surat Jalan</th>
               <th className="px-4 py-4 font-semibold">Tipe Pengirim</th>
               <th className="px-4 py-4 font-semibold">Gudang Asal</th>
@@ -1217,18 +1218,18 @@ pic_pemohon_nama: picPemohon.trim() || null,
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={22} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={23} className="px-6 py-12 text-center text-gray-400">
                   Memuat data...
                 </td>
               </tr>
             ) : list.length === 0 ? (
               <tr>
-                <td colSpan={22} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={23} className="px-6 py-12 text-center text-gray-400">
                   Tidak ada Surat Jalan Inbound yang perlu diproses.
                 </td>
               </tr>
             ) : (
-              list.map((sj) => {
+              list.map((sj, sjIndex) => {
                 const meta = STATUS_META[sj.status] || STATUS_META.draft_diajukan;
                 const itemRows = sj.items && sj.items.length > 0 ? sj.items : [null];
                 const rowSpan = itemRows.length;
@@ -1253,6 +1254,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 const driverLabel = sj.driver_teks || sj.personil_pengantar?.nama || "-";
                 const boqLabel = sj.boq ? sj.boq.boq_number || `BOQ #${sj.boq.boq_id}` : "-";
                 const tiketLabel = sj.boq?.tiket?.kode_tiket || "-";
+                const rowNumber = sjIndex + 1;
 
                 return itemRows.map((item, itemIdx) => {
                   const isFirst = itemIdx === 0;
@@ -1263,6 +1265,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
                     >
                       {isFirst && (
                         <>
+                          <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500" rowSpan={rowSpan}>{rowNumber}</td>
                           <td className="px-4 py-4 align-top font-medium text-gray-800" rowSpan={rowSpan}>
                             <span className="flex items-center gap-2">
                               <PackageCheck size={16} className="text-[#E8632C]" />
@@ -1862,8 +1865,9 @@ pic_pemohon_nama: picPemohon.trim() || null,
             {modalItems.length > 0 && (
               <div className="mt-4 overflow-hidden rounded-xl border border-slate-100 hidden md:block">
                 <table className="w-full text-sm">
-                <thead>
+<thead>
                   <tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
                     <th className="px-3 py-2 font-semibold">Nama Barang</th>
                     <th className="px-3 py-2 font-semibold text-center">Qty Surat Jalan</th>
                     <th className="px-3 py-2 font-semibold text-center">Qty Aktual</th>
@@ -1877,6 +1881,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 <tbody>
                   {modalItems.map((row, idx) => (
                     <tr key={row.id} className={`border-t border-slate-50 ${idx % 2 === 0 ? "bg-white" : "bg-slate-50"}`}>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-center text-xs text-slate-500">{idx + 1}</td>
                       <td className="px-3 py-2.5 font-medium text-gray-800">
                         {row.is_non_master ? row.nama_barang : `${row.kode_perangkat} - ${row.nama_barang}`}
                       </td>

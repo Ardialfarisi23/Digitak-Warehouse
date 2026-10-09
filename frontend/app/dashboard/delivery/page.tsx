@@ -448,6 +448,7 @@ export default function AdminDeliveryPage() {
             <table className="w-full md:min-w-[1000px] text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
+                  <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
                   <th className="px-2 py-3 md:px-6 md:py-4 text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap hidden md:table-cell">Tipe</th>
                   <th className="px-2 py-3 md:px-6 md:py-4 text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-full md:w-auto">No. Surat Jalan</th>
                   <th className="px-2 py-3 md:px-6 md:py-4 text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap hidden md:table-cell">Project</th>
@@ -461,7 +462,7 @@ export default function AdminDeliveryPage() {
                 {isLoading ? (
                   Array.from({ length: 5 }).map((_, rowIndex) => (
                     <tr key={rowIndex}>
-                      {Array.from({ length: 6 }).map((_, colIndex) => (
+                      {Array.from({ length: 7 }).map((_, colIndex) => (
                         <td key={colIndex} className="px-3 py-3 md:px-6 md:py-4">
                           <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                         </td>
@@ -470,26 +471,28 @@ export default function AdminDeliveryPage() {
                   ))
                 ) : error ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-3 md:px-6 md:py-16 text-center text-sm text-rose-500">
+                    <td colSpan={7} className="px-3 py-3 md:px-6 md:py-16 text-center text-sm text-rose-500">
                       {error}
                     </td>
                   </tr>
                 ) : filteredRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-3 md:px-6 md:py-16 text-center">
+                    <td colSpan={7} className="px-3 py-3 md:px-6 md:py-16 text-center">
                       <FileText size={28} className="mx-auto text-slate-300" />
                       <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data surat jalan</p>
                       <p className="mt-1 text-xs text-slate-400">Coba ubah filter atau kata pencarian.</p>
                     </td>
                   </tr>
                 ) : (
-                  pagedRecords.map((record) => {
+                  pagedRecords.map((record, index) => {
                     const statusMeta = STATUS_META[record.status] || { label: record.status, bg: "bg-slate-100", text: "text-slate-600" };
                     const totalQty = record.items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
                     const isOutbound = (record.tipe || "").toLowerCase() === "outbound";
+                    const rowNumber = (safePage - 1) * PAGE_SIZE + index + 1;
 
                     return (
                       <tr key={record.surat_jalan_id} className="group transition-colors hover:bg-slate-50">
+                        <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500">{rowNumber}</td>
                         <td className="px-2 py-3 md:px-6 md:py-4 hidden md:table-cell">
                           <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${isOutbound ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>
                             {isOutbound ? <ArrowUpRight size={12} /> : <ArrowDownLeft size={12} />}

@@ -1285,6 +1285,7 @@ export default function WarehouseLayoutPage() {
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-[#e5e7eb]">
+                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085] text-center w-12">No</th>
                     <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Nama Barang</th>
                     <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Kategori</th>
                     <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Kondisi</th>
@@ -1293,8 +1294,9 @@ export default function WarehouseLayoutPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#f2f4f7]">
-                  {filteredPanelStock.map((item) => (
+                  {filteredPanelStock.map((item, idx) => (
                     <tr key={item.snapshot_id} className="transition hover:bg-[#fafbfc]">
+                      <td className="px-4 py-3 text-center text-xs text-slate-500">{idx + 1}</td>
                       <td className="px-4 py-3">
                         <p className="text-[13px] font-semibold text-[#111827]">{item.nama_barang}</p>
                         <p className="text-[11px] text-[#98a2b3]">{item.kode_perangkat}</p>
