@@ -304,7 +304,9 @@ function ConfirmModal({
                   })}
                   {selectedItems.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="py-4 text-center text-gray-400">Tidak ada barang yang dipilih.</td>
+                      <td colSpan={5} className="py-4 text-center text-gray-400">
+                        Tidak ada barang yang dipilih.
+                      </td>
                     </tr>
                   )}
                 </tbody>
@@ -475,7 +477,7 @@ export default function AjukanSuratJalanPage() {
         const resp = await get(url.toString());
         if (!resp.ok) throw new Error("Gagal mengambil daftar titik lapangan.");
         const json = await resp.json();
-        const raw = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []);
+        const raw = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
         const rows = raw as Array<{ titik_lapangan_id: string | number; nama_lokasi: string }>;
         if (mounted) {
           setTitikLapangan(rows.map((r) => ({ titik_lapangan_id: r.titik_lapangan_id, nama_lokasi: r.nama_lokasi })));
@@ -486,7 +488,9 @@ export default function AjukanSuratJalanPage() {
     };
 
     loadTitikLapangan();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [selectedProjectId, apiBase, get]);
 
   useEffect(() => {
@@ -519,7 +523,9 @@ export default function AjukanSuratJalanPage() {
         if (mounted) setClustersLoading(false);
       });
 
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [selectedProjectId, apiBase, get]);
 
   useEffect(() => {
@@ -557,7 +563,9 @@ export default function AjukanSuratJalanPage() {
         if (mounted) setBoqItemsLoading(false);
       });
 
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [selectedClusterIds, selectedProjectId, apiBase, get]);
 
   useEffect(() => {
@@ -604,7 +612,9 @@ export default function AjukanSuratJalanPage() {
         if (mounted) setBoqItemsLoading(false);
       });
 
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [selectedProjectId, selectedClusterIds, apiBase, get]);
 
   const selectedVehicle = useMemo(() => vehicles.find((v) => String(v.kendaraan_id || v.id) === selectedVehicleId) || null, [vehicles, selectedVehicleId]);
@@ -618,8 +628,7 @@ export default function AjukanSuratJalanPage() {
   const gudangTujuanOptions = useMemo(() => {
     return warehouses.map((w) => {
       const isTransit = w.tipe === "dadakan";
-      const transitProjectIni =
-        isTransit && w.project_id != null && String(w.project_id) === String(selectedProjectId);
+      const transitProjectIni = isTransit && w.project_id != null && String(w.project_id) === String(selectedProjectId);
 
       let label = w.nama_gudang;
       if (transitProjectIni) {
@@ -632,15 +641,9 @@ export default function AjukanSuratJalanPage() {
     });
   }, [warehouses, selectedProjectId]);
 
-  const jumlahTransitProjectIni = useMemo(
-    () => gudangTujuanOptions.filter((w) => w.transitProjectIni).length,
-    [gudangTujuanOptions]
-  );
+  const jumlahTransitProjectIni = useMemo(() => gudangTujuanOptions.filter((w) => w.transitProjectIni).length, [gudangTujuanOptions]);
 
-  const jumlahSemuaTransit = useMemo(
-    () => gudangTujuanOptions.filter((w) => w.isTransit).length,
-    [gudangTujuanOptions]
-  );
+  const jumlahSemuaTransit = useMemo(() => gudangTujuanOptions.filter((w) => w.isTransit).length, [gudangTujuanOptions]);
 
   const driverOptions = useMemo(() => {
     const canDrive = personnel.filter((p) => p.bisa_menyetir);
@@ -691,7 +694,7 @@ export default function AjukanSuratJalanPage() {
               const rows = Array.isArray(json?.data?.data) ? json.data.data : Array.isArray(json?.data) ? json.data : [];
               return rows;
             })
-            .catch(() => [])
+            .catch(() => []),
         );
 
         const results = await Promise.all(stockPromises);
@@ -808,7 +811,16 @@ export default function AjukanSuratJalanPage() {
   const projectRequired = !isInterWarehouse;
   const clusterRequired = !isInterWarehouse;
 
-  const canSubmit = selectedItems.length > 0 && !!selectedPersonil && Object.keys(fotoUrlsByItem).length > 0 && tujuanValid && pengirimValid && kendaraanManualValid && driverManualValid && (projectRequired ? !!selectedProjectId : true) && (clusterRequired ? selectedClusterIds.length > 0 : true);
+  const canSubmit =
+    selectedItems.length > 0 &&
+    !!selectedPersonil &&
+    Object.keys(fotoUrlsByItem).length > 0 &&
+    tujuanValid &&
+    pengirimValid &&
+    kendaraanManualValid &&
+    driverManualValid &&
+    (projectRequired ? !!selectedProjectId : true) &&
+    (clusterRequired ? selectedClusterIds.length > 0 : true);
 
   function handleSubmit() {
     if (!canSubmit || !selectedPersonil) return;
@@ -936,7 +948,7 @@ export default function AjukanSuratJalanPage() {
         project_id: selectedProjectId || null,
         cluster_id: selectedClusterIds.length > 0 ? selectedClusterIds[0] : null,
         tujuan_tipe: selectedTujuanKategori || null,
-        titik_lapangan_id: selectedTujuanKategori === "lapangan" ? (selectedTitikLapanganId || null) : null,
+        titik_lapangan_id: selectedTujuanKategori === "lapangan" ? selectedTitikLapanganId || null : null,
         alamat_lapangan: selectedTujuanKategori === "lapangan" ? alamatLapangan.trim() : null,
         tipe_pengirim: selectedPengirimKategori || null,
         pengirim_eksternal_nama: selectedPengirimKategori === "external" ? pengirimEksternalNama.trim() : null,
@@ -1054,8 +1066,7 @@ export default function AjukanSuratJalanPage() {
               {selectedProjectId && (
                 <div>
                   <label className="mb-1 block text-xs font-medium text-gray-600">
-                    Cluster ID <span className={clusterRequired ? "text-rose-500" : "text-gray-400"}>*
-                    </span>
+                    Cluster ID <span className={clusterRequired ? "text-rose-500" : "text-gray-400"}>*</span>
                     {!clusterRequired && <span className="ml-1 text-[10px] text-gray-400">(Opsional untuk Gudang ke Gudang)</span>}
                   </label>
                   {clustersLoading ? (
@@ -1090,16 +1101,9 @@ export default function AjukanSuratJalanPage() {
                       {selectedClusterIds.map((cid) => {
                         const cluster = clusters.find((c) => c.cluster_id === cid);
                         return (
-                          <span
-                            key={cid}
-                            className="inline-flex items-center gap-1 rounded-md border border-orange-100 bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-800"
-                          >
+                          <span key={cid} className="inline-flex items-center gap-1 rounded-md border border-orange-100 bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-800">
                             {cid}
-                            <button
-                              type="button"
-                              onClick={() => setSelectedClusterIds((prev) => prev.filter((id) => id !== cid))}
-                              className="rounded-full text-orange-500 hover:text-orange-700"
-                            >
+                            <button type="button" onClick={() => setSelectedClusterIds((prev) => prev.filter((id) => id !== cid))} className="rounded-full text-orange-500 hover:text-orange-700">
                               <X size={12} />
                             </button>
                           </span>
@@ -1112,8 +1116,16 @@ export default function AjukanSuratJalanPage() {
 
               {(boqNumber || tiketNumber) && (
                 <div className="rounded-lg border border-orange-100 bg-orange-50/60 px-3 py-2 text-xs text-orange-800 space-y-0.5">
-                  {boqNumber && <p><span className="font-semibold">BOQ:</span> {boqNumber}</p>}
-                  {tiketNumber && <p><span className="font-semibold">No. Tiket:</span> {tiketNumber}</p>}
+                  {boqNumber && (
+                    <p>
+                      <span className="font-semibold">BOQ:</span> {boqNumber}
+                    </p>
+                  )}
+                  {tiketNumber && (
+                    <p>
+                      <span className="font-semibold">No. Tiket:</span> {tiketNumber}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -1158,11 +1170,13 @@ export default function AjukanSuratJalanPage() {
                       className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
                     >
                       <option value="">Pilih Gudang Asal...</option>
-                      {warehouses.filter((w) => w.is_internal === true).map((w) => (
-                        <option key={w.gudang_id} value={String(w.gudang_id)}>
-                          {w.nama_gudang} {w.tipe === "dadakan" ? "(Dadakan)" : ""}
-                        </option>
-                      ))}
+                      {warehouses
+                        .filter((w) => w.is_internal === true)
+                        .map((w) => (
+                          <option key={w.gudang_id} value={String(w.gudang_id)}>
+                            {w.nama_gudang} {w.tipe === "dadakan" ? "(Dadakan)" : ""}
+                          </option>
+                        ))}
                     </select>
                     <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   </div>
@@ -1171,20 +1185,10 @@ export default function AjukanSuratJalanPage() {
                   {/* Cek Stok Gudang Panel */}
                   {selectedGudangAsalId && (
                     <div className="mt-4 border-t border-gray-100 pt-4">
-                      <button
-                        type="button"
-                        onClick={() => setStockExpanded((prev) => !prev)}
-                        className="flex items-center gap-2 text-xs font-medium text-gray-600 hover:text-gray-800"
-                      >
-                        {stockExpanded ? (
-                          <ChevronRight size={14} className="rotate-90 text-[#E8632C]" />
-                        ) : (
-                          <ChevronRight size={14} className="text-gray-400" />
-                        )}
+                      <button type="button" onClick={() => setStockExpanded((prev) => !prev)} className="flex items-center gap-2 text-xs font-medium text-gray-600 hover:text-gray-800">
+                        {stockExpanded ? <ChevronRight size={14} className="rotate-90 text-[#E8632C]" /> : <ChevronRight size={14} className="text-gray-400" />}
                         <span>Cek Stok Gudang</span>
-                        {stockLoading && (
-                          <Loader2 size={12} className="ml-auto animate-spin text-[#E8632C]" />
-                        )}
+                        {stockLoading && <Loader2 size={12} className="ml-auto animate-spin text-[#E8632C]" />}
                       </button>
 
                       {stockExpanded && (
@@ -1216,18 +1220,22 @@ export default function AjukanSuratJalanPage() {
                             <div className="flex min-h-[150px] flex-col items-center justify-center text-center">
                               <p className="text-xs text-gray-500">Tidak ada stok barang di gudang ini.</p>
                             </div>
-                           ) : (
+                          ) : (
                             <div className="max-h-[350px] overflow-y-auto space-y-2 pr-1">
                               {stockByBarang.map((item) => (
                                 <div key={item.barang_id} className="flex items-center justify-between rounded-xl border border-gray-200 p-3">
                                   <div>
                                     <p className="text-xs font-bold text-gray-800">{item.nama_barang}</p>
-                                    <p className="text-[10px] text-gray-500">SKU: {item.kode_perangkat} {item.nama_zona !== "-" ? `· ${item.nama_zona}` : ""}</p>
+                                    <p className="text-[10px] text-gray-500">
+                                      SKU: {item.kode_perangkat} {item.nama_zona !== "-" ? `· ${item.nama_zona}` : ""}
+                                    </p>
                                   </div>
                                   <div className="text-right">
                                     <p className="text-xs font-bold text-gray-900">{Number(item.qty || 0).toLocaleString("id-ID")}</p>
                                     <p className="text-[10px] text-gray-500">{item.satuan}</p>
-                                    <div className="mt-1"><KondisiBadge value={item.kondisi} /></div>
+                                    <div className="mt-1">
+                                      <KondisiBadge value={item.kondisi} />
+                                    </div>
                                   </div>
                                 </div>
                               ))}
@@ -1266,23 +1274,23 @@ export default function AjukanSuratJalanPage() {
               </p>
 
               <label className="mb-1.5 block text-xs font-medium text-gray-500">Kategori Tujuan</label>
-               <div className="relative mb-3">
-                  <select
-                    value={selectedTujuanKategori}
-                    onChange={(e) => {
-                      setSelectedTujuanKategori(e.target.value);
-                      setSelectedGudangTujuanId("");
-                      setAlamatLapangan("");
-                      setSelectedTitikLapanganId("");
-                    }}
-                    className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
-                  >
-                   <option value="">Pilih Kategori...</option>
-                   <option value="gudang">Gudang</option>
-                   <option value="lapangan">Lapangan</option>
-                 </select>
-                 <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-               </div>
+              <div className="relative mb-3">
+                <select
+                  value={selectedTujuanKategori}
+                  onChange={(e) => {
+                    setSelectedTujuanKategori(e.target.value);
+                    setSelectedGudangTujuanId("");
+                    setAlamatLapangan("");
+                    setSelectedTitikLapanganId("");
+                  }}
+                  className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+                >
+                  <option value="">Pilih Kategori...</option>
+                  <option value="gudang">Gudang</option>
+                  <option value="lapangan">Lapangan</option>
+                </select>
+                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              </div>
 
               {selectedTujuanKategori === "gudang" && (
                 <div>
@@ -1305,11 +1313,7 @@ export default function AjukanSuratJalanPage() {
                     <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   </div>
                   {warehouses.length === 0 && <p className="mt-2 text-xs text-gray-400">Belum ada data Gudang di master data.</p>}
-                  {jumlahSemuaTransit > 0 && jumlahTransitProjectIni === 0 && (
-                    <p className="mt-2 text-xs text-gray-400">
-                      Project ini belum punya Gudang Transit (Dadakan) sendiri.
-                    </p>
-                  )}
+                  {jumlahSemuaTransit > 0 && jumlahTransitProjectIni === 0 && <p className="mt-2 text-xs text-gray-400">Project ini belum punya Gudang Transit (Dadakan) sendiri.</p>}
                 </div>
               )}
 
@@ -1403,17 +1407,11 @@ export default function AjukanSuratJalanPage() {
                             <td className="py-3 pr-3 text-right text-xs whitespace-nowrap text-gray-500">{boqPlan > 0 ? `${boqPlan} unit` : "-"}</td>
                             <td className="py-3 pr-3 text-right text-xs">
                               <div className="whitespace-nowrap">
-                                <span className={sisa > 0 ? "font-medium text-gray-700" : "text-gray-400"}>
-                                  {sisa > 0 ? `${sisa} unit` : "-"}
-                                </span>
+                                <span className={sisa > 0 ? "font-medium text-gray-700" : "text-gray-400"}>{sisa > 0 ? `${sisa} unit` : "-"}</span>
                               </div>
-                              {(item.additional ?? 0) > 0 && (
-                                <div className="whitespace-nowrap text-[10px] text-gray-400">(+{item.additional} additional)</div>
-                              )}
+                              {(item.additional ?? 0) > 0 && <div className="whitespace-nowrap text-[10px] text-gray-400">(+{item.additional} additional)</div>}
                             </td>
-                            <td className="py-3 pr-3 text-right text-xs whitespace-nowrap text-gray-500">
-                              {(item.mos ?? 0) > 0 ? `${item.mos} unit` : "-"}
-                            </td>
+                            <td className="py-3 pr-3 text-right text-xs whitespace-nowrap text-gray-500">{(item.mos ?? 0) > 0 ? `${item.mos} unit` : "-"}</td>
                             <td className="py-3 pr-3">
                               <div className="flex items-center justify-end gap-2">
                                 <button onClick={() => setQty(key, qty - 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50">
@@ -1430,11 +1428,7 @@ export default function AjukanSuratJalanPage() {
                                   +
                                 </button>
                               </div>
-                              {exceedsSisa && (
-                                <p className="mt-1 whitespace-nowrap text-right text-[10px] font-medium text-amber-600">
-                                  Melebihi sisa ({sisa} unit)
-                                </p>
-                              )}
+                              {exceedsSisa && <p className="mt-1 whitespace-nowrap text-right text-[10px] font-medium text-amber-600">Melebihi sisa ({sisa} unit)</p>}
                             </td>
                             <td className="py-3">
                               <div className="flex flex-wrap items-center gap-1.5">
@@ -1460,9 +1454,7 @@ export default function AjukanSuratJalanPage() {
                                 {fotoPreviewsByItem[key] ? (
                                   <div className="relative h-10 w-10 overflow-hidden rounded-md border border-[#E8632C]">
                                     <img src={fotoPreviewsByItem[key]} alt="Pratinjau foto" className="h-full w-full object-cover" />
-                                    <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-[9px] font-medium text-white">
-                                      Mengunggah
-                                    </span>
+                                    <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-[9px] font-medium text-white">Mengunggah</span>
                                   </div>
                                 ) : fotoUrlsByItem[key] ? (
                                   <div className="relative h-10 w-10">
@@ -1483,9 +1475,7 @@ export default function AjukanSuratJalanPage() {
                       {boqItems.length === 0 && (
                         <tr>
                           <td colSpan={7} className="py-8 text-center text-gray-400">
-                            {selectedClusterIds.length === 0 && selectedProjectId
-                              ? "Pilih cluster untuk melihat daftar barang."
-                              : "Project/Cluster ini belum memiliki BOQ aktif atau belum ada item di BOQ Plan."}
+                            {selectedClusterIds.length === 0 && selectedProjectId ? "Pilih cluster untuk melihat daftar barang." : "Project/Cluster ini belum memiliki BOQ aktif atau belum ada item di BOQ Plan."}
                           </td>
                         </tr>
                       )}
@@ -1554,7 +1544,9 @@ export default function AjukanSuratJalanPage() {
                 {selectedVehicleId === "__manual__" && (
                   <div className="mt-3 space-y-2">
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-gray-700">Nama Kendaraan <span className="text-rose-500">*</span></label>
+                      <label className="mb-1 block text-xs font-medium text-gray-700">
+                        Nama Kendaraan <span className="text-rose-500">*</span>
+                      </label>
                       <input
                         value={kendaraanNamaTeks}
                         onChange={(e) => setKendaraanNamaTeks(e.target.value)}
@@ -1564,7 +1556,9 @@ export default function AjukanSuratJalanPage() {
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-gray-700">Jenis Kendaraan <span className="text-rose-500">*</span></label>
+                      <label className="mb-1 block text-xs font-medium text-gray-700">
+                        Jenis Kendaraan <span className="text-rose-500">*</span>
+                      </label>
                       <input
                         value={kendaraanJenisTeks}
                         onChange={(e) => setKendaraanJenisTeks(e.target.value)}
@@ -1574,7 +1568,9 @@ export default function AjukanSuratJalanPage() {
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-gray-700">Nomor Polisi <span className="text-rose-500">*</span></label>
+                      <label className="mb-1 block text-xs font-medium text-gray-700">
+                        Nomor Polisi <span className="text-rose-500">*</span>
+                      </label>
                       <input
                         value={kendaraanNoPolisiTeks}
                         onChange={(e) => setKendaraanNoPolisiTeks(e.target.value.toUpperCase())}
@@ -1624,7 +1620,9 @@ export default function AjukanSuratJalanPage() {
 
                 {selectedPersonilId === "__manual_driver__" && (
                   <div className="mt-3">
-                    <label className="mb-1 block text-xs font-medium text-gray-700">Nama Driver <span className="text-rose-500">*</span></label>
+                    <label className="mb-1 block text-xs font-medium text-gray-700">
+                      Nama Driver <span className="text-rose-500">*</span>
+                    </label>
                     <input
                       value={driverNamaTeks}
                       onChange={(e) => setDriverNamaTeks(e.target.value)}

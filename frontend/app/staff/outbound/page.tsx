@@ -210,7 +210,7 @@ export default function SuratJalanListPage() {
                 </td>
               </tr>
             ) : (
-              filtered.map((sj) => {
+              filtered.map((sj, sjIdx) => {
                 const meta = getStatusMeta(sj.status, sj.picking_selesai);
                 const itemRows = sj.items && sj.items.length > 0 ? sj.items : [null];
                 const rowSpan = itemRows.length;
@@ -246,7 +246,7 @@ export default function SuratJalanListPage() {
                   return (
                     <tr
                       key={`${sj.surat_jalan_id}-${item ? item.item_id : "empty"}-${itemIdx}`}
-                      className={`border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30 ${itemIdx % 2 === 1 ? "bg-gray-50/50" : ""}`}
+                      className={`border-b border-gray-50 last:border-0 transition-colors ${sjIdx % 2 === 0 ? "bg-white" : "bg-slate-50/70"} hover:bg-orange-50/50`}
                     >
                       {isFirst && (
                         <>

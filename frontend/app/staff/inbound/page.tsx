@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { PackageCheck, Plus, X, ChevronDown, Trash2, Upload, Loader2 } from "lucide-react";
+import { PackageCheck, Plus, X, ChevronDown, Trash2, Upload, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import BarangPicker, {
   type BarangPickerItem,
@@ -47,7 +47,7 @@ interface InboundSuratJalan {
   tipe_pengirim?: "internal" | "external";
   supplier?: { nama: string; kode: string };
   gudang_asal?: { nama_gudang: string };
-  gudang_tujuan?: { nama_gudang: string };
+  gudang_tujuan?: { gudang_id?: string | number; nama_gudang: string };
 }
 
 interface BarangOption {
@@ -79,6 +79,16 @@ interface UnitOption {
 interface CategoryOption {
   kategori_id: string | number;
   nama_kategori?: string;
+}
+
+function getAsalText(sj: InboundSuratJalan): string {
+  if (sj.tipe_pengirim === "external") {
+    return `${sj.supplier?.kode ?? ""} - ${sj.supplier?.nama ?? "-"}`;
+  }
+  if (sj.tipe_pengirim === "internal") {
+    return sj.gudang_asal?.nama_gudang || "-";
+  }
+  return "-";
 }
 
 const KONDISI_OPTIONS: { value: string; label: string }[] = [
@@ -179,6 +189,15 @@ export default function InboundListPage() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+
+  // Filter tabel inbound (client-side)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [gudangFilter, setGudangFilter] = useState("all");
+
+  // Pagination client-side
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -1062,7 +1081,50 @@ pic_pemohon_nama: picPemohon.trim() || null,
     return () => clearTimeout(timer);
   }, [toast]);
 
-  const mobileItemsInbound1: MobileCardItem[] = list.map((sj) => {
+  // Opsi gudang tujuan diambil dinamis dari data surat jalan yang ada,
+  // sehingga isi dropdown selalu relevan dengan daftar inbound.
+  const gudangTujuanFilterOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    list.forEach((sj) => {
+      const gudangId = sj.gudang_tujuan?.gudang_id;
+      const nama = sj.gudang_tujuan?.nama_gudang;
+      if (gudangId != null && nama && !seen.has(String(gudangId))) {
+        seen.set(String(gudangId), nama);
+      }
+    });
+    return Array.from(seen, ([gudang_id, nama_gudang]) => ({ gudang_id, nama_gudang }));
+  }, [list]);
+
+  // Saring daftar inbound secara realtime berdasarkan pencarian, status, dan gudang tujuan.
+  const filteredInbound = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return list.filter((sj) => {
+      const matchSearch =
+        !q ||
+        (sj.nomor_surat_jalan || "").toLowerCase().includes(q) ||
+        getAsalText(sj).toLowerCase().includes(q);
+      const matchStatus = statusFilter === "all" || sj.status === statusFilter;
+      const matchGudang =
+        gudangFilter === "all" || String(sj.gudang_tujuan?.gudang_id) === gudangFilter;
+      return matchSearch && matchStatus && matchGudang;
+    });
+  }, [list, searchQuery, statusFilter, gudangFilter]);
+
+  // Setiap filter berubah, halaman kembali ke Halaman 1 supaya data hasil
+  // penyaringan tidak terlewat karena posisi halaman yang sudah maju.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, gudangFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredInbound.length / itemsPerPage));
+  const activePage = Math.min(currentPage, totalPages);
+
+  const paginatedInbound = useMemo(
+    () => filteredInbound.slice((activePage - 1) * itemsPerPage, activePage * itemsPerPage),
+    [filteredInbound, activePage],
+  );
+
+  const mobileItemsInbound1: MobileCardItem[] = paginatedInbound.map((sj) => {
     const meta = STATUS_META[sj.status] || STATUS_META.draft_diajukan;
     const totalUnit = sj.items.reduce((sum, i) => sum + Number(i.qty || 0), 0);
     const tujuanText = sj.gudang_tujuan?.nama_gudang || "-";
@@ -1073,7 +1135,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
     });
 
     const fields: MobileCardField[] = [
-      { label: "Asal", value: sj.tipe_pengirim === "external" ? `${sj.supplier?.kode ?? ""} - ${sj.supplier?.nama ?? "-"}` : sj.tipe_pengirim === "internal" ? sj.gudang_asal?.nama_gudang || "-" : "-" },
+      { label: "Asal", value: getAsalText(sj) },
       { label: "Tujuan", value: tujuanText },
       { label: "Tanggal", value: tanggal },
       { label: "Item", value: `${totalUnit} unit` },
@@ -1158,6 +1220,52 @@ pic_pemohon_nama: picPemohon.trim() || null,
         </div>
       )}
 
+      {/* Filter Inbound */}
+      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center">
+        <div className="flex flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm transition-colors focus-within:border-orange-500 focus-within:ring-1 focus-within:ring-orange-500">
+          <Search size={16} className="shrink-0 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cari No. Surat Jalan / Asal..."
+            className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+          />
+        </div>
+
+        <div className="relative md:w-56">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2.5 pr-9 text-sm font-medium text-slate-700 shadow-sm outline-none transition-colors focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+          >
+            <option value="all">Semua Status</option>
+            {Object.entries(STATUS_META).map(([key, meta]) => (
+              <option key={key} value={key}>
+                {meta.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        </div>
+
+        <div className="relative md:w-56">
+          <select
+            value={gudangFilter}
+            onChange={(e) => setGudangFilter(e.target.value)}
+            className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2.5 pr-9 text-sm font-medium text-slate-700 shadow-sm outline-none transition-colors focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+          >
+            <option value="all">Semua Gudang</option>
+            {gudangTujuanFilterOptions.map((w) => (
+              <option key={w.gudang_id} value={String(w.gudang_id)}>
+                {w.nama_gudang}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        </div>
+      </div>
+
       {/* List Inbound */}
       <MobileCardList items={mobileItemsInbound1} />
       <div className="rounded-2xl border border-[#F3D9C7] bg-white hidden md:block">
@@ -1186,8 +1294,14 @@ pic_pemohon_nama: picPemohon.trim() || null,
                   Tidak ada Surat Jalan Inbound yang perlu diproses.
                 </td>
               </tr>
+            ) : filteredInbound.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
+                  Tidak ada Surat Jalan yang cocok dengan filter.
+                </td>
+              </tr>
             ) : (
-              list.map((sj) => {
+              paginatedInbound.map((sj, sjIdx) => {
                 const meta = STATUS_META[sj.status] || STATUS_META.draft_diajukan;
                 const totalUnit = sj.items.reduce((sum, i) => sum + Number(i.qty || 0), 0);
                 const tujuanText = sj.gudang_tujuan?.nama_gudang || "-";
@@ -1200,7 +1314,9 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 return (
                   <tr
                     key={sj.surat_jalan_id}
-                    className="border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30"
+                    className={`border-b border-gray-50 last:border-0 transition-colors ${
+                      sjIdx % 2 === 0 ? "bg-white" : "bg-slate-50/70"
+                    } hover:bg-orange-50/50`}
                   >
                     <td className="px-6 py-4 font-medium text-gray-800">
                       <span className="flex items-center gap-2">
@@ -1260,6 +1376,37 @@ pic_pemohon_nama: picPemohon.trim() || null,
           </tbody>
         </table>
       </div>
+
+      {!isLoading && filteredInbound.length > itemsPerPage && (
+        <div className="mt-4 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-xs text-slate-500">
+            Menampilkan {(activePage - 1) * itemsPerPage + 1}–
+            {Math.min(activePage * itemsPerPage, filteredInbound.length)} dari{" "}
+            {filteredInbound.length} Surat Jalan
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={activePage === 1}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+            >
+              Sebelumnya
+            </button>
+            <span className="text-xs text-slate-500">
+              Halaman {activePage} dari {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={activePage === totalPages}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+            >
+              Selanjutnya
+            </button>
+          </div>
+        </div>
+      )}
 
       <Modal
         open={modalOpen}
