@@ -116,7 +116,7 @@ const findAll = async (query = {}) => {
       const activeProjectIds = new Set(
         activeBoqs
           .filter((b) => b.tiket?.project_id)
-          .map((b) => Number(b.tiket.project_id))
+          .map((b) => Number(b.tiket?.project_id))
       );
 
       result.data = result.data.map((p) => ({

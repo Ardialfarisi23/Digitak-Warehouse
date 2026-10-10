@@ -107,10 +107,31 @@ const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sor
   }
 
   if (projectId || area) {
-    const tiketFilter = {};
-    if (projectId) tiketFilter.project_id = Number(projectId);
-    if (area) tiketFilter.area = { contains: area, mode: "insensitive" };
-    where.tiket = tiketFilter;
+    const andConditions = [];
+
+    if (projectId) {
+      andConditions.push({
+        OR: [
+          { tiket: { project_id: Number(projectId) } },
+          { cluster: { project_id: Number(projectId) } },
+        ],
+      });
+    }
+
+    if (area) {
+      andConditions.push({
+        OR: [
+          { tiket: { area: { contains: area, mode: "insensitive" } } },
+          { cluster: { project: { area: { contains: area, mode: "insensitive" } } } },
+        ],
+      });
+    }
+
+    if (andConditions.length === 1) {
+      Object.assign(where, andConditions[0]);
+    } else if (andConditions.length > 1) {
+      where.AND = andConditions;
+    }
   }
 
   if (warehouseId) {
@@ -122,7 +143,12 @@ const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sor
   }
 
  if (search) {
-    where.OR = [{ tiket: { kode_tiket: { contains: search, mode: "insensitive" } } }, { tiket: { area: { contains: search, mode: "insensitive" } } }];
+    where.OR = [
+      { tiket: { kode_tiket: { contains: search, mode: "insensitive" } } },
+      { tiket: { area: { contains: search, mode: "insensitive" } } },
+      { cluster: { nama_cluster: { contains: search, mode: "insensitive" } } },
+      { cluster: { project: { nama_project: { contains: search, mode: "insensitive" } } } },
+    ];
   }
 
   const total = await prisma.boq.count({
@@ -309,17 +335,39 @@ const exportBoqs = async ({ status, search, projectId, area, clusterId }) => {
   }
 
   if (projectId || area) {
-    const tiketFilter = {};
-    if (projectId) tiketFilter.project_id = Number(projectId);
-    if (area) tiketFilter.area = { contains: area, mode: "insensitive" };
-    where.tiket = tiketFilter;
+    const andConditions = [];
+
+    if (projectId) {
+      andConditions.push({
+        OR: [
+          { tiket: { project_id: Number(projectId) } },
+          { cluster: { project_id: Number(projectId) } },
+        ],
+      });
+    }
+
+    if (area) {
+      andConditions.push({
+        OR: [
+          { tiket: { area: { contains: area, mode: "insensitive" } } },
+          { cluster: { project: { area: { contains: area, mode: "insensitive" } } } },
+        ],
+      });
+    }
+
+    if (andConditions.length === 1) {
+      Object.assign(where, andConditions[0]);
+    } else if (andConditions.length > 1) {
+      where.AND = andConditions;
+    }
   }
 
   if (search) {
     where.OR = [
       { tiket: { kode_tiket: { contains: search, mode: "insensitive" } } },
       { tiket: { area: { contains: search, mode: "insensitive" } } },
-      { cluster_id: { contains: search, mode: "insensitive" } },
+      { cluster: { nama_cluster: { contains: search, mode: "insensitive" } } },
+      { cluster: { project: { nama_project: { contains: search, mode: "insensitive" } } } },
     ];
   }
 
@@ -396,9 +444,10 @@ const findItemsByProject = async (projectId, clusterId, statuses = ["aktif"]) =>
       where.cluster_id = String(clusterId);
     }
   } else if (projectId) {
-    where.tiket = {
-      project_id: Number(projectId),
-    };
+    where.OR = [
+      { tiket: { project_id: Number(projectId) } },
+      { cluster: { project_id: Number(projectId) } },
+    ];
   }
 
   const boqs = await prisma.boq.findMany({
@@ -411,6 +460,11 @@ const findItemsByProject = async (projectId, clusterId, statuses = ["aktif"]) =>
         },
       },
       tiket: {
+        select: {
+          project_id: true,
+        },
+      },
+      cluster: {
         select: {
           project_id: true,
         },
@@ -696,7 +750,7 @@ const getExportMatrixData = async () => {
     for (const boqItem of boqItems) {
       const tiket = boqItem.boq?.tiket;
       const proj = tiket?.project;
-      if (Number(proj?.project_id || 0) === projectIdNum) {
+      if (Number(proj?.project_id || 0) === projectIdNum && tiket?.tiket_id) {
         projectTickets.add(tiket.tiket_id);
       }
     }

@@ -5,17 +5,22 @@ const ExcelJS = require("exceljs");
 const transformBoq = (boq) => {
   if (!boq) return null;
   
+  const tiketProject = boq.tiket?.project;
+  const clusterProject = boq.cluster?.project;
+  const project = tiketProject || clusterProject;
+  const area = boq.tiket?.area || clusterProject?.area || "";
+  
   return {
     ...boq,
     id: String(boq.boq_id),
     boqNumber: boq.boq_number || `BOQ-${boq.boq_id}`,
     ticketNumber: boq.tiket?.kode_tiket || "",
-    projectId: boq.tiket?.project?.project_id ? String(boq.tiket.project.project_id) : "",
-    project: boq.tiket?.project ? {
-      projectId: String(boq.tiket.project.project_id),
-      projectName: boq.tiket.project.nama_project,
-      title: boq.tiket.project.title,
-      status_aktif: boq.tiket.project.status_aktif,
+    projectId: project?.project_id ? String(project.project_id) : "",
+    project: project ? {
+      projectId: String(project.project_id),
+      projectName: project.nama_project,
+      title: project.title,
+      status_aktif: project.status_aktif,
     } : null,
     clusterId: boq.cluster?.cluster_id || boq.cluster?.project?.cluster_id || boq.tiket?.project?.cluster_id || "",
     cluster: boq.cluster ? {
@@ -28,7 +33,7 @@ const transformBoq = (boq) => {
         area: boq.cluster.project.area,
       } : null,
     } : null,
-    area: boq.tiket?.area || "",
+    area,
     status: boq.status,
     source: boq.source,
     externalVerificationStatus: boq.external_verification_status,

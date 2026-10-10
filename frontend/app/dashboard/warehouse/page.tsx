@@ -164,8 +164,8 @@ function ZoneDetailModal({ open, onClose, children }: { open: boolean; onClose: 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
-      <div className="w-[calc(100vw-1.5rem)] max-w-[640px] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-0 sm:p-3 md:p-4" onClick={onClose}>
+      <div className="flex w-full h-[100dvh] max-h-[100dvh] flex-col rounded-none bg-white shadow-xl sm:w-[min(92vw,640px)] sm:max-h-[calc(100dvh-1.5rem)] sm:rounded-xl md:max-w-[640px] md:h-auto md:max-h-[calc(100dvh-2rem)] md:rounded-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
         {children}
       </div>
     </div>
@@ -748,21 +748,24 @@ export default function WarehouseLayoutPage() {
 
     if (count === 4) {
       return (
-        <div className="grid min-h-[360px] grid-cols-[1fr_90px_1fr] grid-rows-[1fr_1fr]">
-          <div className="h-full border-b border-r border-white">{renderZone(zones[0], "Zona A")}</div>
-          <div className="relative flex items-center justify-center bg-[#e8fbe8]">
+        <div className="grid min-h-[360px] grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_90px_1fr] lg:grid-rows-[1fr_1fr] gap-3 sm:gap-4 lg:gap-3">
+          <div className="h-full border-b border-r border-white lg:col-start-1 lg:row-start-1">{renderZone(zones[0], "Zona A")}</div>
+          <div className="h-full border-b border-l border-white lg:col-start-3 lg:row-start-1">{renderZone(zones[1], "Zona B")}</div>
+          <div className="lg:hidden sm:col-span-2 h-8 flex items-center justify-center bg-[#e8fbe8] rounded-lg">
+            <span className="text-xs font-bold text-slate-700">Lorong</span>
+          </div>
+          <div className="h-full border-r border-white lg:col-start-1 lg:row-start-2">{renderZone(zones[2], "Zona C")}</div>
+          <div className="h-full border-l border-white lg:col-start-3 lg:row-start-2">{renderZone(zones[3], "Zona D")}</div>
+          <div className="hidden lg:flex relative items-center justify-center bg-[#e8fbe8] lg:col-start-2 lg:row-start-1">
             <div className="absolute inset-y-0 left-0 w-px bg-[#d6efd6]" />
             <div className="absolute inset-y-0 right-0 w-px bg-[#d6efd6]" />
             <span className="rotate-[-90deg] text-[17px] font-extrabold tracking-[-0.2px] text-[#111827]">Lorong</span>
           </div>
-          <div className="h-full border-b border-l border-white">{renderZone(zones[1], "Zona B")}</div>
-          <div className="h-full border-r border-white">{renderZone(zones[2], "Zona C")}</div>
-          <div className="relative flex items-center justify-center bg-[#e8fbe8]">
+          <div className="hidden lg:flex relative items-center justify-center bg-[#e8fbe8] lg:col-start-2 lg:row-start-2">
             <div className="absolute inset-y-0 left-0 w-px bg-[#d6efd6]" />
             <div className="absolute inset-y-0 right-0 w-px bg-[#d6efd6]" />
             <span className="rotate-[-90deg] text-[17px] font-extrabold tracking-[-0.2px] text-[#111827]">Lorong</span>
           </div>
-          <div className="h-full border-l border-white">{renderZone(zones[3], "Zona D")}</div>
         </div>
       );
     }
@@ -1186,15 +1189,14 @@ export default function WarehouseLayoutPage() {
 
       <ZoneDetailModal open={panelOpen} onClose={closePanel}>
         {/* HEADER */}
-
-        <div className="flex items-start justify-between border-b border-[#edf0f2] px-6 py-4">
-          <div>
-            <h3 className="text-[17px] font-bold text-[#111827]">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shrink-0 border-b border-[#edf0f2] px-4 py-3 sm:px-6 sm:py-4">
+          <div className="min-w-0">
+            <h3 className="text-base sm:text-[17px] font-bold text-[#111827]">
               Detail Zona {selectedZone && getCleanZoneCode(selectedZone)}
             </h3>
 
             {selectedZone && (
-              <p className="mt-1 text-[12px] text-[#6b7280]">
+              <p className="mt-1 text-xs sm:text-[12px] text-[#6b7280] whitespace-normal">
                 {selectedWarehouse?.nama_gudang} — {getZoneType(selectedZone)}
                 {(selectedZone.total_item ?? 0) > 0 && (
                   <span> • {(selectedZone.total_item ?? 0)} barang • {Number(selectedZone.total_qty ?? 0).toLocaleString("id-ID")} unit</span>
@@ -1203,7 +1205,7 @@ export default function WarehouseLayoutPage() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => {
@@ -1211,7 +1213,7 @@ export default function WarehouseLayoutPage() {
                 const target = `/dashboard/reports?tab=stok&warehouseId=${encodeURIComponent(selectedWarehouseId)}`;
                 window.location.href = target;
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#111827]/10 bg-white px-3 py-1.5 text-[11px] font-semibold text-[#111827] shadow-sm transition hover:border-[#111827]/30 hover:bg-[#f7f8fa]"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#111827]/10 bg-white px-3 py-2 min-h-10 text-sm font-semibold text-[#111827] shadow-sm transition hover:border-[#111827]/30 hover:bg-[#f7f8fa] whitespace-nowrap w-full sm:w-auto"
             >
               Lihat Riwayat Stok
             </button>
@@ -1219,7 +1221,7 @@ export default function WarehouseLayoutPage() {
             <button
               type="button"
               onClick={closePanel}
-              className="rounded-lg p-2 text-[#98a2b3] hover:bg-[#f2f4f7] hover:text-[#111827]"
+              className="flex-shrink-0 min-h-10 min-w-10 flex items-center justify-center rounded-lg p-2 text-[#98a2b3] hover:bg-[#f2f4f7] hover:text-[#111827]"
             >
               <X size={19} />
             </button>
@@ -1227,8 +1229,7 @@ export default function WarehouseLayoutPage() {
         </div>
 
         {/* SEARCH */}
-
-        <div className="border-b border-[#edf0f2] px-6 py-3">
+        <div className="shrink-0 border-b border-[#edf0f2] px-4 py-3 sm:px-6">
           <div className="flex items-center gap-2 rounded-[9px] border border-[#d0d5dd] bg-white px-3">
             <Search
               size={16}
@@ -1239,14 +1240,13 @@ export default function WarehouseLayoutPage() {
               value={panelSearch}
               onChange={(e) => setPanelSearch(e.target.value)}
               placeholder="Cari kode perangkat / nama barang…"
-              className="h-[38px] w-full bg-transparent text-[13px] text-[#111827] outline-none placeholder:text-[#98a2b3]"
+              className="h-11 sm:h-[38px] w-full bg-transparent text-base sm:text-[13px] text-[#111827] outline-none placeholder:text-[#98a2b3]"
             />
           </div>
         </div>
 
         {/* CONTENT */}
-
-        <div className="px-6 py-4">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 pb-[env(safe-area-inset-bottom)] sm:px-6">
           {panelError && (
             <div className="mb-4 flex items-center gap-2 rounded-[10px] border border-[#fecaca] bg-[#fef2f2] px-3 py-2.5 text-[13px] text-[#b42318]">
               <AlertCircle size={16} className="shrink-0" />
@@ -1281,33 +1281,65 @@ export default function WarehouseLayoutPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-[#e5e7eb]">
-                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Nama Barang</th>
-                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Kategori</th>
-                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Kondisi</th>
-                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085] text-right">Qty</th>
-                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Satuan</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#f2f4f7]">
-                  {filteredPanelStock.map((item) => (
-                    <tr key={item.snapshot_id} className="transition hover:bg-[#fafbfc]">
-                      <td className="px-4 py-3">
-                        <p className="text-[13px] font-semibold text-[#111827]">{item.nama_barang}</p>
-                        <p className="text-[11px] text-[#98a2b3]">{item.kode_perangkat}</p>
-                      </td>
-                      <td className="px-4 py-3 text-[13px] text-[#6b7280]">{item.kategori}</td>
-                      <td className="px-4 py-3 text-[13px] text-[#6b7280]"><KondisiBadge value={item.kondisi} /></td>
-                      <td className="px-4 py-3 text-right text-[13px] font-semibold text-[#111827]">{Number(item.qty).toLocaleString("id-ID")}</td>
-                      <td className="px-4 py-3 text-[13px] text-[#6b7280]">{item.satuan}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              {/* Table - Desktop only */}
+              <div className="hidden md:block">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-[#e5e7eb]">
+                        <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Nama Barang</th>
+                        <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Kategori</th>
+                        <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Kondisi</th>
+                        <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085] text-right">Qty</th>
+                        <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Satuan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#f2f4f7]">
+                      {filteredPanelStock.map((item) => (
+                        <tr key={item.snapshot_id} className="transition hover:bg-[#fafbfc]">
+                          <td className="px-4 py-3">
+                            <p className="text-[13px] font-semibold text-[#111827]">{item.nama_barang}</p>
+                            <p className="text-[11px] text-[#98a2b3]">{item.kode_perangkat}</p>
+                          </td>
+                          <td className="px-4 py-3 text-[13px] text-[#6b7280]">{item.kategori}</td>
+                          <td className="px-4 py-3 text-[13px] text-[#6b7280]"><KondisiBadge value={item.kondisi} /></td>
+                          <td className="px-4 py-3 text-right text-[13px] font-semibold text-[#111827]">{Number(item.qty).toLocaleString("id-ID")}</td>
+                          <td className="px-4 py-3 text-[13px] text-[#6b7280]">{item.satuan}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Cards - Mobile only */}
+              <div className="block md:hidden space-y-3">
+                {filteredPanelStock.map((item) => (
+                  <div key={item.snapshot_id} className="border rounded-lg p-3 space-y-2 bg-white">
+                    <div>
+                      <p className="text-sm font-medium text-[#111827] break-words">{item.nama_barang}</p>
+                      <p className="font-mono text-xs text-[#6b7280]">{item.kode_perangkat}</p>
+                    </div>
+                    <p className="text-xs text-[#98a2b3]">{item.kategori}</p>
+                    <div className="border-t border-[#edf0f2] pt-2 grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-[#98a2b3]">QTY</p>
+                        <p className="text-base font-semibold text-[#111827]">{Number(item.qty).toLocaleString("id-ID")}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-[#98a2b3]">SATUAN</p>
+                        <p className="text-sm text-[#6b7280]">{item.satuan}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-[#98a2b3]">KONDISI</p>
+                        <KondisiBadge value={item.kondisi} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </ZoneDetailModal>

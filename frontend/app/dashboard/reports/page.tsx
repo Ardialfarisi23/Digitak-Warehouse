@@ -197,8 +197,11 @@ function Modal({ open, onClose, title, children, className }: { open: boolean; o
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 sm:p-0"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
     >
       <div
         className={`w-full max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl ${className || ""}`}
@@ -206,14 +209,15 @@ function Modal({ open, onClose, title, children, className }: { open: boolean; o
       >
         <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
           <div>
-            <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+            <h3 id="modal-title" className="text-base font-semibold text-slate-900">{title}</h3>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 touch-target"
+            aria-label="Tutup"
           >
-            <X size={18} />
+            <X size={20} />
           </button>
         </div>
         <div className="px-6 py-5">{children}</div>
@@ -221,7 +225,6 @@ function Modal({ open, onClose, title, children, className }: { open: boolean; o
     </div>
   );
 }
-
 function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
   const [data, setData] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -514,81 +517,83 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
         Tabel ini bersifat <strong>append-only</strong>. Semua entri dicatat otomatis dan tidak dapat diubah atau dihapus, termasuk oleh Admin General.
       </div>
 
-      <div className="mb-6 flex flex-wrap items-center gap-2">
-        <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
-          <Search size={16} className="shrink-0 text-slate-400" />
-          <input
-            value={q}
-            onChange={(e) => { setQ(e.target.value); setPage(1); }}
-            placeholder="Cari Kode Tiket, aksi, atau entitas…"
-            className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-300"
-          />
+      <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+        <div className="col-span-1 sm:col-span-2 lg:col-span-2 xl:col-span-3">
+          <div className="flex min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+            <Search size={16} className="shrink-0 text-slate-400" />
+            <input
+              value={q}
+              onChange={(e) => { setQ(e.target.value); setPage(1); }}
+              placeholder="Cari Kode Tiket, aksi, atau entitas…"
+              className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-300"
+            />
+          </div>
         </div>
 
-        <div className="relative">
+        <div>
           <select
             value={actorRole}
             onChange={(e) => { setActorRole(e.target.value); setPage(1); }}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
           >
             <option value="">Semua peran</option>
             <option value="admin_general">Admin General</option>
             <option value="supervisor">Supervisor</option>
             <option value="staf_gudang">Staf Gudang</option>
           </select>
-          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
         </div>
 
-        <div className="relative">
+        <div>
           <select
             value={aksi}
             onChange={(e) => { setAksi(e.target.value); setPage(1); }}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
           >
             <option value="">Semua jenis aksi</option>
             {aksiList.map((o) => (
               <option key={o} value={o}>{VALUE_LABELS.audit_aksi[o] || o}</option>
             ))}
           </select>
-          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
         </div>
 
-        <div className="relative">
+        <div>
           <input
             type="date"
             value={startDate}
             onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
           />
         </div>
 
-        <div className="relative">
+        <div>
           <input
             type="date"
             value={endDate}
             onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
           />
         </div>
 
-        <button
-          type="button"
-          onClick={handleExportAuditLog}
-          disabled={exporting}
-          className="flex items-center gap-2 rounded-full bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {exporting ? (
-            <span className="flex items-center gap-2">
-              <Loader2 size={16} className="animate-spin" />
-              Mengekspor...
-            </span>
-          ) : (
-            <span className="flex items-center gap-2">
-              <Download size={16} />
-              Ekspor
-            </span>
-          )}
-        </button>
+        <div className="sm:col-span-2 lg:col-span-1 xl:col-span-1">
+          <button
+            type="button"
+            onClick={handleExportAuditLog}
+            disabled={exporting}
+            aria-label="Ekspor Audit Log" className="w-full flex items-center justify-center gap-2 rounded-full bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {exporting ? (
+              <span className="flex items-center gap-2">
+                <Loader2 size={16} className="animate-spin" />
+                <span className="hidden sm:inline">Mengekspor...</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <Download size={16} />
+                <span className="hidden sm:inline">Ekspor</span>
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
       {toast && (
@@ -648,16 +653,16 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
+          <table className="w-full min-w-[1260px] table-fixed text-left text-sm border-separate border-spacing-0">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Waktu</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Pengguna</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Peran</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Entitas Terkait</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Referensi Tambahan</th>
-                <th className="px-6 py-4 w-10"></th>
+                <th className="w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Waktu</th>
+                <th className="w-[180px] min-w-[180px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Pengguna</th>
+                <th className="w-[140px] min-w-[140px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Peran</th>
+                <th className="w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
+                <th className="w-[280px] min-w-[280px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Entitas Terkait</th>
+                <th className="w-[300px] min-w-[300px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Referensi Tambahan</th>
+                <th className="w-10 min-w-10 overflow-hidden px-6 py-4"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -685,47 +690,47 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
                   return (
                     <tr
                       key={r.audit_id}
-                      className="group cursor-pointer transition-colors hover:bg-slate-50"
+                      className="group cursor-pointer transition-colors hover:bg-slate-50 min-h-16"
                       onClick={() => setDetailRow(r)}
                     >
-                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400">
+                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400 overflow-hidden">
                         {formatDateTime(r.created_at)}
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="font-semibold text-slate-900">{r.actor_nama}</div>
+                      <td className="px-6 py-4 min-w-0 overflow-hidden truncate" title={r.actor_nama}>
+                        <div className="font-semibold text-slate-900 truncate">{r.actor_nama}</div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 overflow-hidden">
                         {roleMap[r.actor_role] ? (
-                          <Badge label={roleMap[r.actor_role].label} variant={roleMap[r.actor_role].variant} />
+                          <Badge label={roleMap[r.actor_role].label} variant={roleMap[r.actor_role].variant} className="whitespace-nowrap shrink-0" />
                         ) : (
-                          <span className="text-xs text-slate-500">{r.actor_role}</span>
+                          <span className="text-xs text-slate-500 whitespace-nowrap">{r.actor_role}</span>
                         )}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 overflow-hidden">
                         {aksiMap[r.aksi] ? (
-                          <Badge label={aksiMap[r.aksi].label} icon={aksiMap[r.aksi].icon} variant={aksiMap[r.aksi].variant} />
+                          <Badge label={aksiMap[r.aksi].label} icon={aksiMap[r.aksi].icon} variant={aksiMap[r.aksi].variant} className="whitespace-nowrap shrink-0" />
                         ) : (
-                          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 whitespace-nowrap shrink-0">
                             {humanizeValue("aksi", r.aksi)}
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4">
-                        <Badge label={getEntityLabel(r)} variant="gray" />
+                      <td className="px-6 py-4 min-w-0 overflow-hidden">
+                        <Badge label={getEntityLabel(r)} variant="gray" className="whitespace-nowrap shrink-0" />
                       </td>
-                      <td className="px-6 py-4 text-xs text-slate-500">
+                      <td className="px-6 py-4 text-xs text-slate-500 min-w-0 overflow-hidden truncate">
                         {extraRef !== "—" ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-mono">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-mono whitespace-nowrap shrink-0">
                             {extraRef}
                           </span>
                         ) : (
                           "—"
                         )}
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 text-right overflow-hidden">
                         <button
                           type="button"
-                          className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                           onClick={(e) => { e.stopPropagation(); setDetailRow(r); }}
                         >
                           <Eye size={16} />
@@ -739,6 +744,201 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
           </table>
         </div>
       </div>
+    </div>
+  );
+
+  // Mobile card component for Audit Log
+  function AuditLogCard({ row, onClick }: { row: AuditLogEntry; onClick: () => void }) {
+    const extraRef = getExtraRef(row);
+    return (
+      <div
+        className="group rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:bg-slate-50 cursor-pointer"
+        onClick={onClick}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              {aksiMap[row.aksi] ? (
+                <Badge label={aksiMap[row.aksi].label} icon={aksiMap[row.aksi].icon} variant={aksiMap[row.aksi].variant} className="whitespace-nowrap shrink-0" />
+              ) : (
+                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 whitespace-nowrap shrink-0">
+                  {humanizeValue("aksi", row.aksi)}
+                </span>
+              )}
+              {roleMap[row.actor_role] ? (
+                <Badge label={roleMap[row.actor_role].label} variant={roleMap[row.actor_role].variant} className="whitespace-nowrap shrink-0" />
+              ) : (
+                <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 whitespace-nowrap shrink-0">
+                  {row.actor_role}
+                </span>
+              )}
+            </div>
+            <p className="mt-1 font-mono font-semibold text-orange-500 truncate" title={getEntityLabel(row)}>
+              {getEntityLabel(row)}
+            </p>
+          </div>
+          <div className="shrink-0">
+            <p className="font-mono text-xs text-slate-400 text-right whitespace-nowrap">
+              {formatDateTime(row.created_at)}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-2 min-w-0">
+          <p className="text-xs font-medium text-slate-400">Pengguna</p>
+          <p className="font-semibold text-slate-900 truncate" title={row.actor_nama}>
+            {row.actor_nama}
+          </p>
+        </div>
+
+        {extraRef !== "—" && (
+          <div className="mt-2 min-w-0">
+            <p className="text-xs font-medium text-slate-400">Referensi</p>
+            <p className="font-mono text-xs text-slate-500 truncate" title={extraRef}>
+              {extraRef}
+            </p>
+          </div>
+        )}
+
+        <div className="mt-4 flex items-center justify-end">
+          <button
+            type="button"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 touch-target"
+            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            aria-label="Lihat detail"
+          >
+            <Eye size={18} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Mobile card list (< md)
+  if (loading) {
+    return (
+      <div className="md:hidden space-y-3" role="status" aria-label="Memuat audit log">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm animate-pulse">
+            <div className="h-4 bg-slate-200 rounded w-3/4 mb-2" />
+            <div className="h-3 bg-slate-200 rounded w-1/2 mb-2" />
+            <div className="h-3 bg-slate-200 rounded w-full mb-2" />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="h-3 bg-slate-200 rounded" />
+              <div className="h-3 bg-slate-200 rounded" />
+              <div className="h-3 bg-slate-200 rounded" />
+              <div className="h-3 bg-slate-200 rounded" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="md:hidden rounded-xl border border-slate-200 bg-white p-6 text-center">
+        <p className="text-sm text-rose-500">{error}</p>
+      </div>
+    );
+  }
+
+  if (data.length === 0) {
+    return (
+      <div className="md:hidden rounded-xl border border-slate-200 bg-white p-6 text-center">
+        <p className="text-sm text-slate-400">Tidak ada entri audit yang cocok dengan filter ini.</p>
+      </div>
+    );
+  }
+
+  // Mobile cards
+  const mobileCards = (
+    <div className="md:hidden space-y-3" role="list" aria-label="Audit log">
+      {data.map((r) => (
+        <AuditLogCard key={r.audit_id} row={r} onClick={() => setDetailRow(r)} />
+      ))}
+    </div>
+  );
+  // Desktop table (md+)
+  const desktopTable = (
+    <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1260px] table-fixed text-left text-sm border-separate border-spacing-0">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50">
+              <th className="w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Waktu</th>
+              <th className="w-[180px] min-w-[180px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Pengguna</th>
+              <th className="w-[140px] min-w-[140px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Peran</th>
+              <th className="w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
+              <th className="w-[280px] min-w-[280px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Entitas Terkait</th>
+              <th className="w-[300px] min-w-[300px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Referensi Tambahan</th>
+              <th className="w-10 min-w-10 overflow-hidden px-6 py-4"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {data.map((r) => {
+              const extraRef = getExtraRef(r);
+              return (
+                <tr
+                  key={r.audit_id}
+                  className="group cursor-pointer transition-colors hover:bg-slate-50 min-h-16"
+                  onClick={() => setDetailRow(r)}
+                >
+                  <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400 overflow-hidden">
+                    {formatDateTime(r.created_at)}
+                  </td>
+                  <td className="px-6 py-4 min-w-0 overflow-hidden truncate" title={r.actor_nama}>
+                    <div className="font-semibold text-slate-900 truncate">{r.actor_nama}</div>
+                  </td>
+                  <td className="px-6 py-4 overflow-hidden">
+                    {roleMap[r.actor_role] ? (
+                      <Badge label={roleMap[r.actor_role].label} variant={roleMap[r.actor_role].variant} className="whitespace-nowrap shrink-0" />
+                    ) : (
+                      <span className="text-xs text-slate-500 whitespace-nowrap">{r.actor_role}</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 overflow-hidden">
+                    {aksiMap[r.aksi] ? (
+                      <Badge label={aksiMap[r.aksi].label} icon={aksiMap[r.aksi].icon} variant={aksiMap[r.aksi].variant} className="whitespace-nowrap shrink-0" />
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 whitespace-nowrap shrink-0">
+                        {humanizeValue("aksi", r.aksi)}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 min-w-0 overflow-hidden">
+                    <Badge label={getEntityLabel(r)} variant="gray" className="whitespace-nowrap shrink-0" />
+                  </td>
+                  <td className="px-6 py-4 text-xs text-slate-500 min-w-0 overflow-hidden truncate">
+                    {extraRef !== "—" ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-mono whitespace-nowrap shrink-0">
+                        {extraRef}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-right overflow-hidden">
+                    <button
+                      type="button"
+                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      onClick={(e) => { e.stopPropagation(); setDetailRow(r); }}
+                    >
+                      <Eye size={16} />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+  return (
+    <div>
+      {mobileCards}
+      {desktopTable}
 
       {totalPages > 1 && (
         <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
@@ -912,6 +1112,132 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
     }
     return <span className="text-slate-300">-</span>;
   };
+
+  // Formatters shared between table and card
+  const formatDateTime = (iso: string) => {
+    const d = new Date(iso);
+    const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+    const day = d.getDate();
+    const mon = months[d.getMonth()];
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${day} ${mon}, ${hh}:${mm}`;
+  };
+
+  const getJenisBadge = (r: StockHistoryEntry) => {
+    const label = r.tipe_surat_jalan === "inbound" ? "Inbound" : r.tipe_surat_jalan === "outbound" ? "Outbound" : r.tipe_surat_jalan || "-";
+    const variant = r.tipe_surat_jalan === "inbound" ? "green" : r.tipe_surat_jalan === "outbound" ? "orange" : "gray";
+    return <Badge label={label} variant={variant} className="whitespace-nowrap shrink-0" />;
+  };
+
+  const getStatusBadge = (r: StockHistoryEntry) => (
+    <span
+      className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap shrink-0"
+      style={{
+        color: statusColor[r.status_surat_jalan]?.fg || "#6B7280",
+        backgroundColor: statusColor[r.status_surat_jalan]?.bg || "#F3F4F6",
+      }}
+    >
+      {statusLabel[r.status_surat_jalan] || r.status_surat_jalan || "-"}
+    </span>
+  );
+
+  // Mobile card component
+  function StokCard({ row, onClick }: { row: StockHistoryEntry; onClick: () => void }) {
+    return (
+      <div
+        className="group rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:bg-slate-50 cursor-pointer"
+        onClick={onClick}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="font-mono font-semibold text-orange-500 truncate" title={row.kode_tiket || "-"}>
+              {row.kode_tiket || "-"}
+            </p>
+          </div>
+          <div className="shrink-0">
+            <p className="font-mono text-xs text-slate-400 text-right whitespace-nowrap">
+              {formatDateTime(row.waktu_mutasi)}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {getJenisBadge(row)}
+          {getStatusBadge(row)}
+        </div>
+
+        <div className="mt-3 min-w-0">
+          <p className="font-semibold text-slate-900 line-clamp-2 break-words" title={row.nama_barang || "-"}>
+            {row.nama_barang || "-"}
+          </p>
+          <p className="font-mono text-xs text-slate-500 truncate" title={row.kode_perangkat || "-"}>
+            {row.kode_perangkat || "-"}
+          </p>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <p className="text-slate-400">No. Surat Jalan</p>
+            <p className="font-mono font-semibold text-slate-700 truncate" title={row.nomor_surat_jalan && row.nomor_surat_jalan !== "-" ? row.nomor_surat_jalan : row.return_transaction_id ? `Return #${row.return_transaction_id}` : "-"}>
+              {row.nomor_surat_jalan && row.nomor_surat_jalan !== "-" ? row.nomor_surat_jalan : row.return_transaction_id ? `Return #${row.return_transaction_id}` : "-"}
+            </p>
+          </div>
+          <div>
+            <p className="text-slate-400">Diproses Oleh</p>
+            <p className="font-semibold text-slate-900 truncate" title={row.diproses_oleh || "-"}>
+              {row.diproses_oleh || "-"}
+            </p>
+          </div>
+          <div>
+            <p className="text-slate-400">Qty</p>
+            <p className="font-mono text-slate-900">
+              <span className="font-semibold">{row.qty}</span>
+              {row.satuan && row.satuan !== "-" && (
+                <span className="ml-1 text-slate-400">{row.satuan}</span>
+              )}
+            </p>
+          </div>
+          <div>
+            <p className="text-slate-400">Zona</p>
+            <p className="truncate" title={row.zona_kode && row.zona_kode !== "-" ? `${row.zona_gudang} / ${row.zona_kode}` : "Zona belum terisi"}>
+              {row.zona_kode && row.zona_kode !== "-" ? (
+                <>
+                  <span className="text-slate-500">{row.zona_gudang}</span>
+                  <span className="mx-1 text-slate-300">/</span>
+                  <span className="font-mono font-semibold text-slate-800">{row.zona_kode}</span>
+                </>
+              ) : (
+                <span className="text-slate-300">—</span>
+              )}
+            </p>
+          </div>
+        </div>
+
+        {(row.asal_label || row.gudang_asal || row.gudang_tujuan || row.lapangan_tujuan) && (
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <p className="text-xs font-medium text-slate-400 mb-1">Alur</p>
+            <p className="text-sm text-slate-700 break-words">
+              {renderAsal(row)}
+              <span className="mx-1.5 text-slate-400">→</span>
+              {renderTujuan(row)}
+            </p>
+          </div>
+        )}
+
+        <div className="mt-4 flex items-center justify-end">
+          <button
+            type="button"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 touch-target"
+            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            aria-label="Lihat detail"
+          >
+            <Eye size={18} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1159,35 +1485,41 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center gap-2">
-        <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
-          <Search size={16} className="shrink-0 text-slate-400" />
-          <input
-            value={q}
-            onChange={(e) => { setQ(e.target.value); setPage(1); }}
-            placeholder="Cari Kode Tiket…"
-            className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-300"
-          />
+      <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="sm:col-span-1">
+          <div className="flex min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+            <Search size={16} className="shrink-0 text-slate-400" />
+            <input
+              value={q}
+              onChange={(e) => { setQ(e.target.value); setPage(1); }}
+              placeholder="Cari Kode Tiket…"
+              className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-300"
+            />
+          </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleExportRiwayatStok}
-          disabled={exporting}
-          className="flex items-center gap-2 rounded-full bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {exporting ? (
-            <span className="flex items-center gap-2">
-              <Loader2 size={16} className="animate-spin" />
-              Mengekspor...
-            </span>
-          ) : (
-            <span className="flex items-center gap-2">
-              <Download size={16} />
-              Ekspor
-            </span>
-          )}
-        </button>
+        <div className="sm:col-span-1">
+          <button
+            type="button"
+            onClick={handleExportRiwayatStok}
+            disabled={exporting}
+            aria-label="Ekspor riwayat stok"
+            title="Ekspor riwayat stok"
+            className="w-9 h-9 sm:w-auto sm:h-9 flex items-center justify-center gap-2 self-end sm:self-auto rounded-full bg-orange-500 px-0 sm:px-4 py-2 text-xs font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
+          >
+            {exporting ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="hidden sm:inline">Mengekspor...</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">Ekspor</span>
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
       <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2">
@@ -1265,7 +1597,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
         </div>
       </div>
 
-      <div className="mb-4 flex items-center justify-between gap-2 flex-wrap">
+      <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => setAdvancedOpen((v) => !v)}
@@ -1285,7 +1617,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
             ) : null;
           })()}
         </button>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
+        <label className="flex items-center gap-2 text-sm text-slate-600 whitespace-nowrap sm:whitespace-normal">
           <input
             type="checkbox"
             checked={includePutaway}
@@ -1406,138 +1738,162 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            {/* Mobile card list (< md) */}
+      {loading && (
+        <div className="md:hidden space-y-3" role="status" aria-label="Memuat riwayat stok">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm animate-pulse">
+              <div className="h-4 bg-slate-200 rounded w-3/4 mb-2" />
+              <div className="h-3 bg-slate-200 rounded w-1/2 mb-2" />
+              <div className="h-3 bg-slate-200 rounded w-full mb-2" />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="h-3 bg-slate-200 rounded" />
+                <div className="h-3 bg-slate-200 rounded" />
+                <div className="h-3 bg-slate-200 rounded" />
+                <div className="h-3 bg-slate-200 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error && (
+        <div className="md:hidden rounded-xl border border-slate-200 bg-white p-6 text-center">
+          <p className="text-sm text-rose-500">{error}</p>
+        </div>
+      )}
+
+      {!loading && !error && data.length === 0 && (
+        <div className="md:hidden rounded-xl border border-slate-200 bg-white p-6 text-center">
+          <p className="text-sm text-slate-400">Tidak ada pergerakan stok yang cocok dengan filter ini.</p>
+        </div>
+      )}
+
+      {/* Mobile cards */}
+      {!loading && !error && data.length > 0 && (
+        <div className="md:hidden space-y-3" role="list" aria-label="Riwayat stok">
+          {data.map((r) => (
+            <StokCard key={r.ledger_id} row={r} onClick={() => setDetailTiket(r)} />
+          ))}
+        </div>
+      )}
+
+      {/* Desktop table (md+) */}
+      <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
+          <table className="w-full min-w-[1300px] md:min-w-[1500px] xl:min-w-[1800px] 2xl:min-w-[2040px] table-fixed text-left text-sm border-separate border-spacing-0">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tanggal</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">No. Surat Jalan</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Jenis Transaksi</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diproses Oleh</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Perangkat</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
-                <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Qty</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Zona</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Asal → Tujuan</th>
-                <th className="px-6 py-4 w-10"></th>
+                <th className="w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tanggal</th>
+                <th className="w-[150px] min-w-[150px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
+                <th className="w-[240px] min-w-[240px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">No. Surat Jalan</th>
+                <th className="w-[220px] min-w-[220px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Jenis Transaksi</th>
+                <th className="w-[200px] min-w-[200px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+                <th className="w-[150px] min-w-[150px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diproses Oleh</th>
+                <th className="hidden xl:table-cell w-[180px] min-w-[180px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Perangkat</th>
+                <th className="w-[260px] min-w-[260px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
+                <th className="hidden xl:table-cell w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Qty</th>
+                <th className="hidden 2xl:table-cell w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Zona</th>
+                <th className="hidden 2xl:table-cell w-[200px] min-w-[200px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Asal → Tujuan</th>
+                <th className="w-10 min-w-10 overflow-hidden px-6 py-4"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i}>
-                    <td className="px-6 py-4" colSpan={12}>
-                      <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
-                    </td>
-                  </tr>
-                ))
-              ) : error ? (
-                <tr>
-                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={12}>{error}</td>
-                </tr>
-              ) : data.length === 0 ? (
-                <tr>
-                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={12}>
-                    Tidak ada pergerakan stok yang cocok dengan filter ini.
+              {data.map((r) => (
+                <tr
+                  key={r.ledger_id}
+                  className="group cursor-pointer transition-colors hover:bg-slate-50 min-h-16"
+                  onClick={() => setDetailTiket(r)}
+                >
+                  <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400 overflow-hidden">
+                    {new Date(r.waktu_mutasi).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "medium" })}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap font-mono font-semibold text-orange-500 overflow-hidden">
+                    {r.kode_tiket || "-"}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap font-mono text-xs font-semibold text-slate-700 overflow-hidden">
+                    {r.nomor_surat_jalan && r.nomor_surat_jalan !== "-" ? r.nomor_surat_jalan : r.return_transaction_id ? `Return #${r.return_transaction_id}` : "-"}
+                  </td>
+                  <td className="px-6 py-4 min-w-0 overflow-hidden">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge
+                        label={r.tipe_surat_jalan === "inbound" ? "Inbound" : r.tipe_surat_jalan === "outbound" ? "Outbound" : r.tipe_surat_jalan || "-"}
+                        variant={r.tipe_surat_jalan === "inbound" ? "green" : r.tipe_surat_jalan === "outbound" ? "orange" : "gray"}
+                        className="whitespace-nowrap shrink-0"
+                      />
+                      {r.is_putaway && (
+                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 whitespace-nowrap shrink-0" title={r.jenis_mutasi === "out" ? "Putaway · keluar (Generic)" : r.jenis_mutasi === "in" ? "Putaway · masuk (Zona)" : "Perpindahan Internal (Putaway)"}>{
+                          r.jenis_mutasi === "out"
+                            ? "Putaway · keluar (Generic)"
+                            : r.jenis_mutasi === "in"
+                              ? "Putaway · masuk (Zona)"
+                              : "Perpindahan Internal (Putaway)"
+                        }</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 overflow-hidden">
+                    <span
+                      className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap shrink-0"
+                      style={{
+                        color: statusColor[r.status_surat_jalan]?.fg || "#6B7280",
+                        backgroundColor: statusColor[r.status_surat_jalan]?.bg || "#F3F4F6",
+                      }}
+                    >
+                      {statusLabel[r.status_surat_jalan] || r.status_surat_jalan || "-"}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 min-w-0 overflow-hidden truncate" title={r.diproses_oleh || "-"}>
+                    {r.diproses_oleh || "-"}
+                  </td>
+                  <td className="hidden xl:table-cell px-6 py-4 whitespace-nowrap font-mono text-xs font-semibold text-slate-700 overflow-hidden">
+                    {r.kode_perangkat || "-"}
+                  </td>
+                  <td className="px-6 py-4 min-w-0 overflow-hidden truncate text-slate-700" title={r.nama_barang || "-"}>
+                    {r.nama_barang || "-"}
+                  </td>
+                  <td className="hidden xl:table-cell px-6 py-4 whitespace-nowrap text-right font-mono text-slate-900 overflow-hidden">
+                    <span className="font-semibold">{r.qty}</span>
+                    {r.satuan && r.satuan !== "-" && (
+                      <span className="ml-1 text-xs font-normal text-slate-400">{r.satuan}</span>
+                    )}
+                  </td>
+                  <td className="hidden 2xl:table-cell px-6 py-4 whitespace-nowrap text-slate-700 overflow-hidden">
+                    {r.zona_kode && r.zona_kode !== "-" ? (
+                      <span>
+                        <span className="text-slate-500">{r.zona_gudang}</span>
+                        <span className="mx-1 text-slate-300">/</span>
+                        <span className="font-mono font-semibold text-slate-800">{r.zona_kode}</span>
+                      </span>
+                    ) : (
+                      <span className="text-slate-300" title="Zona baru terisi setelah item melewati proses putaway">—</span>
+                    )}
+                  </td>
+                  <td className="hidden 2xl:table-cell px-6 py-4 min-w-0 overflow-hidden truncate text-slate-700" title={renderAsal(r) + " → " + renderTujuan(r)}>
+                    {renderAsal(r)}
+                    <span className="mx-1.5 text-slate-400">→</span>
+                    {renderTujuan(r)}
+                  </td>
+                  <td className="px-6 py-4 text-right overflow-hidden">
+                    <button
+                      type="button"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      onClick={(e) => { e.stopPropagation(); setDetailTiket(r); }}
+                    >
+                      <Eye size={16} />
+                    </button>
                   </td>
                 </tr>
-              ) : (
-                data.map((r) => (
-                  <tr
-                    key={r.ledger_id}
-                    className="group cursor-pointer transition-colors hover:bg-slate-50"
-                    onClick={() => setDetailTiket(r)}
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400">
-                      {new Date(r.waktu_mutasi).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "medium" })}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap font-mono font-semibold text-orange-500">
-                      {r.kode_tiket || "-"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap font-mono text-xs font-semibold text-slate-700">
-                      {r.nomor_surat_jalan && r.nomor_surat_jalan !== "-" ? r.nomor_surat_jalan : r.return_transaction_id ? `Return #${r.return_transaction_id}` : "-"}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge
-                          label={r.tipe_surat_jalan === "inbound" ? "Inbound" : r.tipe_surat_jalan === "outbound" ? "Outbound" : r.tipe_surat_jalan || "-"}
-                          variant={r.tipe_surat_jalan === "inbound" ? "green" : r.tipe_surat_jalan === "outbound" ? "orange" : "gray"}
-                        />
-                        {r.is_putaway && (
-                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                            {r.jenis_mutasi === "out"
-                              ? "Putaway · keluar (Generic)"
-                              : r.jenis_mutasi === "in"
-                                ? "Putaway · masuk (Zona)"
-                                : "Perpindahan Internal (Putaway)"}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold"
-                        style={{
-                          color: statusColor[r.status_surat_jalan]?.fg || "#6B7280",
-                          backgroundColor: statusColor[r.status_surat_jalan]?.bg || "#F3F4F6",
-                        }}
-                      >
-                        {statusLabel[r.status_surat_jalan] || r.status_surat_jalan || "-"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-slate-600">{r.diproses_oleh || "-"}</td>
-                    <td className="px-6 py-4 whitespace-nowrap font-mono text-xs font-semibold text-slate-700">
-                      {r.kode_perangkat || "-"}
-                    </td>
-                    <td className="px-6 py-4 max-w-[260px] truncate text-slate-700" title={r.nama_barang || "-"}>
-                      {r.nama_barang || "-"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-slate-900">
-                      <span className="font-semibold">{r.qty}</span>
-                      {r.satuan && r.satuan !== "-" && (
-                        <span className="ml-1 text-xs font-normal text-slate-400">{r.satuan}</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-slate-700">
-                      {r.zona_kode && r.zona_kode !== "-" ? (
-                        <span>
-                          <span className="text-slate-500">{r.zona_gudang}</span>
-                          <span className="mx-1 text-slate-300">/</span>
-                          <span className="font-mono font-semibold text-slate-800">{r.zona_kode}</span>
-                        </span>
-                      ) : (
-                        <span className="text-slate-300" title="Zona baru terisi setelah item melewati proses putaway">—</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-slate-700">
-                      {renderAsal(r)}
-                      <span className="mx-1.5 text-slate-400">→</span>
-                      {renderTujuan(r)}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        type="button"
-                        className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                        onClick={(e) => { e.stopPropagation(); setDetailTiket(r); }}
-                      >
-                        <Eye size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
           </table>
         </div>
       </div>
 
       {totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
-          <span>
-            Menampilkan {total > 0 ? ((page - 1) * limit) + 1 : 0}–{Math.min(page * limit, total)} dari {total} data
+        <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+          <span className="whitespace-nowrap">
+            Menampilkan {((page - 1) * limit) + 1}–{Math.min(page * limit, total)} dari {total} entri
           </span>
           <div className="flex items-center gap-2">
             <button
@@ -1548,7 +1904,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
             >
               Sebelumnya
             </button>
-            <span className="font-mono">
+            <span className="font-mono whitespace-nowrap">
               {page} / {totalPages}
             </span>
             <button
@@ -1557,7 +1913,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
               disabled={page === totalPages || loading}
               className="rounded-full border border-slate-200 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-50"
             >
-              Berikutnya
+              Selanjutnya
             </button>
           </div>
         </div>
@@ -1807,81 +2163,260 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
 
   const renderFilename = (filename: string) => {
     if (filename === "manual-input") {
-      return <Badge label="Input Manual" variant="blue" />;
+      return <Badge label="Input Manual" variant="blue" className="whitespace-nowrap shrink-0" />;
     }
     return (
       <>
         <span className="truncate block" title={filename}>
           {filename}
         </span>
-        {/\.(xlsx|xls|csv)$/i.test(filename) && <Badge label="Excel" variant="outline-gray" className="mt-1" />}
+        {/\.(xlsx|xls|csv)$/i.test(filename) && <Badge label="Excel" variant="outline-gray" className="mt-1 whitespace-nowrap shrink-0" />}
       </>
     );
   };
 
+  // Mobile card component
+  function UploadLogCard({ row, onClick }: { row: ReconciliationUploadLogEntry; onClick: () => void }) {
+    const allSuccess = row.failed_rows === 0 && row.success_rows > 0;
+    const hasFailed = row.failed_rows > 0;
+    const overallStatus = allSuccess ? "berhasil" : hasFailed ? "sebagian_gagal" : "draft";
+    return (
+      <div
+        className="group rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:bg-slate-50 cursor-pointer"
+        onClick={onClick}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="font-mono text-xs text-slate-400 truncate">{formatDateTime(row.uploaded_at)}</p>
+          </div>
+          <div className="shrink-0">
+            {overallStatus === "berhasil" && <Badge label="Berhasil" variant="green" className="whitespace-nowrap shrink-0" />}
+            {overallStatus === "sebagian_gagal" && <Badge label="Sebagian Gagal" variant="orange" className="whitespace-nowrap shrink-0" />}
+            {overallStatus === "draft" && <Badge label="Draft" variant="gray" className="whitespace-nowrap shrink-0" />}
+          </div>
+        </div>
+
+        <div className="mt-2 min-w-0">
+          <p className="font-semibold text-slate-900 line-clamp-2 break-words">{renderFilename(row.filename)}</p>
+        </div>
+
+        <div className="mt-2 min-w-0">
+          <p className="text-xs font-medium text-slate-400">Diunggah Oleh</p>
+          <div className="flex items-center gap-2">
+            <p className="font-semibold text-slate-900 truncate" title={row.uploaded_by_nama}>{row.uploaded_by_nama}</p>
+            <Badge label={humanizeValue("user_role", row.uploaded_by_role)} variant="gray" className="whitespace-nowrap shrink-0" />
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
+          <div>
+            <p className="text-slate-400">Total</p>
+            <p className="font-mono text-slate-900">{row.total_rows}</p>
+          </div>
+          <div>
+            <p className="text-slate-400">Berhasil</p>
+            <p className="font-mono text-emerald-600">{row.success_rows}</p>
+          </div>
+          <div>
+            <p className="text-slate-400">Gagal</p>
+            <p className="font-mono text-rose-600">{row.failed_rows}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 flex items-center justify-end">
+          <button
+            type="button"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 touch-target"
+            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            aria-label="Lihat detail"
+          >
+            <Eye size={20} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Mobile card list (< md)
+  if (loading) {
+    return (
+      <div className="md:hidden space-y-3" role="status" aria-label="Memuat riwayat upload">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm animate-pulse">
+            <div className="h-4 bg-slate-200 rounded w-3/4 mb-2" />
+            <div className="h-3 bg-slate-200 rounded w-1/2 mb-2" />
+            <div className="h-3 bg-slate-200 rounded w-full mb-2" />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="h-3 bg-slate-200 rounded" />
+              <div className="h-3 bg-slate-200 rounded" />
+              <div className="h-3 bg-slate-200 rounded" />
+              <div className="h-3 bg-slate-200 rounded" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="md:hidden rounded-xl border border-slate-200 bg-white p-6 text-center">
+        <p className="text-sm text-rose-500">{error}</p>
+      </div>
+    );
+  }
+
+  if (data.length === 0) {
+    return (
+      <div className="md:hidden rounded-xl border border-slate-200 bg-white p-6 text-center">
+        <p className="text-sm text-slate-400">Belum ada riwayat upload laporan mitra.</p>
+      </div>
+    );
+  }
+
+  // Mobile cards
+  const mobileCards = (
+    <div className="md:hidden space-y-3" role="list" aria-label="Riwayat upload">
+      {data.map((r) => (
+        <UploadLogCard key={r.upload_id} row={r} onClick={() => setDetailRow(r)} />
+      ))}
+    </div>
+  );
+
+  // Desktop table (md+)
+  const desktopTable = (
+    <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1120px] table-fixed text-left text-sm border-separate border-spacing-0">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50">
+              <th className="w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Waktu Upload</th>
+              <th className="w-[300px] min-w-[300px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama File</th>
+              <th className="w-[240px] min-w-[240px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diunggah Oleh</th>
+              <th className="w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Total</th>
+              <th className="w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Berhasil</th>
+              <th className="w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gagal</th>
+              <th className="w-[140px] min-w-[140px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+              <th className="w-10 min-w-10 overflow-hidden px-6 py-4"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {data.map((r) => {
+              const allSuccess = r.failed_rows === 0 && r.success_rows > 0;
+              const hasFailed = r.failed_rows > 0;
+              const overallStatus = allSuccess ? "berhasil" : hasFailed ? "sebagian_gagal" : "draft";
+              return (
+                <tr
+                  key={r.upload_id}
+                  className="group cursor-pointer transition-colors hover:bg-slate-50 min-h-16"
+                  onClick={() => setDetailRow(r)}
+                >
+                  <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400 overflow-hidden">
+                    {formatDateTime(r.uploaded_at)}
+                  </td>
+                  <td className="px-6 py-4 min-w-0 overflow-hidden">
+                    <div className="font-semibold text-slate-900 truncate">{renderFilename(r.filename)}</div>
+                  </td>
+                  <td className="px-6 py-4 min-w-0 overflow-hidden">
+                    <div className="font-semibold text-slate-900 truncate" title={r.uploaded_by_nama}>{r.uploaded_by_nama}</div>
+                    <div className="text-xs">
+                      <Badge label={humanizeValue("user_role", r.uploaded_by_role)} variant="gray" className="whitespace-nowrap shrink-0" />
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-center font-mono text-xs text-slate-600 overflow-hidden">{r.total_rows}</td>
+                  <td className="px-6 py-4 text-center font-mono text-xs text-emerald-600 overflow-hidden">{r.success_rows}</td>
+                  <td className="px-6 py-4 text-center font-mono text-xs text-rose-600 overflow-hidden">{r.failed_rows}</td>
+                  <td className="px-6 py-4 overflow-hidden">
+                    {overallStatus === "berhasil" && <Badge label="Berhasil" variant="green" className="whitespace-nowrap shrink-0" />}
+                    {overallStatus === "sebagian_gagal" && <Badge label="Sebagian Gagal" variant="orange" className="whitespace-nowrap shrink-0" />}
+                    {overallStatus === "draft" && <Badge label="Draft" variant="gray" className="whitespace-nowrap shrink-0" />}
+                  </td>
+                  <td className="px-6 py-4 text-right overflow-hidden">
+                    <button
+                      type="button"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 touch-target"
+                      onClick={(e) => { e.stopPropagation(); setDetailRow(r); }}
+                      aria-label="Lihat detail"
+                    >
+                      <Eye size={18} />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
   return (
+    <div>
+      {mobileCards}
+      {desktopTable}  return (
     <div>
       <div className="mb-4 rounded-xl border border-orange-100 bg-orange-50 px-4 py-2 text-xs text-orange-700">
         Tabel ini menampilkan histori upload laporan mitra. Setiap baris merepresentasikan 1 sesi upload file Excel.
       </div>
 
-      <div className="mb-6 flex flex-wrap items-center gap-2">
-        <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
-          <Search size={16} className="shrink-0 text-slate-400" />
-          <input
-            value={q}
-            onChange={(e) => { setQ(e.target.value); setPage(1); }}
-            placeholder="Cari nama file atau pengguna…"
-            className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-300"
-          />
+      <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+        <div className="col-span-1 sm:col-span-2 lg:col-span-2 xl:col-span-2">
+          <div className="flex min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+            <Search size={16} className="shrink-0 text-slate-400" />
+            <input
+              value={q}
+              onChange={(e) => { setQ(e.target.value); setPage(1); }}
+              placeholder="Cari nama file atau pengguna…"
+              className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-300"
+            />
+          </div>
         </div>
 
-        <div className="relative">
+        <div>
           <select
             value={actorId}
             onChange={(e) => { setActorId(e.target.value); setPage(1); }}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
           >
             <option value="">Semua pengguna</option>
             {actors.map((a) => (
               <option key={a.user_id} value={String(a.user_id)}>{a.nama}</option>
             ))}
           </select>
-          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
         </div>
 
-        <div className="relative">
+        <div>
           <input
             type="date"
             value={startDate}
             onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
           />
         </div>
 
-        <div className="relative">
+        <div>
           <input
             type="date"
             value={endDate}
             onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
+            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
           />
         </div>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
+          <table className="w-full min-w-[1120px] table-fixed text-left text-sm border-separate border-spacing-0">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Waktu Upload</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama File</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diunggah Oleh</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Total</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Berhasil</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gagal</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                <th className="px-6 py-4 w-10"></th>
+                <th className="w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Waktu Upload</th>
+                <th className="w-[300px] min-w-[300px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama File</th>
+                <th className="w-[240px] min-w-[240px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diunggah Oleh</th>
+                <th className="w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Total</th>
+                <th className="w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Berhasil</th>
+                <th className="w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gagal</th>
+                <th className="w-[140px] min-w-[140px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+                <th className="w-10 min-w-10 overflow-hidden px-6 py-4"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -1911,33 +2446,33 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
                   return (
                     <tr
                       key={r.upload_id}
-                      className="group cursor-pointer transition-colors hover:bg-slate-50"
+                      className="group cursor-pointer transition-colors hover:bg-slate-50 min-h-16"
                       onClick={() => setDetailRow(r)}
                     >
-                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400">
+                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400 overflow-hidden">
                         {formatDateTime(r.uploaded_at)}
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="font-semibold text-slate-900">{renderFilename(r.filename)}</div>
+                      <td className="px-6 py-4 min-w-0 overflow-hidden">
+                        <div className="font-semibold text-slate-900 truncate">{renderFilename(r.filename)}</div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="font-semibold text-slate-900">{r.uploaded_by_nama}</div>
+                      <td className="px-6 py-4 min-w-0 overflow-hidden">
+                        <div className="font-semibold text-slate-900 truncate" title={r.uploaded_by_nama}>{r.uploaded_by_nama}</div>
                         <div className="text-xs">
-                          <Badge label={humanizeValue("user_role", r.uploaded_by_role)} variant="gray" />
+                          <Badge label={humanizeValue("user_role", r.uploaded_by_role)} variant="gray" className="whitespace-nowrap shrink-0" />
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-center font-mono text-xs text-slate-600">{r.total_rows}</td>
-                      <td className="px-6 py-4 text-center font-mono text-xs text-emerald-600">{r.success_rows}</td>
-                      <td className="px-6 py-4 text-center font-mono text-xs text-rose-600">{r.failed_rows}</td>
-                      <td className="px-6 py-4">
-                        {overallStatus === "berhasil" && <Badge label="Berhasil" variant="green" />}
-                        {overallStatus === "sebagian_gagal" && <Badge label="Sebagian Gagal" variant="orange" />}
-                        {overallStatus === "draft" && <Badge label="Draft" variant="gray" />}
+                      <td className="px-6 py-4 text-center font-mono text-xs text-slate-600 overflow-hidden">{r.total_rows}</td>
+                      <td className="px-6 py-4 text-center font-mono text-xs text-emerald-600 overflow-hidden">{r.success_rows}</td>
+                      <td className="px-6 py-4 text-center font-mono text-xs text-rose-600 overflow-hidden">{r.failed_rows}</td>
+                      <td className="px-6 py-4 overflow-hidden">
+                        {overallStatus === "berhasil" && <Badge label="Berhasil" variant="green" className="whitespace-nowrap shrink-0" />}
+                        {overallStatus === "sebagian_gagal" && <Badge label="Sebagian Gagal" variant="orange" className="whitespace-nowrap shrink-0" />}
+                        {overallStatus === "draft" && <Badge label="Draft" variant="gray" className="whitespace-nowrap shrink-0" />}
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 text-right overflow-hidden">
                         <button
                           type="button"
-                          className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                           onClick={(e) => { e.stopPropagation(); setDetailRow(r); }}
                         >
                           <Eye size={16} />
@@ -2108,18 +2643,52 @@ export default function LaporanAuditPage() {
     { key: "reconciliation", label: "Riwayat Input Laporan Mitra", icon: Upload },
   ];
 
+  // Scroll active tab into view
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  useEffect(() => {
+    const activeTab = tabs.find((t) => t.key === tab);
+    if (activeTab && tabRefs.current[activeTab.key]) {
+      tabRefs.current[activeTab.key]!.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }
+  }, [tab, tabs]);
+
+
   return (
     <div className="flex flex-1 flex-col">
       <div className="w-full">
-        <div className="mb-6">
+<div className="mb-6">
           <div className="text-xs font-semibold uppercase tracking-wide text-orange-500">Admin General</div>
-          <h1 className="mt-1 text-2xl font-bold text-slate-900">Laporan &amp; Audit Menyeluruh</h1>
+          <h1 className="mt-1 text-xl sm:text-2xl font-bold text-slate-900">Laporan & Audit Menyeluruh</h1>
           <p className="mt-1 text-sm text-slate-500">
             Visibilitas penuh atas seluruh transaksi dan perubahan data di sistem — bersifat read-only, tanpa aksi ubah/hapus.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 border-b border-slate-100">
+                        <div className="overflow-x-auto pb-1 whitespace-nowrap border-b border-slate-100">
+          <div className="flex items-center gap-2 min-w-max" role="tablist" aria-label="Tab laporan">
+            {tabs.map((t) => {
+              const Icon = t.icon;
+              const active = tab === t.key;
+              return (
+                <button
+                  ref={(el) => { tabRefs.current[t.key] = el; }}
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  role="tab"
+                  aria-selected={active}
+                  aria-controls={`panel-${t.key}`}
+                  id={`tab-${t.key}`}
+                  className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                    active ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:text-slate-700"
+                  }`}>
+                  <Icon size={16} />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </div><div className="overflow-x-auto pb-1 whitespace-nowrap border-b border-slate-100">
+          <div className="flex items-center gap-2 min-w-max">
           {tabs.map((t) => {
             const Icon = t.icon;
             const active = tab === t.key;
@@ -2136,6 +2705,7 @@ export default function LaporanAuditPage() {
               </button>
             );
           })}
+          </div>
         </div>
 
         <div className="mt-6">

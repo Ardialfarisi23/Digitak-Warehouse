@@ -32,6 +32,9 @@ import BarangPicker, { type BarangPickerItem } from "@/components/BarangPicker";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { useAccountStatusGuard } from "@/hooks/use-account-status-guard";
 import { exportReconciliationXlsx } from "@/lib/exportReconciliationXlsx";
+import { AdditionalAdjustmentModal } from "@/components/additional/AdditionalAdjustmentModal";
+import { RemainsNoteForm } from "@/components/reconciliation/RemainsNoteForm";
+import { RemainsNoteBadge } from "@/components/reconciliation/RemainsNoteBadge";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -72,6 +75,8 @@ interface ReconciliationRecord {
   status: "sesuai" | "perhatian" | "belum_ada_data";
   boq_list: Array<{ boq_id: string; kode_boq: string; status: string }>;
   ada_boq_selesai: boolean;
+  remains_note: string | null;
+  remains_note_updated_at: string | null;
   temuan_penerimaan?: {
     jumlah_item_bertemuan_selisih: number;
     total_selisih_qty: number;
@@ -132,10 +137,12 @@ export default function ReconciliationInventoryPage() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [projectFilter, setProjectFilter] = useState("all");
+  const [clusterFilter, setClusterFilter] = useState("all");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [boqStatusFilter, setBoqStatusFilter] = useState("all");
   const [selectedRecord, setSelectedRecord] = useState<ReconciliationRecord | null>(null);
+  const [adjustmentRecord, setAdjustmentRecord] = useState<ReconciliationRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
@@ -181,6 +188,26 @@ export default function ReconciliationInventoryPage() {
   const [historyStartDate, setHistoryStartDate] = useState("");
   const [historyEndDate, setHistoryEndDate] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "warning" } | null>(null);
+  const [visibleCount, setVisibleCount] = useState(20);
+
+  useEffect(() => {
+    setVisibleCount(20);
+  }, [search, projectFilter, clusterFilter, warehouseFilter, statusFilter, boqStatusFilter]);
+
+  const projectOptions = useMemo(() => {
+    const baseRecords = adjustmentRecord
+      ? records.filter((item) => {
+          const matchesBarang = item.barang_id === adjustmentRecord.barang_id;
+          const matchesCluster =
+            !adjustmentRecord.cluster_id || adjustmentRecord.cluster_id === "-"
+              ? true
+              : item.cluster_id === adjustmentRecord.cluster_id;
+          return matchesBarang && matchesCluster;
+        })
+      : records;
+
+    return Array.from(new Map(baseRecords.map((item) => [item.project_id, item.project_nama])).entries());
+  }, [records, adjustmentRecord]);
 
   useEffect(() => {
     if (!user) return;
@@ -268,6 +295,8 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
           boq_list: Array.isArray(item.boq_list) ? item.boq_list : [],
           ada_boq_selesai: Boolean(item.ada_boq_selesai),
           temuan_penerimaan: item.temuan_penerimaan || null,
+          remains_note: item.remains_note ?? null,
+          remains_note_updated_at: item.remains_note_updated_at ?? null,
         };
       });
 
@@ -548,15 +577,9 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
   }, [searchInput]);
 
    useEffect(() => {
-    const interval = setInterval(() => {
-      fetchReconciliation();
-    }, 5000);
-
     const handleRefresh = () => {
       fetchReconciliation();
     };
-
-    window.addEventListener("reconciliation:refresh", handleRefresh);
 
     const onVisible = () => {
       if (document.visibilityState === "visible") {
@@ -566,26 +589,35 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
     const onFocus = () => {
       fetchReconciliation();
     };
+    window.addEventListener("reconciliation:refresh", handleRefresh);
     window.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onFocus);
 
     return () => {
-      clearInterval(interval);
       window.removeEventListener("reconciliation:refresh", handleRefresh);
       window.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onFocus);
     };
   }, [get, post]);
 
-  const projectOptions = useMemo(() => {
-    return Array.from(
-      new Map(records.map((item) => [item.project_id, item.project_nama])).entries()
-    );
-  }, [records]);
+  useEffect(() => {
+    if (projectFilter !== "all" && clusterFilter !== "all") {
+      // If project changed, reset cluster filter to "all"
+      setClusterFilter("all");
+    }
+  }, [projectFilter]);
 
   const warehouseOptions = useMemo(() => {
     return Array.from(new Set(records.map((item) => item.gudang_nama).filter(Boolean)));
   }, [records]);
+
+  const clusterOptions = useMemo(() => {
+    if (projectFilter === "all") return [];
+    const projectRecords = records.filter((r) => r.project_id === projectFilter);
+    return Array.from(
+      new Map(projectRecords.map((item) => [item.cluster_id, item.nama_cluster || "-"])).entries()
+    ).sort(([, a], [, b]) => a.localeCompare(b));
+  }, [records, projectFilter]);
 
   const filteredRecords = useMemo(() => {
     const query = search.toLowerCase();
@@ -601,15 +633,16 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
           .includes(query);
 
       const matchesProject = projectFilter === "all" || record.project_id === projectFilter;
+      const matchesCluster = clusterFilter === "all" || record.cluster_id === clusterFilter;
       const matchesWarehouse = warehouseFilter === "all" || record.gudang_nama === warehouseFilter;
       const matchesStatus = statusFilter === "all" || record.status === statusFilter;
       const matchesBoqStatus =
         boqStatusFilter === "all" ||
         (boqStatusFilter === "selesai" ? record.ada_boq_selesai : record.boq_list.some((boq) => boq.status === boqStatusFilter));
 
-      return matchesSearch && matchesProject && matchesWarehouse && matchesStatus && matchesBoqStatus;
+      return matchesSearch && matchesProject && matchesCluster && matchesWarehouse && matchesStatus && matchesBoqStatus;
     });
-  }, [records, search, projectFilter, warehouseFilter, statusFilter, boqStatusFilter]);
+  }, [records, search, projectFilter, clusterFilter, warehouseFilter, statusFilter, boqStatusFilter]);
 
   const handleExport = async () => {
     setExporting(true);
@@ -649,7 +682,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
         {/* Header */}
         <header className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Rekonsiliasi Inventory</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Rekonsiliasi Inventory</h1>
               <p className="mt-1 text-sm text-slate-500">
                Pantau kesesuaian BOQ dengan realisasi hardware pada setiap cluster dan tiket.
              </p>
@@ -657,7 +690,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
         </header>
 
 {/* KPI Cards */}
-          <div className="mb-6 grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 sm:gap-4 lg:grid-cols-6">
+          <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 lg:grid-cols-6">
            <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
            <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
            <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material on Site (termasuk inbound disetujui)" icon={PackageCheck} tone="slate" />
@@ -669,11 +702,11 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
          </div>
 
         {/* Tabs */}
-        <div className="mb-6 flex items-center gap-2 border-b border-slate-100">
+        <div className="mb-6 flex w-full gap-2 sm:w-auto border-b border-slate-100">
           <button
             type="button"
             onClick={() => setReconcTab("inventory")}
-            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 border-b-2 px-3 py-2 text-sm sm:px-4 sm:py-2.5 font-medium transition-colors whitespace-normal leading-tight min-h-11 text-center ${
               reconcTab === "inventory" ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -683,7 +716,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
           <button
             type="button"
             onClick={() => { setReconcTab("history"); setHistoryPage(1); }}
-            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 border-b-2 px-3 py-2 text-sm sm:px-4 sm:py-2.5 font-medium transition-colors whitespace-normal leading-tight min-h-11 text-center ${
               reconcTab === "history" ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -694,23 +727,23 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
 
         {reconcTab === "inventory" && (
           <>
-            {/* Filters */}
-        <div className="mb-6 flex flex-wrap items-center gap-2">
-          <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+{/* Filters */}
+        <div className="mb-6 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
+          <div className="col-span-2 flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
             <Search size={16} className="shrink-0 text-slate-400" />
             <input
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-               placeholder="Cari project, cluster, tiket, kode perangkat..."
-              className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+              placeholder="Cari project, cluster, tiket, kode perangkat..."
+              className="w-full min-h-11 bg-transparent text-base sm:text-sm text-slate-800 outline-none placeholder:text-slate-400"
             />
           </div>
 
           <select
             value={projectFilter}
             onChange={(e) => setProjectFilter(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            className="w-full min-w-0 min-h-11 text-base sm:text-sm truncate sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-slate-600 shadow-sm outline-none focus:border-orange-400"
           >
             <option value="all">Semua Project</option>
             {projectOptions.map(([id, nama]) => (
@@ -720,10 +753,32 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
             ))}
           </select>
 
+          {projectFilter !== "all" && (
+            <select
+              value={clusterFilter}
+              onChange={(e) => setClusterFilter(e.target.value)}
+              className="w-full min-w-0 min-h-11 text-base sm:text-sm truncate sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-slate-600 shadow-sm outline-none focus:border-orange-400"
+              disabled={clusterOptions.length === 0}
+            >
+              <option value="all">Semua Cluster</option>
+              {clusterOptions.length > 0 ? (
+                clusterOptions.map(([id, nama]) => (
+                  <option key={id} value={id}>
+                    {nama}
+                  </option>
+                ))
+              ) : (
+                <option value="" disabled>
+                  Tidak ada cluster
+                </option>
+              )}
+            </select>
+          )}
+
           <select
             value={warehouseFilter}
             onChange={(e) => setWarehouseFilter(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            className="w-full min-w-0 min-h-11 text-base sm:text-sm truncate sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-slate-600 shadow-sm outline-none focus:border-orange-400"
           >
             <option value="all">Semua Gudang</option>
             {warehouseOptions.map((warehouse) => (
@@ -736,7 +791,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            className="w-full min-w-0 min-h-11 text-base sm:text-sm truncate sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-slate-600 shadow-sm outline-none focus:border-orange-400"
           >
             <option value="all">Semua Status</option>
             <option value="sesuai">Sesuai</option>
@@ -747,7 +802,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
           <select
             value={boqStatusFilter}
             onChange={(e) => setBoqStatusFilter(e.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            className="col-span-2 w-full min-w-0 min-h-11 text-base sm:text-sm truncate sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-slate-600 shadow-sm outline-none focus:border-orange-400"
           >
             <option value="all">Semua Status BOQ</option>
             <option value="aktif">Aktif</option>
@@ -757,8 +812,8 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
 
         {/* Table */}
         <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-            <div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 px-6 py-4">
+            <div className="flex flex-wrap gap-x-3 items-baseline">
               <h2 className="text-base font-semibold text-slate-900">Daftar Rekonsiliasi</h2>
               <p className="text-xs text-slate-400">
                 {filteredRecords.length} data
@@ -768,63 +823,87 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3 w-full">
               {lastRefreshed && (
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-slate-400 w-full sm:w-auto">
                   Terakhir diperbarui: {lastRefreshed.toLocaleTimeString("id-ID")}
                 </span>
               )}
-              <button
-                type="button"
-                onClick={handleExport}
-                disabled={exporting}
-                className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"
-              >
-                {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                {exporting ? "Mengekspor..." : "Ekspor"}
-              </button>
-              <button
-                type="button"
-                onClick={openMitraModal}
-                className="flex items-center gap-2 rounded-full bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600"
-              >
-                <Upload size={16} />
-                Input laporan mitra
-              </button>
+              <div className="grid grid-cols-2 gap-2 sm:flex w-full">
+                <button
+                  type="button"
+                  onClick={handleExport}
+                  disabled={exporting}
+                  className="w-full sm:w-auto min-h-11 flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60 whitespace-nowrap"
+                >
+                  {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                  {exporting ? "Mengekspor..." : "Ekspor"}
+                </button>
+                <button
+                  type="button"
+                  onClick={openMitraModal}
+                  className="w-full sm:w-auto min-h-11 flex items-center justify-center gap-2 rounded-full bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 whitespace-nowrap"
+                >
+                  <Upload size={16} />
+                  Input laporan mitra
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-              <table className="min-w-[1250px] w-full text-left text-sm">
+<div className="overflow-x-auto overscroll-x-contain rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <table className="w-max min-w-full table-fixed border-separate border-spacing-0 md:w-full md:table-auto md:border-collapse md:min-w-[1250px] text-left text-sm">
 <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50">
-                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[160px]">Project</th>
-                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[150px]">Cluster Name</th>
-                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px]">PIC</th>
-                      <th className="px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Kode Tiket</th>
-                      <th className="px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">BOQ</th>
-                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
-                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
-                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
-                       <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
-                       <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
-                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px]">Remains</th>
-                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap min-w-[100px]">Status</th>
-                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[70px] sticky right-0 bg-slate-50 border-l border-slate-100">
-                        Aksi
-                      </th>
-                    </tr>
-                  </thead>
+                      <tr className="border-b border-slate-100 bg-slate-50">
+                        <th className="hidden md:table-cell px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[160px] w-[160px]">Project</th>
+                        <th className="hidden md:table-cell px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[150px] w-[150px]">Cluster Name</th>
+                        <th className="hidden md:table-cell px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px] w-[80px]">PIC</th>
+                        <th className="hidden md:table-cell px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-[80px]">Kode Tiket</th>
+                        <th className="hidden md:table-cell px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-[80px]">BOQ</th>
+                        <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 sticky left-0 z-20 bg-slate-50 md:static md:z-auto md:bg-transparent w-[160px] min-w-[160px] max-w-[160px] md:w-auto md:min-w-[150px] md:max-w-none">Barang</th>
+                        <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">BOQ</th>
+                        <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">ADD</th>
+                        <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">MOS</th>
+                        <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">USED</th>
+                        <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[64px] min-w-[64px] md:w-auto md:min-w-[80px] md:max-w-none">REMAINS</th>
+                        <th className="px-3 py-3 text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-[104px] min-w-[104px] md:w-auto md:min-w-[100px] md:max-w-none">Status</th>
+                        <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[80px] min-w-[80px] sticky right-0 z-10 bg-slate-50 md:bg-slate-50 border-l border-slate-100 md:border-l">Aksi</th>
+                      </tr>
+                    </thead>
 
               <tbody className="divide-y divide-slate-50">
                 {isLoading ? (
                   Array.from({ length: 7 }).map((_, rowIndex) => (
                     <tr key={rowIndex}>
                       {Array.from({ length: 12 }).map((_, colIndex) => (
-                        <td key={colIndex} className="px-3 py-2">
+                        <td key={colIndex} className="px-3 py-0 hidden md:table-cell align-middle h-16 md:h-auto md:py-2">
                           <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                         </td>
                       ))}
+                      <td key="barang" className="px-3 py-0 sticky left-0 z-10 bg-white md:static md:z-auto md:bg-transparent w-[160px] min-w-[160px] max-w-[160px] md:w-auto md:min-w-[150px] md:max-w-none border-r border-slate-100 md:border-r-0 align-top h-16 md:h-auto md:py-2">
+                        <div className="h-4 animate-pulse rounded-lg bg-slate-100 w-[150px]" />
+                      </td>
+                      <td key="boq" className="px-2 py-0 text-right text-xs md:px-3 md:text-sm font-medium text-slate-700 w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-0 md:max-w-none align-middle h-16 md:h-auto md:py-2">
+                        <div className="h-4 animate-pulse rounded-lg bg-slate-100 w-[44px]" />
+                      </td>
+                      <td key="additional" className="px-2 py-0 text-right text-xs md:px-3 md:text-sm text-slate-600 w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-0 md:max-w-none align-middle h-16 md:h-auto md:py-2">
+                        <div className="h-4 animate-pulse rounded-lg bg-slate-100 w-[44px]" />
+                      </td>
+                      <td key="mos" className="px-2 py-0 text-right text-xs md:px-3 md:text-sm font-medium text-slate-700 w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-0 md:max-w-none align-middle h-16 md:h-auto md:py-2">
+                        <div className="h-4 animate-pulse rounded-lg bg-slate-100 w-[44px]" />
+                      </td>
+                      <td key="used" className="px-2 py-0 text-right text-xs md:px-3 md:text-sm text-slate-600 w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-0 md:max-w-none align-middle h-16 md:h-auto md:py-2">
+                        <div className="h-4 animate-pulse rounded-lg bg-slate-100 w-[44px]" />
+                      </td>
+                      <td key="remains" className="px-2 py-0 text-right text-xs md:px-3 md:text-sm font-semibold w-[64px] min-w-[64px] max-w-[64px] md:w-auto md:min-w-[80px] md:max-w-none align-middle h-16 md:h-auto md:py-2">
+                        <div className="h-4 animate-pulse rounded-lg bg-slate-100 w-[56px]" />
+                      </td>
+                      <td key="status" className="px-3 py-0 whitespace-nowrap w-[104px] min-w-[104px] max-w-[104px] md:w-auto md:min-w-[100px] md:max-w-none align-middle h-16 md:h-auto md:py-2">
+                        <div className="h-4 animate-pulse rounded-lg bg-slate-100 w-[80px]" />
+                      </td>
+                      <td key="aksi" className="px-3 py-0 sticky right-0 z-10 bg-white md:bg-slate-50 group-hover:bg-slate-50 border-l border-slate-100 md:border-l w-[80px] min-w-[80px] max-w-[80px] md:w-auto md:min-w-[70px] md:max-w-none align-middle h-16 md:h-auto md:py-2">
+                        <div className="h-4 animate-pulse rounded-lg bg-slate-100 w-[70px]" />
+                      </td>
                     </tr>
                   ))
                 ) : error ? (
@@ -844,29 +923,32 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                 ) : (
                   filteredRecords.map((record) => {
                     const statusBadge = getStatusBadge(record.status);
+                    const boqCodes = (record.boq_list || [])
+                      .map((boq) => boq.kode_boq || `BOQ-${boq.boq_id}`)
+                      .join(", ");
                     return (
                       <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
-                        <td className="px-3 py-2">
+                        <td className="hidden md:table-cell px-3 py-2">
                           <p className="font-medium text-slate-900">{record.project_nama || "-"}</p>
                           <p className="text-xs text-slate-400">{record.area || "-"}</p>
                         </td>
 
-                        <td className="px-3 py-2">
+                        <td className="hidden md:table-cell px-3 py-2">
                           <p className="font-medium text-slate-900">{record.nama_cluster || "-"}</p>
                           <p className="text-xs text-slate-400">{record.cluster_id || "-"}</p>
                         </td>
 
-                        <td className="px-3 py-2 text-sm text-slate-600 whitespace-nowrap">
+                        <td className="hidden md:table-cell px-3 py-2 text-sm text-slate-600 whitespace-nowrap">
                           {record.pic_nama || <span className="text-slate-400">-</span>}
                         </td>
 
-                        <td className="px-2 py-2 whitespace-nowrap">
+                        <td className="hidden md:table-cell px-2 py-2 whitespace-nowrap">
                           <span className="inline-flex rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
                             {record.kode_tiket}
                           </span>
                         </td>
 
-                        <td className="px-2 py-2 whitespace-nowrap">
+                        <td className="hidden md:table-cell px-2 py-2 whitespace-nowrap">
                           <div className="flex flex-wrap gap-1">
                             {(record.boq_list || []).map((boq) => (
                               <span
@@ -883,45 +965,57 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                           </div>
                         </td>
 
-                        <td className="px-3 py-2">
-                          <p className="font-medium text-slate-800 line-clamp-2">{record.nama_barang}</p>
-                          <p className="text-xs text-slate-400 line-clamp-1">
-                            {record.kode_perangkat} • {record.gudang_nama}
-                          </p>
+                        <td className="px-3 py-0 sticky left-0 z-10 bg-white md:static md:z-auto md:bg-transparent w-[160px] min-w-[160px] max-w-[160px] md:w-auto md:min-w-[150px] md:max-w-none border-r border-slate-100 md:border-r-0 align-middle h-16 md:h-auto md:py-2">
+                          <div className="flex h-16 md:h-auto md:overflow-visible flex-col justify-center overflow-hidden">
+                            <div className="truncate font-medium text-slate-800 text-xs md:text-sm leading-4" title={record.nama_barang}>{record.nama_barang}</div>
+                            <div className="truncate text-[11px] text-slate-500 md:hidden leading-4" title={record.nama_cluster || "-"}>Cluster: {record.nama_cluster || "-"}</div>
+                            <div className="truncate text-[11px] font-mono text-slate-400 md:hidden leading-4" title={`${record.kode_perangkat} • ${record.gudang_nama}`}>{record.kode_perangkat} • {record.gudang_nama}</div>
+                          </div>
                         </td>
 
-                        <td className="px-3 py-2 text-right font-medium text-slate-700">{formatNumber(record.boq)}</td>
-                        <td className="px-3 py-2 text-right text-slate-600">{formatNumber(record.additional)}</td>
-                         <td className="px-3 py-2 text-right font-medium text-slate-700">{formatNumber(record.mos)}</td>
-                         <td className="px-3 py-2 text-right text-slate-600">{formatNumber(record.used)}</td>
+                        <td className="px-2 py-0 text-right text-xs md:px-3 md:text-sm font-medium text-slate-700 tabular-nums w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-0 md:max-w-none align-middle h-16 md:h-auto md:py-2">{formatNumber(record.boq)}</td>
+                        <td className="px-2 py-0 text-right text-xs md:px-3 md:text-sm text-slate-600 tabular-nums w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-0 md:max-w-none align-middle h-16 md:h-auto md:py-2">{formatNumber(record.additional)}</td>
+                        <td className="px-2 py-0 text-right text-xs md:px-3 md:text-sm font-medium text-slate-700 tabular-nums w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-0 md:max-w-none align-middle h-16 md:h-auto md:py-2">{formatNumber(record.mos)}</td>
+                        <td className="px-2 py-0 text-right text-xs md:px-3 md:text-sm text-slate-600 tabular-nums w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-0 md:max-w-none align-middle h-16 md:h-auto md:py-2">{formatNumber(record.used)}</td>
 
-                        <td className="px-3 py-2 text-right min-w-[80px]">
-                          <span className={record.remains < 0 ? "font-semibold text-rose-600" : "font-semibold text-emerald-700"}>
-                            {formatNumber(record.remains)}
+                        <td className="px-2 py-0 text-right text-xs md:px-3 md:text-sm font-semibold tabular-nums w-[64px] min-w-[64px] max-w-[64px] md:w-auto md:min-w-[80px] md:max-w-none align-middle h-16 md:h-auto md:py-2">
+                          <span className="flex items-center justify-end gap-1">
+                            <span className={record.remains < 0 ? "text-rose-600" : "text-emerald-700"}>
+                              {formatNumber(record.remains)}
+                            </span>
+                            <RemainsNoteBadge note={record.remains_note} />
                           </span>
                         </td>
 
-                        <td className="px-3 py-2 whitespace-nowrap min-w-[100px] pr-10">
-                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
+                        <td className="px-3 py-0 whitespace-nowrap w-[104px] min-w-[104px] max-w-[104px] md:w-auto md:min-w-[100px] md:max-w-none pr-10 align-middle h-16 md:h-auto md:py-2">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 md:px-2.5 md:py-1 text-[11px] font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
                             <statusBadge.icon size={12} />
                             {statusBadge.label}
                           </span>
                           {record.temuan_penerimaan && record.temuan_penerimaan.jumlah_item_bertemuan_selisih > 0 && (
-                            <span className="ml-1.5 text-[11px] text-amber-700">
+                            <span className="ml-1.5 text-[11px] text-amber-700 hidden md:inline">
                               Selisih terima: {record.temuan_penerimaan.jumlah_item_bertemuan_selisih} item, kekurangan {formatNumber(record.temuan_penerimaan.total_selisih_qty)}
                             </span>
                           )}
                         </td>
 
-                        <td className="px-3 py-2 sticky right-0 bg-white group-hover:bg-slate-50 border-l border-slate-100">
+                        <td className="px-3 py-0 sticky right-0 z-10 bg-white md:bg-slate-50 group-hover:bg-slate-50 border-l border-slate-100 md:border-l w-[80px] min-w-[80px] max-w-[80px] md:w-auto md:min-w-[70px] md:max-w-none align-middle h-16 md:h-auto md:py-2">
                           <div className="flex items-center justify-end gap-1">
                             <button
                               type="button"
                               onClick={() => setSelectedRecord(record)}
                               title="Lihat detail"
-                              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                              className="rounded-lg p-2 min-h-[36px] min-w-[36px] text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                             >
-                              <ClipboardCheck size={15} />
+                              <ClipboardCheck size={18} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setAdjustmentRecord(record)}
+                              title="Input Additional"
+                              className="rounded-lg p-2 min-h-[36px] min-w-[36px] text-slate-400 hover:bg-slate-100 hover:text-orange-600"
+                            >
+                              <Plus size={18} />
                             </button>
                           </div>
                         </td>
@@ -1062,16 +1156,23 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
 
 <div>
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Rekonsiliasi</p>
-                   <div className="space-y-2">
-                     <DetailRow label="BOQ" value={selectedRecord.boq} />
-                     <DetailRow label="Additional" value={selectedRecord.additional} />
-                     <DetailRow label="MOS" value={selectedRecord.mos} />
-                     <DetailRow label="Used" value={selectedRecord.used} />
-                     <div className="border-t border-slate-100 pt-2">
-                       <DetailRow label="Remains" value={selectedRecord.remains} highlight />
-                     </div>
-                   </div>
-               </div>
+                    <div className="space-y-2">
+                      <DetailRow label="BOQ" value={selectedRecord.boq} />
+                      <DetailRow label="Additional" value={selectedRecord.additional} />
+                      <DetailRow label="MOS" value={selectedRecord.mos} />
+                      <DetailRow label="Used" value={selectedRecord.used} />
+                      <div className="border-t border-slate-100 pt-2">
+                        <DetailRow label="Remains" value={selectedRecord.remains} highlight />
+                      </div>
+                    </div>
+                </div>
+
+              <RemainsNoteForm
+                record={selectedRecord}
+                onClose={() => {}}
+                onSuccess={fetchReconciliation}
+                isClusterMode={true}
+              />
 
               <div>
                 <p className="text-xs font-medium text-slate-400">Status Rekonsiliasi</p>
@@ -1798,6 +1899,23 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
          </div>
         )}
       </div>
+
+      {adjustmentRecord && (
+        <AdditionalAdjustmentModal
+          open={!!adjustmentRecord}
+          onClose={() => setAdjustmentRecord(null)}
+          onSuccess={() => {
+            fetchReconciliation();
+            setAdjustmentRecord(null);
+          }}
+          projectOptions={projectOptions}
+          defaultProjectId={adjustmentRecord.project_id}
+          barangId={adjustmentRecord.barang_id}
+          barangNama={adjustmentRecord.nama_barang}
+          clusterId={adjustmentRecord.cluster_id}
+          clusterNama={adjustmentRecord.nama_cluster}
+        />
+      )}
 
       {toast && (
         <div

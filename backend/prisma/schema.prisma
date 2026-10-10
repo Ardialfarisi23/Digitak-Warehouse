@@ -54,6 +54,8 @@ model user_account {
   approved_return_transactions    return_transaction[]            @relation("ReturnApprovedBy")
   received_return_transactions    return_transaction[]            @relation("ReturnReceivedBy")
   additional_adjustments          additional_adjustment[]
+  created_reconciliation_remains_notes reconciliation_remains_note[] @relation("ReconciliationRemainsNoteCreatedBy")
+  updated_reconciliation_remains_notes reconciliation_remains_note[] @relation("ReconciliationRemainsNoteUpdatedBy")
 
   @@index([email])
 }
@@ -170,6 +172,7 @@ model project {
   return_transactions    return_transaction[]
   clusters               cluster[]
   additional_adjustments additional_adjustment[]
+  reconciliation_remains_notes reconciliation_remains_note[]
 
   @@index([area])
 }
@@ -193,17 +196,19 @@ model cluster {
   updated_by       BigInt
   pic_id           BigInt?
 
-  project             project              @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
-  pic                 personil?            @relation("ClusterPic", fields: [pic_id], references: [personil_id])
-  boqs                boq[]
-  boq_items           boq_item[]
-  surat_jalans_direct surat_jalan[]
-  surat_jalan_items   surat_jalan_item[]
-  permintaan_boqs     permintaan_boq[]
-  return_transactions return_transaction[] @relation("ReturnCluster")
-  laporans            laporan_mitra[]      @relation("ClusterLaporan")
-  stok_ledgers        stok_ledger[]
-  tikets              tiket_material[]     @relation("ClusterTiket")
+  project               project                 @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
+  pic                   personil?               @relation("ClusterPic", fields: [pic_id], references: [personil_id])
+  boqs                  boq[]
+  boq_items             boq_item[]
+  surat_jalans_direct   surat_jalan[]
+  surat_jalan_items     surat_jalan_item[]
+  permintaan_boqs       permintaan_boq[]
+  return_transactions   return_transaction[]    @relation("ReturnCluster")
+  laporans              laporan_mitra[]         @relation("ClusterLaporan")
+  stok_ledgers          stok_ledger[]
+  tikets                tiket_material[]        @relation("ClusterTiket")
+  additional_adjustment additional_adjustment[]
+  reconciliation_remains_notes reconciliation_remains_note[]
 
   @@unique([project_id, nama_cluster])
   @@index([project_id])
@@ -356,6 +361,7 @@ model barang {
   reconciliation_upload_details reconciliation_upload_detail[] @relation("ReconciliationUploadDetailBarang")
   return_transactions           return_transaction[]
   additional_adjustments        additional_adjustment[]
+  reconciliation_remains_notes reconciliation_remains_note[]
 
   @@index([kode_perangkat])
   @@index([kategori_id])
@@ -688,6 +694,7 @@ model stok_ledger {
 model additional_adjustment {
   adjustment_id BigInt   @id @default(autoincrement())
   project_id    BigInt
+  cluster_id    String?  @db.Text
   barang_id     BigInt
   qty           Int
   alasan        String   @db.Text
@@ -695,11 +702,34 @@ model additional_adjustment {
   created_at    DateTime @default(now())
 
   project project      @relation(fields: [project_id], references: [project_id])
+  cluster cluster?     @relation(fields: [cluster_id], references: [cluster_id], onDelete: Restrict)
   barang  barang       @relation(fields: [barang_id], references: [barang_id])
   creator user_account @relation(fields: [created_by], references: [user_id])
 
   @@index([project_id, barang_id])
+  @@index([cluster_id, barang_id])
   @@index([created_by])
+}
+
+model reconciliation_remains_note {
+  id           BigInt   @id @default(autoincrement())
+  project_id   BigInt
+  cluster_id   String?  @db.Text
+  barang_id    BigInt
+  keterangan   String   @db.Text
+  created_by   BigInt
+  updated_by   BigInt?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  project      project               @relation(fields: [project_id], references: [project_id])
+  cluster      cluster?              @relation(fields: [cluster_id], references: [cluster_id], onDelete: Restrict)
+  barang       barang                @relation(fields: [barang_id], references: [barang_id])
+  created_by_user user_account       @relation("ReconciliationRemainsNoteCreatedBy", fields: [created_by], references: [user_id])
+  updated_by_user user_account?      @relation("ReconciliationRemainsNoteUpdatedBy", fields: [updated_by], references: [user_id])
+
+  @@index([project_id, barang_id])
+  @@index([cluster_id, barang_id])
 }
 
 model approval_log {

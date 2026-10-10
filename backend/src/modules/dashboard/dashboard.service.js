@@ -427,7 +427,7 @@ const getHardwareReconciliation = async (filters = {}) => {
     for (const item of boqItems) {
       const tiket = item.boq?.tiket;
       const project = tiket?.project;
-      if (Number(project?.project_id || 0) === projectIdNum) {
+      if (Number(project?.project_id || 0) === projectIdNum && tiket?.tiket_id) {
         projectTickets.add(tiket.tiket_id);
       }
     }
