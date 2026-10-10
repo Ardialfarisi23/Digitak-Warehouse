@@ -2,6 +2,7 @@ const { z } = require("zod");
 
 const createAdjustmentSchema = z.object({
   project_id: z.coerce.number().int().min(1, "Project ID tidak valid."),
+  cluster_id: z.string().min(1, "Cluster ID wajib diisi."),
   barang_id: z.coerce.number().int().min(1, "Barang ID tidak valid."),
   qty: z.coerce.number().int("Qty harus bilangan bulat.").refine((val) => val !== 0, {
     message: "Qty tidak boleh 0.",
@@ -11,6 +12,7 @@ const createAdjustmentSchema = z.object({
 
 const listAdjustmentsSchema = z.object({
   project_id: z.coerce.number().int().min(1, "Project ID tidak valid.").optional(),
+  cluster_id: z.string().optional(),
   barang_id: z.coerce.number().int().min(1, "Barang ID tidak valid.").optional(),
 });
 

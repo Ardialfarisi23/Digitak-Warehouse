@@ -11,6 +11,17 @@ const getInventory = async (req, res, next) => {
   }
 };
 
+const saveRemainsNote = async (req, res, next) => {
+  try {
+    const user = { id: req.user.id, role: req.user.role };
+    const result = await reconciliationService.saveRemainsNote(req.body, user);
+    return response.success(res, result ? "Catatan Remains disimpan." : "Catatan Remains dihapus.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getInventory,
+  saveRemainsNote,
 };

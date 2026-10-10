@@ -273,7 +273,7 @@ const getReturnProjectConsistency = async (returnId) => {
     };
   }
 
-  const consistent = rt.project_id === rt.tiket.project_id;
+  const consistent = rt.tiket?.project_id != null && rt.project_id === rt.tiket.project_id;
 
   return {
     checked: true,
@@ -471,9 +471,9 @@ const approveReturn = async (returnId, actorId) => {
           throw new AppError(`Return tidak dalam status diajukan. Status saat ini: ${returnRecord.status}`, 400);
         }
 
-        if (returnRecord.project_id !== returnRecord.tiket.project_id) {
-          throw new AppError("Return project_id tidak konsisten dengan ticket.", 400);
-        }
+if (returnRecord.tiket?.project_id != null && returnRecord.project_id !== returnRecord.tiket.project_id) {
+    throw new AppError("Return project_id tidak konsisten dengan ticket.", 400);
+  }
 
         const baselineValidation = await validateBaselineLaporan(returnRecord.baseline_laporan_id, returnRecord.tiket_id, returnRecord.barang_id);
         if (!baselineValidation.valid) {
@@ -570,11 +570,11 @@ const rejectReturn = async (returnId, actorId, reason = null) => {
     throw new AppError("Return tidak ditemukan.", 404);
   }
 
-  if (returnRecord.status !== "diajukan") {
-    throw new AppError(`Return tidak dalam status diajukan. Status saat ini: ${returnRecord.status}`, 400);
-  }
+if (returnRecord.status !== "diajukan") {
+      throw new AppError(`Return tidak dalam status diajukan. Status saat ini: ${returnRecord.status}`, 400);
+    }
 
-  if (returnRecord.project_id !== returnRecord.tiket.project_id) {
+  if (returnRecord.tiket?.project_id != null && returnRecord.project_id !== returnRecord.tiket.project_id) {
     throw new AppError("Return project_id tidak konsisten dengan ticket.", 400);
   }
 
@@ -735,11 +735,11 @@ const receiveReturn = async (returnId, actorId, gudangTujuanId) => {
     throw new AppError("Return tidak ditemukan.", 404);
   }
 
-  if (returnRecord.status !== "disetujui") {
-    throw new AppError(`Return tidak dalam status disetujui. Status saat ini: ${returnRecord.status}`, 400);
-  }
+if (returnRecord.status !== "disetujui") {
+      throw new AppError(`Return tidak dalam status disetujui. Status saat ini: ${returnRecord.status}`, 400);
+    }
 
-  if (returnRecord.project_id !== returnRecord.tiket.project_id) {
+  if (returnRecord.tiket?.project_id != null && returnRecord.project_id !== returnRecord.tiket.project_id) {
     throw new AppError("Return project_id tidak konsisten dengan ticket.", 400);
   }
 

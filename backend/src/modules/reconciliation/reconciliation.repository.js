@@ -66,10 +66,14 @@ const getInventory = async (filters = {}, actor = null) => {
   }
 
   if (projectId !== "all") {
+    const pid = BigInt(projectId);
     if (isCluster !== false) {
-      whereBoq.boq.cluster = { project_id: BigInt(projectId) };
+      whereBoq.boq.cluster = { project_id: pid };
     } else {
-      whereBoq.boq.tiket = { project_id: BigInt(projectId) };
+      whereBoq.OR = [
+        { boq: { tiket: { project_id: pid } } },
+        { boq: { cluster: { project_id: pid } } },
+      ];
     }
   }
 
@@ -108,6 +112,7 @@ const getInventory = async (filters = {}, actor = null) => {
                   status_aktif: true,
                   project: {
                     select: {
+                      project_id: true,
                       cluster_id: true,
                       area: true,
                       nama_project: true,
@@ -141,6 +146,43 @@ const getInventory = async (filters = {}, actor = null) => {
       },
     },
   });
+
+  // Fetch import saldo awal (qty_additional, qty_mos, qty_used) per boq_item
+  const boqItemIds = boqItems.map((item) => Number(item.boq_item_id)).filter((id) => !Number.isNaN(id) && id > 0);
+  const importValuesByCluster = new Map();
+  const importValuesByProject = new Map();
+  if (boqItemIds.length > 0) {
+    const rows = await prisma.boq_item.findMany({
+      where: { boq_item_id: { in: boqItemIds } },
+      select: { boq_item_id: true, qty_additional: true, qty_mos: true, qty_used: true, barang_id: true, boq: { select: { cluster_id: true, tiket: { select: { project_id: true } } } } },
+    });
+    for (const r of rows) {
+      const cid = r.boq?.cluster_id;
+      const pid = r.boq?.tiket?.project_id ? Number(r.boq.tiket.project_id) : null;
+      const bid = String(r.barang_id);
+      const val = {
+        additional: Number(r.qty_additional || 0),
+        mos: Number(r.qty_mos || 0),
+        used: Number(r.qty_used || 0),
+      };
+      if (cid) {
+        const key = `${cid}-${bid}`;
+        const existing = importValuesByCluster.get(key) || { additional: 0, mos: 0, used: 0 };
+        existing.additional += val.additional;
+        existing.mos += val.mos;
+        existing.used += val.used;
+        importValuesByCluster.set(key, existing);
+      }
+      if (pid) {
+        const key = `${pid}-${bid}`;
+        const existing = importValuesByProject.get(key) || { additional: 0, mos: 0, used: 0 };
+        existing.additional += val.additional;
+        existing.mos += val.mos;
+        existing.used += val.used;
+        importValuesByProject.set(key, existing);
+      }
+    }
+  }
 
   const projectClusterMap = new Map();
   if (isCluster) {
@@ -465,20 +507,76 @@ const getInventory = async (filters = {}, actor = null) => {
       projectBarangToClusterBarang.set(projectBarangKey, clusterBarangKey);
     }
 
-    const uniqueProjectBarangKeys = Array.from(projectBarangToClusterBarang.keys());
-    const additionalTotalsByProject =
+    // Build set of cluster IDs that have BOQ items
+    const clusterIdsWithBoq = new Set();
+    const clusterBarangKeys = new Set();
+    const projectBarangToClusterBarangMap = new Map(); // for legacy NULL cluster_id fallback
+
+    for (const item of shipmentItems) {
+      const clusterId = clusterByItemId.get(Number(item.item_id));
+      const projectIdNum = Number(item.surat_jalan?.project_id || 0);
+      const barangId = String(item.barang_id);
+      if (clusterId) {
+        clusterIdsWithBoq.add(clusterId);
+        clusterBarangKeys.add(`${clusterId}-${barangId}`);
+        // Track project+barang -> cluster for legacy fallback
+        const projectBarangKey = `${projectIdNum}-${barangId}`;
+        if (!projectBarangToClusterBarangMap.has(projectBarangKey) || clusterId < projectBarangToClusterBarangMap.get(projectBarangKey)) {
+          projectBarangToClusterBarangMap.set(projectBarangKey, clusterId);
+        }
+      }
+    }
+
+    for (const item of boqItems) {
+      const cluster = item.boq?.cluster;
+      const project = cluster?.project || item.boq?.tiket?.project;
+      const clusterId = cluster?.cluster_id;
+      const projectIdNum = Number(project?.project_id || 0);
+      const barangId = String(item.barang_id);
+      if (!clusterId || !projectIdNum) continue;
+      clusterIdsWithBoq.add(clusterId);
+      clusterBarangKeys.add(`${clusterId}-${barangId}`);
+      // Track project+barang -> cluster for legacy fallback (smallest cluster_id wins)
+      const projectBarangKey = `${projectIdNum}-${barangId}`;
+      if (!projectBarangToClusterBarangMap.has(projectBarangKey) || clusterId < projectBarangToClusterBarangMap.get(projectBarangKey)) {
+        projectBarangToClusterBarangMap.set(projectBarangKey, clusterId);
+      }
+    }
+
+    // Fetch cluster-level additional totals directly
+    const clusterIdsArray = Array.from(clusterIdsWithBoq);
+    const additionalTotalsByCluster =
+      clusterIdsArray.length > 0
+        ? await additionalRepository.getAdditionalTotalsByCluster(clusterIdsArray)
+        : new Map();
+
+    // Handle legacy additional_adjustment rows with NULL cluster_id
+    // Fetch project-level totals for legacy rows and map to smallest cluster_id per (project, barang)
+    const uniqueProjectBarangKeys = Array.from(projectBarangToClusterBarangMap.keys());
+    const legacyAdditionalTotalsByProject =
       uniqueProjectBarangKeys.length > 0
         ? await additionalRepository.getAdditionalTotalsByProject(
-             uniqueProjectBarangKeys
-               .map((k) => Number(k.split("-")[0]))
-               .filter((id) => id > 0)
+            uniqueProjectBarangKeys
+              .map((k) => Number(k.split("-")[0]))
+              .filter((id) => id > 0)
           )
         : new Map();
 
     const additionalByClusterBarangFromAdjustment = new Map();
-    for (const [projectBarangKey, val] of additionalTotalsByProject) {
-      const clusterBarangKey = projectBarangToClusterBarang.get(projectBarangKey);
-      if (!clusterBarangKey) continue;
+
+    // Add cluster-level totals
+    for (const [key, val] of additionalTotalsByCluster) {
+      additionalByClusterBarangFromAdjustment.set(
+        key,
+        (additionalByClusterBarangFromAdjustment.get(key) || 0) + val
+      );
+    }
+
+    // Add legacy project-level totals mapped to smallest cluster_id
+    for (const [projectBarangKey, val] of legacyAdditionalTotalsByProject) {
+      const clusterId = projectBarangToClusterBarangMap.get(projectBarangKey);
+      if (!clusterId) continue;
+      const clusterBarangKey = `${clusterId}-${projectBarangKey.split("-")[1]}`;
       additionalByClusterBarangFromAdjustment.set(
         clusterBarangKey,
         (additionalByClusterBarangFromAdjustment.get(clusterBarangKey) || 0) + val
@@ -548,8 +646,8 @@ const getInventory = async (filters = {}, actor = null) => {
 
       if (!aggregatedMap.has(key)) {
         aggregatedMap.set(key, {
-          project_id: String(tiket?.project?.project_id || ""),
-          project_nama: tiket?.project?.nama_project || "-",
+          project_id: String(cluster?.project?.project_id || tiket?.project?.project_id || ""),
+          project_nama: cluster?.project?.nama_project || tiket?.project?.nama_project || "-",
           cluster_id: clusterId,
           nama_cluster: cluster?.nama_cluster || "-",
           cluster_type: cluster?.cluster_type || null,
@@ -644,7 +742,7 @@ const getInventory = async (filters = {}, actor = null) => {
       for (const item of boqItems) {
         const tiket = item.boq?.tiket;
         const cluster = item.boq?.cluster;
-        if (cluster?.cluster_id === clusterId) {
+        if (cluster?.cluster_id === clusterId && tiket?.tiket_id) {
           clusterTickets.add(tiket.tiket_id);
         }
       }
@@ -700,12 +798,23 @@ const getInventory = async (filters = {}, actor = null) => {
       temuanPenerimaanByClusterKey.set(clusterKey, current);
     }
 
+    // Batch fetch remains_note for cluster mode
+    const clusterRows = Array.from(aggregatedMap.values()).map((agg) => ({
+      project_id: agg.project_id,
+      cluster_id: agg.cluster_id,
+      barang_id: agg.barang_id,
+      isUnassigned: agg.cluster_id === null && agg.nama_cluster === "Belum ditentukan",
+    }));
+    const remainsNotes = await fetchRemainsNotes(clusterRows, true);
+    const remainsNotesMap = new Map(remainsNotes.map((n) => [`${n.project_id}-${n.cluster_id || "null"}-${n.barang_id}`, n]));
+
     let rows = Array.from(aggregatedMap.values()).map((agg) => {
       const isUnassigned = agg.cluster_id === null && agg.nama_cluster === "Belum ditentukan";
       const key = isUnassigned ? `unassigned-${agg.project_id}-${agg.barang_id}` : `${agg.cluster_id}-${agg.barang_id}`;
-      const additional = Number(additionalByClusterBarang.get(key) || 0);
-      const mos = Number(mosByClusterBarang.get(key) || 0);
-      const used = Number(usedByClusterBarang.get(key) || 0);
+      const importVals = importValuesByCluster.get(key) || { additional: 0, mos: 0, used: 0 };
+      const additional = Number(additionalByClusterBarang.get(key) || 0) + importVals.additional;
+      const mos = Number(mosByClusterBarang.get(key) || 0) + importVals.mos;
+      const used = Number(usedByClusterBarang.get(key) || 0) + importVals.used;
       const approvedReturnQty = Number(approvedReturnByClusterBarang.get(key) || 0);
       const remains = computeRemains(mos, agg.boq, additional, used, approvedReturnQty);
       const recStatus = computeReconciliationStatus(remains);
@@ -755,6 +864,9 @@ const getInventory = async (filters = {}, actor = null) => {
       const picNama = isUnassigned ? "-" : (picInfo?.nama || latestPicMitraByCluster.get(agg.cluster_id) || null);
       const picSumber = isUnassigned ? null : (picInfo?.sumber || (latestPicMitraByCluster.get(agg.cluster_id) ? "mitra" : null));
 
+      const noteKey = `${agg.project_id}-${agg.cluster_id || "null"}-${agg.barang_id}`;
+      const note = remainsNotesMap.get(noteKey);
+
       return {
         id: key,
         project_id: agg.project_id,
@@ -792,6 +904,8 @@ const getInventory = async (filters = {}, actor = null) => {
         ada_boq_selesai: adaBoqSelesai,
         ...pickSummary,
         temuan_penerimaan: temuanPenerimaanByClusterKey.get(key) || null,
+        remains_note: note?.keterangan || null,
+        remains_note_updated_at: note?.updated_at || null,
       };
     });
 
@@ -822,7 +936,8 @@ const getInventory = async (filters = {}, actor = null) => {
   for (const item of boqItems) {
     const tiket = item.boq?.tiket;
     const tiketProject = tiket?.project;
-    const projectIdNum = Number(tiketProject?.project_id || 0);
+    const clusterProject = item.boq?.cluster?.project;
+    const projectIdNum = Number(clusterProject?.project_id || tiketProject?.project_id || 0);
     const barangId = String(item.barang_id);
     const key = `${projectIdNum}-${barangId}`;
 
@@ -837,7 +952,7 @@ const getInventory = async (filters = {}, actor = null) => {
     if (!aggregatedMap.has(key)) {
       aggregatedMap.set(key, {
         project_id: String(projectIdNum),
-        project_nama: tiketProject?.nama_project || "-",
+        project_nama: clusterProject?.nama_project || tiketProject?.nama_project || "-",
         cluster_id: null,
         nama_cluster: null,
         cluster_type: null,
@@ -849,7 +964,7 @@ const getInventory = async (filters = {}, actor = null) => {
         vendor: null,
         homepass_plan: null,
         status_aktif: null,
-        area: tiketProject?.area || "-",
+        area: clusterProject?.area || tiketProject?.area || "-",
         barang_id: barangId,
         kode_perangkat: item.barang?.kode_perangkat || "-",
         nama_barang: item.barang?.nama_barang || "-",
@@ -938,8 +1053,8 @@ const getInventory = async (filters = {}, actor = null) => {
 
     for (const item of boqItems) {
       const tiket = item.boq?.tiket;
-      const project = tiket?.project;
-      if (Number(project?.project_id || 0) === projectIdNum) {
+      const project = tiket?.project || item.boq?.cluster?.project;
+      if (Number(project?.project_id || 0) === projectIdNum && tiket?.tiket_id) {
         projectTickets.add(tiket.tiket_id);
       }
     }
@@ -958,11 +1073,12 @@ const getInventory = async (filters = {}, actor = null) => {
 
   let rows = Array.from(aggregatedMap.values()).map((agg) => {
     const key = `${agg.project_id}-${agg.barang_id}`;
-    const additional = Number(additionalByProjectBarang.get(key) || 0);
-    const mos = Number(mosByProjectBarang.get(key) || 0);
-    const used = Number(usedByProjectBarang.get(key) || 0) > 0
+    const importVals = importValuesByProject.get(key) || { additional: 0, mos: 0, used: 0 };
+    const additional = Number(additionalByProjectBarang.get(key) || 0) + importVals.additional;
+    const mos = Number(mosByProjectBarang.get(key) || 0) + importVals.mos;
+    const used = (Number(usedByProjectBarang.get(key) || 0) > 0
       ? Number(usedByProjectBarang.get(key) || 0)
-      : Number(outboundByProjectBarang.get(key) || 0);
+      : Number(outboundByProjectBarang.get(key) || 0)) + importVals.used;
     const approvedReturnQty = Number(approvedReturnByProjectBarang.get(key) || 0);
     const remains = computeRemains(mos, agg.boq, additional, used, approvedReturnQty);
 
@@ -1049,6 +1165,25 @@ const getInventory = async (filters = {}, actor = null) => {
     };
   });
 
+  // Batch fetch remains_note for project mode
+  const projectRows = Array.from(aggregatedMap.values()).map((agg) => ({
+    project_id: agg.project_id,
+    cluster_id: agg.cluster_id,
+    barang_id: agg.barang_id,
+  }));
+  const remainsNotesProject = await fetchRemainsNotes(projectRows, false);
+  const remainsNotesProjectMap = new Map(remainsNotesProject.map((n) => [`${n.project_id}-${n.cluster_id || "null"}-${n.barang_id}`, n]));
+
+  rows = rows.map((row) => {
+    const noteKey = `${row.project_id}-${row.cluster_id || "null"}-${row.barang_id}`;
+    const note = remainsNotesProjectMap.get(noteKey);
+    return {
+      ...row,
+      remains_note: note?.keterangan || null,
+      remains_note_updated_at: note?.updated_at || null,
+    };
+  });
+
   if (search.trim()) {
     const q = search.toLowerCase();
     rows = rows.filter((row) => [row.project_nama, row.kode_tiket, row.kode_perangkat, row.nama_barang, row.gudang_nama].join(" ").toLowerCase().includes(q));
@@ -1060,6 +1195,41 @@ const getInventory = async (filters = {}, actor = null) => {
 
   return { data: rows };
 };
+
+async function fetchRemainsNotes(rows, isClusterMode) {
+  const projectIds = [...new Set(rows.map((r) => r.project_id).filter(Boolean))];
+  const barangIds = [...new Set(rows.map((r) => r.barang_id).filter(Boolean))];
+  const clusterIds = isClusterMode ? [...new Set(rows.map((r) => r.cluster_id).filter(Boolean))] : [];
+
+  const where = {
+    project_id: { in: projectIds.map((id) => BigInt(id)) },
+    barang_id: { in: barangIds.map((id) => BigInt(id)) },
+  };
+  if (isClusterMode && clusterIds.length > 0) {
+    where.cluster_id = { in: clusterIds };
+  } else if (!isClusterMode) {
+    where.cluster_id = null;
+  }
+
+  const notes = await prisma.reconciliation_remains_note.findMany({
+    where,
+    select: {
+      project_id: true,
+      cluster_id: true,
+      barang_id: true,
+      keterangan: true,
+      updated_at: true,
+    },
+  });
+
+  return notes.map((n) => ({
+    project_id: String(n.project_id),
+    cluster_id: n.cluster_id,
+    barang_id: String(n.barang_id),
+    keterangan: n.keterangan,
+    updated_at: n.updated_at,
+  }));
+}
 
 module.exports = {
   getInventory,

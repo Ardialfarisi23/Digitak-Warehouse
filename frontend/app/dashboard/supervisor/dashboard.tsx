@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import {
+  AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
   BarChart2,
@@ -179,9 +180,67 @@ const chartData = [
   { day: "Min", inbound: 15, outbound: 10 },
 ];
 
+const formatNumber = (value: number) =>
+  new Intl.NumberFormat("id-ID").format(value || 0);
+
+const STATUS_META: Record<
+  "sesuai" | "perhatian" | "belum_ada_data",
+  { label: string; badge: string; icon: typeof CheckCircle2 }
+> = {
+  sesuai: {
+    label: "Sesuai",
+    badge: "bg-emerald-50 text-emerald-600",
+    icon: CheckCircle2,
+  },
+  perhatian: {
+    label: "Perhatian",
+    badge: "bg-amber-50 text-amber-600",
+    icon: AlertTriangle,
+  },
+  belum_ada_data: {
+    label: "Belum Ada Data",
+    badge: "bg-slate-50 text-slate-500",
+    icon: Package,
+  },
+};
+
+const METRIC_TONE: Record<
+  "slate" | "emerald" | "orange" | "rose",
+  { box: string; label: string }
+> = {
+  slate: { box: "bg-slate-50 text-slate-700", label: "text-slate-400" },
+  emerald: { box: "bg-emerald-50 text-emerald-800", label: "text-emerald-600" },
+  orange: { box: "bg-orange-50 text-orange-800", label: "text-orange-600" },
+  rose: { box: "bg-rose-50 text-rose-600 border border-rose-200", label: "text-rose-600" },
+};
+
+function MetricBox({
+  label,
+  value,
+  tone,
+  highlight,
+}: {
+  label: string;
+  value: number;
+  tone: keyof typeof METRIC_TONE;
+  highlight?: boolean;
+}) {
+  const t = METRIC_TONE[tone];
+  return (
+    <div className={`rounded-lg px-1 py-2 ${t.box}`}>
+      <span className={`block text-[10px] font-medium ${t.label}`}>{label}</span>
+      <span className={`block text-xs font-bold ${highlight ? "font-extrabold" : ""}`}>
+        {formatNumber(value)}
+      </span>
+    </div>
+  );
+}
+
 export default function SupervisorDashboard() {
   const router = useRouter();
   const { user, logout, isLoading, isAuthenticated } = useAuth();
+
+  const { kapasitasPerGudang, projectSummary, showDeactivatedModal, handleReturnToLogin } = useSupervisorDashboard();
 
   useEffect(() => {
     if (!isLoading) {
@@ -206,8 +265,6 @@ export default function SupervisorDashboard() {
       </div>
     );
   }
-
-  const { kapasitasPerGudang, showDeactivatedModal, handleReturnToLogin } = useSupervisorDashboard();
 
   return (
     <div className={`flex min-h-screen bg-[#F8F6F0] text-slate-800`}>
@@ -542,6 +599,104 @@ export default function SupervisorDashboard() {
                   </div>
                 </div>
               </div>
+
+              {/* RINGKASAN PER PROJECT/CLUSTER */}
+              <section className="rounded-2xl border border-stone-100 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">
+                      Ringkasan per Project/Cluster
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Status BOQ dan realisasi hardware tiap proyek.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {projectSummary.length === 0 ? (
+                    <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">
+                      Belum ada data project.
+                    </div>
+                  ) : (
+                    projectSummary.map((p) => {
+                      const statusMeta = STATUS_META[p.status];
+                      const StatusIcon = statusMeta.icon;
+                      const maxVal = Math.max(1, p.boq + p.additional);
+                      const remWidth = Math.max(0, p.remains);
+                      return (
+                        <div
+                          key={p.projectId}
+                          className="rounded-2xl border border-stone-100 bg-white p-3 transition-colors hover:border-stone-200"
+                        >
+                          {/* Header baris */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-xs font-bold leading-snug text-slate-900">
+                                  {p.projectName}
+                                </span>
+                                <span
+                                  className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusMeta.badge}`}
+                                >
+                                  <StatusIcon size={11} strokeWidth={2.5} />
+                                  {statusMeta.label}
+                                </span>
+                              </div>
+                              <div className="mt-0.5 text-[11px] text-slate-400">
+                                {p.area}
+                                {p.clusterId ? ` • ${p.clusterLabel}` : ""}
+                                {p.statusBoq ? ` • BOQ ${p.statusBoq}` : ""}
+                              </div>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <div className="text-[10px] uppercase tracking-wide text-slate-400">
+                                Total Unit
+                              </div>
+                              <div className="text-sm font-bold text-slate-900">
+                                {formatNumber(p.hardwareOnSite)}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Stacked progress bar */}
+                          <div className="mt-2 flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              style={{ width: `${(p.hardwareOnSite / maxVal) * 100}%` }}
+                              className="bg-emerald-500"
+                              title={`MOS: ${p.hardwareOnSite}`}
+                            />
+                            <div
+                              style={{ width: `${(p.used / maxVal) * 100}%` }}
+                              className="bg-orange-500"
+                              title={`Used: ${p.used}`}
+                            />
+                            <div
+                              style={{ width: `${(remWidth / maxVal) * 100}%` }}
+                              className={p.remains < 0 ? "bg-rose-400" : "bg-slate-300"}
+                              title={`Remains: ${p.remains}`}
+                            />
+                          </div>
+
+                          {/* Grid 5 metric */}
+                          <div className="mt-2 grid grid-cols-5 gap-1.5 text-center">
+                            <MetricBox label="BOQ Plan" value={p.boq} tone="slate" />
+                            <MetricBox label="Additional" value={p.additional} tone="slate" />
+                            <MetricBox label="MOS" value={p.hardwareOnSite} tone="emerald" />
+                            <MetricBox label="Used" value={p.used} tone="orange" />
+                            <MetricBox
+                              label="Remains"
+                              value={p.remains}
+                              tone={p.remains < 0 ? "rose" : "slate"}
+                              highlight={p.remains < 0}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </section>
 
               {/* TWO COLUMNS BOTTOM */}
               <div className="grid gap-6 md:grid-cols-2">

@@ -181,17 +181,19 @@ CHECKPOINT Pagination-1: langkah 3 (Inventaris tabel lain) selesai
 - app/dashboard/delivery/page.tsx:474 filteredRecords.map — pagination baru dipasang (ya).
 - app/dashboard/boq/page.tsx:1170 boqs.map — pagination tidak ada (data di-load sekali), kandidat berikutnya.
 - app/master-data/page.tsx:2516 data.map — sudah punya komponen Pagination di page.tsx:413, jangan diganti.
-- app/dashboard/reconciliation/page.tsx — perlu diinventarisasi (data array + pagination?).
-- app/staff/outbound/page.tsx — perlu diinventarisasi (data array + pagination?).
-- app/staff/inbound/page.tsx — perlu diinventarisasi (data array + pagination?).
-- tsc --noEmit: lolos tanpa error. UTF-8: OK TablePagination, OK delivery/page.tsx.
+- app/dashboard/reconciliation/page.tsx:845 filteredRecords — pagination tidak ada (ada history pagination di 1676-1687, bukan tabel utama), data dari API sekali, sedang-banyak.
+- app/staff/outbound/page.tsx:157/220 filtered — pagination tidak ada, API sekali, sedang-banyak.
+- app/staff/inbound/page.tsx:1190 list — pagination tidak ada, API sekali, sedang-banyak.
+- app/dashboard/supervisor/operasional/page.tsx:677/789/847 filteredPersonnels/filteredVehicles/filteredItems — pagination tidak ada, API sekali, sedang.
+- tsc --noEmit: lolos tanpa error. UTF-8: OK TablePagination, OK delivery/page.tsx, OK boq/page.tsx.
 
-## Pagination kandidat (tanpa edit)
-| path:baris | array di-map | sudah ada pagination? | perkiraan data |
-|---|---|---|---|
-| app/dashboard/delivery/page.tsx:483 | pagedRecords (dari filteredRecords) | ya (baru) | sedang-banyak |
-| app/dashboard/boq/page.tsx:1170 | boqs | tidak (load sekali) | sedang-banyak |
-| app/master-data/page.tsx:2516 | data | ya (Pagination, page.tsx:413) | sedang-banyak |
-| app/dashboard/reconciliation/page.tsx | ? | ? | ? |
-| app/staff/outbound/page.tsx | ? | ? | ? |
-| app/staff/inbound/page.tsx | ? | ? | ? |
+## Pagination kandidat (tanpa edit) — versi lengkap
+| path:baris | array di-map | sudah ada pagination? | asal data | perkiraan jumlah |
+|---|---|---|---|---|
+| app/dashboard/delivery/page.tsx:483 | pagedRecords (dari filteredRecords) | ya (baru) | API sekali | sedang-banyak |
+| app/dashboard/boq/page.tsx:1182 | pagedBoqs (dari boqs) | ya (baru) | API sekali | sedang-banyak |
+| app/master-data/page.tsx:2516 | data | ya (Pagination, page.tsx:413) | API paginasi | sedang-banyak |
+| app/dashboard/reconciliation/page.tsx:845 | filteredRecords | tidak (history pagination di 1676-1687, bukan tabel utama) | API sekali | sedang-banyak |
+| app/dashboard/supervisor/operasional/page.tsx:677/789/847 | filteredPersonnels/filteredVehicles/filteredItems | tidak | API sekali | sedang |
+| app/staff/outbound/page.tsx:157/220 | filtered | tidak | API sekali | sedang-banyak |
+| app/staff/inbound/page.tsx:1190 | list | tidak | API sekali | sedang-banyak |

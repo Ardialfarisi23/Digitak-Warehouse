@@ -1,6 +1,6 @@
 # LAPORAN DRY-RUN IMPORT BOQ EXCEL
 
-**Generated:** 2026-10-09T03:56:04.501Z
+**Generated:** 2026-10-09T06:15:30.320Z
 **File:** D:\Project\digitak-warehouse\data import.xlsx
 **Sheet:** Rekap BoQ Periode 2026
 **User ID:** 1
@@ -9,11 +9,11 @@
 
 | Metrik | Jumlah |
 |--------|--------|
-| Project akan dibuat | 1 |
-| Cluster akan dibuat | 13 |
-| BOQ akan dibuat | 12 |
-| BOQ Item akan dibuat | 347 |
-| Dilewati (sudah ada) | 0 |
+| Project akan dibuat | 0 |
+| Cluster akan dibuat | 0 |
+| BOQ akan dibuat | 0 |
+| BOQ Item akan dibuat | 356 |
+| Dilewati (sudah ada) | 26 |
 | BLOCKER | 0 |
 | Peringatan | 31 |
 
@@ -21,11 +21,11 @@
 
 | Tabel | Sebelum | Akan dibuat | Estimasi setelah |
 |-------|---------|-------------|------------------|
-| project | 11 | 1 | 12 |
-| cluster | 13 | 13 | 26 |
+| project | 12 | 0 | 12 |
+| cluster | 26 | 0 | 26 |
 | tiket_material | 20 | 0 | 20 |
-| boq | 16 | 12 | 28 |
-| boq_item | 64 | 347 | 411 |
+| boq | 28 | 0 | 28 |
+| boq_item | 420 | 356 | 776 |
 
 ## 2. PROJECT
 
@@ -41,7 +41,8 @@
 | klien | null |
 | status_aktif | true |
 | created_by | 1 |
-| action | create |
+| action | skip |
+| reason | Project "FTTH-OPEN-AREA RANCAMANYAR" sudah ada (ID: 17) |
 
 ## 3. CLUSTER DETAIL (13 cluster)
 
@@ -51,10 +52,12 @@
 |-------|-------|
 | cluster_id | NET-H-004396 |
 | nama_cluster | FTTH Open Area Rancamanyar RW 01 |
-| homepass_plan | 353 |
+| homepass_plan | NaN |
 | no_tiket_release | NULL |
-| action | create |
-| boq_action | create |
+| action | skip |
+| reason | Cluster NET-H-004396 sudah ada (project_id: 17) |
+| boq_action | skip |
+| boq_reason | BOQ aktif untuk cluster NET-H-004396 sudah ada (boq_id: 49) |
 
 **Totals per cluster:**
 
@@ -98,22 +101,24 @@ Items: **29 akan dibuat**, 0 blocker, 0 dilewati
 |-------|-------|
 | cluster_id | NET-H-004397 |
 | nama_cluster | FTTH Open Area Rancamanyar RW 02 |
-| homepass_plan | 861 |
-| no_tiket_release | UR10074 |
-| action | create |
-| boq_action | create |
+| homepass_plan | NaN |
+| no_tiket_release | NULL |
+| action | skip |
+| reason | Cluster NET-H-004397 sudah ada (project_id: 17) |
+| boq_action | skip |
+| boq_reason | BOQ aktif untuk cluster NET-H-004397 sudah ada (boq_id: 50) |
 
 **Totals per cluster:**
 
 | Angka | Total |
 |-------|-------|
-| BoQ Plan | 3.123 |
+| BoQ Plan | 3.126 |
 | Additional | 0 |
-| MOS | 3.282 |
+| MOS | 3.285 |
 | Used | 0 |
 | Remains (calc) | 159 |
 
-Items: **31 akan dibuat**, 0 blocker, 0 dilewati
+Items: **32 akan dibuat**, 0 blocker, 0 dilewati
 
 | Row | Kode | Nama | BoQ Plan | Add | MOS | Used | Remains (calc) |
 |-----|------|------|----------|-----|-----|------|----------------|
@@ -137,30 +142,32 @@ Items: **31 akan dibuat**, 0 blocker, 0 dilewati
 | 34 | CPT-00655 | BRACKET X-FRAME BEHEL 12X65X65 | 10 | NULL | 10 | NULL | 0 |
 | 35 | CPT-00630 | BRACKET COILAN X-FRAME (BESAR 4 PER) | 4 | NULL | 4 | NULL | 0 |
 | 37 | CPT-00718 | DUDUKAN CLOUSURE BRACKET COILAN X-FRAME  | 4 | NULL | 4 | NULL | 0 |
-| ... | (11 item lainnya) | | | | | | |
+| ... | (12 item lainnya) | | | | | | |
 
-### Cluster NET-H-004938 — FTTH Open Area Rancamanyar RW 03
+### Cluster NET-H-004398 — FTTH Open Area Rancamanyar RW 03
 
 | Field | Nilai |
 |-------|-------|
-| cluster_id | NET-H-004938 |
+| cluster_id | NET-H-004398 |
 | nama_cluster | FTTH Open Area Rancamanyar RW 03 |
-| homepass_plan | 1.220 |
-| no_tiket_release | UR10468 |
-| action | create |
-| boq_action | create |
+| homepass_plan | NaN |
+| no_tiket_release | NULL |
+| action | skip |
+| reason | Cluster NET-H-004398 sudah ada (project_id: 17) |
+| boq_action | skip |
+| boq_reason | BOQ aktif untuk cluster NET-H-004398 sudah ada (boq_id: 51) |
 
 **Totals per cluster:**
 
 | Angka | Total |
 |-------|-------|
-| BoQ Plan | 4.330 |
+| BoQ Plan | 4.334 |
 | Additional | 0 |
-| MOS | 4.470 |
+| MOS | 4.474 |
 | Used | 0 |
 | Remains (calc) | 140 |
 
-Items: **30 akan dibuat**, 0 blocker, 0 dilewati
+Items: **31 akan dibuat**, 0 blocker, 0 dilewati
 
 | Row | Kode | Nama | BoQ Plan | Add | MOS | Used | Remains (calc) |
 |-----|------|------|----------|-----|-----|------|----------------|
@@ -184,7 +191,7 @@ Items: **30 akan dibuat**, 0 blocker, 0 dilewati
 | 35 | CPT-00630 | BRACKET COILAN X-FRAME (BESAR 4 PER) | 3 | NULL | 3 | NULL | 0 |
 | 37 | CPT-00718 | DUDUKAN CLOUSURE BRACKET COILAN X-FRAME  | 3 | NULL | 3 | NULL | 0 |
 | 38 | CPT-00914 | MUR + BAUT STENLIS  M10 - 1.5 X 45 | 9 | NULL | 9 | NULL | 0 |
-| ... | (10 item lainnya) | | | | | | |
+| ... | (11 item lainnya) | | | | | | |
 
 ### Cluster NET-H-004399 — FTTH Open Area Rancamanyar RW 04
 
@@ -192,22 +199,24 @@ Items: **30 akan dibuat**, 0 blocker, 0 dilewati
 |-------|-------|
 | cluster_id | NET-H-004399 |
 | nama_cluster | FTTH Open Area Rancamanyar RW 04 |
-| homepass_plan | 455 |
-| no_tiket_release | UR10558 |
-| action | create |
-| boq_action | create |
+| homepass_plan | NaN |
+| no_tiket_release | NULL |
+| action | skip |
+| reason | Cluster NET-H-004399 sudah ada (project_id: 17) |
+| boq_action | skip |
+| boq_reason | BOQ aktif untuk cluster NET-H-004399 sudah ada (boq_id: 52) |
 
 **Totals per cluster:**
 
 | Angka | Total |
 |-------|-------|
-| BoQ Plan | 1.937 |
+| BoQ Plan | 1.939 |
 | Additional | 0 |
-| MOS | 2.099 |
+| MOS | 2.101 |
 | Used | 0 |
 | Remains (calc) | 162 |
 
-Items: **30 akan dibuat**, 0 blocker, 0 dilewati
+Items: **31 akan dibuat**, 0 blocker, 0 dilewati
 
 | Row | Kode | Nama | BoQ Plan | Add | MOS | Used | Remains (calc) |
 |-----|------|------|----------|-----|-----|------|----------------|
@@ -231,7 +240,7 @@ Items: **30 akan dibuat**, 0 blocker, 0 dilewati
 | 35 | CPT-00630 | BRACKET COILAN X-FRAME (BESAR 4 PER) | 3 | NULL | 3 | NULL | 0 |
 | 37 | CPT-00718 | DUDUKAN CLOUSURE BRACKET COILAN X-FRAME  | 3 | NULL | 3 | NULL | 0 |
 | 38 | CPT-00914 | MUR + BAUT STENLIS  M10 - 1.5 X 45 | 9 | NULL | 9 | NULL | 0 |
-| ... | (10 item lainnya) | | | | | | |
+| ... | (11 item lainnya) | | | | | | |
 
 ### Cluster NET-H-004400 — FTTH Open Area Rancamanyar RW 05
 
@@ -239,22 +248,24 @@ Items: **30 akan dibuat**, 0 blocker, 0 dilewati
 |-------|-------|
 | cluster_id | NET-H-004400 |
 | nama_cluster | FTTH Open Area Rancamanyar RW 05 |
-| homepass_plan | 400 |
-| no_tiket_release | UR08988 |
-| action | create |
-| boq_action | create |
+| homepass_plan | NaN |
+| no_tiket_release | NULL |
+| action | skip |
+| reason | Cluster NET-H-004400 sudah ada (project_id: 17) |
+| boq_action | skip |
+| boq_reason | BOQ aktif untuk cluster NET-H-004400 sudah ada (boq_id: 53) |
 
 **Totals per cluster:**
 
 | Angka | Total |
 |-------|-------|
-| BoQ Plan | 1.696 |
+| BoQ Plan | 1.699 |
 | Additional | 4 |
-| MOS | 1.824 |
+| MOS | 1.827 |
 | Used | 0 |
 | Remains (calc) | 124 |
 
-Items: **29 akan dibuat**, 0 blocker, 0 dilewati
+Items: **30 akan dibuat**, 0 blocker, 0 dilewati
 
 | Row | Kode | Nama | BoQ Plan | Add | MOS | Used | Remains (calc) |
 |-----|------|------|----------|-----|-----|------|----------------|
@@ -278,7 +289,7 @@ Items: **29 akan dibuat**, 0 blocker, 0 dilewati
 | 38 | CPT-00914 | MUR + BAUT STENLIS  M10 - 1.5 X 45 | 6 | NULL | 6 | NULL | 0 |
 | 39 | 01-013-03083 | MUR + BAUT STENLIS M08 - 1.25 X 80 | 10 | NULL | 10 | NULL | 0 |
 | 40 | GT0000100 | ODP Boxes 16 port with 1:8 PLC Splitter  | 5 | NULL | 5 | NULL | 0 |
-| ... | (9 item lainnya) | | | | | | |
+| ... | (10 item lainnya) | | | | | | |
 
 ### Cluster NET-H-004401 — FTTH Open Area Rancamanyar RW 06
 
@@ -286,22 +297,24 @@ Items: **29 akan dibuat**, 0 blocker, 0 dilewati
 |-------|-------|
 | cluster_id | NET-H-004401 |
 | nama_cluster | FTTH Open Area Rancamanyar RW 06 |
-| homepass_plan | 413 |
-| no_tiket_release | UR09954 |
-| action | create |
-| boq_action | create |
+| homepass_plan | NaN |
+| no_tiket_release | NULL |
+| action | skip |
+| reason | Cluster NET-H-004401 sudah ada (project_id: 17) |
+| boq_action | skip |
+| boq_reason | BOQ aktif untuk cluster NET-H-004401 sudah ada (boq_id: 54) |
 
 **Totals per cluster:**
 
 | Angka | Total |
 |-------|-------|
-| BoQ Plan | 1.571 |
+| BoQ Plan | 1.572 |
 | Additional | 0 |
-| MOS | 1.687 |
+| MOS | 1.688 |
 | Used | 0 |
 | Remains (calc) | 116 |
 
-Items: **27 akan dibuat**, 0 blocker, 0 dilewati
+Items: **28 akan dibuat**, 0 blocker, 0 dilewati
 
 | Row | Kode | Nama | BoQ Plan | Add | MOS | Used | Remains (calc) |
 |-----|------|------|----------|-----|-----|------|----------------|
@@ -325,7 +338,7 @@ Items: **27 akan dibuat**, 0 blocker, 0 dilewati
 | 39 | 01-013-03083 | MUR + BAUT STENLIS M08 - 1.25 X 80 | 10 | NULL | 10 | NULL | 0 |
 | 40 | GT0000100 | ODP Boxes 16 port with 1:8 PLC Splitter  | 5 | NULL | 5 | NULL | 0 |
 | 41 | GT0000201M | Outdoor Connector with SC/UPC adapter, m | 75 | NULL | 75 | NULL | 0 |
-| ... | (7 item lainnya) | | | | | | |
+| ... | (8 item lainnya) | | | | | | |
 
 ### Cluster NET-H-004402 — FTTH Open Area Rancamanyar RW 07
 
@@ -333,22 +346,24 @@ Items: **27 akan dibuat**, 0 blocker, 0 dilewati
 |-------|-------|
 | cluster_id | NET-H-004402 |
 | nama_cluster | FTTH Open Area Rancamanyar RW 07 |
-| homepass_plan | 589 |
-| no_tiket_release | UR09786 |
-| action | create |
-| boq_action | create |
+| homepass_plan | NaN |
+| no_tiket_release | NULL |
+| action | skip |
+| reason | Cluster NET-H-004402 sudah ada (project_id: 17) |
+| boq_action | skip |
+| boq_reason | BOQ aktif untuk cluster NET-H-004402 sudah ada (boq_id: 55) |
 
 **Totals per cluster:**
 
 | Angka | Total |
 |-------|-------|
-| BoQ Plan | 2.263 |
+| BoQ Plan | 2.264 |
 | Additional | 0 |
-| MOS | 2.344 |
+| MOS | 2.345 |
 | Used | 0 |
 | Remains (calc) | 81 |
 
-Items: **30 akan dibuat**, 0 blocker, 0 dilewati
+Items: **31 akan dibuat**, 0 blocker, 0 dilewati
 
 | Row | Kode | Nama | BoQ Plan | Add | MOS | Used | Remains (calc) |
 |-----|------|------|----------|-----|-----|------|----------------|
@@ -372,7 +387,7 @@ Items: **30 akan dibuat**, 0 blocker, 0 dilewati
 | 35 | CPT-00630 | BRACKET COILAN X-FRAME (BESAR 4 PER) | 3 | NULL | 3 | NULL | 0 |
 | 37 | CPT-00718 | DUDUKAN CLOUSURE BRACKET COILAN X-FRAME  | 3 | NULL | 3 | NULL | 0 |
 | 38 | CPT-00914 | MUR + BAUT STENLIS  M10 - 1.5 X 45 | 9 | NULL | 9 | NULL | 0 |
-| ... | (10 item lainnya) | | | | | | |
+| ... | (11 item lainnya) | | | | | | |
 
 ### Cluster NET-H-004404 — FTTH Open Area Rancamanyar RW 09
 
@@ -380,22 +395,24 @@ Items: **30 akan dibuat**, 0 blocker, 0 dilewati
 |-------|-------|
 | cluster_id | NET-H-004404 |
 | nama_cluster | FTTH Open Area Rancamanyar RW 09 |
-| homepass_plan | 555 |
-| no_tiket_release | UR09788 |
-| action | create |
-| boq_action | create |
+| homepass_plan | NaN |
+| no_tiket_release | NULL |
+| action | skip |
+| reason | Cluster NET-H-004404 sudah ada (project_id: 17) |
+| boq_action | skip |
+| boq_reason | BOQ aktif untuk cluster NET-H-004404 sudah ada (boq_id: 56) |
 
 **Totals per cluster:**
 
 | Angka | Total |
 |-------|-------|
-| BoQ Plan | 1.891 |
+| BoQ Plan | 1.893 |
 | Additional | 0 |
-| MOS | 1.904 |
+| MOS | 1.906 |
 | Used | 0 |
 | Remains (calc) | 13 |
 
-Items: **30 akan dibuat**, 0 blocker, 0 dilewati
+Items: **31 akan dibuat**, 0 blocker, 0 dilewati
 
 | Row | Kode | Nama | BoQ Plan | Add | MOS | Used | Remains (calc) |
 |-----|------|------|----------|-----|-----|------|----------------|
@@ -419,7 +436,7 @@ Items: **30 akan dibuat**, 0 blocker, 0 dilewati
 | 35 | CPT-00630 | BRACKET COILAN X-FRAME (BESAR 4 PER) | 2 | NULL | 2 | NULL | 0 |
 | 37 | CPT-00718 | DUDUKAN CLOUSURE BRACKET COILAN X-FRAME  | 2 | NULL | 2 | NULL | 0 |
 | 38 | CPT-00914 | MUR + BAUT STENLIS  M10 - 1.5 X 45 | 6 | NULL | 6 | NULL | 0 |
-| ... | (10 item lainnya) | | | | | | |
+| ... | (11 item lainnya) | | | | | | |
 
 ### Cluster NET-H-004405 — FTTH Open Area Rancamanyar RW 10
 
@@ -427,22 +444,24 @@ Items: **30 akan dibuat**, 0 blocker, 0 dilewati
 |-------|-------|
 | cluster_id | NET-H-004405 |
 | nama_cluster | FTTH Open Area Rancamanyar RW 10 |
-| homepass_plan | 740 |
-| no_tiket_release | UR12267 |
-| action | create |
-| boq_action | create |
+| homepass_plan | NaN |
+| no_tiket_release | NULL |
+| action | skip |
+| reason | Cluster NET-H-004405 sudah ada (project_id: 17) |
+| boq_action | skip |
+| boq_reason | BOQ aktif untuk cluster NET-H-004405 sudah ada (boq_id: 57) |
 
 **Totals per cluster:**
 
 | Angka | Total |
 |-------|-------|
-| BoQ Plan | 3.179 |
+| BoQ Plan | 3.181 |
 | Additional | 0 |
-| MOS | 2.774 |
+| MOS | 2.776 |
 | Used | 0 |
 | Remains (calc) | -405 |
 
-Items: **27 akan dibuat**, 0 blocker, 0 dilewati
+Items: **28 akan dibuat**, 0 blocker, 0 dilewati
 
 | Row | Kode | Nama | BoQ Plan | Add | MOS | Used | Remains (calc) |
 |-----|------|------|----------|-----|-----|------|----------------|
@@ -466,7 +485,7 @@ Items: **27 akan dibuat**, 0 blocker, 0 dilewati
 | 39 | 01-013-03083 | MUR + BAUT STENLIS M08 - 1.25 X 80 | 20 | NULL | 20 | NULL | 0 |
 | 40 | GT0000100 | ODP Boxes 16 port with 1:8 PLC Splitter  | 10 | NULL | 10 | NULL | 0 |
 | 41 | GT0000201M | Outdoor Connector with SC/UPC adapter, m | 147 | NULL | 136 | NULL | -11 |
-| ... | (7 item lainnya) | | | | | | |
+| ... | (8 item lainnya) | | | | | | |
 
 ### Cluster NET-H-004406 — FTTH Open Area Rancamanyar RW 11
 
@@ -474,10 +493,12 @@ Items: **27 akan dibuat**, 0 blocker, 0 dilewati
 |-------|-------|
 | cluster_id | NET-H-004406 |
 | nama_cluster | FTTH Open Area Rancamanyar RW 11 |
-| homepass_plan | 570 |
-| no_tiket_release | UR11024 |
-| action | create |
-| boq_action | create |
+| homepass_plan | NaN |
+| no_tiket_release | NULL |
+| action | skip |
+| reason | Cluster NET-H-004406 sudah ada (project_id: 17) |
+| boq_action | skip |
+| boq_reason | BOQ aktif untuk cluster NET-H-004406 sudah ada (boq_id: 58) |
 
 **Totals per cluster:**
 
@@ -521,22 +542,24 @@ Items: **30 akan dibuat**, 0 blocker, 0 dilewati
 |-------|-------|
 | cluster_id | NET-H-004409 |
 | nama_cluster | FTTH Open Area Rancamanyar RW 14 |
-| homepass_plan | 1.722 |
-| no_tiket_release | UR12741 |
-| action | create |
-| boq_action | create |
+| homepass_plan | NaN |
+| no_tiket_release | NULL |
+| action | skip |
+| reason | Cluster NET-H-004409 sudah ada (project_id: 17) |
+| boq_action | skip |
+| boq_reason | BOQ aktif untuk cluster NET-H-004409 sudah ada (boq_id: 59) |
 
 **Totals per cluster:**
 
 | Angka | Total |
 |-------|-------|
-| BoQ Plan | 8.125 |
+| BoQ Plan | 8.140 |
 | Additional | 0 |
-| MOS | 5.095 |
+| MOS | 5.110 |
 | Used | 0 |
 | Remains (calc) | -3.030 |
 
-Items: **29 akan dibuat**, 0 blocker, 0 dilewati
+Items: **30 akan dibuat**, 0 blocker, 0 dilewati
 
 | Row | Kode | Nama | BoQ Plan | Add | MOS | Used | Remains (calc) |
 |-----|------|------|----------|-----|-----|------|----------------|
@@ -560,7 +583,7 @@ Items: **29 akan dibuat**, 0 blocker, 0 dilewati
 | 37 | CPT-00718 | DUDUKAN CLOUSURE BRACKET COILAN X-FRAME  | 10 | NULL | 10 | NULL | 0 |
 | 38 | CPT-00914 | MUR + BAUT STENLIS  M10 - 1.5 X 45 | 30 | NULL | 30 | NULL | 0 |
 | 39 | 01-013-03083 | MUR + BAUT STENLIS M08 - 1.25 X 80 | 50 | NULL | 50 | NULL | 0 |
-| ... | (9 item lainnya) | | | | | | |
+| ... | (10 item lainnya) | | | | | | |
 
 ### Cluster NET-H-004410 — FTTH Open Area Rancamanyar RW 15
 
@@ -568,9 +591,10 @@ Items: **29 akan dibuat**, 0 blocker, 0 dilewati
 |-------|-------|
 | cluster_id | NET-H-004410 |
 | nama_cluster | FTTH Open Area Rancamanyar RW 15 |
-| homepass_plan | 1.446 |
-| no_tiket_release | UR11027 |
-| action | create |
+| homepass_plan | NaN |
+| no_tiket_release | NULL |
+| action | skip |
+| reason | Cluster NET-H-004410 sudah ada (project_id: 17) |
 | boq_action | skip |
 | boq_reason | Cluster NET-H-004410 incomplete (hanya BoQ Plan 1 kolom) — BOQ tidak dibuat |
 
@@ -592,10 +616,12 @@ Items: **0 akan dibuat**, 0 blocker, 0 dilewati
 |-------|-------|
 | cluster_id | MF-H-000141 |
 | nama_cluster | POP Rancamanyar Baleendah |
-| homepass_plan | NULL |
-| no_tiket_release | UR11027 |
-| action | create |
-| boq_action | create |
+| homepass_plan | NaN |
+| no_tiket_release | NULL |
+| action | skip |
+| reason | Cluster MF-H-000141 sudah ada (project_id: 17) |
+| boq_action | skip |
+| boq_reason | BOQ aktif untuk cluster MF-H-000141 sudah ada (boq_id: 60) |
 
 **Totals per cluster:**
 
@@ -639,15 +665,15 @@ Tidak ada BLOCKER. Import bisa dijalankan (--execute).
 
 ## 5. PERINGATAN (31)
 
-- Row 48: Skipping non-material "null" (Precon 3m (Produksi in-House MSP))
+- Cluster ID override: NET-H-004938 -> NET-H-004398
 - Cluster NET-H-004410 (FTTH Open Area Rancamanyar RW 15): 0 material rows
 - Cluster NET-H-004396 row 49: BoQ Plan NULL tapi ada Additional/MOS/Used — qty_rencana diisi 0
 - Cluster NET-H-004396 row 64: BoQ Plan NULL tapi ada Additional/MOS/Used — qty_rencana diisi 0
 - Cluster NET-H-004397 row 49: BoQ Plan NULL tapi ada Additional/MOS/Used — qty_rencana diisi 0
 - Cluster NET-H-004397 row 64: BoQ Plan NULL tapi ada Additional/MOS/Used — qty_rencana diisi 0
-- Cluster NET-H-004938 row 11: BoQ Plan NULL tapi ada Additional/MOS/Used — qty_rencana diisi 0
-- Cluster NET-H-004938 row 49: BoQ Plan NULL tapi ada Additional/MOS/Used — qty_rencana diisi 0
-- Cluster NET-H-004938 row 64: BoQ Plan NULL tapi ada Additional/MOS/Used — qty_rencana diisi 0
+- Cluster NET-H-004398 row 11: BoQ Plan NULL tapi ada Additional/MOS/Used — qty_rencana diisi 0
+- Cluster NET-H-004398 row 49: BoQ Plan NULL tapi ada Additional/MOS/Used — qty_rencana diisi 0
+- Cluster NET-H-004398 row 64: BoQ Plan NULL tapi ada Additional/MOS/Used — qty_rencana diisi 0
 - Cluster NET-H-004399 row 49: BoQ Plan NULL tapi ada Additional/MOS/Used — qty_rencana diisi 0
 - Cluster NET-H-004399 row 64: BoQ Plan NULL tapi ada Additional/MOS/Used — qty_rencana diisi 0
 - Cluster NET-H-004400 row 49: BoQ Plan NULL tapi ada Additional/MOS/Used — qty_rencana diisi 0

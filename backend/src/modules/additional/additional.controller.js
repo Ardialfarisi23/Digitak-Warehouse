@@ -13,13 +13,14 @@ const create = async (req, res, next) => {
 const list = async (req, res, next) => {
   try {
     const projectId = req.query.project_id ? Number(req.query.project_id) : null;
+    const clusterId = req.query.cluster_id || null;
     const barangId = req.query.barang_id ? Number(req.query.barang_id) : null;
 
     if (!projectId && !barangId) {
       return response.success(res, "Parameter project_id atau barang_id wajib diisi.", []);
     }
 
-    const result = await additionalService.list(projectId, barangId, req.user.role);
+    const result = await additionalService.list(projectId, barangId, clusterId, req.user.role);
     return response.success(res, "Riwayat penyesuaian additional berhasil diambil.", result);
   } catch (err) {
     next(err);

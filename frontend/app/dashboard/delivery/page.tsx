@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, Eye, X, ArrowUpRight, ArrowDownLeft, CheckCircle2, Clock, FileText, Loader2, AlertCircle, PackageCheck, Truck, ChevronDown } from "lucide-react";
 
 import { useApi } from "@/lib/api";
@@ -117,6 +117,7 @@ export default function AdminDeliveryPage() {
   const [confirming, setConfirming] = useState(false);
   const [catatanKonfirmasi, setCatatanKonfirmasi] = useState("");
   const [page, setPage] = useState(1);
+  const tableRef = useRef<HTMLDivElement>(null);
 
   const PAGE_SIZE = 25;
 
@@ -205,6 +206,16 @@ export default function AdminDeliveryPage() {
     if (!user) return;
     fetchData();
   }, [user, gudangFilter, statusFilter, startDate, endDate]);
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (selectedRecord || selectedItem) {
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [selectedRecord, selectedItem]);
 
   const filteredRecords = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -443,7 +454,7 @@ export default function AdminDeliveryPage() {
         </div>
 
         {/* Table */}
-        <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div ref={tableRef} className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto overscroll-x-contain">
             <table className="w-full md:min-w-[1000px] text-left text-sm">
               <thead>
@@ -564,28 +575,28 @@ export default function AdminDeliveryPage() {
             total={filteredRecords.length}
             onPageChange={(p) => {
               setPage(p);
-              window.scrollTo({ top: 400, behavior: "smooth" });
+              tableRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
             }}
           />
         </div>
 
-        {/* Detail Modal */}
+{/* Detail Modal */}
         {selectedRecord && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setSelectedRecord(null)}>
-            <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
-              {/* Toolbar — hilang saat print */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 print:hidden">
-                <div>
-                  <h2 className="text-base font-semibold text-slate-900">Detail Surat Jalan</h2>
-                  <p className="text-xs text-slate-500">{selectedRecord.nomor_surat_jalan}</p>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-0 sm:p-3 md:p-4" onClick={() => setSelectedRecord(null)}>
+            <div className="w-full h-[100dvh] max-h-[100dvh] sm:w-[min(92vw,720px)] sm:max-h-[calc(100dvh-1.5rem)] sm:rounded-xl md:max-w-3xl lg:max-w-4xl md:h-auto md:max-h-[calc(100dvh-1rem)] md:rounded-2xl overflow-y-auto overscroll-contain bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+              {/* Toolbar — hilang saat print, sticky di mobile */}
+              <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-100 bg-white print:hidden">
+                <div className="min-w-0">
+                  <h2 className="text-base sm:text-lg md:text-xl font-semibold text-slate-900">Detail Surat Jalan</h2>
+                  <p className="break-all text-xs text-slate-500">{selectedRecord.nomor_surat_jalan}</p>
                 </div>
-                <button type="button" onClick={() => setSelectedRecord(null)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <button type="button" onClick={() => setSelectedRecord(null)} className="flex-shrink-0 min-h-[40px] min-w-[40px] rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
                   <X size={16} />
                 </button>
               </div>
 
               {/* Dokumen Surat Jalan — untuk tampilan di layar */}
-              <div className="p-6">
+              <div className="p-3 sm:p-4 md:p-8 pb-[env(safe-area-inset-bottom)]">
                 <DetailSuratJalanDocument
                   data={selectedRecord as DetailSuratJalanData | null | undefined}
                   variant="full"
@@ -594,7 +605,7 @@ export default function AdminDeliveryPage() {
                       type="button"
                       onClick={() => setSelectedItem(item)}
                       title="Lihat dokumentasi barang"
-                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      className="min-h-[40px] min-w-[40px] rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                     >
                       <Eye size={15} />
                     </button>
@@ -643,15 +654,15 @@ export default function AdminDeliveryPage() {
               )}
 
               {/* Actions */}
-              <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4 print:hidden">
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 px-4 py-3 sm:px-6 sm:py-4 print:hidden">
                 {selectedRecord?.status === "tiba_menunggu_konfirmasi" && (
-                  <div className="mr-auto flex flex-col gap-2">
+                  <div className="mr-auto flex flex-col gap-2 min-w-[200px]">
                     <p className="text-xs font-semibold text-slate-500">Konfirmasi Penerimaan (SPV)</p>
                     <textarea
                       value={catatanKonfirmasi}
                       onChange={(e) => setCatatanKonfirmasi(e.target.value)}
                       placeholder="Catatan konfirmasi (wajib jika ada selisih)"
-                      className="w-80 rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+                      className="w-full sm:w-80 rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
                       rows={2}
                     />
                     <Button

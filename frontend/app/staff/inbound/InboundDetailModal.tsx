@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { X } from "lucide-react";
 
 // Mendefinisikan struktur data untuk record inbound, dengan asumsi data relasi sudah lengkap dari API.
@@ -40,8 +41,8 @@ export interface InboundRecord {
 // Komponen helper untuk menampilkan baris info, seragam dengan modal outbound.
 function InfoRow({ label, value }: { label: string; value: string | undefined | null }) {
   return (
-    <div className="grid grid-cols-[130px_10px_1fr] items-start leading-snug">
-      <span className="text-gray-500">{label}</span>
+    <div className="grid grid-cols-[110px_1fr] gap-x-2 text-sm md:grid-cols-[130px_10px_1fr] items-start leading-snug">
+      <span className="shrink-0 w-28 md:w-auto text-gray-500">{label}</span>
       <span className="text-gray-500">:</span>
       <span className="font-semibold text-gray-900">{value || "-"}</span>
     </div>
@@ -78,46 +79,54 @@ export default function InboundDetailModal({
     }
   };
 
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   return (
     <div
       id="inbound-modal-wrapper"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-0 sm:p-3 md:p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="relative flex w-[calc(100vw-1.5rem)] max-w-4xl flex-col max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-2xl print:shadow-none"
+        className="relative flex w-full h-[100dvh] max-h-[100dvh] sm:w-[min(92vw,720px)] sm:max-h-[calc(100dvh-1.5rem)] sm:rounded-xl md:max-w-3xl lg:max-w-4xl md:h-auto md:max-h-[calc(100dvh-1rem)] md:rounded-2xl flex-col overflow-y-auto overscroll-contain bg-white shadow-2xl print:shadow-none"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Toolbar — disembunyikan saat cetak */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 print:hidden">
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">Detail Surat Jalan Inbound</h2>
-            <p className="text-xs text-slate-500">{record.nomor_surat_jalan}</p>
+        {/* Toolbar — disembunyikan saat cetak, sticky di mobile */}
+        <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-100 bg-white print:hidden">
+          <div className="min-w-0">
+            <h2 className="text-base sm:text-lg md:text-xl font-semibold text-slate-900">Detail Surat Jalan Inbound</h2>
+            <p className="break-all text-xs text-slate-500">{record.nomor_surat_jalan}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            className="flex-shrink-0 min-h-[40px] min-w-[40px] rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
           >
             <X size={16} />
           </button>
         </div>
 
         {/* Area Dokumen yang Dapat Dicetak */}
-        <div className="overflow-y-auto p-6">
-          <div className="mx-auto max-w-3xl rounded-2xl border border-[#F3D9C7] bg-white p-10 print:rounded-none print:border-0 print:p-0">
+        <div className="overflow-y-auto p-3 sm:p-4 md:p-8 pb-[env(safe-area-inset-bottom)]">
+          <div className="mx-auto max-w-3xl rounded-2xl border border-[#F3D9C7] bg-white p-6 md:p-10 print:rounded-none print:border-0 print:p-0">
             {/* Header / Kop Surat */}
-            <div className="mb-8 flex items-start justify-between border-b-2 border-[#E8632C] pb-6">
+            <div className="mb-8 flex flex-col gap-3 md:flex-row md:items-start md:justify-between border-b-2 border-[#E8632C] pb-6">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/logo-digitak-gradasi.png"
                 alt="Digitak Studio — PT Metanouva Informatika"
-                className="h-16 w-auto object-contain"
+                className="h-10 w-auto object-contain md:h-14"
               />
               <div className="flex flex-col items-end">
-                <h1 className="text-3xl font-bold tracking-wide text-gray-900">SURAT JALAN</h1>
-                <p className="mt-1 text-xs text-gray-500">Penerimaan Barang (Inbound)</p>
-                <div className="mt-2 text-right">
+                <h1 className="text-2xl md:text-4xl font-bold tracking-wide text-gray-900">SURAT JALAN</h1>
+                <p className="mt-1 text-xs md:text-sm text-gray-500 break-words">Penerimaan Barang (Inbound)</p>
+                <div className="mt-2 md:text-right">
                   <p className="text-xs font-bold text-[#E8632C]">PT Metanouva Informatika</p>
                   <p className="text-[10px] text-gray-400">Digitak Studio</p>
                 </div>
@@ -125,7 +134,7 @@ export default function InboundDetailModal({
             </div>
 
             {/* Info Grid */}
-            <div className="mb-8 grid grid-cols-2 gap-x-12 gap-y-3 text-sm">
+            <div className="mb-8 grid grid-cols-1 gap-x-8 gap-y-1 md:grid-cols-2 text-xs">
               <div className="space-y-3">
                 <InfoRow label="No Surat Jalan" value={record.nomor_surat_jalan} />
                 <InfoRow label="Project" value={record.project?.nama_project} />
@@ -154,51 +163,57 @@ export default function InboundDetailModal({
             </div>
 
             {/* Tabel Daftar Barang */}
-            <div className="overflow-x-auto overscroll-x-contain">
-            <table className="min-w-[640px] mb-10 w-full border-collapse text-sm">
+<div className="w-full overflow-x-auto overscroll-x-contain">
+            <table className="min-w-[560px] md:min-w-0 w-full border-collapse text-xs">
               <thead>
                 <tr className="bg-[#FFF7ED]">
-                  <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">No</th>
-                  <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Kode Barang</th>
-                  <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Nama Barang</th>
-                  <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">QTY</th>
-                  <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">UOM</th>
-                  <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Kondisi</th>
+                  <th className="border border-[#F3D9C7] px-2 py-2 md:px-3 text-left font-semibold whitespace-nowrap text-xs md:text-sm text-[#9a3412]">No</th>
+                  <th className="border border-[#F3D9C7] px-2 py-2 md:px-3 text-left font-semibold whitespace-nowrap text-xs md:text-sm text-[#9a3412]">Kode Barang</th>
+                  <th className="border border-[#F3D9C7] px-2 py-2 md:px-3 text-left font-semibold whitespace-nowrap text-xs md:text-sm text-[#9a3412]">Nama Barang</th>
+                  <th className="border border-[#F3D9C7] px-2 py-2 md:px-3 text-center font-semibold whitespace-nowrap text-xs md:text-sm text-[#9a3412]">QTY</th>
+                  <th className="border border-[#F3D9C7] px-2 py-2 md:px-3 text-center font-semibold whitespace-nowrap text-xs md:text-sm text-[#9a3412]">UOM</th>
+                  <th className="border border-[#F3D9C7] px-2 py-2 md:px-3 text-left font-semibold whitespace-nowrap text-xs md:text-sm text-[#9a3412]">Kondisi</th>
                 </tr>
               </thead>
               <tbody>
                 {record.items.map((item, i) => (
                   <tr key={item.item_id} className="even:bg-gray-50">
-                    <td className="border border-gray-200 px-3 py-2.5">{i + 1}</td>
-                    <td className="border border-gray-200 px-3 py-2.5 font-medium">{item.barang.kode_perangkat}</td>
-                    <td className="border border-gray-200 px-3 py-2.5">{item.barang.nama_barang}</td>
-                    <td className="border border-gray-200 px-3 py-2.5 text-center font-semibold">{Number(item.qty || 0)}</td>
-                    <td className="border border-gray-200 px-3 py-2.5 text-center">{item.satuan?.kode_satuan || item.barang?.satuan_default?.kode_satuan || "-"}</td>
-                    <td className="border border-gray-200 px-3 py-2.5 text-gray-500">{item.kondisi || item.catatan || "-"}</td>
+                    <td className="border border-gray-200 px-2 py-2 md:px-3 text-center text-xs md:text-sm whitespace-nowrap">{i + 1}</td>
+                    <td className="border border-gray-200 px-2 py-2 md:px-3 text-center text-xs md:text-sm whitespace-nowrap font-medium">{item.barang?.kode_perangkat}</td>
+                    <td className="border border-gray-200 px-2 py-2 md:px-3 text-left text-xs md:text-sm whitespace-normal">{item.barang?.nama_barang}</td>
+                    <td className="border border-gray-200 px-2 py-2 md:px-3 text-center text-xs md:text-sm whitespace-nowrap font-semibold">{Number(item.qty || 0)}</td>
+                    <td className="border border-gray-200 px-2 py-2 md:px-3 text-center text-xs md:text-sm whitespace-nowrap">{item.satuan?.kode_satuan || item.barang?.satuan_default?.kode_satuan || "-"}</td>
+                    <td className="border border-gray-200 px-2 py-2 md:px-3 text-gray-500 text-xs md:text-sm">{item.kondisi || item.catatan || "-"}</td>
                   </tr>
                 ))}
                </tbody>
-             </table>
-             </div>
+              </table>
+              </div>
 
             {/* Bagian Tanda Tangan */}
-            <div className="mb-8 grid grid-cols-3 gap-6 text-center text-sm">
-              <div>
-                <p className="mb-16 font-medium text-gray-700">Dibuat Oleh (Staf)</p>
-                <div className="border-t border-gray-400 pt-1">
-                  <p className="font-semibold text-gray-900">{record.creator?.nama || "-"}</p>
+            <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-3 print:grid-cols-3 text-center text-sm">
+              <div className="flex flex-col justify-between h-16 md:h-20 text-center">
+                <p className="font-medium text-gray-700 min-h-[32px] flex items-center justify-center">Dibuat Oleh (Staf)</p>
+                <div>
+                  <div className="border-t border-gray-400 pt-1">
+                    <p className="font-semibold text-gray-900">{record.creator?.nama || "-"}</p>
+                  </div>
                 </div>
               </div>
-              <div>
-                <p className="mb-16 font-medium text-gray-700">Driver</p>
-                <div className="border-t border-gray-400 pt-1">
-                  <p className="font-semibold text-gray-900">{record.driver_teks || record.personil_pengantar?.nama || "-"}</p>
+              <div className="flex flex-col justify-between h-16 md:h-20 text-center">
+                <p className="font-medium text-gray-700 min-h-[32px] flex items-center justify-center">Driver</p>
+                <div>
+                  <div className="border-t border-gray-400 pt-1">
+                    <p className="font-semibold text-gray-900">{record.driver_teks || record.personil_pengantar?.nama || "-"}</p>
+                  </div>
                 </div>
               </div>
-              <div>
-                <p className="mb-16 font-medium text-gray-700">Disetujui Oleh (Supervisor)</p>
-                <div className="border-t border-gray-400 pt-1">
-                  <p className="font-semibold text-gray-900">(Nama Supervisor)</p>
+              <div className="flex flex-col justify-between h-16 md:h-20 text-center">
+                <p className="font-medium text-gray-700 min-h-[32px] flex items-center justify-center">Disetujui Oleh (Supervisor)</p>
+                <div>
+                  <div className="border-t border-gray-400 pt-1">
+                    <p className="font-semibold text-gray-900">(Nama Supervisor)</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -211,15 +226,15 @@ export default function InboundDetailModal({
         </div>
 
         {/* Tombol Aksi */}
-        <div className="flex items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/50 px-6 py-4 print:hidden">
-          <div className="flex-1">{children}</div>
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/50 px-4 py-3 sm:px-6 sm:py-4 print:hidden">
+          <div className="flex-1 min-w-[200px]">{children}</div>
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => window.print()}
               className="inline-flex items-center gap-2 rounded-lg border border-[#E8632C] bg-white px-4 py-2 text-xs font-semibold text-[#E8632C] shadow-sm transition hover:bg-[#E8632C] hover:text-white"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24 fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="6 9 6 2 18 2 18 9" />
                 <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
                 <rect x="6" y="14" width="12" height="8" />

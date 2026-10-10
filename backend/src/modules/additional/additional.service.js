@@ -9,7 +9,7 @@ const create = async (data, userId, userRole) => {
     throw new AppError("Hanya Supervisor dan Admin yang dapat membuat penyesuaian additional.", 403);
   }
 
-  const { project_id, barang_id, qty, alasan } = data;
+  const { project_id, cluster_id, barang_id, qty, alasan } = data;
 
   const project = await prisma.project.findFirst({
     where: { project_id: BigInt(project_id) },
@@ -17,6 +17,14 @@ const create = async (data, userId, userRole) => {
   });
   if (!project) {
     throw new AppError("Project tidak ditemukan.", 404);
+  }
+
+  const cluster = await prisma.cluster.findFirst({
+    where: { cluster_id, project_id: BigInt(project_id) },
+    select: { cluster_id: true, nama_cluster: true },
+  });
+  if (!cluster) {
+    throw new AppError("Cluster tidak ditemukan atau bukan milik project tersebut.", 404);
   }
 
   const barang = await prisma.barang.findFirst({
@@ -31,10 +39,7 @@ const create = async (data, userId, userRole) => {
     where: {
       barang_id: BigInt(barang_id),
       boq: {
-        OR: [
-          { tiket: { project_id: BigInt(project_id) } },
-          { cluster: { project_id: BigInt(project_id) } },
-        ],
+        cluster_id,
       },
     },
     select: { boq_item_id: true },
@@ -43,17 +48,17 @@ const create = async (data, userId, userRole) => {
   const mosLink = await prisma.surat_jalan_item.findFirst({
     where: {
       barang_id: BigInt(barang_id),
-      surat_jalan: { project_id: BigInt(project_id) },
+      surat_jalan: { cluster_id },
     },
     select: { item_id: true },
   });
 
   if (!boqLink && !mosLink) {
-    throw new AppError("Barang belum terdaftar pada project tersebut (tidak ditemukan di BOQ/MOS).", 400);
+    throw new AppError("Barang belum terdaftar pada cluster tersebut (tidak ditemukan di BOQ/MOS).", 400);
   }
 
   const actorId = Number(userId);
-  const currentTotalBefore = await computeCurrentTotal(project_id, barang_id);
+  const currentTotalBefore = await computeCurrentTotal(project_id, cluster_id, barang_id);
 
   if (currentTotalBefore + qty < 0) {
     throw new AppError(
@@ -67,6 +72,7 @@ const create = async (data, userId, userRole) => {
       async (tx) => {
         const result = await additionalRepository.createAdjustment(tx, {
           projectId: project_id,
+          clusterId: cluster_id,
           barangId: barang_id,
           qty,
           alasan: alasan.trim(),
@@ -83,11 +89,13 @@ const create = async (data, userId, userRole) => {
             actor_id: BigInt(actorId),
             data_sebelum: {
               project_id: Number(project_id),
+              cluster_id,
               barang_id: Number(barang_id),
               total_sebelum: currentTotalBefore,
             },
             data_sesudah: {
               project_id: Number(project_id),
+              cluster_id,
               barang_id: Number(barang_id),
               qty: Number(result.qty),
               alasan: result.alasan,
@@ -104,21 +112,22 @@ const create = async (data, userId, userRole) => {
 
   return {
     project_id: Number(project_id),
+    cluster_id,
     barang_id: Number(barang_id),
     qty,
     alasan: alasan.trim(),
   };
 };
 
-const list = async (projectId, barangId, userRole) => {
+const list = async (projectId, barangId, clusterId, userRole) => {
   if (userRole !== "admin_general" && userRole !== "supervisor") {
     throw new AppError("Hanya Supervisor dan Admin yang dapat melihat penyesuaian additional.", 403);
   }
 
-  const adjustments = await additionalRepository.listAdjustments(projectId, barangId);
+  const adjustments = await additionalRepository.listAdjustments(projectId, barangId, clusterId);
 
   const adjustmentTotal = adjustments.reduce((sum, a) => sum + Number(a.qty || 0), 0);
-  const kelebihanTotal = await computeKelebihanTotal(projectId, barangId);
+  const kelebihanTotal = await computeKelebihanTotal(projectId, clusterId, barangId);
   const totalAdditional = adjustmentTotal + kelebihanTotal;
 
   return {
@@ -128,6 +137,7 @@ const list = async (projectId, barangId, userRole) => {
       alasan: a.alasan,
       created_at: a.created_at,
       creator: a.creator ? { user_id: a.creator.user_id, nama: a.creator.nama } : null,
+      cluster_id: a.cluster_id,
     })),
     total_additional: totalAdditional,
     rincian: {
@@ -137,13 +147,13 @@ const list = async (projectId, barangId, userRole) => {
   };
 };
 
-async function computeCurrentTotal(projectId, barangId) {
-  const kelebihanTotal = await computeKelebihanTotal(projectId, barangId);
-  const adjustmentTotal = await additionalRepository.getAdjustmentTotals([projectId]).then((map) => map.get(String(barangId)) || 0);
+async function computeCurrentTotal(projectId, clusterId, barangId) {
+  const kelebihanTotal = await computeKelebihanTotal(projectId, clusterId, barangId);
+  const adjustmentTotal = await additionalRepository.getAdjustmentTotalsByCluster([clusterId]).then((map) => map.get(`${clusterId}-${barangId}`) || 0);
   return kelebihanTotal + adjustmentTotal;
 }
 
-async function computeKelebihanTotal(projectId, barangId) {
+async function computeKelebihanTotal(projectId, clusterId, barangId) {
   const items = await prisma.surat_jalan_item.findMany({
     where: {
       barang_id: BigInt(barangId),
@@ -152,6 +162,7 @@ async function computeKelebihanTotal(projectId, barangId) {
         tipe: "inbound",
         status: { in: ["disetujui", "diterima_didistribusikan"] },
         project_id: BigInt(projectId),
+        cluster_id: clusterId,
       },
     },
     select: { qty: true },
