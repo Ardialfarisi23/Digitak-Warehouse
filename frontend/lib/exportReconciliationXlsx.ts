@@ -44,6 +44,16 @@ function formatDateLocal(): string {
   return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function colLetter(col: number): string {
+  let result = "";
+  while (col > 0) {
+    const rem = (col - 1) % 26;
+    result = String.fromCharCode(65 + rem) + result;
+    col = Math.floor((col - 1) / 26);
+  }
+  return result;
+}
+
 export async function exportReconciliationXlsx(records: ReconciliationRecord[]) {
   if (!records.length) {
     throw new Error("Tidak ada data rekonsiliasi untuk diekspor.");
@@ -130,8 +140,8 @@ export async function exportReconciliationXlsx(records: ReconciliationRecord[]) 
       const cluster = clusters[i];
       const startCol = clusterCols[i];
       const endCol = startCol + 4;
-      const startColLetter = String.fromCharCode(64 + startCol);
-      const endColLetter = String.fromCharCode(64 + endCol);
+      const startColLetter = colLetter(startCol);
+      const endColLetter = colLetter(endCol);
 
       ws.mergeCells(`${startColLetter}${clusterHeaderRow}:${endColLetter}${clusterHeaderRow}`);
       const headerCell = ws.getCell(clusterHeaderRow, startCol);
@@ -206,8 +216,8 @@ export async function exportReconciliationXlsx(records: ReconciliationRecord[]) 
     const clusterCountRow = 3;
     const clusterNameStartCol = clusterCols[0];
     const clusterNameEndCol = clusterCols[clusterCount - 1] + 4;
-    const clusterNameEndLetter = String.fromCharCode(64 + clusterNameEndCol);
-    ws.getCell(clusterCountRow, 9).value = { formula: `=COUNTA(${String.fromCharCode(64 + clusterNameStartCol)}${clusterCountRow}:${clusterNameEndLetter}${clusterCountRow})`, result: clusterCount };
+    const clusterNameEndLetter = colLetter(clusterNameEndCol);
+    ws.getCell(clusterCountRow, 9).value = { formula: `=COUNTA(${colLetter(clusterNameStartCol)}${clusterCountRow}:${clusterNameEndLetter}${clusterCountRow})`, result: clusterCount };
     ws.getCell(clusterCountRow, 9).font = { name: "Trebuchet MS", size: 10, bold: true };
     ws.getCell(clusterCountRow, 9).alignment = { horizontal: "center", vertical: "middle" };
 
@@ -228,8 +238,8 @@ export async function exportReconciliationXlsx(records: ReconciliationRecord[]) 
     for (let i = 0; i < clusterCount; i++) {
       const startCol = clusterCols[i];
       const endCol = startCol + 4;
-      const startColLetter = String.fromCharCode(64 + startCol);
-      const endColLetter = String.fromCharCode(64 + endCol);
+      const startColLetter = colLetter(startCol);
+      const endColLetter = colLetter(endCol);
       ws.mergeCells(`${startColLetter}${summaryTitleRow}:${endColLetter}${summaryTitleRow}`);
       const clusterSummaryTitle = ws.getCell(summaryTitleRow, startCol);
       clusterSummaryTitle.value = `Qty Material - ${clusters[i].nama_cluster}`;
@@ -325,7 +335,10 @@ export async function exportReconciliationXlsx(records: ReconciliationRecord[]) 
         const startCol = clusterCols[i];
         const rec = matRecords.find((r) => r.cluster_id === cluster.cluster_id);
         const values = rec ? [rec.boq, rec.additional, rec.mos, rec.used] : [undefined, undefined, undefined, undefined];
-        const remainsFormula = rec ? `=${String.fromCharCode(65 + startCol + 2)}${row}-${String.fromCharCode(65 + startCol + 1)}${row}-${String.fromCharCode(65 + startCol)}${row}` : undefined;
+        const boqCol = colLetter(startCol);
+        const addCol = colLetter(startCol + 1);
+        const mosCol = colLetter(startCol + 2);
+        const remainsFormula = rec ? `=${mosCol}${row}-${addCol}${row}-${boqCol}${row}` : undefined;
 
         for (let j = 0; j < 5; j++) {
           const cell = ws.getCell(row, startCol + j);
@@ -372,8 +385,8 @@ export async function exportReconciliationXlsx(records: ReconciliationRecord[]) 
 
     for (let c = summaryStartCol; c <= summaryEndCol; c++) {
       const cell = ws.getCell(totalRow, c);
-      const colLetter = String.fromCharCode(64 + c);
-      cell.value = { formula: `=SUM(${colLetter}${dataStartRow}:${colLetter}${dataEndRow})`, result: 0 };
+      const col = colLetter(c);
+      cell.value = { formula: `=SUM(${col}${dataStartRow}:${col}${dataEndRow})`, result: 0 };
       cell.font = { name: "Trebuchet MS", size: 10, bold: true };
       cell.alignment = { horizontal: "right", vertical: "middle" };
       cell.border = {
@@ -389,9 +402,9 @@ export async function exportReconciliationXlsx(records: ReconciliationRecord[]) 
       const startCol = clusterCols[i];
       for (let j = 0; j < 5; j++) {
         const cell = ws.getCell(totalRow, startCol + j);
-        const colLetter = String.fromCharCode(65 + startCol + j);
+        const col = colLetter(startCol + j);
         const isRemains = j === 4;
-        cell.value = { formula: `=SUM(${colLetter}${dataStartRow}:${colLetter}${dataEndRow})`, result: 0 };
+        cell.value = { formula: `=SUM(${col}${dataStartRow}:${col}${dataEndRow})`, result: 0 };
         cell.font = { name: "Trebuchet MS", size: 10, bold: true };
         cell.alignment = { horizontal: "right", vertical: "middle" };
         cell.border = {

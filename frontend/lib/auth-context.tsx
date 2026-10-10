@@ -46,23 +46,39 @@ export function AuthProvider({
   // ============================================================
 
   useEffect(() => {
+    let isMounted = true;
+
     const validateSession = async () => {
       try {
         const storedToken = localStorage.getItem("token");
         const storedUser = localStorage.getItem("user");
 
-        if (storedToken && storedUser) {
-          const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+        if (!storedToken || !storedUser) {
+          if (isMounted) setIsLoading(false);
+          return;
+        }
 
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        try {
           const res = await fetch(`${baseUrl}/api/auth/me`, {
             headers: { Authorization: `Bearer ${storedToken}` },
+            signal: controller.signal,
           });
 
+          clearTimeout(timeoutId);
+
+          if (!isMounted) return;
+
           if (!res.ok) {
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
-            setToken(null);
-            setUser(null);
+            if (res.status === 401 || res.status === 403) {
+              localStorage.removeItem("token");
+              localStorage.removeItem("user");
+              setToken(null);
+              setUser(null);
+            }
             setIsLoading(false);
             return;
           }
@@ -78,21 +94,47 @@ export function AuthProvider({
             }
           } catch {}
 
-          setToken(storedToken);
-          setUser(restoredUser);
+          if (isMounted) {
+            setToken(storedToken);
+            setUser(restoredUser);
+          }
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+
+          if (!isMounted) return;
+
+          if (fetchError instanceof DOMException && fetchError.name === "AbortError") {
+            console.warn("Validasi session timeout, menggunakan data lokal");
+          } else if (fetchError instanceof TypeError && fetchError.message === "Failed to fetch") {
+            console.warn("Backend tidak tersedia, menggunakan data session lokal");
+          } else {
+            console.error("Gagal validasi session:", fetchError);
+          }
+
+          const parsedUser: User = JSON.parse(storedUser);
+          if (isMounted) {
+            setToken(storedToken);
+            setUser(parsedUser);
+          }
         }
       } catch (error) {
         console.error("Gagal membaca session:", error);
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        setToken(null);
-        setUser(null);
+        if (isMounted) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          setToken(null);
+          setUser(null);
+        }
       } finally {
-        setIsLoading(false);
+        if (isMounted) setIsLoading(false);
       }
     };
 
     validateSession();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // ============================================================

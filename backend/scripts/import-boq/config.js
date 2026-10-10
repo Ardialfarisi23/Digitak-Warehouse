@@ -84,7 +84,14 @@ module.exports = {
   },
 
   // Cluster ID overrides (koreksi typo, default kosong)
-  CLUSTER_ID_OVERRIDES: {},
+  CLUSTER_ID_OVERRIDES: {
+    'NET-H-004938': 'NET-H-004398',
+  },
+
+  // Material code overrides (e.g., "In MSP" -> "In MSP")
+  CODE_OVERRIDES: {
+    'In MSP': 'In MSP',
+  },
 
   // Special handling for NET-H-004410 (incomplete cluster)
   NET_H_004410_SKIP_BOQ: true,

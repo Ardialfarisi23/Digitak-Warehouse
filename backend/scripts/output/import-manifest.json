@@ -1,0 +1,1922 @@
+{
+  "timestamp": "2026-10-09T06:15:15.865Z",
+  "user_id": 1,
+  "project_id": 17,
+  "tiket_id": null,
+  "clusters": [
+    {
+      "cluster_id": "NET-H-004396",
+      "cluster_db_id": null,
+      "action": "created"
+    },
+    {
+      "cluster_id": "NET-H-004397",
+      "cluster_db_id": null,
+      "action": "created"
+    },
+    {
+      "cluster_id": "NET-H-004398",
+      "cluster_db_id": null,
+      "action": "created"
+    },
+    {
+      "cluster_id": "NET-H-004399",
+      "cluster_db_id": null,
+      "action": "created"
+    },
+    {
+      "cluster_id": "NET-H-004400",
+      "cluster_db_id": null,
+      "action": "created"
+    },
+    {
+      "cluster_id": "NET-H-004401",
+      "cluster_db_id": null,
+      "action": "created"
+    },
+    {
+      "cluster_id": "NET-H-004402",
+      "cluster_db_id": null,
+      "action": "created"
+    },
+    {
+      "cluster_id": "NET-H-004404",
+      "cluster_db_id": null,
+      "action": "created"
+    },
+    {
+      "cluster_id": "NET-H-004405",
+      "cluster_db_id": null,
+      "action": "created"
+    },
+    {
+      "cluster_id": "NET-H-004406",
+      "cluster_db_id": null,
+      "action": "created"
+    },
+    {
+      "cluster_id": "NET-H-004409",
+      "cluster_db_id": null,
+      "action": "created"
+    },
+    {
+      "cluster_id": "NET-H-004410",
+      "cluster_db_id": null,
+      "action": "created"
+    },
+    {
+      "cluster_id": "MF-H-000141",
+      "cluster_db_id": null,
+      "action": "created"
+    }
+  ],
+  "boqs": [
+    {
+      "cluster_id": "NET-H-004396",
+      "boq_id": 49,
+      "boq_number": "BOQ-2026-0013"
+    },
+    {
+      "cluster_id": "NET-H-004397",
+      "boq_id": 50,
+      "boq_number": "BOQ-2026-0014"
+    },
+    {
+      "cluster_id": "NET-H-004398",
+      "boq_id": 51,
+      "boq_number": "BOQ-2026-0015"
+    },
+    {
+      "cluster_id": "NET-H-004399",
+      "boq_id": 52,
+      "boq_number": "BOQ-2026-0016"
+    },
+    {
+      "cluster_id": "NET-H-004400",
+      "boq_id": 53,
+      "boq_number": "BOQ-2026-0017"
+    },
+    {
+      "cluster_id": "NET-H-004401",
+      "boq_id": 54,
+      "boq_number": "BOQ-2026-0018"
+    },
+    {
+      "cluster_id": "NET-H-004402",
+      "boq_id": 55,
+      "boq_number": "BOQ-2026-0019"
+    },
+    {
+      "cluster_id": "NET-H-004404",
+      "boq_id": 56,
+      "boq_number": "BOQ-2026-0020"
+    },
+    {
+      "cluster_id": "NET-H-004405",
+      "boq_id": 57,
+      "boq_number": "BOQ-2026-0021"
+    },
+    {
+      "cluster_id": "NET-H-004406",
+      "boq_id": 58,
+      "boq_number": "BOQ-2026-0022"
+    },
+    {
+      "cluster_id": "NET-H-004409",
+      "boq_id": 59,
+      "boq_number": "BOQ-2026-0023"
+    },
+    {
+      "cluster_id": "NET-H-004410",
+      "action": "skipped",
+      "reason": "Cluster NET-H-004410 incomplete (hanya BoQ Plan 1 kolom) — BOQ tidak dibuat"
+    },
+    {
+      "cluster_id": "MF-H-000141",
+      "boq_id": 60,
+      "boq_number": "BOQ-2026-0024"
+    }
+  ],
+  "boq_items": [
+    {
+      "boq_id": 49,
+      "barang_id": 39,
+      "boq_item_id": 123
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 41,
+      "boq_item_id": 124
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 56,
+      "boq_item_id": 125
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 1,
+      "boq_item_id": 97
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 2,
+      "boq_item_id": 98
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 3,
+      "boq_item_id": 99
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 4,
+      "boq_item_id": 100
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 9,
+      "boq_item_id": 101
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 14,
+      "boq_item_id": 102
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 15,
+      "boq_item_id": 103
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 16,
+      "boq_item_id": 104
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 18,
+      "boq_item_id": 105
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 19,
+      "boq_item_id": 106
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 20,
+      "boq_item_id": 107
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 21,
+      "boq_item_id": 108
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 22,
+      "boq_item_id": 109
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 23,
+      "boq_item_id": 110
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 25,
+      "boq_item_id": 111
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 26,
+      "boq_item_id": 112
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 27,
+      "boq_item_id": 113
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 29,
+      "boq_item_id": 114
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 30,
+      "boq_item_id": 115
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 31,
+      "boq_item_id": 116
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 32,
+      "boq_item_id": 117
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 33,
+      "boq_item_id": 118
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 34,
+      "boq_item_id": 119
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 35,
+      "boq_item_id": 120
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 36,
+      "boq_item_id": 121
+    },
+    {
+      "boq_id": 49,
+      "barang_id": 38,
+      "boq_item_id": 122
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 1,
+      "boq_item_id": 126
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 2,
+      "boq_item_id": 127
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 3,
+      "boq_item_id": 128
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 4,
+      "boq_item_id": 129
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 6,
+      "boq_item_id": 130
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 9,
+      "boq_item_id": 131
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 14,
+      "boq_item_id": 132
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 15,
+      "boq_item_id": 133
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 16,
+      "boq_item_id": 134
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 18,
+      "boq_item_id": 135
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 19,
+      "boq_item_id": 136
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 20,
+      "boq_item_id": 137
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 21,
+      "boq_item_id": 138
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 22,
+      "boq_item_id": 139
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 23,
+      "boq_item_id": 140
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 24,
+      "boq_item_id": 141
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 25,
+      "boq_item_id": 142
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 26,
+      "boq_item_id": 143
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 27,
+      "boq_item_id": 144
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 29,
+      "boq_item_id": 145
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 30,
+      "boq_item_id": 146
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 31,
+      "boq_item_id": 147
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 32,
+      "boq_item_id": 148
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 33,
+      "boq_item_id": 149
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 34,
+      "boq_item_id": 150
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 35,
+      "boq_item_id": 151
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 36,
+      "boq_item_id": 152
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 38,
+      "boq_item_id": 153
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 39,
+      "boq_item_id": 154
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 40,
+      "boq_item_id": 155
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 41,
+      "boq_item_id": 156
+    },
+    {
+      "boq_id": 50,
+      "barang_id": 56,
+      "boq_item_id": 157
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 1,
+      "boq_item_id": 158
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 2,
+      "boq_item_id": 159
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 3,
+      "boq_item_id": 160
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 4,
+      "boq_item_id": 161
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 6,
+      "boq_item_id": 162
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 9,
+      "boq_item_id": 163
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 14,
+      "boq_item_id": 164
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 15,
+      "boq_item_id": 165
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 16,
+      "boq_item_id": 166
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 18,
+      "boq_item_id": 167
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 19,
+      "boq_item_id": 168
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 20,
+      "boq_item_id": 169
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 21,
+      "boq_item_id": 170
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 22,
+      "boq_item_id": 171
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 23,
+      "boq_item_id": 172
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 25,
+      "boq_item_id": 173
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 26,
+      "boq_item_id": 174
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 27,
+      "boq_item_id": 175
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 29,
+      "boq_item_id": 176
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 30,
+      "boq_item_id": 177
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 31,
+      "boq_item_id": 178
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 32,
+      "boq_item_id": 179
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 33,
+      "boq_item_id": 180
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 34,
+      "boq_item_id": 181
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 35,
+      "boq_item_id": 182
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 36,
+      "boq_item_id": 183
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 38,
+      "boq_item_id": 184
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 39,
+      "boq_item_id": 185
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 40,
+      "boq_item_id": 186
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 41,
+      "boq_item_id": 187
+    },
+    {
+      "boq_id": 51,
+      "barang_id": 56,
+      "boq_item_id": 188
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 1,
+      "boq_item_id": 189
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 2,
+      "boq_item_id": 190
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 3,
+      "boq_item_id": 191
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 4,
+      "boq_item_id": 192
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 6,
+      "boq_item_id": 193
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 9,
+      "boq_item_id": 194
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 14,
+      "boq_item_id": 195
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 15,
+      "boq_item_id": 196
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 16,
+      "boq_item_id": 197
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 18,
+      "boq_item_id": 198
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 19,
+      "boq_item_id": 199
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 20,
+      "boq_item_id": 200
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 21,
+      "boq_item_id": 201
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 22,
+      "boq_item_id": 202
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 23,
+      "boq_item_id": 203
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 25,
+      "boq_item_id": 204
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 26,
+      "boq_item_id": 205
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 27,
+      "boq_item_id": 206
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 29,
+      "boq_item_id": 207
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 30,
+      "boq_item_id": 208
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 31,
+      "boq_item_id": 209
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 32,
+      "boq_item_id": 210
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 33,
+      "boq_item_id": 211
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 34,
+      "boq_item_id": 212
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 35,
+      "boq_item_id": 213
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 36,
+      "boq_item_id": 214
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 38,
+      "boq_item_id": 215
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 39,
+      "boq_item_id": 216
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 40,
+      "boq_item_id": 217
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 41,
+      "boq_item_id": 218
+    },
+    {
+      "boq_id": 52,
+      "barang_id": 56,
+      "boq_item_id": 219
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 1,
+      "boq_item_id": 220
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 2,
+      "boq_item_id": 221
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 3,
+      "boq_item_id": 222
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 4,
+      "boq_item_id": 223
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 9,
+      "boq_item_id": 224
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 14,
+      "boq_item_id": 225
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 15,
+      "boq_item_id": 226
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 16,
+      "boq_item_id": 227
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 19,
+      "boq_item_id": 228
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 20,
+      "boq_item_id": 229
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 21,
+      "boq_item_id": 230
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 22,
+      "boq_item_id": 231
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 23,
+      "boq_item_id": 232
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 24,
+      "boq_item_id": 233
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 26,
+      "boq_item_id": 234
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 27,
+      "boq_item_id": 235
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 29,
+      "boq_item_id": 236
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 30,
+      "boq_item_id": 237
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 31,
+      "boq_item_id": 238
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 32,
+      "boq_item_id": 239
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 33,
+      "boq_item_id": 240
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 34,
+      "boq_item_id": 241
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 35,
+      "boq_item_id": 242
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 36,
+      "boq_item_id": 243
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 37,
+      "boq_item_id": 244
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 39,
+      "boq_item_id": 245
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 40,
+      "boq_item_id": 246
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 41,
+      "boq_item_id": 247
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 52,
+      "boq_item_id": 248
+    },
+    {
+      "boq_id": 53,
+      "barang_id": 56,
+      "boq_item_id": 249
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 1,
+      "boq_item_id": 250
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 2,
+      "boq_item_id": 251
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 3,
+      "boq_item_id": 252
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 6,
+      "boq_item_id": 253
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 14,
+      "boq_item_id": 254
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 15,
+      "boq_item_id": 255
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 16,
+      "boq_item_id": 256
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 19,
+      "boq_item_id": 257
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 20,
+      "boq_item_id": 258
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 21,
+      "boq_item_id": 259
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 22,
+      "boq_item_id": 260
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 24,
+      "boq_item_id": 261
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 25,
+      "boq_item_id": 262
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 26,
+      "boq_item_id": 263
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 27,
+      "boq_item_id": 264
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 29,
+      "boq_item_id": 265
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 30,
+      "boq_item_id": 266
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 31,
+      "boq_item_id": 267
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 32,
+      "boq_item_id": 268
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 33,
+      "boq_item_id": 269
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 34,
+      "boq_item_id": 270
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 35,
+      "boq_item_id": 271
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 36,
+      "boq_item_id": 272
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 38,
+      "boq_item_id": 273
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 39,
+      "boq_item_id": 274
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 40,
+      "boq_item_id": 275
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 41,
+      "boq_item_id": 276
+    },
+    {
+      "boq_id": 54,
+      "barang_id": 56,
+      "boq_item_id": 277
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 1,
+      "boq_item_id": 278
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 2,
+      "boq_item_id": 279
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 3,
+      "boq_item_id": 280
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 4,
+      "boq_item_id": 281
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 6,
+      "boq_item_id": 282
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 9,
+      "boq_item_id": 283
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 14,
+      "boq_item_id": 284
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 15,
+      "boq_item_id": 285
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 16,
+      "boq_item_id": 286
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 18,
+      "boq_item_id": 287
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 19,
+      "boq_item_id": 288
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 20,
+      "boq_item_id": 289
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 21,
+      "boq_item_id": 290
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 22,
+      "boq_item_id": 291
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 23,
+      "boq_item_id": 292
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 25,
+      "boq_item_id": 293
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 26,
+      "boq_item_id": 294
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 27,
+      "boq_item_id": 295
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 29,
+      "boq_item_id": 296
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 30,
+      "boq_item_id": 297
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 31,
+      "boq_item_id": 298
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 32,
+      "boq_item_id": 299
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 33,
+      "boq_item_id": 300
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 34,
+      "boq_item_id": 301
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 35,
+      "boq_item_id": 302
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 36,
+      "boq_item_id": 303
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 38,
+      "boq_item_id": 304
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 39,
+      "boq_item_id": 305
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 40,
+      "boq_item_id": 306
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 41,
+      "boq_item_id": 307
+    },
+    {
+      "boq_id": 55,
+      "barang_id": 56,
+      "boq_item_id": 308
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 1,
+      "boq_item_id": 309
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 2,
+      "boq_item_id": 310
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 3,
+      "boq_item_id": 311
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 4,
+      "boq_item_id": 312
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 6,
+      "boq_item_id": 313
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 9,
+      "boq_item_id": 314
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 14,
+      "boq_item_id": 315
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 15,
+      "boq_item_id": 316
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 16,
+      "boq_item_id": 317
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 18,
+      "boq_item_id": 318
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 19,
+      "boq_item_id": 319
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 20,
+      "boq_item_id": 320
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 21,
+      "boq_item_id": 321
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 22,
+      "boq_item_id": 322
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 23,
+      "boq_item_id": 323
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 25,
+      "boq_item_id": 324
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 26,
+      "boq_item_id": 325
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 27,
+      "boq_item_id": 326
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 29,
+      "boq_item_id": 327
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 30,
+      "boq_item_id": 328
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 31,
+      "boq_item_id": 329
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 32,
+      "boq_item_id": 330
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 33,
+      "boq_item_id": 331
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 34,
+      "boq_item_id": 332
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 35,
+      "boq_item_id": 333
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 36,
+      "boq_item_id": 334
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 38,
+      "boq_item_id": 335
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 39,
+      "boq_item_id": 336
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 40,
+      "boq_item_id": 337
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 41,
+      "boq_item_id": 338
+    },
+    {
+      "boq_id": 56,
+      "barang_id": 56,
+      "boq_item_id": 339
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 1,
+      "boq_item_id": 340
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 2,
+      "boq_item_id": 341
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 3,
+      "boq_item_id": 342
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 4,
+      "boq_item_id": 343
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 6,
+      "boq_item_id": 344
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 9,
+      "boq_item_id": 345
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 14,
+      "boq_item_id": 346
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 15,
+      "boq_item_id": 347
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 16,
+      "boq_item_id": 348
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 20,
+      "boq_item_id": 349
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 21,
+      "boq_item_id": 350
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 22,
+      "boq_item_id": 351
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 25,
+      "boq_item_id": 352
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 26,
+      "boq_item_id": 353
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 27,
+      "boq_item_id": 354
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 29,
+      "boq_item_id": 355
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 30,
+      "boq_item_id": 356
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 31,
+      "boq_item_id": 357
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 32,
+      "boq_item_id": 358
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 33,
+      "boq_item_id": 359
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 34,
+      "boq_item_id": 360
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 35,
+      "boq_item_id": 361
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 36,
+      "boq_item_id": 362
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 38,
+      "boq_item_id": 363
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 39,
+      "boq_item_id": 364
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 40,
+      "boq_item_id": 365
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 41,
+      "boq_item_id": 366
+    },
+    {
+      "boq_id": 57,
+      "barang_id": 56,
+      "boq_item_id": 367
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 1,
+      "boq_item_id": 368
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 2,
+      "boq_item_id": 369
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 3,
+      "boq_item_id": 370
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 4,
+      "boq_item_id": 371
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 6,
+      "boq_item_id": 372
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 7,
+      "boq_item_id": 373
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 8,
+      "boq_item_id": 374
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 9,
+      "boq_item_id": 375
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 14,
+      "boq_item_id": 376
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 15,
+      "boq_item_id": 377
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 16,
+      "boq_item_id": 378
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 20,
+      "boq_item_id": 379
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 21,
+      "boq_item_id": 380
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 22,
+      "boq_item_id": 381
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 23,
+      "boq_item_id": 382
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 25,
+      "boq_item_id": 383
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 26,
+      "boq_item_id": 384
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 27,
+      "boq_item_id": 385
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 29,
+      "boq_item_id": 386
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 30,
+      "boq_item_id": 387
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 31,
+      "boq_item_id": 388
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 32,
+      "boq_item_id": 389
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 33,
+      "boq_item_id": 390
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 34,
+      "boq_item_id": 391
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 35,
+      "boq_item_id": 392
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 36,
+      "boq_item_id": 393
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 38,
+      "boq_item_id": 394
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 39,
+      "boq_item_id": 395
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 41,
+      "boq_item_id": 396
+    },
+    {
+      "boq_id": 58,
+      "barang_id": 56,
+      "boq_item_id": 397
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 1,
+      "boq_item_id": 398
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 2,
+      "boq_item_id": 399
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 3,
+      "boq_item_id": 400
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 4,
+      "boq_item_id": 401
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 6,
+      "boq_item_id": 402
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 9,
+      "boq_item_id": 403
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 14,
+      "boq_item_id": 404
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 15,
+      "boq_item_id": 405
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 16,
+      "boq_item_id": 406
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 20,
+      "boq_item_id": 407
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 21,
+      "boq_item_id": 408
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 22,
+      "boq_item_id": 409
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 23,
+      "boq_item_id": 410
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 24,
+      "boq_item_id": 411
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 25,
+      "boq_item_id": 412
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 26,
+      "boq_item_id": 413
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 27,
+      "boq_item_id": 414
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 29,
+      "boq_item_id": 415
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 30,
+      "boq_item_id": 416
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 31,
+      "boq_item_id": 417
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 32,
+      "boq_item_id": 418
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 33,
+      "boq_item_id": 419
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 34,
+      "boq_item_id": 420
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 35,
+      "boq_item_id": 421
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 36,
+      "boq_item_id": 422
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 38,
+      "boq_item_id": 423
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 39,
+      "boq_item_id": 424
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 40,
+      "boq_item_id": 425
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 41,
+      "boq_item_id": 426
+    },
+    {
+      "boq_id": 59,
+      "barang_id": 56,
+      "boq_item_id": 427
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 1,
+      "boq_item_id": 428
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 3,
+      "boq_item_id": 429
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 9,
+      "boq_item_id": 430
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 10,
+      "boq_item_id": 431
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 11,
+      "boq_item_id": 432
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 15,
+      "boq_item_id": 433
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 16,
+      "boq_item_id": 434
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 17,
+      "boq_item_id": 435
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 27,
+      "boq_item_id": 436
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 28,
+      "boq_item_id": 437
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 29,
+      "boq_item_id": 438
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 30,
+      "boq_item_id": 439
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 42,
+      "boq_item_id": 440
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 43,
+      "boq_item_id": 441
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 45,
+      "boq_item_id": 442
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 46,
+      "boq_item_id": 443
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 47,
+      "boq_item_id": 444
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 48,
+      "boq_item_id": 445
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 49,
+      "boq_item_id": 446
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 50,
+      "boq_item_id": 447
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 51,
+      "boq_item_id": 448
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 52,
+      "boq_item_id": 449
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 53,
+      "boq_item_id": 450
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 54,
+      "boq_item_id": 451
+    },
+    {
+      "boq_id": 60,
+      "barang_id": 55,
+      "boq_item_id": 452
+    }
+  ]
+}

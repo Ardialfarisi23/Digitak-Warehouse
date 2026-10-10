@@ -269,12 +269,12 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
     { key: "deskripsi", label: "Deskripsi", type: "textarea" },
   ],
   clusters: [
-    { key: "project_id", label: "Project", type: "select", required: true, options: [] },
+    { key: "project_id", label: "Pilih Nama Project", type: "select", required: true, options: [] },
     { key: "nama_cluster", label: "Nama Cluster", type: "text", required: true },
-    { key: "cluster_type", label: "Tipe Cluster", type: "text" },
+    { key: "cluster_id", label: "Cluster ID", type: "text", required: true },
     { key: "alamat_lengkap", label: "Alamat Lengkap", type: "textarea" },
     { key: "homepass_plan", label: "Homepass Plan", type: "number" },
-    { key: "cluster_id", label: "Cluster ID", type: "text", required: true },
+    { key: "cluster_type", label: "Tipe Cluster", type: "text" },
     { key: "status_aktif", label: "Status", type: "select", required: false, options: [
       { value: "true", label: "Aktif" },
       { value: "false", label: "Non-Aktif" },
@@ -837,15 +837,6 @@ function FormModal({
       });
     }
 
-    if (tab === "clusters") {
-      return formFields.filter((field) => {
-        if (field.key === "project_id") {
-          return form.tipe === "dadakan";
-        }
-        return true;
-      });
-    }
-
     return formFields;
   }, [tab, formFields, form.tipe, mode]);
 
@@ -1112,6 +1103,10 @@ function FormModal({
                   <p className="mb-2 text-[11px] text-slate-400">Cluster ID tidak dapat diubah karena menjadi kunci relasi.</p>
                 )}
 
+                {mode === "edit" && tab === "clusters" && field.key === "project_id" && (
+                  <p className="mb-2 text-[11px] text-slate-400">Project tidak dapat diubah.</p>
+                )}
+
                 {mode === "edit" && field.key === "tipe" && record?.dapat_ubah_tipe === false && (
                   <p className="mb-2 text-[11px] text-amber-600">Tipe tidak dapat diubah karena gudang ini sudah memiliki stok atau lebih dari 1 zona.</p>
                 )}
@@ -1120,7 +1115,7 @@ function FormModal({
                   <select
                     value={String(form[field.key] ?? "")}
                     onChange={(e) => handleChange(field.key, e.target.value)}
-                    disabled={field.key === "gudang_id" && form.posisi === "Supervisor" || field.key === "tipe" && mode === "edit" && record?.dapat_ubah_tipe === false}
+                    disabled={mode === "edit" && tab === "clusters" && field.key === "project_id" || field.key === "gudang_id" && form.posisi === "Supervisor" || field.key === "tipe" && mode === "edit" && record?.dapat_ubah_tipe === false}
                     className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400 disabled:opacity-60 disabled:bg-slate-50 disabled:cursor-not-allowed"
                   >
                     <option value="">Pilih {field.label.toLowerCase()}</option>

@@ -20,16 +20,23 @@ function normalizeNumber(val) {
 function normalizeMaterialCode(val) {
   if (!val) return null;
   let str = String(val).trim();
-  // Handle "In MSP" or similar non-codes
-  if (str.toLowerCase().includes('in msp') || str.toLowerCase().includes('in-house')) {
-    return null;
+  
+  // Apply code overrides first
+  let overridden = false;
+  if (config.CODE_OVERRIDES && config.CODE_OVERRIDES[str]) {
+    str = config.CODE_OVERRIDES[str];
+    overridden = true;
   }
+  
   // Fix missing closing bracket
   if (str.startsWith('[') && !str.endsWith(']')) {
     str = str + ']';
   }
-  // Keep brackets, remove only spaces and dots
-  return str.replace(/[\s.]/g, '');
+  // Keep brackets, remove only spaces and dots (but not for overridden codes which should match DB exactly)
+  if (!overridden) {
+    str = str.replace(/[\s.]/g, '');
+  }
+  return str;
 }
 
 function normalizeClusterName(name) {
@@ -162,12 +169,6 @@ async function parseExcel(filePath = config.EXCEL_FILE) {
 
     // Skip jika material code dan name kosong
     if (!materialCode && !materialName) continue;
-
-    // Skip "In MSP" - not a real material code
-    if (materialCode === 'InMSP' || (materialName && materialName.toLowerCase().includes('in-house msp'))) {
-      warnings.push(`Row ${row}: Skipping non-material "${materialCode}" (${materialName})`);
-      continue;
-    }
 
     if (materialCode) {
       materialCodes.add(materialCode);

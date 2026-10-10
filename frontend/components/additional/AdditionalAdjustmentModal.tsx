@@ -23,6 +23,8 @@ type AdditionalAdjustmentModalProps = {
   defaultProjectId?: string;
   barangId: string;
   barangNama: string;
+  clusterId?: string;
+  clusterNama?: string;
 };
 
 export function AdditionalAdjustmentModal({
@@ -33,6 +35,8 @@ export function AdditionalAdjustmentModal({
   defaultProjectId,
   barangId,
   barangNama,
+  clusterId,
+  clusterNama,
 }: AdditionalAdjustmentModalProps) {
   const { get, post } = useApi();
   const { user } = useAuth();
@@ -76,9 +80,13 @@ export function AdditionalAdjustmentModal({
     setIsLoadingDetail(true);
     setError(null);
 
-    get(
-      `/api/additional-adjustments?project_id=${encodeURIComponent(effectiveProjectId)}&barang_id=${encodeURIComponent(barangId)}`
-    )
+    const params = new URLSearchParams({
+      project_id: effectiveProjectId,
+      barang_id: barangId,
+    });
+    if (clusterId) params.set("cluster_id", clusterId);
+
+    get(`/api/additional-adjustments?${params.toString()}`)
       .then(async (res) => {
         if (!res.ok) {
           const json = await res.clone().json().catch(() => null);
@@ -138,12 +146,15 @@ export function AdditionalAdjustmentModal({
     setIsSaving(true);
     setError(null);
     try {
-      const res = await post("/api/additional-adjustments", {
+      const body: Record<string, any> = {
         project_id: Number(effectiveProjectId),
         barang_id: Number(barangId),
         qty: qtyNumber,
         alasan: alasan.trim(),
-      });
+      };
+      if (clusterId) body.cluster_id = clusterId;
+
+      const res = await post("/api/additional-adjustments", body);
       const json = await res.json();
       if (!res.ok) {
         throw new Error(json?.message || "Gagal menyimpan penyesuaian additional.");
@@ -174,6 +185,11 @@ export function AdditionalAdjustmentModal({
             <p className="mt-1 text-xs text-slate-500">
               Barang: {barangNama || barangId}
             </p>
+            {clusterNama && (
+              <p className="mt-0.5 text-xs text-indigo-600 font-medium">
+                Cluster: {clusterNama}
+              </p>
+            )}
           </div>
           <button
             type="button"

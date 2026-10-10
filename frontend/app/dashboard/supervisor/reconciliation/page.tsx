@@ -7,6 +7,8 @@ import { Search, PackageCheck, PackageMinus, Package, ClipboardCheck, X, AlertTr
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { AdditionalAdjustmentModal } from "@/components/additional/AdditionalAdjustmentModal";
+import { RemainsNoteForm } from "@/components/reconciliation/RemainsNoteForm";
+import { RemainsNoteBadge } from "@/components/reconciliation/RemainsNoteBadge";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -47,6 +49,8 @@ interface ReconciliationRecord {
   approved_return_qty: number;
   remains: number;
   status: "sesuai" | "perhatian" | "belum_ada_data";
+  remains_note: string | null;
+  remains_note_updated_at: string | null;
 }
 
 interface HistoryRecord {
@@ -126,6 +130,7 @@ export default function SupervisorReconciliationPage() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [projectFilter, setProjectFilter] = useState("all");
+  const [clusterFilter, setClusterFilter] = useState("all");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedRecord, setSelectedRecord] = useState<ReconciliationRecord | null>(null);
@@ -212,6 +217,8 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
           approved_return_qty: approvedReturnQty,
           remains,
           status: recStatus,
+          remains_note: item.remains_note ?? null,
+          remains_note_updated_at: item.remains_note_updated_at ?? null,
         };
       });
 
@@ -295,6 +302,12 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
+  useEffect(() => {
+    if (projectFilter !== "all" && clusterFilter !== "all") {
+      setClusterFilter("all");
+    }
+  }, [projectFilter]);
+
   const projectOptions = useMemo(() => {
     const baseRecords = adjustmentRecord
       ? records.filter((item) => {
@@ -314,13 +327,22 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
     return Array.from(new Set(records.map((item) => item.gudang_nama).filter(Boolean)));
   }, [records]);
 
+  const clusterOptions = useMemo(() => {
+    if (projectFilter === "all") return [];
+    const projectRecords = records.filter((r) => r.project_id === projectFilter);
+    return Array.from(
+      new Map(projectRecords.map((item) => [item.cluster_id, item.nama_cluster || "-"])).entries()
+    ).sort(([, a], [, b]) => a.localeCompare(b));
+  }, [records, projectFilter]);
+
   const filteredRecords = useMemo(() => {
     return records.filter((record) => {
       const matchesProject = projectFilter === "all" || record.project_id === projectFilter;
+      const matchesCluster = clusterFilter === "all" || record.cluster_id === clusterFilter;
       const matchesWarehouse = warehouseFilter === "all" || record.gudang_nama === warehouseFilter;
-      return matchesProject && matchesWarehouse;
+      return matchesProject && matchesCluster && matchesWarehouse;
     });
-  }, [records, projectFilter, warehouseFilter]);
+  }, [records, projectFilter, clusterFilter, warehouseFilter]);
 
   const filteredHistoryRecords = useMemo(() => {
     return historyRecords.filter((item) => {
@@ -333,7 +355,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
   }, [historyRecords, startDate, endDate]);
 
   const summary = useMemo(() => {
-    return records.reduce(
+    return filteredRecords.reduce(
       (total, item) => {
         total.boq += item.boq;
         total.additional += item.additional;
@@ -344,7 +366,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
       },
       { boq: 0, additional: 0, mos: 0, used: 0, remains: 0 }
     );
-  }, [records]);
+  }, [filteredRecords]);
 
   const totalPerhatian = useMemo(() => filteredRecords.filter((r) => r.status === "perhatian").length, [filteredRecords]);
 
@@ -455,6 +477,28 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                   </option>
                 ))}
               </select>
+
+              {projectFilter !== "all" && (
+                <select
+                  value={clusterFilter}
+                  onChange={(e) => setClusterFilter(e.target.value)}
+                  className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+                  disabled={clusterOptions.length === 0}
+                >
+                  <option value="all">Semua Cluster</option>
+                  {clusterOptions.length > 0 ? (
+                    clusterOptions.map(([id, nama]) => (
+                      <option key={id} value={id}>
+                        {nama}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="" disabled>
+                      Tidak ada cluster
+                    </option>
+                  )}
+                </select>
+              )}
 
               <select value={warehouseFilter} onChange={(e) => setWarehouseFilter(e.target.value)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400">
                 <option value="all">Semua Gudang</option>
@@ -567,9 +611,12 @@ filteredRecords.map((record, index) => {
                                <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos)}</td>
                                <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.used)}</td>
 
-                             <td className="px-6 py-4 text-right">
-                               <span className={record.remains < 0 ? "font-semibold text-rose-600" : "font-semibold text-emerald-700"}>{formatNumber(record.remains)}</span>
-                             </td>
+<td className="px-6 py-4 text-right">
+                                <span className="flex items-center justify-end gap-1">
+                                  <span className={record.remains < 0 ? "font-semibold text-rose-600" : "font-semibold text-emerald-700"}>{formatNumber(record.remains)}</span>
+                                  <RemainsNoteBadge note={record.remains_note} />
+                                </span>
+                              </td>
 
                              <td className="px-6 py-4">
                                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
@@ -797,16 +844,23 @@ filteredRecords.map((record, index) => {
 
 <div>
                 <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Rekonsiliasi</p>
-                   <div className="space-y-2">
-                     <DetailRow label="BOQ" value={selectedRecord.boq} />
-                     <DetailRow label="Additional" value={selectedRecord.additional} />
-                     <DetailRow label="MOS" value={selectedRecord.mos} />
-                     <DetailRow label="Used" value={selectedRecord.used} />
-                     <div className="border-t border-slate-100 pt-2">
-                       <DetailRow label="Remains" value={selectedRecord.remains} highlight />
-                     </div>
-                   </div>
-             </div>
+                    <div className="space-y-2">
+                      <DetailRow label="BOQ" value={selectedRecord.boq} />
+                      <DetailRow label="Additional" value={selectedRecord.additional} />
+                      <DetailRow label="MOS" value={selectedRecord.mos} />
+                      <DetailRow label="Used" value={selectedRecord.used} />
+                      <div className="border-t border-slate-100 pt-2">
+                        <DetailRow label="Remains" value={selectedRecord.remains} highlight />
+                      </div>
+                    </div>
+              </div>
+
+              <RemainsNoteForm
+                record={selectedRecord}
+                onClose={() => {}}
+                onSuccess={fetchReconciliation}
+                isClusterMode={false}
+              />
 
               <div>
                 <p className="text-xs font-medium text-slate-400">Status Rekonsiliasi</p>
@@ -836,6 +890,8 @@ filteredRecords.map((record, index) => {
           defaultProjectId={adjustmentRecord.project_id}
           barangId={adjustmentRecord.barang_id}
           barangNama={adjustmentRecord.nama_barang}
+          clusterId={adjustmentRecord.cluster_id}
+          clusterNama={adjustmentRecord.nama_cluster}
         />
       )}
     </div>

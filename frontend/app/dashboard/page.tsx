@@ -323,6 +323,24 @@ function DashboardPageContent() {
     fetchDashboardData();
   }, [get]);
 
+  // Refetch project summary when window gains focus (e.g., after creating project in another tab)
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        fetchDashboardData();
+      }
+    };
+    const onFocus = () => {
+      fetchDashboardData();
+    };
+    window.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [get]);
+
   useEffect(() => {
     const fetchActivity = async () => {
       setIsLoadingActivity(true);
@@ -457,7 +475,10 @@ function DashboardPageContent() {
         : 0;
     return { ...p, hardwareOnSite, used, remains, progress };
   });
-  const activeProjectRows = projectRows.filter((p) => p.statusBoq === "Aktif");
+  // Backend sudah memfilter status_aktif: true, dan statusBoq hanya punya 3 nilai:
+// "Aktif" (ada BOQ aktif), "Draft" (hanya BOQ draft/selesai), "Belum Ada" (tanpa BOQ).
+// Oleh karena itu, tampilkan semua projectRows tanpa filter tambahan.
+const activeProjectRows = projectRows;
 
   const filteredProjects = activeProjectRows.filter((p) =>
     `${p.projectName} ${p.area} ${p.clusterLabel}`
@@ -662,11 +683,11 @@ function DashboardPageContent() {
   };
 
   return (
-    <div className={`flex gap-4 sm:gap-6 text-slate-800`}>
+    <div className={`flex flex-col gap-4 sm:gap-6 lg:flex-row text-slate-800`}>
       {/* KONTEN UTAMA (KIRI) */}
-      <div className="flex-1 space-y-6">
+      <div className="flex-1 space-y-6 min-w-0 w-full">
         <header>
-          <h1 className="text-2xl font-bold text-slate-900">{greeting}</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">{greeting}</h1>
           <p className="mt-1 text-sm text-slate-400">
             Pantau kondisi gudang, status BOQ, dan persetujuan outbound dalam satu
             tampilan.
@@ -877,7 +898,7 @@ function DashboardPageContent() {
       </div>
 
       {/* KOLOM KANAN */}
-      <aside className="w-80 space-y-4">
+      <aside className="w-full lg:w-80 lg:shrink-0 space-y-4">
         {/* 4b. REKONSILIASI HARDWARE RINGKAS */}
         <section className="rounded-3xl border border-slate-100 bg-white p-6 shadow-xs">
           <h2 className="text-sm font-bold text-slate-900">

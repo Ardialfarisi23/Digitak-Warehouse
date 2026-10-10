@@ -49,6 +49,27 @@ const FALLBACK_ACTIVITY_LOG: ActivityLogItem[] = [
   { auditId: "fb-2", time: "10:15 WIB", activity: "Scan Inbound Pallet A", actor: "Budi", result: "Selesai", resultTone: "bg-emerald-100 text-emerald-700" },
 ];
 
+type ProjectApiResponse = {
+  project_id?: string | number;
+  projectId?: string | number;
+  projectName?: string;
+  nama_project?: string;
+  title?: string;
+  clusterId?: string;
+  cluster_id?: string;
+  clusterLabel?: string;
+  area?: string;
+  statusBoq?: string;
+  hardwareOnSite?: string | number;
+  mos?: string | number;
+  boq?: string | number;
+  additional?: string | number;
+  used?: string | number;
+  remains?: string | number;
+  status?: string;
+  progress?: string | number;
+};
+
 type TicketReconciliation = {
   ticketCode: string;
   projectName: string;
@@ -60,6 +81,23 @@ type TicketReconciliation = {
   totalUnit: string;
   status: string;
   items: number;
+};
+
+type ProjectSummaryRow = {
+  projectId: number;
+  projectName: string;
+  clusterId: string | null;
+  clusterLabel: string;
+  area: string;
+  statusBoq: string;
+  hardwareOnSite: number;
+  mos: number;
+  boq: number;
+  additional: number;
+  used: number;
+  remains: number;
+  status: "sesuai" | "perhatian" | "belum_ada_data";
+  progress: number;
 };
 
 export type WarehouseAssessment = "CUKUP" | "MENDEKATI_PENUH" | "TIDAK_CUKUP" | null;
@@ -102,6 +140,7 @@ export type SupervisorDashboardReturn = {
   approvalList: ApprovalItem[];
   activityLog: ActivityLogItem[];
   ticketReconciliation: TicketReconciliation[];
+  projectSummary: ProjectSummaryRow[];
   metrics: SupervisorMetrics;
   queue: SupervisorQueue;
   assessment: WarehouseAssessment;
@@ -215,6 +254,7 @@ export function useSupervisorDashboard() {
   const fetchDashboardDataRef = useRef<((warehouseId: string, projectId: string) => Promise<void>) | null>(null);
   const [activityLog, setActivityLog] = useState<ActivityLogItem[]>(FALLBACK_ACTIVITY_LOG);
   const [ticketReconciliation, setTicketReconciliation] = useState<TicketReconciliation[]>([]);
+  const [projectSummary, setProjectSummary] = useState<ProjectSummaryRow[]>([]);
   const [metrics, setMetrics] = useState<SupervisorMetrics>(FALLBACK_METRICS);
   const [queue, setQueue] = useState<SupervisorQueue>(FALLBACK_QUEUE);
   const [assessment, setAssessment] = useState<WarehouseAssessment>(null);
@@ -573,6 +613,25 @@ export function useSupervisorDashboard() {
           const arr = Array.isArray(json?.data) ? json.data : [];
           if (arr.length) {
             setMetrics((prev) => ({ ...prev, activeProjects: arr.length }));
+
+            // Parse project summary data from the same response
+            const mapped: ProjectSummaryRow[] = arr.map((p: ProjectApiResponse) => ({
+              projectId: Number(p.project_id || p.projectId || 0),
+              projectName: p.projectName || p.nama_project || p.title || "Project",
+              clusterId: p.clusterId || p.cluster_id || null,
+              clusterLabel: p.clusterLabel || (p.clusterId || p.cluster_id ? `RW ${p.clusterId || p.cluster_id}` : "-"),
+              area: p.area || "-",
+              statusBoq: p.statusBoq || "Belum Ada",
+              hardwareOnSite: Number(p.hardwareOnSite || p.mos || 0),
+              mos: Number(p.mos || p.hardwareOnSite || 0),
+              boq: Number(p.boq || 0),
+              additional: Number(p.additional || 0),
+              used: Number(p.used || 0),
+              remains: Number(p.remains || 0),
+              status: p.status || "belum_ada_data",
+              progress: Number(p.progress || 0),
+            }));
+            setProjectSummary(mapped);
           }
         }
       }
@@ -721,6 +780,7 @@ export function useSupervisorDashboard() {
     approvalList,
     activityLog,
     ticketReconciliation,
+    projectSummary,
     metrics,
     queue,
     assessment,

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Plus_Jakarta_Sans } from "next/font/google";
+import TablePagination from "@/components/TablePagination";
 import {
   ClipboardList,
   ClipboardCheck,
@@ -260,6 +261,7 @@ export default function BoqPage() {
 
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 25;
+  const boqTableRef = useRef<HTMLDivElement>(null);
   const [areas, setAreas] = useState<string[]>([]);
   const [items, setItems] = useState<{ id: string; kode_perangkat: string; nama_barang: string; satuan?: { kode_satuan: string } }[]>([]);
   const [itemSearch, setItemSearch] = useState("");
@@ -1114,7 +1116,7 @@ export default function BoqPage() {
         </div>
 
         {/* 5. Tabel BOQ */}
-        <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div ref={boqTableRef} className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm md:min-w-full">
               <thead>
@@ -1345,6 +1347,15 @@ export default function BoqPage() {
               </tbody>
             </table>
           </div>
+          <TablePagination
+            page={safePage}
+            pageSize={PAGE_SIZE}
+            total={boqs.length}
+            onPageChange={(p: number) => {
+              setPage(p);
+              boqTableRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+            }}
+          />
         </div>
 
         {/* Create/Edit Modal — "Input BOQ dari Email" */}

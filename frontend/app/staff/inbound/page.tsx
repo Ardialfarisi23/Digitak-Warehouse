@@ -28,20 +28,8 @@ const STATUS_META: Record<InboundStatus, { label: string; tone: string }> = {
 
 interface InboundItem {
   item_id: number;
+  nama_barang?: string;
   qty: number;
-  qty_diterima?: number | string | null;
-  qty_ditolak?: number | string | null;
-  alasan_penolakan?: string | null;
-  kondisi?: string | null;
-  serial_number?: string | null;
-  catatan?: string | null;
-  is_di_luar_boq?: boolean;
-  satuan?: { kode_satuan?: string } | null;
-  barang?: {
-    kode_perangkat?: string;
-    nama_barang?: string;
-    satuan_default?: { kode_satuan?: string };
-  } | null;
 }
 
 interface InboundSuratJalan {
@@ -49,7 +37,6 @@ interface InboundSuratJalan {
   nomor_surat_jalan: string;
   status: InboundStatus;
   created_at: string;
-  tanggal?: string;
   created_by?: string | number;
   creator?: {
     user_id?: string | number;
@@ -59,22 +46,8 @@ interface InboundSuratJalan {
   items: InboundItem[];
   tipe_pengirim?: "internal" | "external";
   supplier?: { nama: string; kode: string };
-  pengirim_eksternal_nama?: string | null;
   gudang_asal?: { nama_gudang: string };
   gudang_tujuan?: { nama_gudang: string };
-  project?: { nama_project?: string } | null;
-  pic_pemohon_nama?: string | null;
-  kendaraan_teks?: string | null;
-  no_polisi_teks?: string | null;
-  driver_teks?: string | null;
-  kendaraan?: { jenis_kendaraan?: string; merk?: string; no_polisi?: string } | null;
-  personil_pengantar?: { nama?: string } | null;
-  surat_jalan_url?: string | null;
-  boq?: {
-    boq_id: number;
-    boq_number?: string;
-    tiket?: { kode_tiket?: string };
-  } | null;
 }
 
 interface BarangOption {
@@ -1185,9 +1158,10 @@ pic_pemohon_nama: picPemohon.trim() || null,
         </div>
       )}
 
-      <div className="rounded-2xl border border-[#F3D9C7] bg-white">
-        <div className="overflow-x-auto">
-        <table className="w-full min-w-[1600px] text-sm">
+      {/* List Inbound */}
+      <MobileCardList items={mobileItemsInbound1} />
+      <div className="rounded-2xl border border-[#F3D9C7] bg-white hidden md:block">
+        <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
               <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
@@ -1231,11 +1205,9 @@ pic_pemohon_nama: picPemohon.trim() || null,
             ) : (
               list.map((sj, sjIndex) => {
                 const meta = STATUS_META[sj.status] || STATUS_META.draft_diajukan;
-                const itemRows = sj.items && sj.items.length > 0 ? sj.items : [null];
-                const rowSpan = itemRows.length;
+                const totalUnit = sj.items.reduce((sum, i) => sum + Number(i.qty || 0), 0);
                 const tujuanText = sj.gudang_tujuan?.nama_gudang || "-";
-                const tanggalRaw = sj.tanggal || sj.created_at;
-                const tanggal = new Date(tanggalRaw).toLocaleDateString("id-ID", {
+                const tanggal = new Date(sj.created_at).toLocaleDateString("id-ID", {
                   day: "2-digit",
                   month: "long",
                   year: "numeric",
@@ -1384,21 +1356,20 @@ pic_pemohon_nama: picPemohon.trim() || null,
                           </td>
                         </>
                       )}
-                    </tr>
-                  );
-                });
+                    </td>
+                  </tr>
+                );
               })
             )}
           </tbody>
         </table>
-        </div>
       </div>
 
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title="Input Inbound"
-        subtitle="Isi detail barang masuk — stok masuk tercatat saat disimpan"
+        subtitle="Isi detail barang masuk untuk diajukan ke Supervisor"
         widthClass="max-w-4xl"
       >
         {formError && (
@@ -1434,120 +1405,117 @@ pic_pemohon_nama: picPemohon.trim() || null,
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
             />
           </div>
-          <div className="sm:col-span-2">
-             <label className="mb-1 block text-xs font-medium text-gray-600">Gudang Asal <span className="text-rose-500">*</span></label>
-             <div className="relative">
-               <select
-                 value={selectedGudangAsalId}
-                 onChange={(e) => setSelectedGudangAsalId(e.target.value)}
-                 className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
-               >
-                   <option value="">Pilih Gudang Asal...</option>
-                   {warehouseOptions.map((w) => (
-                     <option key={w.gudang_id} value={String(w.gudang_id)}>
-                       {w.nama_gudang}
-                     </option>
-                   ))}
-               </select>
-               <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-             </div>
-           </div>
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-medium text-gray-600">Asal Pengiriman</label>
-             <div className="flex gap-2">
-               <button
-                 type="button"
-                 onClick={() => setSelectedAsalTipe("internal")}
-                 className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-                   selectedAsalTipe === "internal"
-                     ? "border-[#E8632C] bg-[#E8632C] text-white"
-                     : "border-gray-200 bg-white text-gray-700 hover:border-[#E8632C]"
-                 }`}
-               >
-                 Internal
-               </button>
-               <button
-                 type="button"
-                 onClick={() => setSelectedAsalTipe("external")}
-                 className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-                   selectedAsalTipe === "external"
-                     ? "border-[#E8632C] bg-[#E8632C] text-white"
-                     : "border-gray-200 bg-white text-gray-700 hover:border-[#E8632C]"
-                 }`}
-               >
-                 External
-               </button>
-             </div>
-             {selectedAsalTipe === "external" && (
-               <>
-                 {!isVendorManual ? (
-                   <select
-                     value={selectedSupplierId}
-                     onChange={(e) => setSelectedSupplierId(e.target.value)}
-                     className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
-                   >
-                     <option value="">Pilih supplier</option>
-                     {supplierOptions.map((s) => (
-                       <option key={s.supplier_id} value={s.supplier_id}>
-                         {s.kode} - {s.nama}
-                       </option>
-                     ))}
-                   </select>
-                 ) : (
-                   <input
-                     type="text"
-                     value={pengirimEksternalNama}
-                     onChange={(e) => setPengirimEksternalNama(e.target.value)}
-                     placeholder="Nama vendor / pengirim eksternal"
-                     className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
-                   />
-                 )}
-                 <label className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-                   <input
-                     type="checkbox"
-                     checked={isVendorManual}
-                     onChange={(e) => {
-                       const checked = e.target.checked;
-                       setIsVendorManual(checked);
-                       if (checked) {
-                         setSelectedSupplierId("");
-                       } else {
-                         setPengirimEksternalNama("");
-                       }
-                     }}
-                   />
-                   Vendor belum terdaftar? Ketik manual
-                 </label>
-               </>
-             )}
-           </div>
-           <div>
-             <label className="mb-1 block text-xs font-medium text-gray-600">Gudang Tujuan <span className="text-rose-500">*</span></label>
-             <div className="relative">
-               <select
-                 value={selectedGudangTujuanId}
-                 onChange={(e) => setSelectedGudangTujuanId(e.target.value)}
-                 className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
-               >
-                   <option value="" disabled>Pilih Gudang Tujuan...</option>
-                   {gudangTujuanOptions.map((w) => (
-                     <option key={w.gudang_id} value={String(w.gudang_id)}>
-                       {w.label}
-                     </option>
-                   ))}
-               </select>
-               <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-             </div>
-           </div>
-           <div>
-             <label className="mb-1 block text-xs font-medium text-gray-600">Tanggal Masuk <span className="text-rose-500">*</span></label>
-             <input
-               type="date"
-               value={tanggalMasuk}
-               onChange={(e) => setTanggalMasuk(e.target.value)}
-               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
-             />
-           </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Gudang Tujuan <span className="text-rose-500">*</span></label>
+            <div className="relative">
+              <select
+                value={selectedGudangTujuanId}
+                onChange={(e) => setSelectedGudangTujuanId(e.target.value)}
+                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+              >
+                  <option value="" disabled>Pilih Gudang Tujuan...</option>
+                  {gudangTujuanOptions.map((w) => (
+                    <option key={w.gudang_id} value={String(w.gudang_id)}>
+                      {w.label}
+                    </option>
+                  ))}
+              </select>
+              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Tanggal Masuk <span className="text-rose-500">*</span></label>
+            <input
+              type="date"
+              value={tanggalMasuk}
+              onChange={(e) => setTanggalMasuk(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Asal Pengiriman</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedAsalTipe("internal")}
+                className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                  selectedAsalTipe === "internal"
+                    ? "border-[#E8632C] bg-[#E8632C] text-white"
+                    : "border-gray-200 bg-white text-gray-700 hover:border-[#E8632C]"
+                }`}
+              >
+                Internal
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedAsalTipe("external")}
+                className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                  selectedAsalTipe === "external"
+                    ? "border-[#E8632C] bg-[#E8632C] text-white"
+                    : "border-gray-200 bg-white text-gray-700 hover:border-[#E8632C]"
+                }`}
+              >
+                External
+              </button>
+            </div>
+            {selectedAsalTipe === "internal" && (
+              <select
+                value={selectedGudangAsalId}
+                onChange={(e) => setSelectedGudangAsalId(e.target.value)}
+                className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+              >
+                <option value="">Pilih gudang asal</option>
+                {warehouseOptions.map((w) => (
+                  <option key={w.gudang_id} value={String(w.gudang_id)}>
+                    {w.nama_gudang}
+                  </option>
+                ))}
+              </select>
+            )}
+            {selectedAsalTipe === "external" && (
+              <>
+                {!isVendorManual ? (
+                  <select
+                    value={selectedSupplierId}
+                    onChange={(e) => setSelectedSupplierId(e.target.value)}
+                    className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+                  >
+                    <option value="">Pilih supplier</option>
+                    {supplierOptions.map((s) => (
+                      <option key={s.supplier_id} value={s.supplier_id}>
+                        {s.kode} - {s.nama}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={pengirimEksternalNama}
+                    onChange={(e) => setPengirimEksternalNama(e.target.value)}
+                    placeholder="Nama vendor / pengirim eksternal"
+                    className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+                  />
+                )}
+                <label className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+                  <input
+                    type="checkbox"
+                    checked={isVendorManual}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setIsVendorManual(checked);
+                      if (checked) {
+                        setSelectedSupplierId("");
+                      } else {
+                        setPengirimEksternalNama("");
+                      }
+                    }}
+                  />
+                  Vendor belum terdaftar? Ketik manual
+                </label>
+              </>
+            )}
+          </div>
 
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-600">PIC / Penerima</label>
@@ -2218,20 +2186,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 </Button>
               </div>
             </div>
-          )}
-        </div>
-
-        <div className="mt-6 flex items-center justify-end gap-3">
-          <Button variant="outline" onClick={() => setModalOpen(false)} disabled={submitting}>
-            Batal
-          </Button>
-          <Button
-            onClick={handleSubmitInbound}
-            disabled={!canSubmitModal || submitting}
-            className="bg-[#E8632C] hover:bg-[#D9591F]"
-          >
-            {submitting ? "Mengirim..." : "Simpan & Proses Putaway"}
-          </Button>
+          </div>
         </div>
       )}
 
@@ -2250,9 +2205,9 @@ pic_pemohon_nama: picPemohon.trim() || null,
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Surat Jalan Inbound Berhasil Disimpan</h3>
+              <h3 className="text-lg font-bold text-gray-900">Surat Jalan Inbound Berhasil Diajukan</h3>
               <p className="mt-2 text-sm text-gray-500">
-                Stok masuk sudah tercatat saat disimpan. Lanjutkan penerimaan & putaway dari daftar.
+                Menunggu konfirmasi persetujuan dari supervisor.
               </p>
               <button
                 type="button"

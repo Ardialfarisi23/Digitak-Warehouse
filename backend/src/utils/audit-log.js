@@ -15,6 +15,15 @@ const SENSITIVE_FIELDS = new Set([
 function toBigInt(value) {
   if (typeof value === "bigint") return value;
   if (value === null || value === undefined) return BigInt(0);
+  if (typeof value === "string") {
+    // Hash string IDs (e.g., cluster_id) to a numeric value for audit log
+    let hash = 0;
+    for (let i = 0; i < value.length; i++) {
+      hash = ((hash << 5) - hash) + value.charCodeAt(i);
+      hash |= 0; // Convert to 32bit integer
+    }
+    return BigInt(Math.abs(hash));
+  }
   return BigInt(value);
 }
 

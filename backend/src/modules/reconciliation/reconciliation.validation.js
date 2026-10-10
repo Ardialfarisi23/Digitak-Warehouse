@@ -9,6 +9,14 @@ const getReconciliationInventorySchema = z.object({
   clusterId: z.string().optional(),
 });
 
+const upsertRemainsNoteSchema = z.object({
+  project_id: z.number().int().positive(),
+  cluster_id: z.string().nullable().optional(),
+  barang_id: z.number().int().positive(),
+  keterangan: z.string().max(1000).optional().default(""),
+});
+
 module.exports = {
   getReconciliationInventorySchema,
+  upsertRemainsNoteSchema,
 };

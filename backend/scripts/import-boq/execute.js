@@ -87,17 +87,18 @@ async function executeImport(planResult, userId) {
 
   await prisma.$transaction(async (tx) => {
     // 5.1 Create Project
+    const projData = plan.project.data || plan.project;
     const project = await tx.project.create({
       data: {
-        nama_project: plan.project.nama_project,
-        title: plan.project.title,
-        area: plan.project.area,
-        kota_kabupaten: plan.project.kota_kabupaten,
-        kecamatan: plan.project.kecamatan,
-        desa_kelurahan: plan.project.desa_kelurahan,
-        provinsi: plan.project.provinsi,
-        klien: plan.project.klien,
-        status_aktif: plan.project.status_aktif,
+        nama_project: projData.nama_project,
+        title: projData.title,
+        area: projData.area,
+        kota_kabupaten: projData.kota_kabupaten,
+        kecamatan: projData.kecamatan,
+        desa_kelurahan: projData.desa_kelurahan,
+        provinsi: projData.provinsi,
+        klien: projData.klien,
+        status_aktif: projData.status_aktif,
         created_by: BigInt(userId),
         updated_by: BigInt(userId),
       },
