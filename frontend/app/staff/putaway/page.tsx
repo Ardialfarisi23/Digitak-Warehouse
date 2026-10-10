@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { MapPin, Loader2, AlertCircle } from "lucide-react";
+import { MapPin, Loader2, AlertCircle, Search, ChevronDown } from "lucide-react";
 import { useApi } from "@/lib/api";
 
 type ApiItem = {
@@ -20,7 +20,7 @@ type ApiSuratJalan = {
   status: string;
   tanggal?: string;
   gudang_asal?: { nama_gudang: string } | null;
-  gudang_tujuan?: { nama_gudang: string } | null;
+  gudang_tujuan?: { gudang_id?: string | number; nama_gudang: string } | null;
   items: ApiItem[];
 };
 
@@ -30,6 +30,15 @@ export default function PutawayListPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"MENUNGGU" | "SELESAI">("MENUNGGU");
+
+  // Filter tabel putaway (client-side)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [gudangFilter, setGudangFilter] = useState("all");
+
+  // Pagination client-side (per Surat Jalan, bukan per baris item, supaya
+  // rowSpan nomor/asal/tujuan/aksi tidak terpotong antar halaman)
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   useEffect(() => {
     async function load() {
@@ -74,6 +83,58 @@ export default function PutawayListPage() {
     [list, activeTab],
   );
 
+  // Opsi gudang tujuan diambil dinamis dari data surat jalan yang ada,
+  // sehingga isi dropdown selalu relevan dengan daftar putaway.
+  const gudangTujuanFilterOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    list.forEach((sj) => {
+      const gudangId = sj.gudang_tujuan?.gudang_id;
+      const nama = sj.gudang_tujuan?.nama_gudang;
+      if (gudangId != null && nama && !seen.has(String(gudangId))) {
+        seen.set(String(gudangId), nama);
+      }
+    });
+    return Array.from(seen, ([gudang_id, nama_gudang]) => ({ gudang_id, nama_gudang }));
+  }, [list]);
+
+  // Saring daftar putaway secara realtime berdasarkan pencarian, tab status
+  // yang dipilih, dan gudang tujuan.
+  const visibleSuratJalan = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return filtered.filter((sj) => {
+      const matchSearch =
+        !q ||
+        (sj.nomor_surat_jalan || "").toLowerCase().includes(q) ||
+        (sj.items || []).some(
+          (item) =>
+            (item.barang?.kode_perangkat || "").toLowerCase().includes(q) ||
+            (item.barang?.nama_barang || "").toLowerCase().includes(q),
+        );
+      const matchGudang =
+        gudangFilter === "all" || String(sj.gudang_tujuan?.gudang_id) === gudangFilter;
+      return matchSearch && matchGudang;
+    });
+  }, [filtered, searchQuery, gudangFilter]);
+
+  // Filter atau tab berubah -> kembali ke Halaman 1 supaya data hasil
+  // penyaringan tidak terlewat karena posisi halaman yang sudah maju.
+  // Reset dijalankan saat render (bukan lewat effect) mengikuti pola
+  // "storing information from previous renders" React.
+  const filterKey = `${activeTab}|${searchQuery}|${gudangFilter}`;
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
+  if (prevFilterKey !== filterKey) {
+    setPrevFilterKey(filterKey);
+    setCurrentPage(1);
+  }
+
+  const totalPages = Math.max(1, Math.ceil(visibleSuratJalan.length / itemsPerPage));
+  const activePage = Math.min(currentPage, totalPages);
+
+  const paginatedSuratJalan = useMemo(
+    () => visibleSuratJalan.slice((activePage - 1) * itemsPerPage, activePage * itemsPerPage),
+    [visibleSuratJalan, activePage],
+  );
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -115,6 +176,36 @@ export default function PutawayListPage() {
         </button>
       </div>
 
+      {/* Filter Putaway */}
+      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center">
+        <div className="flex flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm transition-colors focus-within:border-orange-500 focus-within:ring-1 focus-within:ring-orange-500">
+          <Search size={16} className="shrink-0 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cari No. Surat Jalan / Kode / Nama Barang..."
+            className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+          />
+        </div>
+
+        <div className="relative md:w-56">
+          <select
+            value={gudangFilter}
+            onChange={(e) => setGudangFilter(e.target.value)}
+            className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2.5 pr-9 text-sm font-medium text-slate-700 shadow-sm outline-none transition-colors focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+          >
+            <option value="all">Semua Gudang</option>
+            {gudangTujuanFilterOptions.map((w) => (
+              <option key={w.gudang_id} value={String(w.gudang_id)}>
+                {w.nama_gudang}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        </div>
+      </div>
+
       <div className="rounded-2xl border border-[#F3D9C7] bg-white">
         <div className="overflow-x-auto">
         <table className="w-full min-w-[1100px] text-sm">
@@ -132,14 +223,18 @@ export default function PutawayListPage() {
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {visibleSuratJalan.length === 0 ? (
               <tr>
                 <td colSpan={9} className="px-6 py-12 text-center text-gray-400">
-                  {activeTab === "MENUNGGU" ? "Tidak ada Surat Jalan yang menunggu ditempatkan." : "Belum ada riwayat penempatan."}
+                  {filtered.length === 0
+                    ? activeTab === "MENUNGGU"
+                      ? "Tidak ada Surat Jalan yang menunggu ditempatkan."
+                      : "Belum ada riwayat penempatan."
+                    : "Tidak ada Surat Jalan yang cocok dengan filter."}
                 </td>
               </tr>
             ) : (
-              filtered.map((sj) => {
+              paginatedSuratJalan.map((sj, sjIdx) => {
                 const itemRows = sj.items && sj.items.length > 0 ? sj.items : [null];
                 const rowSpan = itemRows.length;
                 const tanggal = sj.tanggal
@@ -158,7 +253,9 @@ export default function PutawayListPage() {
                   return (
                     <tr
                       key={`${sj.surat_jalan_id}-${item ? item.item_id : "empty"}-${itemIdx}`}
-                      className={`border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30 ${itemIdx % 2 === 1 ? "bg-gray-50/50" : ""}`}
+                      className={`border-b border-gray-50 last:border-0 transition-colors ${
+                        sjIdx % 2 === 0 ? "bg-white" : "bg-slate-50/70"
+                      } hover:bg-orange-50/50`}
                     >
                       {isFirst && (
                         <>
@@ -197,6 +294,37 @@ export default function PutawayListPage() {
         </table>
         </div>
       </div>
+
+      {!loading && visibleSuratJalan.length > itemsPerPage && (
+        <div className="mt-4 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-xs text-slate-500">
+            Menampilkan {(activePage - 1) * itemsPerPage + 1}–
+            {Math.min(activePage * itemsPerPage, visibleSuratJalan.length)} dari{" "}
+            {visibleSuratJalan.length} Surat Jalan
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={activePage === 1}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+            >
+              Sebelumnya
+            </button>
+            <span className="text-xs text-slate-500">
+              Halaman {activePage} dari {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={activePage === totalPages}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
+            >
+              Selanjutnya
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
