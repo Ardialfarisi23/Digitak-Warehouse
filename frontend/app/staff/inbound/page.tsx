@@ -1198,13 +1198,14 @@ pic_pemohon_nama: picPemohon.trim() || null,
         <table className="w-full min-w-[1700px] text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+              <th className="px-4 py-4 font-semibold">No</th>
+              <th className="px-4 py-4 font-semibold">Tanggal Masuk</th>
               <th className="px-4 py-4 font-semibold">Nomor Surat Jalan</th>
               <th className="px-4 py-4 font-semibold">Tipe Pengirim</th>
               <th className="px-4 py-4 font-semibold">Gudang Asal</th>
               <th className="px-4 py-4 font-semibold">Supplier</th>
               <th className="px-4 py-4 font-semibold">Nama Vendor Eksternal</th>
               <th className="px-4 py-4 font-semibold">Gudang Tujuan</th>
-              <th className="px-4 py-4 font-semibold">Tanggal Masuk</th>
               <th className="px-4 py-4 font-semibold">PIC Pemohon</th>
               <th className="px-4 py-4 font-semibold">BOQ / Tiket</th>
               <th className="px-4 py-4 font-semibold">Project</th>
@@ -1225,18 +1226,18 @@ pic_pemohon_nama: picPemohon.trim() || null,
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={22} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={23} className="px-6 py-12 text-center text-gray-400">
                   Memuat data...
                 </td>
               </tr>
             ) : list.length === 0 ? (
               <tr>
-                <td colSpan={22} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={23} className="px-6 py-12 text-center text-gray-400">
                   Tidak ada Surat Jalan Inbound yang perlu diproses.
                 </td>
               </tr>
             ) : (
-              list.map((sj) => {
+              list.map((sj, sjIndex) => {
                 const meta = STATUS_META[sj.status] || STATUS_META.draft_diajukan;
                 const itemRows = sj.items && sj.items.length > 0 ? sj.items : [null];
                 const rowSpan = itemRows.length;
@@ -1274,6 +1275,8 @@ pic_pemohon_nama: picPemohon.trim() || null,
                     >
                       {isFirst && (
                         <>
+                          <td className="px-4 py-4 align-top font-medium text-gray-700" rowSpan={rowSpan}>{sjIndex + 1}</td>
+                          <td className="px-4 py-4 align-top text-gray-500" rowSpan={rowSpan}>{tanggal}</td>
                           <td className="px-4 py-4 align-top font-medium text-gray-800" rowSpan={rowSpan}>
                             <span className="flex items-center gap-2">
                               <PackageCheck size={16} className="text-[#E8632C]" />
@@ -1295,7 +1298,6 @@ pic_pemohon_nama: picPemohon.trim() || null,
                               : "-"}
                           </td>
                           <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{tujuanText}</td>
-                          <td className="px-4 py-4 align-top text-gray-500" rowSpan={rowSpan}>{tanggal}</td>
                           <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{sj.pic_pemohon_nama || "-"}</td>
                           <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>
                             <span className="block">{boqLabel}</span>

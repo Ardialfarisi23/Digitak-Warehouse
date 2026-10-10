@@ -120,10 +120,11 @@ export default function PutawayListPage() {
         <table className="w-full min-w-[1100px] text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+              <th className="px-6 py-4 font-semibold">No</th>
+              <th className="px-6 py-4 font-semibold">Tanggal</th>
               <th className="px-6 py-4 font-semibold">Nomor Surat Jalan</th>
               <th className="px-6 py-4 font-semibold">Asal</th>
               <th className="px-6 py-4 font-semibold">Tujuan Gudang</th>
-              <th className="px-6 py-4 font-semibold">Tanggal</th>
               <th className="px-6 py-4 font-semibold">Kode Barang</th>
               <th className="px-6 py-4 font-semibold">Nama Barang</th>
               <th className="px-6 py-4 font-semibold text-right">Qty Surat Jalan</th>
@@ -134,12 +135,12 @@ export default function PutawayListPage() {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={10} className="px-6 py-12 text-center text-gray-400">
                   {activeTab === "MENUNGGU" ? "Tidak ada Surat Jalan yang menunggu ditempatkan." : "Belum ada riwayat penempatan."}
                 </td>
               </tr>
             ) : (
-              filtered.map((sj) => {
+              filtered.map((sj, sjIndex) => {
                 const itemRows = sj.items && sj.items.length > 0 ? sj.items : [null];
                 const rowSpan = itemRows.length;
                 const tanggal = sj.tanggal
@@ -162,6 +163,8 @@ export default function PutawayListPage() {
                     >
                       {isFirst && (
                         <>
+                          <td className="px-6 py-4 align-top font-medium text-gray-700" rowSpan={rowSpan}>{sjIndex + 1}</td>
+                          <td className="px-6 py-4 align-top text-gray-500" rowSpan={rowSpan}>{tanggal}</td>
                           <td className="px-6 py-4 align-top font-medium text-gray-800" rowSpan={rowSpan}>
                             <span className="flex items-center gap-2">
                               <MapPin size={16} className="text-[#E8632C]" />
@@ -170,7 +173,6 @@ export default function PutawayListPage() {
                           </td>
                           <td className="px-6 py-4 align-top text-gray-600" rowSpan={rowSpan}>{sj.gudang_asal?.nama_gudang || "-"}</td>
                           <td className="px-6 py-4 align-top text-gray-600" rowSpan={rowSpan}>{sj.gudang_tujuan?.nama_gudang || "-"}</td>
-                          <td className="px-6 py-4 align-top text-gray-500" rowSpan={rowSpan}>{tanggal}</td>
                         </>
                       )}
                       <td className="px-6 py-3 align-top font-medium text-gray-800">

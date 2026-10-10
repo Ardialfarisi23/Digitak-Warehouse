@@ -172,6 +172,8 @@ export default function SuratJalanListPage() {
         <table className="w-full min-w-[1700px] text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+              <th className="px-4 py-4 font-semibold">No</th>
+              <th className="px-4 py-4 font-semibold">Tanggal</th>
               <th className="px-4 py-4 font-semibold">Nomor Surat Jalan</th>
               <th className="px-4 py-4 font-semibold">Tipe Pengirim</th>
               <th className="px-4 py-4 font-semibold">Gudang Asal</th>
@@ -180,7 +182,6 @@ export default function SuratJalanListPage() {
               <th className="px-4 py-4 font-semibold">Tujuan</th>
               <th className="px-4 py-4 font-semibold">Titik Lapangan</th>
               <th className="px-4 py-4 font-semibold">Alamat Lapangan</th>
-              <th className="px-4 py-4 font-semibold">Tanggal</th>
               <th className="px-4 py-4 font-semibold">PIC Pemohon</th>
               <th className="px-4 py-4 font-semibold">BOQ / Tiket</th>
               <th className="px-4 py-4 font-semibold">Project</th>
@@ -199,18 +200,18 @@ export default function SuratJalanListPage() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={22} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={23} className="px-6 py-12 text-center text-gray-400">
                   Memuat data...
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={22} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={23} className="px-6 py-12 text-center text-gray-400">
                   Tidak ada Surat Jalan pada filter ini.
                 </td>
               </tr>
             ) : (
-              filtered.map((sj) => {
+              filtered.map((sj, sjIndex) => {
                 const meta = getStatusMeta(sj.status, sj.picking_selesai);
                 const itemRows = sj.items && sj.items.length > 0 ? sj.items : [null];
                 const rowSpan = itemRows.length;
@@ -250,6 +251,8 @@ export default function SuratJalanListPage() {
                     >
                       {isFirst && (
                         <>
+                          <td className="px-4 py-4 align-top font-medium text-gray-700" rowSpan={rowSpan}>{sjIndex + 1}</td>
+                          <td className="px-4 py-4 align-top text-gray-500" rowSpan={rowSpan}>{tanggal}</td>
                           <td className="px-4 py-4 align-top font-medium text-gray-800" rowSpan={rowSpan}>
                             <span className="flex items-center gap-2">
                               <FileText size={16} className="text-[#E8632C]" />
@@ -281,7 +284,6 @@ export default function SuratJalanListPage() {
                           <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>
                             {sj.tujuan_tipe === "lapangan" ? sj.alamat_lapangan || "-" : "-"}
                           </td>
-                          <td className="px-4 py-4 align-top text-gray-500" rowSpan={rowSpan}>{tanggal}</td>
                           <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{sj.pic_pemohon_nama || "-"}</td>
                           <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>
                             <span className="block">
