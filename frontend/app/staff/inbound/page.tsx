@@ -30,6 +30,11 @@ interface InboundItem {
   item_id: number;
   nama_barang?: string;
   qty: number;
+  qty_diterima?: number | string | null;
+  catatan?: string | null;
+  is_di_luar_boq?: boolean;
+  satuan?: { kode_satuan?: string } | null;
+  barang?: { kode_perangkat?: string; nama_barang?: string; satuan_default?: { kode_satuan?: string } } | null;
 }
 
 interface InboundSuratJalan {
@@ -37,6 +42,7 @@ interface InboundSuratJalan {
   nomor_surat_jalan: string;
   status: InboundStatus;
   created_at: string;
+  tanggal?: string;
   created_by?: string | number;
   creator?: {
     user_id?: string | number;
@@ -46,8 +52,18 @@ interface InboundSuratJalan {
   items: InboundItem[];
   tipe_pengirim?: "internal" | "external";
   supplier?: { nama: string; kode: string };
+  pengirim_eksternal_nama?: string | null;
   gudang_asal?: { nama_gudang: string };
   gudang_tujuan?: { nama_gudang: string };
+  project?: { nama_project?: string } | null;
+  pic_pemohon_nama?: string | null;
+  kendaraan_teks?: string | null;
+  no_polisi_teks?: string | null;
+  driver_teks?: string | null;
+  kendaraan?: { jenis_kendaraan?: string; merk?: string; no_polisi?: string } | null;
+  personil_pengantar?: { nama?: string } | null;
+  surat_jalan_url?: string | null;
+  boq?: { boq_id: number; boq_number?: string; tiket?: { kode_tiket?: string } } | null;
 }
 
 interface BarangOption {
@@ -96,6 +112,16 @@ const KONDISI_TONE: Record<string, string> = {
   tidak_sesuai_spek: "bg-orange-100 text-[#E8632C]",
   doa: "bg-gray-100 text-gray-600",
 };
+
+// Batas ukuran file yang boleh dikirim sebagai lampiran inline (Base64) di dalam
+// payload JSON kalau upload ke endpoint /api/upload gagal.
+const MAX_INLINE_PDF_BYTES = 8 * 1024 * 1024;
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 KB";
+  const kb = bytes / 1024;
+  return kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(kb))} KB`;
+}
 
 interface ModalItemRow {
   id: string;
@@ -171,6 +197,271 @@ function Modal({
   );
 }
 
+interface InboundPreviewRow {
+  kode: string;
+  nama: string;
+  qty: number;
+  satuan: string;
+  kondisi: string;
+  catatan: string;
+  fotoUrl: string | null;
+}
+
+function PreviewInboundModal({
+  open,
+  onClose,
+  onConfirm,
+  submitting,
+  nomorSuratJalan,
+  vendorLabel,
+  gudangTujuan,
+  tanggalLabel,
+  projectName,
+  boqNumber,
+  kodeTiket,
+  picPemohon,
+  kendaraan,
+  noPolisi,
+  driver,
+  items,
+  suratJalanFileName,
+  suratJalanUrl,
+  suratJalanSize,
+  suratJalanInline,
+  onImageClick,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  submitting: boolean;
+  nomorSuratJalan: string;
+  vendorLabel: string;
+  gudangTujuan: string;
+  tanggalLabel: string;
+  projectName: string;
+  boqNumber: string;
+  kodeTiket: string;
+  picPemohon: string;
+  kendaraan: string;
+  noPolisi: string;
+  driver: string;
+  items: InboundPreviewRow[];
+  suratJalanFileName: string | null;
+  suratJalanUrl: string | null;
+  suratJalanSize: number | null;
+  suratJalanInline: boolean;
+  onImageClick: (url: string) => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const fotoCount = items.filter((item) => item.fotoUrl).length;
+
+  return (
+    <div
+      className="fixed inset-0 z-[65] flex items-center justify-center bg-slate-900/40 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Preview Ringkasan Penerimaan Inbound"
+    >
+      <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">Preview Ringkasan Penerimaan Inbound</h3>
+            <p className="mt-0.5 text-xs text-slate-400">Periksa kembali seluruh data penerimaan inbound sebelum disimpan.</p>
+          </div>
+          <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Informasi Transaksi</p>
+            <div className="space-y-1 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">No. Surat Jalan</span>
+                <span className="font-medium text-slate-700">{nomorSuratJalan || "-"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Vendor</span>
+                <span className="font-medium text-slate-700">{vendorLabel || "-"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Gudang Tujuan</span>
+                <span className="font-medium text-slate-700">{gudangTujuan || "-"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Tanggal</span>
+                <span className="font-medium text-slate-700">{tanggalLabel || "-"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Project</span>
+                <span className="font-medium text-slate-700">{projectName || "-"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">BOQ / Tiket</span>
+                <span className="font-medium text-slate-700">
+                  {[boqNumber, kodeTiket ? `Tiket: ${kodeTiket}` : ""].filter(Boolean).join(" · ") || "-"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Detail Pengiriman</p>
+            <div className="space-y-1 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">PIC / Penerima</span>
+                <span className="font-medium text-slate-700">{picPemohon || "-"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Kendaraan</span>
+                <span className="font-medium text-slate-700">{kendaraan || "-"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">No. Polisi</span>
+                <span className="font-medium text-slate-700">{noPolisi || "-"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Nama Driver</span>
+                <span className="font-medium text-slate-700">{driver || "-"}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Rincian Barang yang Diterima</p>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[400px] text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 text-left text-[10px] uppercase leading-tight tracking-wide text-gray-400">
+                    <th className="pb-2 pr-3 font-semibold">Kode Barang</th>
+                    <th className="pb-2 pr-3 font-semibold">Nama Barang</th>
+                    <th className="pb-2 pr-3 text-right font-semibold">Qty</th>
+                    <th className="pb-2 pr-3 font-semibold">Satuan</th>
+                    <th className="pb-2 pr-3 font-semibold">Kondisi</th>
+                    <th className="pb-2 pr-3 font-semibold">Catatan</th>
+                    <th className="pb-2 font-semibold">Foto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item, idx) => (
+                    <tr key={idx} className="border-b border-gray-50 last:border-0 odd:bg-white even:bg-slate-50">
+                      <td className="py-2 pr-3 font-medium text-gray-800">{item.kode || "-"}</td>
+                      <td className="py-2 pr-3 text-gray-600">{item.nama || "-"}</td>
+                      <td className="py-2 pr-3 text-right text-gray-700">{item.qty}</td>
+                      <td className="py-2 pr-3 text-gray-500">{item.satuan || "-"}</td>
+                      <td className="py-2 pr-3">
+                        <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ${KONDISI_TONE[item.kondisi] || "bg-gray-100 text-gray-600"}`}>
+                          {KONDISI_OPTIONS.find((k) => k.value === item.kondisi)?.label || item.kondisi || "-"}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3 text-gray-600">{item.catatan || "-"}</td>
+                      <td className="py-2">
+                        {item.fotoUrl ? (
+                          <button
+                            type="button"
+                            onClick={() => onImageClick(item.fotoUrl as string)}
+                            className="h-10 w-10 overflow-hidden rounded-md border border-gray-200"
+                          >
+                            <img src={item.fotoUrl} alt="Preview" className="h-full w-full object-cover" />
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-400">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {items.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="py-4 text-center text-gray-400">Belum ada barang yang ditambahkan.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Lampiran Dokumen</p>
+            <div className="space-y-1 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Surat Jalan (PDF)</span>
+                <span className="font-medium text-slate-700">
+                  {suratJalanFileName ? (
+                    suratJalanUrl && !suratJalanInline ? (
+                      <a href={suratJalanUrl} target="_blank" rel="noreferrer" className="text-[#E8632C] hover:underline">
+                        {suratJalanFileName}
+                      </a>
+                    ) : (
+                      suratJalanFileName
+                    )
+                  ) : (
+                    <span className="text-gray-400">Belum ada lampiran</span>
+                  )}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Foto Barang</span>
+                <span className="font-medium text-slate-700">
+                  {fotoCount > 0 ? `${fotoCount} dari ${items.length} item memiliki foto` : "Belum ada foto barang"}
+                </span>
+              </div>
+            </div>
+            {suratJalanFileName ? (
+              <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                PDF Terlampir: {suratJalanFileName}
+                {suratJalanSize ? ` (${formatBytes(suratJalanSize)})` : ""}
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-gray-400">
+                Surat jalan PDF belum dilampirkan. Supervisor tidak dapat melihat dokumen lampiran.
+              </p>
+            )}
+            {suratJalanInline && (
+              <p className="mt-2 text-xs text-amber-600">
+                PDF dikirim sebagai lampiran langsung pada pengajuan ini dan bisa langsung dilihat supervisor.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+          >
+            Kembali / Edit
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={submitting}
+            className="rounded-xl bg-[#E8632C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
+          >
+            {submitting ? "Menyimpan..." : "Konfirmasi & Simpan"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function InboundListPage() {
   const { get, post, put } = useApi();
   const { user } = useAuth();
@@ -233,9 +524,18 @@ export default function InboundListPage() {
   const [kondisiError, setKondisiError] = useState<string | null>(null);
   const [editKondisiError, setEditKondisiError] = useState<string | null>(null);
   const [suratJalanPdf, setSuratJalanPdf] = useState<File | null>(null);
-  const [suratJalanPdfUrl, setSuratJalanPdfUrl] = useState<string>("");
+  const [suratJalanPdfUrl, setSuratJalanPdfUrl] = useState("");
+  const [suratJalanPdfDataUrl, setSuratJalanPdfDataUrl] = useState("");
+  const [suratJalanPdfInline, setSuratJalanPdfInline] = useState(false);
   const [uploadingPdf, setUploadingPdf] = useState(false);
+  const [pdfUploadError, setPdfUploadError] = useState<string | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [selectedBoqMeta, setSelectedBoqMeta] = useState({
+    boq_number: "",
+    kode_tiket: "",
+    project_name: "",
+  });
   const fotoPreviewRef = useRef<Record<string, string>>({});
 
   const fetchList = async () => {
@@ -351,6 +651,11 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
     setEditKondisiError(null);
     setSuratJalanPdf(null);
     setSuratJalanPdfUrl("");
+    setSuratJalanPdfDataUrl("");
+    setSuratJalanPdfInline(false);
+    setPdfUploadError(null);
+    setShowPreviewModal(false);
+    setSelectedBoqMeta({ boq_number: "", kode_tiket: "", project_name: "" });
     setBoqItemsDetail([]);
     setModalOpen(true);
     await loadOptions();
@@ -390,6 +695,8 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
 
   const handlePdfChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    // Direset supaya file yang sama bisa dipilih ulang kalau staf ganti file.
+    e.target.value = "";
     if (!file) return;
 
     if (file.type !== "application/pdf") {
@@ -398,7 +705,26 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
     }
 
     setFormError(null);
+    setPdfUploadError(null);
     setSuratJalanPdf(file);
+    setSuratJalanPdfUrl("");
+    setSuratJalanPdfInline(false);
+
+    // PDF dibaca menjadi Data URL (Base64) agar tetap bisa dilampirkan lewat
+    // payload walau endpoint upload sedang bermasalah.
+    let dataUrl = "";
+    try {
+      dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+        reader.onerror = () => reject(reader.error || new Error("Gagal membaca file PDF."));
+        reader.readAsDataURL(file);
+      });
+    } catch {
+      dataUrl = "";
+    }
+    setSuratJalanPdfDataUrl(dataUrl);
+
     setUploadingPdf(true);
 
     try {
@@ -406,10 +732,9 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch(`${baseUrl}/api/upload`, {
-        method: "POST",
-        body: formData,
-      });
+      // Endpoint upload wajib token, jadi request dikirim lewat useApi()
+      // supaya header Authorization ikut terbawa.
+      const response = await post(`${baseUrl}/api/upload`, formData);
 
       if (!response.ok) {
         const err = await response.json().catch(() => null);
@@ -421,10 +746,31 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
       if (!url) throw new Error("URL file tidak ditemukan dari respons upload.");
 
       setSuratJalanPdfUrl(url);
+      setSuratJalanPdfInline(false);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Gagal upload PDF surat jalan.");
-      setSuratJalanPdf(null);
       setSuratJalanPdfUrl("");
+
+      if (!dataUrl) {
+        setSuratJalanPdf(null);
+        setSuratJalanPdfDataUrl("");
+        setSuratJalanPdfInline(false);
+        setPdfUploadError(
+          err instanceof Error ? err.message : "Gagal upload PDF surat jalan."
+        );
+      } else if (file.size > MAX_INLINE_PDF_BYTES) {
+        setSuratJalanPdf(null);
+        setSuratJalanPdfDataUrl("");
+        setSuratJalanPdfInline(false);
+        setPdfUploadError(
+          "Gagal upload PDF dan ukuran file terlalu besar untuk dikirim sebagai lampiran langsung. Silakan pilih ulang file PDF-nya."
+        );
+      } else {
+        // Fallback: PDF tetap terpasang dan akan dikirim sebagai Base64 di payload.
+        setSuratJalanPdfInline(true);
+        setPdfUploadError(
+          "Server upload tidak dapat dihubungi. PDF akan tetap dilampirkan langsung pada pengajuan inbound ini."
+        );
+      }
     } finally {
       setUploadingPdf(false);
     }
@@ -933,7 +1279,7 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
     [validModalItems],
   );
 
-  const handleSubmitInbound = async () => {
+  const handlePreviewInbound = () => {
     if (!selectedBoqId) {
       setFormError("Pilih BOQ terlebih dahulu.");
       return;
@@ -957,7 +1303,21 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
       return;
     }
 
-    if (!canSubmitModal) return;
+    if (!canSubmitModal) {
+      setFormError("Lengkapi seluruh data inbound, termasuk minimal satu barang beserta kondisinya.");
+      return;
+    }
+
+    setFormError(null);
+    setShowPreviewModal(true);
+  };
+
+  const handleConfirmSaveInbound = async () => {
+    if (!canSubmitModal) {
+      setShowPreviewModal(false);
+      setFormError("Lengkapi seluruh data inbound, termasuk minimal satu barang beserta kondisinya.");
+      return;
+    }
     setFormError(null);
     setSubmitting(true);
     try {
@@ -980,7 +1340,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
         boq_id: selectedBoqId ? String(selectedBoqId) : null,
         notes: null,
         kategori_approval: "manual_override",
-        surat_jalan_url: suratJalanPdfUrl || null,
+        surat_jalan_url: suratJalanPdfUrl || suratJalanPdfDataUrl || null,
         items: modalItems.map((row) => ({
           barang_id: row.is_non_master ? "" : row.barang_id,
           is_non_master: row.is_non_master,
@@ -1032,10 +1392,13 @@ pic_pemohon_nama: picPemohon.trim() || null,
         throw new Error(fullMessage);
       }
 
+      setShowPreviewModal(false);
       setShowSuccessModal(true);
       setModalOpen(false);
+      setToast({ message: "Surat Jalan Inbound Berhasil Disimpan", type: "success" });
       await fetchList();
     } catch (err) {
+      setShowPreviewModal(false);
       setFormError(err instanceof Error ? err.message : "Terjadi kesalahan saat membuat pengajuan inbound.");
       setToast({ message: err instanceof Error ? err.message : "Gagal membuat pengajuan inbound.", type: "error" });
     } finally {
@@ -1072,10 +1435,27 @@ pic_pemohon_nama: picPemohon.trim() || null,
       year: "numeric",
     });
 
+    const tipePengirimLabel = sj.tipe_pengirim === "internal" ? "Internal" : sj.tipe_pengirim === "external" ? "External" : "-";
+    const kendaraanLabel =
+      sj.kendaraan_teks ||
+      (sj.kendaraan
+        ? sj.kendaraan.merk && sj.kendaraan.merk.trim()
+          ? `${sj.kendaraan.merk} - ${sj.kendaraan.jenis_kendaraan}`
+          : sj.kendaraan.jenis_kendaraan
+        : null) ||
+      "-";
     const fields: MobileCardField[] = [
-      { label: "Asal", value: sj.tipe_pengirim === "external" ? `${sj.supplier?.kode ?? ""} - ${sj.supplier?.nama ?? "-"}` : sj.tipe_pengirim === "internal" ? sj.gudang_asal?.nama_gudang || "-" : "-" },
+      { label: "Tipe Pengirim", value: tipePengirimLabel },
+      { label: "Gudang Asal", value: sj.tipe_pengirim === "internal" ? sj.gudang_asal?.nama_gudang || "-" : "-" },
+      { label: "Supplier", value: sj.tipe_pengirim === "external" && sj.supplier?.nama ? `${sj.supplier.kode} - ${sj.supplier.nama}` : "-" },
+      { label: "Vendor Eksternal", value: sj.tipe_pengirim === "external" && !sj.supplier?.nama ? sj.pengirim_eksternal_nama || "-" : "-" },
       { label: "Tujuan", value: tujuanText },
       { label: "Tanggal", value: tanggal },
+      { label: "PIC Pemohon", value: sj.pic_pemohon_nama || "-" },
+      { label: "BOQ / Tiket", value: sj.boq ? sj.boq.boq_number || `BOQ #${sj.boq.boq_id}` : "-" },
+      { label: "Kendaraan", value: kendaraanLabel },
+      { label: "No. Polisi", value: sj.no_polisi_teks || sj.kendaraan?.no_polisi || "-" },
+      { label: "Nama Driver", value: sj.driver_teks || sj.personil_pengantar?.nama || "-" },
       { label: "Item", value: `${totalUnit} unit` },
     ];
 
@@ -1131,6 +1511,43 @@ pic_pemohon_nama: picPemohon.trim() || null,
     };
   });
 
+  const previewVendorLabel = (() => {
+    if (selectedAsalTipe === "internal") {
+      const asal = warehouseOptions.find((w) => String(w.gudang_id) === selectedGudangAsalId);
+      return asal ? `Internal — ${asal.nama_gudang}` : "Internal";
+    }
+    if (selectedAsalTipe === "external") {
+      if (isVendorManual) return pengirimEksternalNama.trim();
+      const supplier = supplierOptions.find((s) => String(s.supplier_id) === selectedSupplierId);
+      return supplier ? `${supplier.kode} - ${supplier.nama}` : "";
+    }
+    return "";
+  })();
+
+  const previewGudangTujuanLabel =
+    gudangTujuanOptions.find((w) => String(w.gudang_id) === selectedGudangTujuanId)?.label || "";
+
+  const previewTanggalLabel = (() => {
+    if (!tanggalMasuk) return "";
+    const [year, month, day] = tanggalMasuk.split("-").map(Number);
+    if (!year || !month || !day) return tanggalMasuk;
+    return new Date(year, month - 1, day).toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+  })();
+
+  const previewItems: InboundPreviewRow[] = modalItems.map((row) => ({
+    kode: row.is_non_master ? "Non-master" : row.kode_perangkat,
+    nama: row.nama_barang,
+    qty: row.qtySuratJalan,
+    satuan: row.satuan_label,
+    kondisi: row.kondisi,
+    catatan: row.catatan,
+    fotoUrl: row.fotos.length > 0 ? row.fotos[0].url : null,
+  }));
+
   return (
     <div className="px-8 py-6">
       <div className="mb-6 flex items-start justify-between">
@@ -1161,17 +1578,18 @@ pic_pemohon_nama: picPemohon.trim() || null,
       {/* List Inbound */}
       <MobileCardList items={mobileItemsInbound1} />
       <div className="rounded-2xl border border-[#F3D9C7] bg-white hidden md:block">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[1700px] text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
-              <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
+              <th className="px-4 py-4 font-semibold">No</th>
+              <th className="px-4 py-4 font-semibold">Tanggal Masuk</th>
               <th className="px-4 py-4 font-semibold">Nomor Surat Jalan</th>
               <th className="px-4 py-4 font-semibold">Tipe Pengirim</th>
               <th className="px-4 py-4 font-semibold">Gudang Asal</th>
               <th className="px-4 py-4 font-semibold">Supplier</th>
               <th className="px-4 py-4 font-semibold">Nama Vendor Eksternal</th>
               <th className="px-4 py-4 font-semibold">Gudang Tujuan</th>
-              <th className="px-4 py-4 font-semibold">Tanggal Masuk</th>
               <th className="px-4 py-4 font-semibold">PIC Pemohon</th>
               <th className="px-4 py-4 font-semibold">BOQ / Tiket</th>
               <th className="px-4 py-4 font-semibold">Project</th>
@@ -1205,9 +1623,11 @@ pic_pemohon_nama: picPemohon.trim() || null,
             ) : (
               list.map((sj, sjIndex) => {
                 const meta = STATUS_META[sj.status] || STATUS_META.draft_diajukan;
-                const totalUnit = sj.items.reduce((sum, i) => sum + Number(i.qty || 0), 0);
+                const itemRows = sj.items && sj.items.length > 0 ? sj.items : [null];
+                const rowSpan = itemRows.length;
                 const tujuanText = sj.gudang_tujuan?.nama_gudang || "-";
-                const tanggal = new Date(sj.created_at).toLocaleDateString("id-ID", {
+                const tanggalRaw = sj.tanggal || sj.created_at;
+                const tanggal = new Date(tanggalRaw).toLocaleDateString("id-ID", {
                   day: "2-digit",
                   month: "long",
                   year: "numeric",
@@ -1226,7 +1646,9 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 const driverLabel = sj.driver_teks || sj.personil_pengantar?.nama || "-";
                 const boqLabel = sj.boq ? sj.boq.boq_number || `BOQ #${sj.boq.boq_id}` : "-";
                 const tiketLabel = sj.boq?.tiket?.kode_tiket || "-";
-                const rowNumber = sjIndex + 1;
+                const allReceived = (sj.items || []).every(
+                  (i) => i.qty_diterima !== null && i.qty_diterima !== undefined
+                );
 
                 return itemRows.map((item, itemIdx) => {
                   const isFirst = itemIdx === 0;
@@ -1237,7 +1659,8 @@ pic_pemohon_nama: picPemohon.trim() || null,
                     >
                       {isFirst && (
                         <>
-                          <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500" rowSpan={rowSpan}>{rowNumber}</td>
+                          <td className="px-4 py-4 align-top font-medium text-gray-700" rowSpan={rowSpan}>{sjIndex + 1}</td>
+                          <td className="px-4 py-4 align-top text-gray-500" rowSpan={rowSpan}>{tanggal}</td>
                           <td className="px-4 py-4 align-top font-medium text-gray-800" rowSpan={rowSpan}>
                             <span className="flex items-center gap-2">
                               <PackageCheck size={16} className="text-[#E8632C]" />
@@ -1259,7 +1682,6 @@ pic_pemohon_nama: picPemohon.trim() || null,
                               : "-"}
                           </td>
                           <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{tujuanText}</td>
-                          <td className="px-4 py-4 align-top text-gray-500" rowSpan={rowSpan}>{tanggal}</td>
                           <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{sj.pic_pemohon_nama || "-"}</td>
                           <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>
                             <span className="block">{boqLabel}</span>
@@ -1271,12 +1693,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
                           <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{driverLabel}</td>
                           <td className="px-4 py-4 align-top" rowSpan={rowSpan}>
                             {sj.surat_jalan_url ? (
-                              <a
-                                href={sj.surat_jalan_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-xs font-semibold text-[#E8632C] hover:underline"
-                              >
+                              <a href={sj.surat_jalan_url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#E8632C] hover:underline">
                                 Lihat PDF
                               </a>
                             ) : (
@@ -1285,10 +1702,8 @@ pic_pemohon_nama: picPemohon.trim() || null,
                           </td>
                         </>
                       )}
-                      <td className="px-4 py-3 align-top font-medium text-gray-800">
-                        {item?.barang?.kode_perangkat || "-"}
-                      </td>
-                      <td className="px-4 py-3 align-top text-gray-600">{item?.barang?.nama_barang || "-"}</td>
+                      <td className="px-4 py-3 align-top font-medium text-gray-800">{item?.barang?.kode_perangkat || "-"}</td>
+                      <td className="px-4 py-3 align-top text-gray-600">{item?.barang?.nama_barang || item?.nama_barang || "-"}</td>
                       <td className="px-4 py-3 align-top text-right text-gray-600">{item ? Number(item.qty || 0) : "-"}</td>
                       <td className="px-4 py-3 align-top text-gray-600">
                         {item?.satuan?.kode_satuan || item?.barang?.satuan_default?.kode_satuan || "-"}
@@ -1296,9 +1711,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
                       <td className="px-4 py-3 align-top text-gray-600">{item?.catatan || "-"}</td>
                       <td className="px-4 py-3 align-top">
                         {item?.is_di_luar_boq ? (
-                          <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
-                            Ya
-                          </span>
+                          <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">Ya</span>
                         ) : (
                           <span className="text-xs text-gray-400">Tidak</span>
                         )}
@@ -1306,34 +1719,17 @@ pic_pemohon_nama: picPemohon.trim() || null,
                       {isFirst && (
                         <>
                           <td className="px-4 py-4 align-top" rowSpan={rowSpan}>
-                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${meta.tone}`}>
-                              {meta.label}
-                            </span>
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${meta.tone}`}>{meta.label}</span>
                           </td>
                           <td className="px-4 py-4 align-top text-right" rowSpan={rowSpan}>
                             {sj.status === "diterima_didistribusikan" ? (
                               <span className="text-sm font-semibold text-gray-400">Selesai</span>
                             ) : sj.status === "ready_putaway" ? (
-                              (() => {
-                                const allReceived = (sj.items || []).every(
-                                  (i) => i.qty_diterima !== null && i.qty_diterima !== undefined
-                                );
-                                return allReceived ? (
-                                  <Link
-                                    href={`/staff/putaway/${sj.surat_jalan_id}`}
-                                    className="text-sm font-semibold text-[#E8632C] hover:underline"
-                                  >
-                                    Putaway
-                                  </Link>
-                                ) : (
-                                  <Link
-                                    href={`/staff/inbound/${sj.surat_jalan_id}`}
-                                    className="text-sm font-semibold text-[#E8632C] hover:underline"
-                                  >
-                                    Penerimaan
-                                  </Link>
-                                );
-                              })()
+                              allReceived ? (
+                                <Link href={`/staff/putaway/${sj.surat_jalan_id}`} className="text-sm font-semibold text-[#E8632C] hover:underline">Putaway</Link>
+                              ) : (
+                                <Link href={`/staff/inbound/${sj.surat_jalan_id}`} className="text-sm font-semibold text-[#E8632C] hover:underline">Penerimaan</Link>
+                              )
                             ) : sj.status === "draft_diajukan" &&
                               (String(user?.id) === String(sj.created_by || sj.creator?.user_id) ||
                                 user?.role === "supervisor" ||
@@ -1346,30 +1742,29 @@ pic_pemohon_nama: picPemohon.trim() || null,
                                 {cancellingId === sj.surat_jalan_id ? "Membatalkan..." : "Batalkan"}
                               </button>
                             ) : (
-                              <Link
-                                href={`/staff/inbound/${sj.surat_jalan_id}`}
-                                className="text-sm font-semibold text-[#E8632C] hover:underline"
-                              >
-                                Buka
-                              </Link>
+                              <Link href={`/staff/inbound/${sj.surat_jalan_id}`} className="text-sm font-semibold text-[#E8632C] hover:underline">Buka</Link>
                             )}
                           </td>
                         </>
                       )}
-                    </td>
-                  </tr>
-                );
+                    </tr>
+                  );
+                });
               })
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Modal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={() => {
+          setShowPreviewModal(false);
+          setModalOpen(false);
+        }}
         title="Input Inbound"
-        subtitle="Isi detail barang masuk untuk diajukan ke Supervisor"
+        subtitle="Isi detail barang masuk — stok masuk tercatat saat disimpan"
         widthClass="max-w-4xl"
       >
         {formError && (
@@ -1384,6 +1779,11 @@ pic_pemohon_nama: picPemohon.trim() || null,
               value={selectedBoqId}
               onSelect={(picked) => {
                 setSelectedBoqId(picked.boq_id);
+                setSelectedBoqMeta({
+                  boq_number: picked.boq_number || "",
+                  kode_tiket: picked.kode_tiket || "",
+                  project_name: picked.project_name || "",
+                });
                 if (picked.project_id) {
                   setSelectedProjectId(String(picked.project_id));
                 }
@@ -1406,24 +1806,6 @@ pic_pemohon_nama: picPemohon.trim() || null,
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Gudang Tujuan <span className="text-rose-500">*</span></label>
-            <div className="relative">
-              <select
-                value={selectedGudangTujuanId}
-                onChange={(e) => setSelectedGudangTujuanId(e.target.value)}
-                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
-              >
-                  <option value="" disabled>Pilih Gudang Tujuan...</option>
-                  {gudangTujuanOptions.map((w) => (
-                    <option key={w.gudang_id} value={String(w.gudang_id)}>
-                      {w.label}
-                    </option>
-                  ))}
-              </select>
-              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            </div>
-          </div>
-          <div>
             <label className="mb-1 block text-xs font-medium text-gray-600">Tanggal Masuk <span className="text-rose-500">*</span></label>
             <input
               type="date"
@@ -1433,7 +1815,23 @@ pic_pemohon_nama: picPemohon.trim() || null,
             />
           </div>
 
-          <div>
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-gray-600">Gudang Asal <span className="text-rose-500">*</span></label>
+            <div className="relative">
+              <select
+                value={selectedGudangAsalId}
+                onChange={(e) => setSelectedGudangAsalId(e.target.value)}
+                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+              >
+                <option value="">Pilih Gudang Asal...</option>
+                {warehouseOptions.map((w) => (
+                  <option key={w.gudang_id} value={String(w.gudang_id)}>{w.nama_gudang}</option>
+                ))}
+              </select>
+              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
+          </div>
+          <div className="sm:col-span-2">
             <label className="mb-1 block text-xs font-medium text-gray-600">Asal Pengiriman</label>
             <div className="flex gap-2">
               <button
@@ -1459,21 +1857,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 External
               </button>
             </div>
-            {selectedAsalTipe === "internal" && (
-              <select
-                value={selectedGudangAsalId}
-                onChange={(e) => setSelectedGudangAsalId(e.target.value)}
-                className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
-              >
-                <option value="">Pilih gudang asal</option>
-                {warehouseOptions.map((w) => (
-                  <option key={w.gudang_id} value={String(w.gudang_id)}>
-                    {w.nama_gudang}
-                  </option>
-                ))}
-              </select>
-            )}
-            {selectedAsalTipe === "external" && (
+{selectedAsalTipe === "external" && (
               <>
                 {!isVendorManual ? (
                   <select
@@ -1517,6 +1901,24 @@ pic_pemohon_nama: picPemohon.trim() || null,
             )}
           </div>
 
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Gudang Tujuan <span className="text-rose-500">*</span></label>
+            <div className="relative">
+              <select
+                value={selectedGudangTujuanId}
+                onChange={(e) => setSelectedGudangTujuanId(e.target.value)}
+                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+              >
+                  <option value="" disabled>Pilih Gudang Tujuan...</option>
+                  {gudangTujuanOptions.map((w) => (
+                    <option key={w.gudang_id} value={String(w.gudang_id)}>
+                      {w.label}
+                    </option>
+                  ))}
+              </select>
+              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
+          </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-600">PIC / Penerima</label>
             <input
@@ -1592,6 +1994,9 @@ pic_pemohon_nama: picPemohon.trim() || null,
               className="mb-2 block w-full text-sm text-gray-600 file:mr-4 file:rounded-lg file:border-0 file:bg-[#E8632C] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-[#D9591F]"
             />
             {uploadingPdf && <p className="text-xs text-gray-500">Mengupload PDF...</p>}
+            {pdfUploadError && !uploadingPdf && (
+              <p className="mt-1 text-xs font-medium text-amber-600">{pdfUploadError}</p>
+            )}
             {suratJalanPdfUrl && !uploadingPdf && (
               <a
                 href={suratJalanPdfUrl}
@@ -1603,7 +2008,17 @@ pic_pemohon_nama: picPemohon.trim() || null,
               </a>
             )}
             {suratJalanPdf && !uploadingPdf && (
-              <p className="mt-1 text-xs text-gray-500">File: {suratJalanPdf.name}</p>
+              <p className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                PDF Terlampir: {suratJalanPdf.name} ({formatBytes(suratJalanPdf.size)})
+                {suratJalanPdfInline && (
+                  <span className="rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-emerald-700">
+                    Lampiran langsung
+                  </span>
+                )}
+              </p>
             )}
           </div>
         </div>
@@ -1931,15 +2346,22 @@ pic_pemohon_nama: picPemohon.trim() || null,
         </div>
 
         <div className="mt-6 flex items-center justify-end gap-3">
-          <Button variant="outline" onClick={() => setModalOpen(false)} disabled={submitting}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setShowPreviewModal(false);
+              setModalOpen(false);
+            }}
+            disabled={submitting}
+          >
             Batal
           </Button>
           <Button
-            onClick={handleSubmitInbound}
+            onClick={handlePreviewInbound}
             disabled={!canSubmitModal || submitting}
             className="bg-[#E8632C] hover:bg-[#D9591F]"
           >
-            {submitting ? "Mengirim..." : "Submit"}
+            {submitting ? "Mengirim..." : "Preview & Simpan"}
           </Button>
         </div>
       </Modal>
@@ -2190,6 +2612,30 @@ pic_pemohon_nama: picPemohon.trim() || null,
         </div>
       )}
 
+      <PreviewInboundModal
+        open={showPreviewModal}
+        onClose={() => setShowPreviewModal(false)}
+        onConfirm={handleConfirmSaveInbound}
+        submitting={submitting}
+        nomorSuratJalan={nomorSuratJalan.trim()}
+        vendorLabel={previewVendorLabel}
+        gudangTujuan={previewGudangTujuanLabel}
+        tanggalLabel={previewTanggalLabel}
+        projectName={selectedBoqMeta.project_name}
+        boqNumber={selectedBoqMeta.boq_number}
+        kodeTiket={selectedBoqMeta.kode_tiket}
+        picPemohon={picPemohon.trim()}
+        kendaraan={kendaraanNamaTeks.trim()}
+        noPolisi={kendaraanNoPolisTeks.trim()}
+        driver={driverNamaTeks.trim()}
+        items={previewItems}
+        suratJalanFileName={suratJalanPdf?.name || null}
+        suratJalanUrl={suratJalanPdfUrl || suratJalanPdfDataUrl || null}
+        suratJalanSize={suratJalanPdf?.size ?? null}
+        suratJalanInline={suratJalanPdfInline && !suratJalanPdfUrl}
+        onImageClick={setPreviewFotoUrl}
+      />
+
       {showSuccessModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
@@ -2205,10 +2651,10 @@ pic_pemohon_nama: picPemohon.trim() || null,
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Surat Jalan Inbound Berhasil Diajukan</h3>
-              <p className="mt-2 text-sm text-gray-500">
-                Menunggu konfirmasi persetujuan dari supervisor.
-              </p>
+              <h3 className="text-lg font-bold text-gray-900">Surat Jalan Inbound Berhasil Disimpan</h3>
+                <p className="mt-2 text-sm text-gray-500">
+                  Stok masuk sudah tercatat saat disimpan. Lanjutkan penerimaan &amp; putaway dari daftar.
+                </p>
               <button
                 type="button"
                 onClick={handleSuccessModalClose}
@@ -2269,6 +2715,6 @@ pic_pemohon_nama: picPemohon.trim() || null,
           </div>
         </div>
       )}
-    </div>
-  );
+     </div>
+   );
 }

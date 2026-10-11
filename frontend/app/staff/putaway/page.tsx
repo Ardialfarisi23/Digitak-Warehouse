@@ -120,11 +120,11 @@ export default function PutawayListPage() {
         <table className="w-full min-w-[1100px] text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
-              <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
+              <th className="px-6 py-4 font-semibold">No</th>
+              <th className="px-6 py-4 font-semibold">Tanggal</th>
               <th className="px-6 py-4 font-semibold">Nomor Surat Jalan</th>
               <th className="px-6 py-4 font-semibold">Asal</th>
               <th className="px-6 py-4 font-semibold">Tujuan Gudang</th>
-              <th className="px-6 py-4 font-semibold">Tanggal</th>
               <th className="px-6 py-4 font-semibold">Kode Barang</th>
               <th className="px-6 py-4 font-semibold">Nama Barang</th>
               <th className="px-6 py-4 font-semibold text-right">Qty Surat Jalan</th>
@@ -164,7 +164,8 @@ export default function PutawayListPage() {
                     >
                       {isFirst && (
                         <>
-                          <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500" rowSpan={rowSpan}>{rowNumber}</td>
+                          <td className="px-6 py-4 align-top font-medium text-gray-700" rowSpan={rowSpan}>{sjIndex + 1}</td>
+                          <td className="px-6 py-4 align-top text-gray-500" rowSpan={rowSpan}>{tanggal}</td>
                           <td className="px-6 py-4 align-top font-medium text-gray-800" rowSpan={rowSpan}>
                             <span className="flex items-center gap-2">
                               <MapPin size={16} className="text-[#E8632C]" />
@@ -173,7 +174,6 @@ export default function PutawayListPage() {
                           </td>
                           <td className="px-6 py-4 align-top text-gray-600" rowSpan={rowSpan}>{sj.gudang_asal?.nama_gudang || "-"}</td>
                           <td className="px-6 py-4 align-top text-gray-600" rowSpan={rowSpan}>{sj.gudang_tujuan?.nama_gudang || "-"}</td>
-                          <td className="px-6 py-4 align-top text-gray-500" rowSpan={rowSpan}>{tanggal}</td>
                         </>
                       )}
                       <td className="px-6 py-3 align-top font-medium text-gray-800">
