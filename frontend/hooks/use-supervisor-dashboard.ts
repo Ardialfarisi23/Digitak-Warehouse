@@ -19,6 +19,25 @@ type ApprovalItem = {
   status: "Menunggu" | "Disetujui" | "Ditolak";
   createdAt?: string;
 };
+
+export type InboundMonitoringApiRow = {
+  surat_jalan_id?: string | number;
+  id?: string | number;
+  nomor_surat_jalan?: string;
+  gudang_tujuan?: { nama_gudang?: string } | null;
+  status?: string;
+  tanggal?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type InboundMonitoringItem = {
+  id: string;
+  nomorSuratJalan: string;
+  gudangTujuan: string;
+  status: string;
+  tanggal: string;
+};
 type ActivityLogItem = {
   auditId?: string;
   time: string;
@@ -36,12 +55,6 @@ const FALLBACK_WAREHOUSES: Warehouse[] = [
 const FALLBACK_PROJECTS: Project[] = [
   { id: "prj-1", nama_project: "RW 05", area: "Jakarta Selatan" },
   { id: "prj-2", nama_project: "Backbone JKT", area: "Jakarta Pusat" },
-];
-
-const FALLBACK_APPROVAL_LIST: ApprovalItem[] = [
-  { id: "inbound::SJ-2024001", rawId: "SJ-2024001", isOutbound: false, direction: "Inbound", partner: "PT Supplier A", status: "Menunggu" },
-  { id: "outbound::SJ-2024002", rawId: "SJ-2024002", isOutbound: true, tag: "KRITIS", direction: "Outbound", partner: "Project RW 05", status: "Menunggu" },
-  { id: "inbound::SJ-2024003", rawId: "SJ-2024003", isOutbound: false, direction: "Inbound", partner: "Gudang Transit", status: "Menunggu" },
 ];
 
 const FALLBACK_ACTIVITY_LOG: ActivityLogItem[] = [
@@ -137,7 +150,7 @@ export type SupervisorDashboardReturn = {
   isLoading: boolean;
   warehouses: Warehouse[];
   projects: Project[];
-  approvalList: ApprovalItem[];
+  inboundMonitoring: InboundMonitoringItem[];
   activityLog: ActivityLogItem[];
   ticketReconciliation: TicketReconciliation[];
   projectSummary: ProjectSummaryRow[];
@@ -149,10 +162,7 @@ export type SupervisorDashboardReturn = {
   boqStats: { draft: number | null; active: number | null; total: number | null };
   activeBoqTickets: Set<string>;
   stagingSites: Warehouse[];
-  approvingId: string | null;
-  approveError: string | null;
   handleFilterChange: (type: "warehouse" | "project", value: string) => void;
-  handleApprove: (compositeId: string) => Promise<void>;
   showDeactivatedModal: boolean;
   handleReturnToLogin: () => void;
 };
@@ -228,7 +238,7 @@ function normalizeResult(action: string): { label: "Sukses" | "Gagal" | "Menungg
 }
 
 export function useSupervisorDashboard() {
-  const { get, put } = useApi();
+  const { get } = useApi();
   const { showDeactivatedModal, handleReturnToLogin } = useAccountStatusGuard(60000);
 
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>("all");
@@ -236,11 +246,7 @@ export function useSupervisorDashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [warehouses, setWarehouses] = useState<Warehouse[]>(FALLBACK_WAREHOUSES);
   const [projects, setProjects] = useState<Project[]>(FALLBACK_PROJECTS);
-  const [approvalList, setApprovalList] = useState<ApprovalItem[]>(FALLBACK_APPROVAL_LIST);
-  const approvalListRef = useRef<ApprovalItem[]>(FALLBACK_APPROVAL_LIST);
-  useEffect(() => {
-    approvalListRef.current = approvalList;
-  }, [approvalList]);
+  const [inboundMonitoring, setInboundMonitoring] = useState<InboundMonitoringItem[]>([]);
 
   const selectedWarehouseRef = useRef<string>("all");
   const selectedProjectRef = useRef<string>("all");
@@ -267,8 +273,6 @@ export function useSupervisorDashboard() {
   });
   const [activeBoqTickets, setActiveBoqTickets] = useState<Set<string>>(new Set());
   const [stagingSites, setStagingSites] = useState<Warehouse[]>([]);
-  const [approvingId, setApprovingId] = useState<string | null>(null);
-  const [approveError, setApproveError] = useState<string | null>(null);
 
   const fetchWarehouses = useCallback(async () => {
     try {
@@ -383,7 +387,6 @@ export function useSupervisorDashboard() {
               createdAt: it.createdAt,
             });
           }
-          if (mapped.length) setApprovalList(mapped);
 
           const backendQueue = json?.data || {};
           const inboundPending = typeof backendQueue.inboundCount === "number"
@@ -680,11 +683,6 @@ export function useSupervisorDashboard() {
   }, [warehouses]);
 
   useEffect(() => {
-    void fetchWarehouses();
-    void fetchProjects();
-  }, [fetchWarehouses, fetchProjects]);
-
-  useEffect(() => {
     if (warehouses.length && projects.length) {
       void fetchDashboardData(selectedWarehouse, selectedProject);
     }
@@ -698,66 +696,35 @@ export function useSupervisorDashboard() {
     }
   }, []);
 
-  const handleApprove = useCallback(
-    async (compositeId: string) => {
-      const target = approvalListRef.current.find((it) => it.id === compositeId);
-      if (!target) return;
-      const numericId = target.numericId || target.rawId;
-      if (!numericId || !/^\d+$/.test(String(numericId))) {
-        setApproveError("ID surat jalan tidak valid untuk diproses.");
-        return;
-      }
+  const fetchInboundMonitoring = useCallback(async () => {
+    try {
+      const res = await get(`${API_BASE}/api/surat-jalan/inbound`);
+      if (!res.ok) return;
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) return;
+      const json = await res.json();
+      const rawList: unknown[] = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
+      const mapped: InboundMonitoringItem[] = rawList.map((entry) => {
+        const r = entry as InboundMonitoringApiRow;
+        return {
+          id: String(r.surat_jalan_id ?? r.id ?? ""),
+          nomorSuratJalan: r.nomor_surat_jalan || "-",
+          gudangTujuan: r.gudang_tujuan?.nama_gudang || "-",
+          status: r.status || "-",
+          tanggal: r.tanggal || r.created_at || r.updated_at || "",
+        };
+      });
+      setInboundMonitoring(mapped);
+    } catch {
+      // keep existing state on failure
+    }
+  }, [get]);
 
-      setApprovingId(compositeId);
-      setApproveError(null);
-      const endpoint = target.isOutbound
-        ? `${API_BASE}/api/surat-jalan/${numericId}/approve-outbound`
-        : `${API_BASE}/api/surat-jalan/${numericId}/approve-inbound`;
-
-      try {
-        const res = await put(endpoint, { itemAdjustments: [] });
-        if (!res.ok) {
-          let detail = `HTTP ${res.status}`;
-          try {
-            const errJson = await res.json();
-            if (errJson?.message) detail = errJson.message;
-            else if (errJson?.error) detail = errJson.error;
-          } catch {
-            // body bukan JSON
-          }
-          throw new Error(detail);
-        }
-        setApprovalList((prev) =>
-          prev.map((item) =>
-            item.id === compositeId ? { ...item, status: "Disetujui" } : item
-          )
-        );
-        const now = new Date();
-        const timeString = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")} WIB`;
-        const actionLabel = target.isOutbound ? "Approve Outbound" : "Approve Inbound";
-        setActivityLog((prev) => [
-          {
-            auditId: `local-${Date.now()}`,
-            time: timeString,
-            activity: `${actionLabel} ${target.rawId}`,
-            actor: "Anda",
-            result: "Sukses",
-            resultTone: "bg-emerald-100 text-emerald-700",
-          },
-          ...prev,
-        ]);
-        if (fetchDashboardDataRef.current) {
-          await fetchDashboardDataRef.current(selectedWarehouseRef.current, selectedProjectRef.current);
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Gagal memproses approval.";
-        setApproveError(`Gagal approve ${target.rawId}: ${message}`);
-      } finally {
-        setApprovingId(null);
-      }
-    },
-    [put]
-  );
+  useEffect(() => {
+    void fetchWarehouses();
+    void fetchProjects();
+    void fetchInboundMonitoring();
+  }, [fetchWarehouses, fetchProjects, fetchInboundMonitoring]);
 
   useEffect(() => {
     const formatNow = () => {
@@ -777,7 +744,7 @@ export function useSupervisorDashboard() {
     isLoading,
     warehouses,
     projects,
-    approvalList,
+    inboundMonitoring,
     activityLog,
     ticketReconciliation,
     projectSummary,
@@ -789,10 +756,7 @@ export function useSupervisorDashboard() {
     boqStats,
     activeBoqTickets,
     stagingSites,
-    approvingId,
-    approveError,
     handleFilterChange,
-    handleApprove,
     showDeactivatedModal,
     handleReturnToLogin,
   };
