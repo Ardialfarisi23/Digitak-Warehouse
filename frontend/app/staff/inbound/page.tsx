@@ -9,7 +9,6 @@ import BarangPicker, {
 } from "@/components/BarangPicker";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import BoqPicker, { type BoqPickerItem } from "@/components/BoqPicker";
 import { MobileCardList, type MobileCardField, type MobileCardItem } from "@/components/MobileCardList";
 
 type InboundStatus = "draft_diajukan" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "ditolak" | "menunggu_verifikasi" | "ready_putaway" | "sedang_dikirim" | "tiba_menunggu_konfirmasi";
@@ -63,7 +62,13 @@ interface InboundSuratJalan {
   kendaraan?: { jenis_kendaraan?: string; merk?: string; no_polisi?: string } | null;
   personil_pengantar?: { nama?: string } | null;
   surat_jalan_url?: string | null;
-  boq?: { boq_id: number; boq_number?: string; tiket?: { kode_tiket?: string } } | null;
+  cluster_id?: string | null;
+  boq?: {
+    boq_id: number;
+    boq_number?: string;
+    cluster?: { cluster_id?: string | null; nama_cluster?: string | null } | null;
+    tiket?: { kode_tiket?: string };
+  } | null;
 }
 
 interface BarangOption {
@@ -95,6 +100,25 @@ interface UnitOption {
 interface CategoryOption {
   kategori_id: string | number;
   nama_kategori?: string;
+}
+
+interface ProjectOption {
+  project_id: string | number;
+  nama_project?: string;
+}
+
+interface ClusterOption {
+  cluster_id: string | number;
+  nama_cluster?: string;
+}
+
+// Bentuk row BOQ dari GET /api/boqs (transformBoq menambahkan alias camelCase).
+interface ApiBoqRow {
+  boq_id?: number | string;
+  id?: string | number;
+  cluster_id?: string | null;
+  clusterId?: string | null;
+  cluster?: { cluster_id?: string | null; clusterId?: string | null } | null;
 }
 
 const KONDISI_OPTIONS: { value: string; label: string }[] = [
@@ -203,10 +227,16 @@ export default function InboundListPage() {
   const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
   const [warehouseOptions, setWarehouseOptions] = useState<WarehouseOption[]>([]);
   const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
+  const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
+  const [clusterOptions, setClusterOptions] = useState<ClusterOption[]>([]);
+  const [loadingClusters, setLoadingClusters] = useState(false);
   const [loadingOptions, setLoadingOptions] = useState(false);
 
-  const [selectedBoqId, setSelectedBoqId] = useState("");
+  // Pilihan utama form: Project -> Cluster; BOQ ikut terpilih dari cluster
+  // karena backend membatasi 1 cluster = maksimal 1 BOQ aktif.
   const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [selectedClusterId, setSelectedClusterId] = useState("");
+  const [selectedBoqId, setSelectedBoqId] = useState("");
   const [boqItemsDetail, setBoqItemsDetail] = useState<Array<{ barang_id: string | number; itemCode?: string; itemName?: string }>>([]);
   const [nomorSuratJalan, setNomorSuratJalan] = useState("");
   const [selectedGudangTujuanId, setSelectedGudangTujuanId] = useState("");
@@ -308,25 +338,28 @@ export default function InboundListPage() {
     setLoadingOptions(true);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise.all([
+const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes, projectRes] = await Promise.all([
         get(`${baseUrl}/api/items?limit=200`),
         get(`${baseUrl}/api/warehouses?limit=1000`),
         get(`${baseUrl}/api/suppliers`),
         get(`${baseUrl}/api/units`),
         get(`${baseUrl}/api/categories`),
+        get(`${baseUrl}/api/projects`),
       ]);
       if (!itemRes.ok) throw new Error("Gagal mengambil daftar barang.");
       if (!warehouseRes.ok) throw new Error("Gagal mengambil daftar gudang.");
       if (!supplierRes.ok) throw new Error("Gagal mengambil daftar supplier.");
       if (!unitRes.ok) throw new Error("Gagal mengambil daftar satuan.");
       if (!categoryRes.ok) throw new Error("Gagal mengambil daftar kategori.");
+      if (!projectRes.ok) throw new Error("Gagal mengambil daftar project.");
 
-      const [itemJson, warehouseJson, supplierJson, unitJson, categoryJson] = await Promise.all([
+      const [itemJson, warehouseJson, supplierJson, unitJson, categoryJson, projectJson] = await Promise.all([
         itemRes.json(),
         warehouseRes.json(),
         supplierRes.json(),
         unitRes.json(),
         categoryRes.json(),
+        projectRes.json(),
       ]);
 
       const unwrap = (json: any) => Array.isArray(json?.data) ? json.data : json?.data?.data || [];
@@ -335,6 +368,7 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
       setSupplierOptions(unwrap(supplierJson));
       setUnitOptions(unwrap(unitJson));
       setCategoryOptions(unwrap(categoryJson));
+      setProjectOptions(unwrap(projectJson));
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Gagal memuat data master.");
     } finally {
@@ -345,6 +379,8 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
   const openModal = async () => {
     setSelectedBoqId("");
     setSelectedProjectId("");
+    setSelectedClusterId("");
+    setClusterOptions([]);
     setNomorSuratJalan("");
     setSelectedGudangTujuanId("");
     setTanggalMasuk("");
@@ -371,6 +407,82 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
     setModalOpen(true);
     await loadOptions();
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    setSelectedClusterId("");
+    setClusterOptions([]);
+    setSelectedBoqId("");
+    setBoqItemsDetail([]);
+
+    if (!selectedProjectId) {
+      setLoadingClusters(false);
+      return () => { cancelled = true; };
+    }
+
+    const loadClusters = async () => {
+      setLoadingClusters(true);
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+        const res = await get(`${baseUrl}/api/clusters?project_id=${encodeURIComponent(selectedProjectId)}`);
+        if (!res.ok) throw new Error("Gagal mengambil daftar cluster.");
+        const json = await res.json();
+        const rows = Array.isArray(json?.data) ? json.data : [];
+        if (!cancelled) setClusterOptions(rows);
+      } catch (err) {
+        if (!cancelled) {
+          setClusterOptions([]);
+          setFormError(err instanceof Error ? err.message : "Gagal mengambil daftar cluster.");
+        }
+      } finally {
+        if (!cancelled) setLoadingClusters(false);
+      }
+    };
+
+    loadClusters();
+    return () => { cancelled = true; };
+  }, [selectedProjectId, get]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSelectedBoqId("");
+    setBoqItemsDetail([]);
+    if (!selectedProjectId || !selectedClusterId) return () => { cancelled = true; };
+
+    const loadActiveBoq = async () => {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+        const params = new URLSearchParams({
+          projectId: selectedProjectId,
+          clusterId: selectedClusterId,
+          status: "aktif",
+          limit: "100",
+        });
+        const res = await get(`${baseUrl}/api/boqs?${params.toString()}`);
+        if (!res.ok) throw new Error("Gagal mengambil BOQ aktif untuk cluster ini.");
+        const json = await res.json();
+        const rows = Array.isArray(json?.data) ? json.data : Array.isArray(json?.data?.data) ? json.data.data : [];
+        const scopedRows = rows.filter((row: ApiBoqRow) =>
+          String(row.cluster_id ?? row.clusterId ?? row.cluster?.clusterId ?? row.cluster?.cluster_id ?? "") === String(selectedClusterId)
+        );
+        if (cancelled) return;
+        if (scopedRows.length === 0) {
+          setFormError("Tidak ada BOQ aktif untuk cluster yang dipilih.");
+          return;
+        }
+        if (scopedRows.length > 1) {
+          setFormError("Ditemukan lebih dari satu BOQ aktif untuk cluster ini. Hubungi administrator.");
+          return;
+        }
+        setSelectedBoqId(String(scopedRows[0].boq_id ?? scopedRows[0].id ?? ""));
+      } catch (err) {
+        if (!cancelled) setFormError(err instanceof Error ? err.message : "Gagal mengambil BOQ aktif.");
+      }
+    };
+
+    loadActiveBoq();
+    return () => { cancelled = true; };
+  }, [selectedProjectId, selectedClusterId, get]);
 
   useEffect(() => {
     if (!selectedBoqId) {
@@ -927,6 +1039,7 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
     selectedGudangTujuanId &&
     tanggalMasuk &&
     selectedProjectId &&
+    selectedClusterId &&
     selectedBoqId &&
     selectedAsalTipe &&
     (selectedAsalTipe === "internal"
@@ -950,8 +1063,18 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
   );
 
   const handleSubmitInbound = async () => {
+    if (!selectedProjectId) {
+      setFormError("Pilih project terlebih dahulu.");
+      return;
+    }
+
+    if (!selectedClusterId) {
+      setFormError("Pilih cluster terlebih dahulu.");
+      return;
+    }
+
     if (!selectedBoqId) {
-      setFormError("Pilih BOQ terlebih dahulu.");
+      setFormError("Tidak ada BOQ aktif untuk cluster yang dipilih.");
       return;
     }
 
@@ -984,6 +1107,7 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
         gudang_tujuan_id: selectedGudangTujuanId,
         tanggal: tanggalMasuk,
         project_id: selectedProjectId || null,
+        cluster_id: selectedClusterId || null,
         tujuan_tipe: "gudang",
         tipe_pengirim: selectedAsalTipe || null,
         supplier_id: selectedAsalTipe === "external" && !isVendorManual ? selectedSupplierId || null : null,
@@ -1087,28 +1211,17 @@ pic_pemohon_nama: picPemohon.trim() || null,
       month: "long",
       year: "numeric",
     });
-
-    const tipePengirimLabel = sj.tipe_pengirim === "internal" ? "Internal" : sj.tipe_pengirim === "external" ? "External" : "-";
-    const kendaraanLabel =
-      sj.kendaraan_teks ||
-      (sj.kendaraan
-        ? sj.kendaraan.merk && sj.kendaraan.merk.trim()
-          ? `${sj.kendaraan.merk} - ${sj.kendaraan.jenis_kendaraan}`
-          : sj.kendaraan.jenis_kendaraan
-        : null) ||
+    const clusterLabel =
+      sj.boq?.cluster?.nama_cluster ||
+      sj.boq?.cluster?.cluster_id ||
+      sj.cluster_id ||
       "-";
+
     const fields: MobileCardField[] = [
-      { label: "Tipe Pengirim", value: tipePengirimLabel },
-      { label: "Gudang Asal", value: sj.tipe_pengirim === "internal" ? sj.gudang_asal?.nama_gudang || "-" : "-" },
-      { label: "Supplier", value: sj.tipe_pengirim === "external" && sj.supplier?.nama ? `${sj.supplier.kode} - ${sj.supplier.nama}` : "-" },
-      { label: "Vendor Eksternal", value: sj.tipe_pengirim === "external" && !sj.supplier?.nama ? sj.pengirim_eksternal_nama || "-" : "-" },
-      { label: "Tujuan", value: tujuanText },
       { label: "Tanggal", value: tanggal },
-      { label: "PIC Pemohon", value: sj.pic_pemohon_nama || "-" },
-      { label: "BOQ / Tiket", value: sj.boq ? sj.boq.boq_number || `BOQ #${sj.boq.boq_id}` : "-" },
-      { label: "Kendaraan", value: kendaraanLabel },
-      { label: "No. Polisi", value: sj.no_polisi_teks || sj.kendaraan?.no_polisi || "-" },
-      { label: "Nama Driver", value: sj.driver_teks || sj.personil_pengantar?.nama || "-" },
+      { label: "Tujuan", value: tujuanText },
+      { label: "Project", value: sj.project?.nama_project || "-" },
+      { label: "Cluster", value: clusterLabel },
       { label: "Item", value: `${totalUnit} unit` },
     ];
 
@@ -1207,8 +1320,9 @@ pic_pemohon_nama: picPemohon.trim() || null,
               <th className="px-4 py-4 font-semibold">Nama Vendor Eksternal</th>
               <th className="px-4 py-4 font-semibold">Gudang Tujuan</th>
               <th className="px-4 py-4 font-semibold">PIC Pemohon</th>
-              <th className="px-4 py-4 font-semibold">BOQ / Tiket</th>
+              <th className="px-4 py-4 font-semibold">BOQ / Tiket (otomatis)</th>
               <th className="px-4 py-4 font-semibold">Project</th>
+              <th className="px-4 py-4 font-semibold">Cluster</th>
               <th className="px-4 py-4 font-semibold">Kendaraan</th>
               <th className="px-4 py-4 font-semibold">No. Polisi</th>
               <th className="px-4 py-4 font-semibold">Nama Driver</th>
@@ -1226,13 +1340,13 @@ pic_pemohon_nama: picPemohon.trim() || null,
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={23} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={24} className="px-6 py-12 text-center text-gray-400">
                   Memuat data...
                 </td>
               </tr>
             ) : list.length === 0 ? (
               <tr>
-                <td colSpan={23} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={24} className="px-6 py-12 text-center text-gray-400">
                   Tidak ada Surat Jalan Inbound yang perlu diproses.
                 </td>
               </tr>
@@ -1262,6 +1376,13 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 const driverLabel = sj.driver_teks || sj.personil_pengantar?.nama || "-";
                 const boqLabel = sj.boq ? sj.boq.boq_number || `BOQ #${sj.boq.boq_id}` : "-";
                 const tiketLabel = sj.boq?.tiket?.kode_tiket || "-";
+                // Cluster: relasi sudah di-include backend (boq.cluster). Fallback
+                // ke cluster_id mentah untuk record lama / non-BOQ.
+                const clusterLabel =
+                  sj.boq?.cluster?.nama_cluster ||
+                  sj.boq?.cluster?.cluster_id ||
+                  sj.cluster_id ||
+                  "-";
                 const allReceived = (sj.items || []).every(
                   (i) => i.qty_diterima !== null && i.qty_diterima !== undefined
                 );
@@ -1304,6 +1425,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
                             <span className="block text-xs text-gray-400">Tiket: {tiketLabel}</span>
                           </td>
                           <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{sj.project?.nama_project || "-"}</td>
+                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{clusterLabel}</td>
                           <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{kendaraanLabel}</td>
                           <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{noPolisiLabel}</td>
                           <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{driverLabel}</td>
@@ -1387,20 +1509,58 @@ pic_pemohon_nama: picPemohon.trim() || null,
         )}
         <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">BOQ / Tiket <span className="text-rose-500">*</span></label>
-            <BoqPicker
-              value={selectedBoqId}
-              onSelect={(picked) => {
-                setSelectedBoqId(picked.boq_id);
-                if (picked.project_id) {
-                  setSelectedProjectId(String(picked.project_id));
-                }
+            <label className="mb-1 block text-xs font-medium text-gray-600">Project <span className="text-rose-500">*</span></label>
+            <select
+              value={selectedProjectId}
+              onChange={(e) => {
+                setSelectedProjectId(e.target.value);
+                setSelectedClusterId("");
+                setSelectedBoqId("");
+                setBoqItemsDetail([]);
+                setFormError(null);
               }}
-              placeholder="Pilih BOQ / Tiket"
-              tipe="inbound"
-              excludeStatus="draft,selesai,ditolak"
-              emptyMessage="Tidak ada BOQ yang dapat diajukan."
-            />
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
+            >
+              <option value="">Pilih Project...</option>
+              {projectOptions.map((project) => (
+                <option key={project.project_id} value={String(project.project_id)}>
+                  {project.nama_project || `Project #${project.project_id}`}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Cluster <span className="text-rose-500">*</span></label>
+            <select
+              value={selectedClusterId}
+              disabled={!selectedProjectId || loadingClusters}
+              onChange={(e) => {
+                setSelectedClusterId(e.target.value);
+                setSelectedBoqId("");
+                setBoqItemsDetail([]);
+                setFormError(null);
+              }}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+            >
+              <option value="">
+                {!selectedProjectId
+                  ? "Pilih project terlebih dahulu"
+                  : loadingClusters
+                    ? "Memuat cluster..."
+                    : "Pilih Cluster..."}
+              </option>
+              {clusterOptions.map((cluster) => (
+                <option key={cluster.cluster_id} value={String(cluster.cluster_id)}>
+                  {cluster.cluster_id} — {cluster.nama_cluster || cluster.cluster_id}
+                </option>
+              ))}
+            </select>
+            {selectedProjectId && !loadingClusters && clusterOptions.length === 0 && (
+              <p className="mt-1 text-xs text-amber-600">Project ini belum memiliki cluster.</p>
+            )}
+            {selectedProjectId && selectedClusterId && !selectedBoqId && (
+              <p className="mt-1 text-xs text-gray-500">Memuat BOQ aktif untuk cluster yang dipilih...</p>
+            )}
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-600">Nomor Surat Jalan <span className="text-rose-500">*</span></label>

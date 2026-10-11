@@ -197,6 +197,30 @@ const modalListInclude = {
   },
 };
 
+const outboundQueueInclude = {
+  ...modalListInclude,
+  items: {
+    ...modalListInclude.items,
+    include: {
+      ...modalListInclude.items.include,
+      barang: {
+        ...modalListInclude.items.include.barang,
+        include: {
+          ...modalListInclude.items.include.barang.include,
+          stok_gudangs: {
+            select: {
+              qty: true,
+              gudang_id: true,
+              zona_id: true,
+              kondisi: true,
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
 const APPROVAL_STATUS = "draft_diajukan";
 // Dipakai daftar pengiriman supervisor. `tiba_di_transit` ikut disertakan supaya
 // Surat Jalan yang sedang dititipkan di Gudang Transit tidak hilang dari daftar
@@ -453,7 +477,7 @@ const findOutboundQueue = async (filters = {}) => {
 
   const data = await prisma.surat_jalan.findMany({
     where,
-    include: modalListInclude,
+    include: outboundQueueInclude,
     orderBy: [{ updated_at: "desc" }],
   });
 
