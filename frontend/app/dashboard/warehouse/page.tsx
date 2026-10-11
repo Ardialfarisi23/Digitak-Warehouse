@@ -1101,7 +1101,7 @@ export default function WarehouseLayoutPage() {
 
               {selectedWarehouse?.tipe === "dadakan" && (
                 <span className="inline-flex items-center rounded-full border border-[#d6efd6] bg-[#e8fbe8] px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-[#14532d]">
-                  Dadakan
+                  Transit
                 </span>
               )}
             </div>
@@ -1281,65 +1281,35 @@ export default function WarehouseLayoutPage() {
               </p>
             </div>
           ) : (
-            <>
-              {/* Table - Desktop only */}
-              <div className="hidden md:block">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-[#e5e7eb]">
-                        <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Nama Barang</th>
-                        <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Kategori</th>
-                        <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Kondisi</th>
-                        <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085] text-right">Qty</th>
-                        <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Satuan</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#f2f4f7]">
-                      {filteredPanelStock.map((item) => (
-                        <tr key={item.snapshot_id} className="transition hover:bg-[#fafbfc]">
-                          <td className="px-4 py-3">
-                            <p className="text-[13px] font-semibold text-[#111827]">{item.nama_barang}</p>
-                            <p className="text-[11px] text-[#98a2b3]">{item.kode_perangkat}</p>
-                          </td>
-                          <td className="px-4 py-3 text-[13px] text-[#6b7280]">{item.kategori}</td>
-                          <td className="px-4 py-3 text-[13px] text-[#6b7280]"><KondisiBadge value={item.kondisi} /></td>
-                          <td className="px-4 py-3 text-right text-[13px] font-semibold text-[#111827]">{Number(item.qty).toLocaleString("id-ID")}</td>
-                          <td className="px-4 py-3 text-[13px] text-[#6b7280]">{item.satuan}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Cards - Mobile only */}
-              <div className="block md:hidden space-y-3">
-                {filteredPanelStock.map((item) => (
-                  <div key={item.snapshot_id} className="border rounded-lg p-3 space-y-2 bg-white">
-                    <div>
-                      <p className="text-sm font-medium text-[#111827] break-words">{item.nama_barang}</p>
-                      <p className="font-mono text-xs text-[#6b7280]">{item.kode_perangkat}</p>
-                    </div>
-                    <p className="text-xs text-[#98a2b3]">{item.kategori}</p>
-                    <div className="border-t border-[#edf0f2] pt-2 grid grid-cols-3 gap-2 text-center">
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-[#98a2b3]">QTY</p>
-                        <p className="text-base font-semibold text-[#111827]">{Number(item.qty).toLocaleString("id-ID")}</p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-[#98a2b3]">SATUAN</p>
-                        <p className="text-sm text-[#6b7280]">{item.satuan}</p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-[#98a2b3]">KONDISI</p>
-                        <KondisiBadge value={item.kondisi} />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-[#e5e7eb]">
+                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085] text-center w-12">No</th>
+                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Nama Barang</th>
+                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Kategori</th>
+                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Kondisi</th>
+                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085] text-right">Qty</th>
+                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Satuan</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#f2f4f7]">
+                  {filteredPanelStock.map((item, idx) => (
+                    <tr key={item.snapshot_id} className="transition hover:bg-[#fafbfc]">
+                      <td className="px-4 py-3 text-center text-xs text-slate-500">{idx + 1}</td>
+                      <td className="px-4 py-3">
+                        <p className="text-[13px] font-semibold text-[#111827]">{item.nama_barang}</p>
+                        <p className="text-[11px] text-[#98a2b3]">{item.kode_perangkat}</p>
+                      </td>
+                      <td className="px-4 py-3 text-[13px] text-[#6b7280]">{item.kategori}</td>
+                      <td className="px-4 py-3 text-[13px] text-[#6b7280]"><KondisiBadge value={item.kondisi} /></td>
+                      <td className="px-4 py-3 text-right text-[13px] font-semibold text-[#111827]">{Number(item.qty).toLocaleString("id-ID")}</td>
+                      <td className="px-4 py-3 text-[13px] text-[#6b7280]">{item.satuan}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </ZoneDetailModal>

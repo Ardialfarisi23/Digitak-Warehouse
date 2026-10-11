@@ -906,12 +906,12 @@ export default function SupervisorDashboard() {
                 </div>
               </div>
 
-              {/* GUDANG DADAKAN AKTIF */}
+              {/* GUDANG TRANSIT AKTIF */}
               <div className="rounded-2xl bg-white p-6 shadow-sm border border-stone-100 space-y-4">
                 <div className="flex items-center gap-2">
                   <Radio className="text-orange-500" size={20} />
                   <h3 className="text-lg font-bold text-slate-900">
-                    Gudang Dadakan Aktif
+                    Gudang Transit Aktif
                   </h3>
                 </div>
 
@@ -927,7 +927,7 @@ export default function SupervisorDashboard() {
 
                   <div className="flex flex-wrap gap-2 text-xs font-bold">
                     <span className="rounded-md bg-stone-200/70 px-2.5 py-1 text-slate-700">
-                      Gudang Dadakan
+                      Gudang Transit
                     </span>
                     <span className="rounded-md bg-orange-100 px-2.5 py-1 text-orange-700 flex items-center gap-1">
                       <Clock size={14} /> Aktif
