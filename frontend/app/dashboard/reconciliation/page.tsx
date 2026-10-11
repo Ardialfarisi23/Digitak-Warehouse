@@ -851,179 +851,182 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
             </div>
           </div>
 
-<div className="overflow-x-auto overscroll-x-contain rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <table className="w-max min-w-full table-fixed border-separate border-spacing-0 md:w-full md:table-auto md:border-collapse md:min-w-[1250px] text-left text-sm">
-<thead>
-                    <tr className="border-b border-slate-100 bg-slate-50">
-                      <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
-                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[160px]">Project</th>
-                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[150px]">Cluster Name</th>
-                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px]">PIC</th>
-                      <th className="px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Kode Tiket</th>
-                      <th className="px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">BOQ</th>
-                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
-                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
-                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
-                       <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
-                       <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
-                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px]">Remains</th>
-                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap min-w-[100px]">Status</th>
-                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[70px] sticky right-0 bg-slate-50 border-l border-slate-100">
-                        Aksi
-                      </th>
-                    </tr>
-                  </thead>
+<div className="overflow-x-auto overflow-y-auto overscroll-x-contain max-h-[calc(100vh-260px)] rounded-2xl border border-slate-200 bg-white shadow-sm">
+               <table className="w-max min-w-full table-fixed border-separate border-spacing-0 md:w-full md:table-auto md:border-collapse md:min-w-[1080px] text-left text-xs">
+                <thead className="sticky top-0 z-10 bg-slate-50">
+                     <tr className="border-b border-slate-100 bg-slate-50">
+<th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 w-10 text-center">No</th>
+                        <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 min-w-[130px]">Project</th>
+                        <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 min-w-[120px]">Cluster Name</th>
+                        <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">PIC</th>
+                        <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Kode Tiket</th>
+                        <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">BOQ</th>
+                        <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 min-w-[120px] sticky left-0 z-20 bg-slate-50">Barang</th>
+                        <th className="px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-400 min-w-[48px]">BOQ</th>
+                        <th className="px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-400 min-w-[48px]">Additional</th>
+                        <th className="px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-400 min-w-[48px]">MOS</th>
+                        <th className="px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-400 min-w-[48px]">Used</th>
+                        <th className="px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-400 min-w-[56px]">Remains</th>
+                        <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap min-w-[84px]">Status</th>
+                        <th className="px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-400 min-w-[56px] sticky right-0 z-20 bg-slate-50 border-l border-slate-100">
+                          Aksi
+                        </th>
+                     </tr>
+                   </thead>
 
-              <tbody className="divide-y divide-slate-50">
-                {isLoading ? (
-                  Array.from({ length: 7 }).map((_, rowIndex) => (
-                    <tr key={rowIndex}>
-                      <td className="px-3 py-2">
-                        <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
-                      </td>
-                      {Array.from({ length: 12 }).map((_, colIndex) => (
-                        <td key={colIndex} className="px-3 py-0 hidden md:table-cell align-middle h-16 md:h-auto md:py-2">
-                          <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
+<tbody className="divide-y divide-slate-50">
+                  {isLoading ? (
+                    Array.from({ length: 7 }).map((_, rowIndex) => (
+                      <tr key={rowIndex}>
+                        <td className="px-2 py-1">
+                          <div className="h-3 animate-pulse rounded-lg bg-slate-100" />
                         </td>
-                      ))}
-                      <td key="barang" className="px-3 py-0 sticky left-0 z-10 bg-white md:static md:z-auto md:bg-transparent w-[160px] min-w-[160px] max-w-[160px] md:w-auto md:min-w-[150px] md:max-w-none border-r border-slate-100 md:border-r-0 align-top h-16 md:h-auto md:py-2">
-                        <div className="h-4 animate-pulse rounded-lg bg-slate-100 w-[150px]" />
-                      </td>
-                      <td key="boq" className="px-2 py-0 text-right text-xs md:px-3 md:text-sm font-medium text-slate-700 w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-0 md:max-w-none align-middle h-16 md:h-auto md:py-2">
-                        <div className="h-4 animate-pulse rounded-lg bg-slate-100 w-[44px]" />
-                      </td>
-                      <td key="additional" className="px-2 py-0 text-right text-xs md:px-3 md:text-sm text-slate-600 w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-0 md:max-w-none align-middle h-16 md:h-auto md:py-2">
-                        <div className="h-4 animate-pulse rounded-lg bg-slate-100 w-[44px]" />
-                      </td>
-                      <td key="mos" className="px-2 py-0 text-right text-xs md:px-3 md:text-sm font-medium text-slate-700 w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-0 md:max-w-none align-middle h-16 md:h-auto md:py-2">
-                        <div className="h-4 animate-pulse rounded-lg bg-slate-100 w-[44px]" />
-                      </td>
-                      <td key="used" className="px-2 py-0 text-right text-xs md:px-3 md:text-sm text-slate-600 w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-0 md:max-w-none align-middle h-16 md:h-auto md:py-2">
-                        <div className="h-4 animate-pulse rounded-lg bg-slate-100 w-[44px]" />
-                      </td>
-                      <td key="remains" className="px-2 py-0 text-right text-xs md:px-3 md:text-sm font-semibold w-[64px] min-w-[64px] max-w-[64px] md:w-auto md:min-w-[80px] md:max-w-none align-middle h-16 md:h-auto md:py-2">
-                        <div className="h-4 animate-pulse rounded-lg bg-slate-100 w-[56px]" />
-                      </td>
-                      <td key="status" className="px-3 py-0 whitespace-nowrap w-[104px] min-w-[104px] max-w-[104px] md:w-auto md:min-w-[100px] md:max-w-none align-middle h-16 md:h-auto md:py-2">
-                        <div className="h-4 animate-pulse rounded-lg bg-slate-100 w-[80px]" />
-                      </td>
-                      <td key="aksi" className="px-3 py-0 sticky right-0 z-10 bg-white md:bg-slate-50 group-hover:bg-slate-50 border-l border-slate-100 md:border-l w-[80px] min-w-[80px] max-w-[80px] md:w-auto md:min-w-[70px] md:max-w-none align-middle h-16 md:h-auto md:py-2">
-                        <div className="h-4 animate-pulse rounded-lg bg-slate-100 w-[70px]" />
-                      </td>
-                    </tr>
-                  ))
-                ) : error ? (
-                  <tr>
-                    <td colSpan={13} className="px-6 py-16 text-center text-sm text-rose-500">
-                      {error}
-                    </td>
-                  </tr>
-                ) : filteredRecords.length === 0 ? (
-                  <tr>
-                    <td colSpan={13} className="px-6 py-16 text-center">
-                      <Package size={28} className="mx-auto text-slate-300" />
-                      <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data rekonsiliasi</p>
-                      <p className="mt-1 text-xs text-slate-400">Coba ubah filter atau kata pencarian.</p>
-                    </td>
-                  </tr>
-                ) : (
+                        {Array.from({ length: 12 }).map((_, colIndex) => (
+                          <td key={colIndex} className="px-2 py-1 hidden md:table-cell align-middle">
+                            <div className="h-3 animate-pulse rounded-lg bg-slate-100" />
+                        </td>
+                        ))}
+                        <td key="barang" className="px-2 py-1 sticky left-0 z-10 bg-white md:static md:z-auto md:bg-transparent w-[130px] min-w-[130px] max-w-[130px] md:w-auto md:min-w-[120px] md:max-w-none border-r border-slate-100 md:border-r-0 align-middle">
+                          <div className="h-3 animate-pulse rounded-lg bg-slate-100 w-[110px]" />
+                        </td>
+                        <td key="boq" className="px-2 py-1 text-right text-xs md:px-2 md:text-xs font-medium text-slate-700 w-[48px] min-w-[48px] max-w-[48px] md:w-auto md:min-w-0 md:max-w-none align-middle">
+                          <div className="h-3 animate-pulse rounded-lg bg-slate-100 w-[36px]" />
+                        </td>
+                        <td key="additional" className="px-2 py-1 text-right text-xs md:px-2 md:text-xs text-slate-600 w-[48px] min-w-[48px] max-w-[48px] md:w-auto md:min-w-0 md:max-w-none align-middle">
+                          <div className="h-3 animate-pulse rounded-lg bg-slate-100 w-[36px]" />
+                        </td>
+                        <td key="mos" className="px-2 py-1 text-right text-xs md:px-2 md:text-xs font-medium text-slate-700 w-[48px] min-w-[48px] max-w-[48px] md:w-auto md:min-w-0 md:max-w-none align-middle">
+                          <div className="h-3 animate-pulse rounded-lg bg-slate-100 w-[36px]" />
+                        </td>
+                        <td key="used" className="px-2 py-1 text-right text-xs md:px-2 md:text-xs text-slate-600 w-[48px] min-w-[48px] max-w-[48px] md:w-auto md:min-w-0 md:max-w-none align-middle">
+                          <div className="h-3 animate-pulse rounded-lg bg-slate-100 w-[36px]" />
+                        </td>
+                        <td key="remains" className="px-2 py-1 text-right text-xs md:px-2 md:text-xs font-semibold w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-[64px] md:max-w-none align-middle">
+                          <div className="h-3 animate-pulse rounded-lg bg-slate-100 w-[36px]" />
+                        </td>
+                        <td key="status" className="px-2 py-1 whitespace-nowrap w-[96px] min-w-[96px] max-w-[96px] md:w-auto md:min-w-[84px] md:max-w-none align-middle">
+                          <div className="h-3 animate-pulse rounded-lg bg-slate-100 w-[52px]" />
+                        </td>
+                        <td key="aksi" className="px-2 py-1 sticky right-0 z-10 bg-white md:bg-slate-50 group-hover:bg-slate-50 border-l border-slate-100 md:border-l w-[64px] min-w-[64px] max-w-[64px] md:w-auto md:min-w-[56px] md:max-w-none align-middle">
+                          <div className="h-3 animate-pulse rounded-lg bg-slate-100 w-[32px]" />
+                        </td>
+                     </tr>
+                   ))
+                 ) : error ? (
+                   <tr>
+                     <td colSpan={13} className="px-6 py-16 text-center text-sm text-rose-500">
+                       {error}
+                     </td>
+                   </tr>
+                 ) : filteredRecords.length === 0 ? (
+                   <tr>
+                     <td colSpan={13} className="px-6 py-16 text-center">
+                       <Package size={28} className="mx-auto text-slate-300" />
+                       <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data rekonsiliasi</p>
+                       <p className="mt-1 text-xs text-slate-400">Coba ubah filter atau kata pencarian.</p>
+                     </td>
+                   </tr>
+                 ) : (
                   filteredRecords.map((record, index) => {
                     const statusBadge = getStatusBadge(record.status);
                     const rowNumber = index + 1;
                     return (
-                      <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
-                        <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500">{rowNumber}</td>
-                        <td className="px-3 py-2">
-                          <p className="font-medium text-slate-900">{record.project_nama || "-"}</p>
-                          <p className="text-xs text-slate-400">{record.area || "-"}</p>
+<tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
+                         <td className="px-2 py-1 whitespace-nowrap text-center text-[10px] text-slate-500 tabular-nums w-10">{rowNumber}</td>
+<td className="px-2 py-1">
+                            <div className="truncate font-medium text-slate-900 text-xs" title={`${record.projectNama || "-"}${record.area ? ` • ${record.area}` : ""}`}>
+                              {record.projectNama || "-"}
+                              {record.area && <span className="ml-1.5 text-[10px] text-slate-400">{record.area}</span>}
+                            </div>
+                          </td>
+
+<td className="hidden md:table-cell px-2 py-1">
+                            <div className="truncate font-medium text-slate-900 text-xs" title={`${record.nama_cluster || "-"}${record.cluster_id ? ` • ${record.cluster_id}` : ""}`}>
+                              {record.nama_cluster || "-"}
+                              {record.cluster_id && <span className="ml-1.5 text-[10px] text-slate-400">{record.cluster_id}</span>}
+                            </div>
+                          </td>
+
+<td className="hidden md:table-cell px-2 py-1 text-xs text-slate-600 whitespace-nowrap">
+                          {record.picNama || <span className="text-slate-400">-</span>}
                         </td>
 
-                        <td className="hidden md:table-cell px-3 py-2">
-                          <p className="font-medium text-slate-900">{record.nama_cluster || "-"}</p>
-                          <p className="text-xs text-slate-400">{record.cluster_id || "-"}</p>
-                        </td>
-
-                        <td className="hidden md:table-cell px-3 py-2 text-sm text-slate-600 whitespace-nowrap">
-                          {record.pic_nama || <span className="text-slate-400">-</span>}
-                        </td>
-
-                        <td className="hidden md:table-cell px-2 py-2 whitespace-nowrap">
-                          <span className="inline-flex rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
-                            {record.kode_tiket}
+<td className="hidden md:table-cell px-2 py-1 whitespace-nowrap">
+                          <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                            {record["kode_tiket"]}
                           </span>
                         </td>
 
-                        <td className="hidden md:table-cell px-2 py-2 whitespace-nowrap">
-                          <div className="flex flex-wrap gap-1">
-                            {(record.boq_list || []).map((boq) => (
+<td className="hidden md:table-cell px-2 py-1 whitespace-nowrap">
+                          <div className="flex flex-nowrap gap-1">
+                            {(record.boq_list || []).slice(0, 2).map((boq) => (
                               <span
                                 key={boq.boq_id}
-                                className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 whitespace-nowrap"
-                              >
+                                className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0 text-[10px] font-semibold text-slate-700 whitespace-nowrap"
+title={boq.status === "selesai" ? `${boq.kode_boq || `BOQ-${boq.boq_id}`} (Selesai)` : (boq.kode_boq || `BOQ-${boq.boq_id}`)}
+>
                                 {boq.kode_boq || `BOQ-${boq.boq_id}`}
                                 {boq.status === "selesai" && (
-                                  <span className="ml-0.5 rounded bg-slate-200 px-1 py-0.5 text-[9px] font-semibold text-slate-500">Selesai</span>
+                                  <span className="ml-0.5 rounded bg-slate-200 px-1 py-0 text-[9px] font-semibold text-slate-500">Selesai</span>
                                 )}
                               </span>
                             ))}
+                            {(record.boq_list || []).length > 2 && (
+                              <span className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0 text-[10px] font-semibold text-slate-500 whitespace-nowrap" title={(record.boq_list || []).map(b => b.status === "selesai" ? `${b.kode_boq || `BOQ-${b.boq_id}`} (Selesai)` : (b.kode_boq || `BOQ-${b.boq_id}`)).join(", ")}>
+                                +{(record.boq_list || []).length - 2}
+                              </span>
+                            )}
                             {(record.boq_list || []).length === 0 && <span className="text-xs text-slate-400">-</span>}
                           </div>
                         </td>
 
-                        <td className="px-3 py-0 sticky left-0 z-10 bg-white md:static md:z-auto md:bg-transparent w-[160px] min-w-[160px] max-w-[160px] md:w-auto md:min-w-[150px] md:max-w-none border-r border-slate-100 md:border-r-0 align-middle h-16 md:h-auto md:py-2">
-                          <div className="flex h-16 md:h-auto md:overflow-visible flex-col justify-center overflow-hidden">
-                            <div className="truncate font-medium text-slate-800 text-xs md:text-sm leading-4" title={record.nama_barang}>{record.nama_barang}</div>
-                            <div className="truncate text-[11px] text-slate-500 md:hidden leading-4" title={record.nama_cluster || "-"}>Cluster: {record.nama_cluster || "-"}</div>
-                            <div className="truncate text-[11px] font-mono text-slate-400 md:hidden leading-4" title={`${record.kode_perangkat} • ${record.gudang_nama}`}>{record.kode_perangkat} • {record.gudang_nama}</div>
-                          </div>
-                        </td>
+<td className="px-2 py-1 sticky left-0 z-10 bg-white md:static md:z-auto md:bg-transparent w-[130px] min-w-[130px] max-w-[130px] md:w-auto md:min-w-[120px] md:max-w-none border-r border-slate-100 md:border-r-0 align-middle">
+                            <div className="flex items-center h-full overflow-hidden">
+                              <div className="truncate font-medium text-slate-800 text-xs leading-4" title={`${record.barang_id || "-"} • ${record.gudangNama || "-"} • ${record.barang_id || "-"}`}>{record.barang_id || "-"}</div>
+                            </div>
+                          </td>
 
-                        <td className="px-2 py-0 text-right text-xs md:px-3 md:text-sm font-medium text-slate-700 tabular-nums w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-0 md:max-w-none align-middle h-16 md:h-auto md:py-2">{formatNumber(record.boq)}</td>
-                        <td className="px-2 py-0 text-right text-xs md:px-3 md:text-sm text-slate-600 tabular-nums w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-0 md:max-w-none align-middle h-16 md:h-auto md:py-2">{formatNumber(record.additional)}</td>
-                        <td className="px-2 py-0 text-right text-xs md:px-3 md:text-sm font-medium text-slate-700 tabular-nums w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-0 md:max-w-none align-middle h-16 md:h-auto md:py-2">{formatNumber(record.mos)}</td>
-                        <td className="px-2 py-0 text-right text-xs md:px-3 md:text-sm text-slate-600 tabular-nums w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-0 md:max-w-none align-middle h-16 md:h-auto md:py-2">{formatNumber(record.used)}</td>
+<td className="px-2 py-1 text-right text-xs font-medium text-slate-700 tabular-nums w-[48px] min-w-[48px] max-w-[48px] md:w-auto md:min-w-0 md:max-w-none align-middle">{formatNumber(record.boq)}</td>
+                         <td className="px-2 py-1 text-right text-xs text-slate-600 tabular-nums w-[48px] min-w-[48px] max-w-[48px] md:w-auto md:min-w-0 md:max-w-none align-middle">{formatNumber(record.additional)}</td>
+                         <td className="px-2 py-1 text-right text-xs font-medium text-slate-700 tabular-nums w-[48px] min-w-[48px] max-w-[48px] md:w-auto md:min-w-0 md:max-w-none align-middle">{formatNumber(record.mos)}</td>
+                         <td className="px-2 py-1 text-right text-xs text-slate-600 tabular-nums w-[48px] min-w-[48px] max-w-[48px] md:w-auto md:min-w-0 md:max-w-none align-middle">{formatNumber(record.used)}</td>
 
-                        <td className="px-2 py-0 text-right text-xs md:px-3 md:text-sm font-semibold tabular-nums w-[64px] min-w-[64px] max-w-[64px] md:w-auto md:min-w-[80px] md:max-w-none align-middle h-16 md:h-auto md:py-2">
-                          <span className="flex items-center justify-end gap-1">
-                            <span className={record.remains < 0 ? "text-rose-600" : "text-emerald-700"}>
-                              {formatNumber(record.remains)}
-                            </span>
-                            <RemainsNoteBadge note={record.remains_note} />
-                          </span>
-                        </td>
+                         <td className="px-2 py-1 text-right text-xs font-semibold tabular-nums w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-[64px] md:max-w-none align-middle">
+                           <span className="flex items-center justify-end gap-1">
+                             <span className={record.remains < 0 ? "text-rose-600" : "text-emerald-700"}>
+                               {formatNumber(record.remains)}
+                             </span>
+                             <RemainsNoteBadge note={record.remains_note} />
+                           </span>
+                         </td>
 
-                        <td className="px-3 py-0 whitespace-nowrap w-[104px] min-w-[104px] max-w-[104px] md:w-auto md:min-w-[100px] md:max-w-none pr-10 align-middle h-16 md:h-auto md:py-2">
-                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 md:px-2.5 md:py-1 text-[11px] font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
-                            <statusBadge.icon size={12} />
-                            {statusBadge.label}
-                          </span>
-                          {record.temuan_penerimaan && record.temuan_penerimaan.jumlah_item_bertemuan_selisih > 0 && (
-                            <span className="ml-1.5 text-[11px] text-amber-700 hidden md:inline">
-                              Selisih terima: {record.temuan_penerimaan.jumlah_item_bertemuan_selisih} item, kekurangan {formatNumber(record.temuan_penerimaan.total_selisih_qty)}
-                            </span>
-                          )}
-                        </td>
+                         <td className="px-2 py-1 whitespace-nowrap w-[96px] min-w-[96px] max-w-[96px] md:w-auto md:min-w-[84px] md:max-w-none align-middle">
+                           <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${statusBadge.bg} ${statusBadge.text}`} title={record.temuan_penerimaan && record.temuan_penerimaan.jumlah_item_bertemuan_selisih > 0 ? `Selisih terima: ${record.temuan_penerimaan.jumlah_item_bertemuan_selisih} item, kekurangan ${formatNumber(record.temuan_penerimaan.total_selisih_qty)}` : statusBadge.label}>
+                             <statusBadge.icon size={11} />
+                             {statusBadge.label}
+                           </span>
+                         </td>
 
-                        <td className="px-3 py-0 sticky right-0 z-10 bg-white md:bg-slate-50 group-hover:bg-slate-50 border-l border-slate-100 md:border-l w-[80px] min-w-[80px] max-w-[80px] md:w-auto md:min-w-[70px] md:max-w-none align-middle h-16 md:h-auto md:py-2">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedRecord(record)}
-                              title="Lihat detail"
-                              className="rounded-lg p-2 min-h-[36px] min-w-[36px] text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                            >
-                              <ClipboardCheck size={18} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setAdjustmentRecord(record)}
-                              title="Input Additional"
-                              className="rounded-lg p-2 min-h-[36px] min-w-[36px] text-slate-400 hover:bg-slate-100 hover:text-orange-600"
-                            >
-                              <Plus size={18} />
-                            </button>
-                          </div>
-                        </td>
+                         <td className="px-2 py-1 sticky right-0 z-10 bg-white md:bg-slate-50 group-hover:bg-slate-50 border-l border-slate-100 md:border-l w-[64px] min-w-[64px] max-w-[64px] md:w-auto md:min-w-[56px] md:max-w-none align-middle">
+                           <div className="flex items-center justify-end gap-0.5">
+                             <button
+                               type="button"
+                               onClick={() => setSelectedRecord(record)}
+                               title="Lihat detail"
+                               className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                             >
+                               <ClipboardCheck size={16} />
+                             </button>
+                             <button
+                               type="button"
+                               onClick={() => setAdjustmentRecord(record)}
+                               title="Input Additional"
+                               className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-orange-600"
+                             >
+                               <Plus size={16} />
+                             </button>
+                           </div>
+                         </td>
                       </tr>
                     );
                   })
@@ -1691,90 +1694,90 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Waktu Upload</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama File</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diunggah Oleh</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Total</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Berhasil</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gagal</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                  <th className="px-6 py-4 w-10"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {historyLoading ? (
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <tr key={i}>
-                      <td className="px-6 py-4">
-                        <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
-                      </td>
-                      <td className="px-6 py-4" colSpan={8}>
-                        <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
-                      </td>
-                    </tr>
-                  ))
-                ) : historyError ? (
-                  <tr>
-                    <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={9}>{historyError}</td>
-                  </tr>
-                ) : historyData.length === 0 ? (
-                  <tr>
-                    <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={9}>
-                      Belum ada riwayat upload laporan mitra.
-                    </td>
-                  </tr>
-                ) : (
-                  historyData.map((r, index) => {
-                    const allSuccess = r.failed_rows === 0 && r.success_rows > 0;
-                    const hasFailed = r.failed_rows > 0;
-                    const overallStatus = allSuccess ? "berhasil" : hasFailed ? "sebagian_gagal" : "draft";
-                    const rowNumber = (historyPage - 1) * 20 + index + 1;
-                    return (
-                      <tr
-                        key={r.upload_id}
-                        className="group cursor-pointer transition-colors hover:bg-slate-50"
-                        onClick={() => setHistoryDetail(r)}
-                      >
-                        <td className="px-6 py-4 whitespace-nowrap text-center text-xs text-slate-500">{rowNumber}</td>
-                        <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400">
-                          {new Date(r.uploaded_at).toLocaleString("id-ID")}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="font-semibold text-slate-900">{r.filename}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="font-semibold text-slate-900">{r.uploaded_by_nama}</div>
-                           <div className="text-xs text-slate-500">{formatRole(r.uploaded_by_role)}</div>
-                        </td>
-                        <td className="px-6 py-4 text-center font-mono text-xs text-slate-600">{r.total_rows}</td>
-                        <td className="px-6 py-4 text-center font-mono text-xs text-emerald-600">{r.success_rows}</td>
-                        <td className="px-6 py-4 text-center font-mono text-xs text-rose-600">{r.failed_rows}</td>
-                        <td className="px-6 py-4">
-                          {overallStatus === "berhasil" && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">Berhasil</span>}
-                          {overallStatus === "sebagian_gagal" && <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-700">Sebagian Gagal</span>}
-                          {overallStatus === "draft" && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">Draft</span>}
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <button
-                            type="button"
-                            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                            onClick={(e) => { e.stopPropagation(); setHistoryDetail(r); }}
-                          >
-                            <Eye size={16} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+<div className="overflow-x-auto overflow-y-auto overscroll-x-contain max-h-[calc(100vh-300px)] rounded-2xl border border-slate-200 bg-white shadow-sm">
+             <table className="min-w-full table-fixed border-separate border-spacing-0 md:table-auto md:border-collapse text-left text-xs">
+               <thead className="sticky top-0 z-10 bg-slate-50">
+                 <tr className="border-b border-slate-100 bg-slate-50">
+                   <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 w-10 text-center">No</th>
+                   <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Waktu Upload</th>
+                   <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Nama File</th>
+                   <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Diunggah Oleh</th>
+                   <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Total</th>
+                   <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Berhasil</th>
+                   <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Gagal</th>
+                   <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Status</th>
+                   <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 w-8"></th>
+                 </tr>
+               </thead>
+               <tbody className="divide-y divide-slate-50">
+                 {historyLoading ? (
+                   Array.from({ length: 5 }).map((_, i) => (
+                     <tr key={i}>
+                       <td className="px-3 py-1.5">
+                         <div className="h-3 animate-pulse rounded-lg bg-slate-100" />
+                       </td>
+                       <td className="px-3 py-1.5" colSpan={8}>
+                         <div className="h-3 animate-pulse rounded-lg bg-slate-100" />
+                       </td>
+                     </tr>
+                   ))
+                 ) : historyError ? (
+                   <tr>
+                     <td className="px-6 py-16 text-center text-xs text-rose-500" colSpan={9}>{historyError}</td>
+                   </tr>
+                 ) : historyData.length === 0 ? (
+                   <tr>
+                     <td className="px-6 py-16 text-center text-xs text-slate-400" colSpan={9}>
+                       Belum ada riwayat upload laporan mitra.
+                     </td>
+                   </tr>
+                 ) : (
+                   historyData.map((r, index) => {
+                     const allSuccess = r.failed_rows === 0 && r.success_rows > 0;
+                     const hasFailed = r.failed_rows > 0;
+                     const overallStatus = allSuccess ? "berhasil" : hasFailed ? "sebagian_gagal" : "draft";
+                     const rowNumber = (historyPage - 1) * 20 + index + 1;
+                     return (
+                       <tr
+                         key={r.upload_id}
+                         className="group cursor-pointer transition-colors hover:bg-slate-50"
+                         onClick={() => setHistoryDetail(r)}
+                       >
+                         <td className="px-3 py-1.5 whitespace-nowrap text-center text-[10px] text-slate-500 tabular-nums w-10">{rowNumber}</td>
+                         <td className="px-3 py-1.5 whitespace-nowrap font-mono text-[10px] text-slate-400">
+                           {new Date(r.uploaded_at).toLocaleString("id-ID")}
+                         </td>
+                         <td className="px-3 py-1.5">
+                           <div className="truncate max-w-[220px] font-semibold text-slate-900 text-xs" title={r.filename || "-"}>{r.filename || "-"}</div>
+                         </td>
+                         <td className="px-3 py-1.5">
+                           <div className="truncate max-w-[180px] font-semibold text-slate-900 text-xs" title={r.uploaded_byNama || "-"}>{r.uploaded_byNama || "-"}</div>
+                           <div className="truncate max-w-[180px] text-[10px] text-slate-500" title={formatRole(r.uploaded_by_role)}>{formatRole(r.uploaded_by_role)}</div>
+                         </td>
+                         <td className="px-3 py-1.5 text-center font-mono text-[10px] text-slate-600 whitespace-nowrap">{r.total_rows}</td>
+                         <td className="px-3 py-1.5 text-center font-mono text-[10px] text-emerald-600 whitespace-nowrap">{r.success_rows}</td>
+                         <td className="px-3 py-1.5 text-center font-mono text-[10px] text-rose-600 whitespace-nowrap">{r.failed_rows}</td>
+                         <td className="px-3 py-1.5 whitespace-nowrap">
+                           {overallStatus === "berhasil" && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Berhasil</span>}
+                           {overallStatus === "sebagian_gagal" && <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">Sebagian Gagal</span>}
+                           {overallStatus === "draft" && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">Draft</span>}
+                         </td>
+                         <td className="px-3 py-1.5 text-right">
+                           <button
+                             type="button"
+                             className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                             onClick={(e) => { e.stopPropagation(); setHistoryDetail(r); }}
+                           >
+                             <Eye size={14} />
+                           </button>
+                         </td>
+                       </tr>
+                     );
+                   })
+                 )}
+               </tbody>
+             </table>
+           </div>
 
           {historyTotalPages > 1 && (
             <div className="mt-4 flex items-center justify-between px-6 pb-4 text-xs text-slate-500">
@@ -1983,3 +1986,4 @@ function DetailRow({ label, value, highlight = false }: { label: string; value: 
     </div>
   );
 }
+

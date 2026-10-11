@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Search, Plus, UserCheck, UserX, X, Clock3, Eye, Pencil, ShieldAlert, AlertCircle } from "lucide-react";
@@ -6,6 +6,8 @@ import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole, formatRole } from "@/lib/navigation";
 import { Button } from "@/components/ui/button";
+import TablePagination from "@/components/TablePagination";
+import { MobileCardList, type MobileCardField, type MobileCardItem } from "@/components/MobileCardList";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
@@ -250,6 +252,92 @@ export default function UsersPage() {
     const start = (currentPage - 1) * itemsPerPage;
     return filteredUsers.slice(start, start + itemsPerPage);
   }, [filteredUsers, currentPage]);
+
+  const mobileItems = useMemo<MobileCardItem[]>(() => {
+    return paginatedUsers.map((record) => {
+      const userId = record.user_id ?? record.id;
+      const isSelf = !!user?.id && String(userId) === String(user.id);
+      const roleLabel = getRoleLabel(record.role);
+      const statusLabel = record.is_aktif ? "Aktif" : "Nonaktif";
+      const statusTone = record.is_aktif
+        ? "bg-emerald-50 text-emerald-600"
+        : "bg-slate-100 text-slate-500";
+
+      const actions = (
+        <div className="grid grid-cols-3 gap-2">
+          <button
+            type="button"
+            aria-label="Lihat detail pengguna"
+            onClick={() => setSelectedUser(record)}
+            className="flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-orange-600"
+          >
+            <Eye size={16} />
+          </button>
+          <button
+            type="button"
+            aria-label="Edit pengguna"
+            onClick={() => handleOpenEdit(record)}
+            className="flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-orange-600"
+          >
+            <Pencil size={16} />
+          </button>
+          <button
+            type="button"
+            disabled={isSaving || isSelf}
+            aria-label={record.is_aktif ? "Nonaktifkan akun" : "Aktifkan akun"}
+            onClick={() =>
+              setConfirmToggle({
+                open: true,
+                record,
+                nextStatus: !record.is_aktif,
+              })
+            }
+            className="flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {record.is_aktif ? <UserX size={16} /> : <UserCheck size={16} />}
+          </button>
+        </div>
+      );
+
+      const fields: MobileCardField[] = [
+        { label: "Email", value: <span className="break-all text-slate-600">{record.email || "-"}</span> },
+        { label: "No. Telepon", value: record.no_telepon || "-" },
+        { label: "Role", value: roleLabel },
+        { label: "Gudang", value: record.gudangNama || "-" },
+      ];
+
+      return {
+        key: String(userId),
+        title: (
+          <span className="flex items-center gap-2">
+            {getPhotoUrl(record.foto) ? (
+              <img
+                src={getPhotoUrl(record.foto)!}
+                alt={record.nama}
+                className="h-8 w-8 shrink-0 rounded-full border border-slate-200 object-cover"
+              />
+            ) : (
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
+                {record?.nama
+                  ? record?.nama.charAt(0).toUpperCase()
+                  : "?"}
+              </div>
+            )}
+            <span className="truncate">{record?.nama}</span>
+          </span>
+        ),
+        badge: (
+          <div className="flex flex-col items-end gap-1">
+            <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${statusTone}`}>
+              {statusLabel}
+            </span>
+          </div>
+        ),
+        fields,
+        actions,
+      };
+    });
+  }, [paginatedUsers, user, isSaving]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -543,8 +631,8 @@ export default function UsersPage() {
     <div className="flex flex-1 flex-col">
       <div className="w-full">
         {/* HEADER */}
-        <header className="mb-6 flex items-start justify-between">
-          <div>
+        <header className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
             <h1 className="text-2xl font-bold text-slate-900">
               Manajemen Pengguna
             </h1>
@@ -555,8 +643,8 @@ export default function UsersPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="relative w-72">
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center md:w-auto">
+            <div className="relative w-full sm:w-72">
               <Search
                 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
               />
@@ -575,7 +663,7 @@ export default function UsersPage() {
             <Button
               type="button"
               onClick={handleAdd}
-              className="inline-flex items-center gap-2 bg-orange-500 text-white hover:bg-orange-600"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 whitespace-nowrap bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 min-h-10"
             >
               <Plus size={16} />
               Tambah Pengguna
@@ -585,60 +673,87 @@ export default function UsersPage() {
 
         {/* TABLE */}
         <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm text-slate-700">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Nama
-                  </th>
+          {/* MOBILE CARD LIST */}
+          <div className="md:hidden">
+            {isLoading ? (
+              <div className="space-y-3 p-4">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-slate-100" />
+                      <div className="min-w-0 flex-1">
+                        <div className="h-4 w-2/3 animate-pulse rounded bg-slate-100" />
+                        <div className="mt-1.5 h-3 w-1/2 animate-pulse rounded bg-slate-100" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : filteredUsers.length === 0 ? (
+              <div className="px-6 py-16 text-center text-sm text-slate-400">
+                Tidak ada pengguna yang cocok.
+              </div>
+            ) : (
+              <MobileCardList items={mobileItems} />
+            )}
+          </div>
 
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Email
-                  </th>
+          {/* DESKTOP TABLE */}
+          <div className="hidden md:block">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm text-slate-700">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50">
+                    <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
+                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      Nama
+                    </th>
 
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    No. Telepon
-                  </th>
+                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      Email
+                    </th>
 
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Role
-                  </th>
+                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      No. Telepon
+                    </th>
 
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Gudang
-                  </th>
+                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      Role
+                    </th>
 
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Status
-                  </th>
+                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      Gudang
+                    </th>
 
-                  <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Aksi
-                  </th>
-                </tr>
-              </thead>
+                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      Status
+                    </th>
 
-              <tbody className="divide-y divide-slate-50">
-                {isLoading ? (
-                  Array.from({ length: 7 }).map((_, rowIndex) => (
-                    <tr key={rowIndex}>
-                      {Array.from({ length: 8 }).map((_, colIndex) => (
-                        <td key={colIndex} className="px-6 py-4">
-                          <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
-                        </td>
-                      ))}
-                    </tr>
-                  ))
-                ) : filteredUsers.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="px-6 py-16 text-center text-sm text-slate-400">
-                      Tidak ada pengguna yang cocok.
-                    </td>
+                    <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      Aksi
+                    </th>
                   </tr>
-                ) : (
-                  paginatedUsers.map((record, index) => {
+                </thead>
+
+                <tbody className="divide-y divide-slate-50">
+                  {isLoading ? (
+                    Array.from({ length: 7 }).map((_, rowIndex) => (
+                      <tr key={rowIndex}>
+                        {Array.from({ length: 8 }).map((_, colIndex) => (
+                          <td key={colIndex} className="px-6 py-4">
+                            <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  ) : filteredUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-6 py-16 text-center text-sm text-slate-400">
+                        Tidak ada pengguna yang cocok.
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedUsers.map((record, index) => {
                     const photoUrl =
                       getPhotoUrl(record.foto);
 
@@ -686,20 +801,20 @@ export default function UsersPage() {
                           </div>
                         </td>
 
-                        <td className="px-6 py-4 text-slate-500">
-                          {record.email}
+                        <td className="max-w-[220px] px-6 py-4 text-slate-500">
+                          <span className="block truncate" title={record.email}>{record.email}</span>
                         </td>
 
-                        <td className="px-6 py-4 text-slate-500">
-                          {record.no_telepon || "-"}
+                        <td className="max-w-[140px] px-6 py-4 text-slate-500">
+                          <span className="block truncate" title={record.no_telepon || "-"}>{record.no_telepon || "-"}</span>
                         </td>
 
                         <td className="px-6 py-4 text-slate-500">
                           {getRoleLabel(record.role)}
                         </td>
 
-                        <td className="px-6 py-4 text-slate-500">
-                          {record.gudang_nama || "-"}
+<td className="max-w-[180px] px-6 py-4 text-slate-500">
+                          <span className="block truncate" title={record.gudangNama || "-"}>{record.gudangNama || "-"}</span>
                         </td>
 
                         <td className="px-6 py-4">
@@ -766,60 +881,26 @@ export default function UsersPage() {
                   })
                 )}
               </tbody>
-            </table>
+</table>
           </div>
-
-          {error && (
-            <div className="mx-6 mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-              {error}
-            </div>
-          )}
-
-          {filteredUsers.length > 0 && (
-            <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4">
-              <div className="text-sm text-slate-500">
-                Menampilkan {(currentPage - 1) * itemsPerPage + 1}–
-                {Math.min(currentPage * itemsPerPage, filteredUsers.length)} dari {filteredUsers.length} pengguna
-              </div>
-
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 disabled:opacity-30"
-                >
-                  &lt;
-                </button>
-
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <button
-                    key={page}
-                    type="button"
-                    onClick={() => setCurrentPage(page)}
-                    className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition-colors ${
-                      currentPage === page
-                        ? "bg-slate-900 text-white"
-                        : "text-slate-600 hover:bg-slate-100"
-                    }`}
-                  >
-                    {page}
-                  </button>
-                ))}
-
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 disabled:opacity-30"
-                >
-                  &gt;
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
+    </div>
+
+      {error && (
+        <div className="mx-6 mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
+
+      {filteredUsers.length > 0 && (
+        <TablePagination
+          page={currentPage}
+          pageSize={itemsPerPage}
+          total={filteredUsers.length}
+          onPageChange={setCurrentPage}
+        />
+      )}
 
       {/* =====================================================
           MODAL DETAIL PENGGUNA
@@ -1734,7 +1815,7 @@ export default function UsersPage() {
  
          {toast && (
          <div
-           className={`fixed right-6 top-6 z-[130] flex items-center gap-3 rounded-xl border px-4 py-3 shadow-lg transition-all ${
+           className={`fixed right-4 top-4 sm:right-6 sm:top-6 z-[130] flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-xl border px-4 py-3 shadow-lg transition-all ${
              toast.type === "success"
                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
                : "border-rose-200 bg-rose-50 text-rose-800"
@@ -1743,8 +1824,8 @@ export default function UsersPage() {
            <AlertCircle size={17} className="shrink-0" />
            <span className="text-[13px] font-semibold">{toast.message}</span>
          </div>
-       )}
-     </div>
-   );
- }
+)}
+    </div>
+  );
+}
 

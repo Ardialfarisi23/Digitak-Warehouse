@@ -472,6 +472,7 @@ const findAll = async ({
   search,
   sortBy = "updated_at",
   sortOrder = "desc",
+  include_inactive,
 } = {}) => {
   /* =======================================================
      PAGINATION
@@ -498,9 +499,9 @@ const findAll = async ({
 
   const orderDirection =
     ["asc", "desc"].includes(
-      String(sortOrder || "").toLowerCase()
+      (sortOrder || "").toLowerCase()
     )
-      ? String(sortOrder).toLowerCase()
+      ? sortOrder.toLowerCase()
       : "desc";
 
   /* =======================================================
@@ -508,6 +509,11 @@ const findAll = async ({
   ======================================================= */
 
   const where = {};
+
+  // Default: hanya user aktif. include_inactive=true untuk menampilkan semua.
+  if (include_inactive !== "true") {
+    where.is_aktif = true;
+  }
 
   if (
     search &&

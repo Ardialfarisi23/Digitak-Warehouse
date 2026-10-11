@@ -754,9 +754,9 @@ export default function BoqPage() {
       <div className="flex flex-1 flex-col p-6">
         <header className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">BOQ & Surat Tiket</h1>
+            <h1 className="text-2xl font-bold text-slate-900">Cluster & BOQ</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Kelola BOQ (Bill of Quantity) dan Surat Tiket untuk area supervisi Anda.
+              Kelola Cluster, BOQ (Bill of Quantity), dan Surat Tiket untuk area supervisi Anda.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -857,7 +857,7 @@ export default function BoqPage() {
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
                   <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nomor BOQ / Tiket</th>
+                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nomor Cluster & BOQ</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Sumber</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Verifikasi Eksternal</th>

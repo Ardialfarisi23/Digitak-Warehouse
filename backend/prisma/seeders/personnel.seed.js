@@ -198,7 +198,6 @@ async function seedPersonnel(prisma) {
         nama: u.nama,
         password_hash: passwordHash,
         role: u.role,
-        is_aktif: true,
         updated_at: new Date(),
       },
       create: {

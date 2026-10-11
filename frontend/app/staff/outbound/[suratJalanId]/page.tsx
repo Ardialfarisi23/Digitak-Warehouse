@@ -500,7 +500,7 @@ export default function SuratJalanDetailPage() {
             <InfoRow label="Nama Driver" value={displaySJ.namaDriver} />
             {suratJalan.boq_id ? (
               <InfoRow
-                label="BOQ / Tiket"
+                label="Cluster & BOQ"
                 value={
                   <span className="inline-flex items-center gap-2">
                     <Link
@@ -518,8 +518,8 @@ export default function SuratJalanDetailPage() {
               />
             ) : (
               <InfoRow
-                label="BOQ / Tiket"
-                value={<span className="text-xs text-slate-400">Tidak terhubung ke BOQ/Tiket</span>}
+                label="Cluster & BOQ"
+                value={<span className="text-xs text-slate-400">Tidak terhubung ke Cluster & BOQ</span>}
               />
             )}
           </div>

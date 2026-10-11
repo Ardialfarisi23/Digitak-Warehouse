@@ -188,7 +188,7 @@ export function DetailSuratJalanDocument({
       </span>
     </span>
   ) : (
-    <span className="text-xs text-slate-400">Tidak terhubung ke BOQ/Tiket</span>
+    <span className="text-xs text-slate-400">Tidak terhubung ke Cluster & BOQ</span>
   );
 
   const items = Array.isArray(data.items) ? data.items : [];
@@ -248,7 +248,7 @@ export function DetailSuratJalanDocument({
           <InfoRow label="Kendaraan" value={kendaraanLabel} />
           <InfoRow label="No Polisi" value={noPolisi} />
           <InfoRow label="Driver" value={namaDriver} />
-          <InfoRow label="BOQ / Tiket" value={boqValue} />
+          <InfoRow label="Cluster & BOQ" value={boqValue} />
         </div>
       </div>
 

@@ -987,9 +987,9 @@ export default function BoqPage() {
         {/* 1. Header */}
         <header className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
-            <h1 className="text-2xl md:text-3xl font-bold text-slate-900">BOQ & Surat Tiket</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Cluster & BOQ</h1>
             <p className="mt-1 text-sm text-slate-500 line-clamp-2 md:line-clamp-none">
-              Kelola BOQ (Bill of Quantity) dan Surat Tiket proyek.
+              Kelola Cluster, BOQ (Bill of Quantity), dan Surat Tiket proyek.
             </p>
           </div>
 
@@ -1123,7 +1123,7 @@ export default function BoqPage() {
                 <tr className="border-b border-slate-100 bg-slate-50">
                   <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Nomor BOQ / Tiket
+                    Nomor Cluster & BOQ
                   </th>
                   <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
                     Sumber

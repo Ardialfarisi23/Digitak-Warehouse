@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useApi } from "@/lib/api";
@@ -12,22 +12,15 @@ import {
   Boxes,
   ClipboardList,
   Truck,
-  ShieldCheck,
   Search,
   CheckCircle2,
   AlertTriangle,
-  Clock,
-  PackageCheck,
   Package,
-  PackageMinus,
-  ClipboardCheck,
-  Wallet,
-  FileCheck2,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // DATA DUMMY — sesuai istilah & metrik pada PRD (BOQ, Surat Jalan, Kecukupan
-// Area, Rekonsiliasi Hardware)
+// Area)
 // ---------------------------------------------------------------------------
 
 const formatNumber = (value: number) =>
@@ -182,51 +175,8 @@ function DashboardPageContent() {
   const [projectFilter, setProjectFilter] = useState("");
   const [projectSummary, setProjectSummary] = useState<ProjectSummaryRow[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats>(defaultDashboardStats);
-  const [reconciliationRows, setReconciliationRows] = useState<
-    Array<{
-      project_id: string;
-      project_nama?: string;
-      boq: number;
-      additional: number;
-      mos: number;
-      used: number;
-      remains: number;
-      status?: string;
-    }>
-  >([]);
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
-  const [isLoadingReconciliation, setIsLoadingReconciliation] = useState(true);
-  const [recentBoqs, setRecentBoqs] = useState<
-    Array<{
-      boq_id: number | string;
-      boq_number?: string | null;
-      status?: string;
-      tanggal_aktivasi?: string | null;
-      updated_at?: string | null;
-      created_at?: string | null;
-      tiket?: { project?: { nama_project?: string } } | null;
-    }>
-  >([]);
-  const [outboundQueue, setOutboundQueue] = useState<
-    Array<{
-      surat_jalan_id: number | string;
-      nomor_surat_jalan?: string;
-      status?: string;
-      updated_at?: string | null;
-      created_at?: string | null;
-    }>
-  >([]);
-  const [inboundList, setInboundList] = useState<
-    Array<{
-      surat_jalan_id: number | string;
-      nomor_surat_jalan?: string;
-      status?: string;
-      updated_at?: string | null;
-      created_at?: string | null;
-    }>
-  >([]);
-  const [isLoadingActivity, setIsLoadingActivity] = useState(true);
   const [kapasitasPerGudang, setKapasitasPerGudang] = useState<
     Array<{
       gudang_id: string;
@@ -242,86 +192,54 @@ function DashboardPageContent() {
     }>
   >([]);
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
+  const fetchDashboardData = useCallback(async () => {
+    try {
+      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
-        const [statsResponse, projectSummaryResponse, reconciliationResponse] = await Promise.all([
-          get(`${apiBase}/api/dashboard`),
-          get(`${apiBase}/api/dashboard/project-summary`),
-          get(`${apiBase}/api/reconciliation/inventory`),
-        ]);
+      const [statsResponse, projectSummaryResponse] = await Promise.all([
+        get(`${apiBase}/api/dashboard`),
+        get(`${apiBase}/api/dashboard/project-summary`),
+      ]);
 
-        const statsJson = await statsResponse.json();
-        const projectSummaryJson = await projectSummaryResponse.json();
-        const reconciliationJson = await reconciliationResponse.json();
+      const statsJson = await statsResponse.json();
+      const projectSummaryJson = await projectSummaryResponse.json();
 
-        if (!statsResponse.ok) {
-          throw new Error(statsJson?.message || "Gagal mengambil statistik dashboard.");
-        }
-
-        if (!projectSummaryResponse.ok) {
-          throw new Error(
-            projectSummaryJson?.message || "Gagal mengambil ringkasan project."
-          );
-        }
-
-        const statsData = statsJson?.data || {};
-        setDashboardStats({
-          totalItems: Number(statsData.totalItems ?? statsData.items ?? 0),
-          activeBoq: Number(statsData.activeBoq ?? 0),
-          draftBoq: Number(statsData.draftBoq ?? 0),
-          pendingShipments: Number(statsData.pendingShipments ?? 0),
-          warehouses: Number(statsData.warehouses ?? 0),
-        });
-
-        setKapasitasPerGudang(Array.isArray(statsData.kapasitas_per_gudang) ? statsData.kapasitas_per_gudang : []);
-
-        setProjectSummary(Array.isArray(projectSummaryJson?.data) ? projectSummaryJson.data : []);
-
-        const reconPayload = reconciliationJson?.data;
-        const reconList: Array<Record<string, unknown>> = Array.isArray(reconPayload)
-          ? reconPayload
-          : Array.isArray(reconPayload?.data)
-            ? reconPayload.data
-            : [];
-        const mappedReconRows = reconList.map((row) => {
-          const proj = row?.project as { nama_project?: string } | undefined;
-          return {
-            project_id: String(row?.project_id ?? ""),
-            project_nama: (row?.project_nama ?? proj?.nama_project ?? undefined) as string | undefined,
-            boq: Number(row?.boq ?? 0) || 0,
-            additional: Number(row?.additional ?? 0) || 0,
-            mos: Number(row?.mos ?? 0) || 0,
-            used: Number(row?.used ?? 0) || 0,
-            remains: Number(row?.remains ?? 0) || 0,
-            status: row?.status ? String(row.status) : undefined,
-          };
-        });
-        const seenRecon = new Set<string>();
-        const dedupedReconRows = mappedReconRows.filter((r) => {
-          if (!r.project_id) return true;
-          if (seenRecon.has(r.project_id)) return false;
-          seenRecon.add(r.project_id);
-          return true;
-        });
-        setReconciliationRows(dedupedReconRows);
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error);
-        setDashboardStats(defaultDashboardStats);
-        setProjectSummary([]);
-        setReconciliationRows([]);
-        setKapasitasPerGudang([]);
-      } finally {
-        setIsLoadingProjects(false);
-        setIsLoadingStats(false);
-        setIsLoadingReconciliation(false);
+      if (!statsResponse.ok) {
+        throw new Error(statsJson?.message || "Gagal mengambil statistik dashboard.");
       }
-    };
 
-    fetchDashboardData();
+      if (!projectSummaryResponse.ok) {
+        throw new Error(
+          projectSummaryJson?.message || "Gagal mengambil ringkasan project."
+        );
+      }
+
+      const statsData = statsJson?.data || {};
+      setDashboardStats({
+        totalItems: Number(statsData.totalItems ?? statsData.items ?? 0),
+        activeBoq: Number(statsData.activeBoq ?? 0),
+        draftBoq: Number(statsData.draftBoq ?? 0),
+        pendingShipments: Number(statsData.pendingShipments ?? 0),
+        warehouses: Number(statsData.warehouses ?? 0),
+      });
+
+      setKapasitasPerGudang(Array.isArray(statsData.kapasitas_per_gudang) ? statsData.kapasitas_per_gudang : []);
+
+      setProjectSummary(Array.isArray(projectSummaryJson?.data) ? projectSummaryJson.data : []);
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+      setDashboardStats(defaultDashboardStats);
+      setProjectSummary([]);
+      setKapasitasPerGudang([]);
+    } finally {
+      setIsLoadingProjects(false);
+      setIsLoadingStats(false);
+    }
   }, [get]);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [get, fetchDashboardData]);
 
   // Refetch project summary when window gains focus (e.g., after creating project in another tab)
   useEffect(() => {
@@ -339,80 +257,7 @@ function DashboardPageContent() {
       window.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onFocus);
     };
-  }, [get]);
-
-  useEffect(() => {
-    const fetchActivity = async () => {
-      setIsLoadingActivity(true);
-      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
-      const safeJson = async (res: Response) => {
-        try {
-          return await res.json();
-        } catch {
-          return null;
-        }
-      };
-
-      const [boqRes, outboundRes, inboundRes] = await Promise.allSettled([
-        get(`${apiBase}/api/boqs?page=1&limit=5&sortBy=updated_at&sortOrder=desc`),
-        get(`${apiBase}/api/surat-jalan/outbound/queue`),
-        get(`${apiBase}/api/surat-jalan/inbound`),
-      ]);
-
-      if (boqRes.status === "fulfilled") {
-        const res = boqRes.value;
-        const json = await safeJson(res);
-        if (res.ok) {
-          const list = json?.data?.data ?? json?.data ?? [];
-          setRecentBoqs(Array.isArray(list) ? list : []);
-        } else {
-          setRecentBoqs([]);
-        }
-      } else {
-        setRecentBoqs([]);
-      }
-
-      if (outboundRes.status === "fulfilled") {
-        const res = outboundRes.value;
-        const json = await safeJson(res);
-        if (res.ok) {
-          const list = json?.data ?? [];
-          const arr = Array.isArray(list)
-            ? list
-            : Array.isArray(list?.data)
-              ? list.data
-              : [];
-          setOutboundQueue(arr.slice(0, 5));
-        } else {
-          setOutboundQueue([]);
-        }
-      } else {
-        setOutboundQueue([]);
-      }
-
-      if (inboundRes.status === "fulfilled") {
-        const res = inboundRes.value;
-        const json = await safeJson(res);
-        if (res.ok) {
-          const list = json?.data ?? [];
-          const arr = Array.isArray(list)
-            ? list
-            : Array.isArray(list?.data)
-              ? list.data
-              : [];
-          setInboundList(arr.slice(0, 5));
-        } else {
-          setInboundList([]);
-        }
-      } else {
-        setInboundList([]);
-      }
-
-      setIsLoadingActivity(false);
-    };
-
-    fetchActivity();
-  }, [get]);
+  }, [get, fetchDashboardData]);
 
   const greeting = `Selamat Pagi, Selamat Beraktivitas! `;
 
@@ -453,18 +298,6 @@ function DashboardPageContent() {
     },
   ];
 
-  const reconciliationTotals = reconciliationRows.reduce(
-    (acc, row) => {
-      acc.boq += row.boq;
-      acc.additional += row.additional;
-      acc.mos += row.mos;
-      acc.used += row.used;
-      acc.remains += row.remains;
-      return acc;
-    },
-    { boq: 0, additional: 0, mos: 0, used: 0, remains: 0 }
-  );
-
   const projectRows = projectSummary.map((p) => {
     const hardwareOnSite = p.hardwareOnSite;
     const used = p.used;
@@ -476,211 +309,15 @@ function DashboardPageContent() {
     return { ...p, hardwareOnSite, used, remains, progress };
   });
   // Backend sudah memfilter status_aktif: true, dan statusBoq hanya punya 3 nilai:
-// "Aktif" (ada BOQ aktif), "Draft" (hanya BOQ draft/selesai), "Belum Ada" (tanpa BOQ).
-// Oleh karena itu, tampilkan semua projectRows tanpa filter tambahan.
-const activeProjectRows = projectRows;
+  // "Aktif" (ada BOQ aktif), "Draft" (hanya BOQ draft/selesai), "Belum Ada" (tanpa BOQ).
+  // Oleh karena itu, tampilkan semua projectRows tanpa filter tambahan.
+  const activeProjectRows = projectRows;
 
   const filteredProjects = activeProjectRows.filter((p) =>
     `${p.projectName} ${p.area} ${p.clusterLabel}`
       .toLowerCase()
       .includes(projectFilter.toLowerCase())
   );
-
-  const reconciliationBreakdown = [
-    { label: "BOQ (Rencana)", value: reconciliationTotals.boq, tone: "bg-slate-300" },
-    { label: "Additional", value: reconciliationTotals.additional, tone: "bg-blue-400" },
-    { label: "MOS", value: reconciliationTotals.mos, tone: "bg-emerald-400" },
-    { label: "Used (Terpasang)", value: reconciliationTotals.used, tone: "bg-orange-400" },
-    { label: "Remains", value: reconciliationTotals.remains, tone: "bg-slate-400" },
-  ];
-  const reconciliationMax = Math.max(
-    1,
-    ...reconciliationBreakdown.map((r) => r.value)
-  );
-  const reconciliationValues = isLoadingReconciliation
-    ? reconciliationBreakdown.map((r) => ({ ...r, value: 0 }))
-    : reconciliationBreakdown;
-
-  const timeAgo = (iso: string | null | undefined): string | null => {
-    if (!iso) return null;
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return null;
-    const diffMs = Date.now() - d.getTime();
-    const sec = Math.floor(diffMs / 1000);
-    if (sec < 0) return null;
-    if (sec < 60) return "Baru saja";
-    const min = Math.floor(sec / 60);
-    if (min < 60) return `${min} menit lalu`;
-    const hr = Math.floor(min / 60);
-    if (hr < 24) return `${hr} jam lalu`;
-    const day = Math.floor(hr / 24);
-    if (day < 7) return `${day} hari lalu`;
-    const wk = Math.floor(day / 7);
-    if (wk < 5) return `${wk} minggu lalu`;
-    const mo = Math.floor(day / 30);
-    return `${mo} bulan lalu`;
-  };
-
-  type ActivityItem = {
-    id: string;
-    type: "boq" | "surat-jalan" | "reconciliation";
-    title: string;
-    timestamp: string | null;
-    actionRequired: boolean;
-    actionUrl?: string;
-    iconKey: "file" | "truck" | "alert" | "package" | "shield";
-    iconTone: string;
-  };
-
-  const buildActivityItems = (): ActivityItem[] => {
-    const items: ActivityItem[] = [];
-
-    for (const sj of outboundQueue) {
-      if (!sj) continue;
-      const id = `sj-out-${sj.surat_jalan_id}`;
-      const status = String(sj.status ?? "").toLowerCase();
-      const actionRequired = status === "draft_diajukan";
-      const ts = sj.updated_at ?? sj.created_at ?? null;
-      const nomor = sj.nomor_surat_jalan ?? `#${sj.surat_jalan_id}`;
-      const verb = actionRequired
-        ? "menunggu persetujuan"
-        : status === "disetujui"
-          ? "telah disetujui"
-          : status === "digenerate"
-            ? "siap dikirim"
-            : `status: ${sj.status ?? "-"}`;
-      items.push({
-        id,
-        type: "surat-jalan",
-        title: `Surat Jalan ${nomor} (Outbound) ${verb}`,
-        timestamp: ts,
-        actionRequired,
-        actionUrl: "/dashboard/delivery",
-        iconKey: actionRequired ? "shield" : "truck",
-        iconTone: actionRequired
-          ? "text-orange-500 bg-orange-50"
-          : "text-blue-500 bg-blue-50",
-      });
-    }
-
-    for (const sj of inboundList) {
-      if (!sj) continue;
-      const id = `sj-in-${sj.surat_jalan_id}`;
-      const status = String(sj.status ?? "").toLowerCase();
-      const actionRequired = status === "draft_diajukan" || status === "menunggu_verifikasi";
-      const ts = sj.updated_at ?? sj.created_at ?? null;
-      const nomor = sj.nomor_surat_jalan ?? `#${sj.surat_jalan_id}`;
-      const verb = actionRequired
-        ? "menunggu verifikasi"
-        : status === "disetujui" || status === "digenerate"
-          ? "telah disetujui"
-          : status === "diterima_didistribusikan"
-            ? "telah diterima"
-            : `status: ${sj.status ?? "-"}`;
-      items.push({
-        id,
-        type: "surat-jalan",
-        title: `Surat Jalan ${nomor} (Inbound) ${verb}`,
-        timestamp: ts,
-        actionRequired,
-        actionUrl: "/dashboard/delivery",
-        iconKey: actionRequired ? "alert" : "package",
-        iconTone: actionRequired
-          ? "text-rose-500 bg-rose-50"
-          : "text-emerald-600 bg-emerald-50",
-      });
-    }
-
-    for (const row of reconciliationRows) {
-      if (!row || String(row.status ?? "").toLowerCase() !== "perhatian") continue;
-      const id = `recon-${row.project_id}`;
-      const projectName = (row as { project_nama?: string }).project_nama ?? `Project ${row.project_id}`;
-      items.push({
-        id,
-        type: "reconciliation",
-        title: `Rekonsiliasi ${projectName} memerlukan perhatian`,
-        timestamp: null,
-        actionRequired: true,
-        actionUrl: "/dashboard/reconciliation",
-        iconKey: "alert",
-        iconTone: "text-rose-500 bg-rose-50",
-      });
-    }
-
-    for (const boq of recentBoqs) {
-      if (!boq) continue;
-      const id = `boq-${boq.boq_id}`;
-      const status = String(boq.status ?? "").toLowerCase();
-      const ts =
-        status === "aktif"
-          ? boq.tanggal_aktivasi ?? boq.updated_at ?? boq.created_at ?? null
-          : boq.updated_at ?? boq.created_at ?? null;
-      const projectName =
-        boq.tiket?.project?.nama_project ?? `BOQ ${boq.boq_number ?? boq.boq_id}`;
-      const actionRequired = status === "draft";
-      const verb = actionRequired
-        ? "menunggu verifikasi"
-        : status === "aktif"
-          ? "telah diaktifkan"
-          : status === "selesai"
-            ? "telah selesai"
-            : `status: ${boq.status ?? "-"}`;
-      items.push({
-        id,
-        type: "boq",
-        title: `BOQ ${projectName} ${verb}`,
-        timestamp: ts,
-        actionRequired,
-        actionUrl: "/dashboard/boq",
-        iconKey: actionRequired ? "alert" : "file",
-        iconTone: actionRequired
-          ? "text-amber-600 bg-amber-50"
-          : "text-emerald-600 bg-emerald-50",
-      });
-    }
-
-    const withTs = items.filter((i) => i.timestamp);
-    const withoutTs = items.filter((i) => !i.timestamp);
-    withTs.sort((a, b) => {
-      const at = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-      const bt = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-      return bt - at;
-    });
-    const priorityScore = (i: ActivityItem) => (i.actionRequired ? 0 : 1);
-    const ordered = [...withTs, ...withoutTs].sort((a, b) => {
-      const pa = priorityScore(a);
-      const pb = priorityScore(b);
-      if (pa !== pb) return pa - pb;
-      const at = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-      const bt = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-      return bt - at;
-    });
-    const seenIds = new Set<string>();
-    const dedupedOrdered = ordered.filter((i) => {
-      if (seenIds.has(i.id)) return false;
-      seenIds.add(i.id);
-      return true;
-    });
-    return dedupedOrdered.slice(0, 5);
-  };
-
-  const activityItems = buildActivityItems();
-
-  const iconForKey = (k: ActivityItem["iconKey"]) => {
-    switch (k) {
-      case "truck":
-        return Truck;
-      case "alert":
-        return AlertTriangle;
-      case "package":
-        return PackageCheck;
-      case "shield":
-        return ShieldCheck;
-      case "file":
-      default:
-        return FileCheck2;
-    }
-  };
 
   return (
     <div className={`flex flex-col gap-4 sm:gap-6 lg:flex-row text-slate-800`}>
@@ -897,89 +534,6 @@ const activeProjectRows = projectRows;
         </section>
       </div>
 
-      {/* KOLOM KANAN */}
-      <aside className="w-full lg:w-80 lg:shrink-0 space-y-4">
-        {/* 4b. REKONSILIASI HARDWARE RINGKAS */}
-        <section className="rounded-3xl border border-slate-100 bg-white p-6 shadow-xs">
-          <h2 className="text-sm font-bold text-slate-900">
-            Rekonsiliasi Hardware Ringkas
-          </h2>
-          <p className="text-xs text-slate-400">Agregat seluruh proyek aktif</p>
-
-          <div className="mt-4 space-y-3">
-            {reconciliationValues.map((r) => (
-              <div key={r.label}>
-                <div className="mb-1 flex items-center justify-between text-xs">
-                  <span className="text-slate-500">{r.label}</span>
-                  <span className="font-semibold text-slate-900">{r.value}</span>
-                </div>
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className={`h-full rounded-full ${r.tone}`}
-                    style={{ width: `${(r.value / reconciliationMax) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* 5. AKTIVITAS & TINDAK LANJUT TERBARU */}
-        <section className="rounded-3xl border border-slate-100 bg-white p-6 shadow-xs">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-slate-900">
-              Aktivitas & Tindak Lanjut Terbaru
-            </h2>
-          </div>
-
-          <ul className="mt-4 space-y-4">
-            {isLoadingActivity ? (
-              <li className="text-[11px] text-slate-400">Memuat aktivitas terbaru...</li>
-            ) : activityItems.length === 0 ? (
-              <li className="text-[11px] text-slate-400">
-                Tidak ada aktivitas terbaru
-              </li>
-            ) : (
-              activityItems.map((a, idx) => {
-                const Icon = iconForKey(a.iconKey);
-                const ts = timeAgo(a.timestamp);
-                const inner = (
-                  <>
-                    <span
-                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${a.iconTone}`}
-                    >
-                      <Icon size={13} strokeWidth={2.5} />
-                    </span>
-                    <div>
-                      <div className="text-xs font-medium leading-snug text-slate-700">
-                        {a.title}
-                      </div>
-                      <div className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400">
-                        <Clock size={10} />
-                        {ts ?? "Waktu tidak tersedia"}
-                      </div>
-                    </div>
-                  </>
-                );
-                return (
-                  <li key={`${a.type}-${a.id}-${idx}`}>
-                    {a.actionUrl ? (
-                      <Link
-                        href={a.actionUrl}
-                        className="flex items-start gap-3 hover:opacity-90"
-                      >
-                        {inner}
-                      </Link>
-                    ) : (
-                      <div className="flex items-start gap-3">{inner}</div>
-                    )}
-                  </li>
-                );
-              })
-            )}
-          </ul>
-        </section>
-      </aside>
     </div>
   );
 }

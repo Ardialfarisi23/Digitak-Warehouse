@@ -183,7 +183,7 @@ export default function SuratJalanListPage() {
               <th className="px-4 py-4 font-semibold">Alamat Lapangan</th>
               <th className="px-4 py-4 font-semibold">Tanggal</th>
               <th className="px-4 py-4 font-semibold">PIC Pemohon</th>
-              <th className="px-4 py-4 font-semibold">BOQ / Tiket</th>
+              <th className="px-4 py-4 font-semibold">Cluster & BOQ</th>
               <th className="px-4 py-4 font-semibold">Project</th>
               <th className="px-4 py-4 font-semibold">Kendaraan</th>
               <th className="px-4 py-4 font-semibold">No. Polisi</th>
