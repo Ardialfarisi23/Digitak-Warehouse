@@ -242,8 +242,7 @@ function DashboardPageContent() {
     }>
   >([]);
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
+const fetchDashboardData = async () => {
       try {
         const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
@@ -290,7 +289,7 @@ function DashboardPageContent() {
           const proj = row?.project as { nama_project?: string } | undefined;
           return {
             project_id: String(row?.project_id ?? ""),
-            project_nama: (row?.project_nama ?? proj?.nama_project ?? undefined) as string | undefined,
+            projectNama: (row?.projectNama ?? proj?.nama_project ?? undefined) as string | undefined,
             boq: Number(row?.boq ?? 0) || 0,
             additional: Number(row?.additional ?? 0) || 0,
             mos: Number(row?.mos ?? 0) || 0,
@@ -320,26 +319,27 @@ function DashboardPageContent() {
       }
     };
 
-    fetchDashboardData();
-  }, [get]);
-
-  // Refetch project summary when window gains focus (e.g., after creating project in another tab)
-  useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        fetchDashboardData();
-      }
-    };
-    const onFocus = () => {
+    useEffect(() => {
       fetchDashboardData();
-    };
-    window.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [get]);
+    }, [get]);
+
+    // Refetch project summary when window gains focus (e.g., after creating project in another tab)
+    useEffect(() => {
+      const onVisible = () => {
+        if (document.visibilityState === "visible") {
+          fetchDashboardData();
+        }
+      };
+      const onFocus = () => {
+        fetchDashboardData();
+      };
+      window.addEventListener("visibilitychange", onVisible);
+      window.addEventListener("focus", onFocus);
+      return () => {
+        window.removeEventListener("visibilitychange", onVisible);
+        window.removeEventListener("focus", onFocus);
+      };
+}, [get]);
 
   useEffect(() => {
     const fetchActivity = async () => {

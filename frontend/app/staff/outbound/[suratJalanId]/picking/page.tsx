@@ -814,21 +814,23 @@ export default function PickingDetailPage() {
           {isSelesai ? "Barang yang Diambil" : "Pilih Lokasi Pengambilan per Barang"}
         </p>
 
-         <div className="overflow-x-auto overscroll-x-contain">
-         <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
-              <th className="pb-3 pr-4 font-semibold">Barang</th>
-              <th className="pb-3 pr-4 font-semibold">Kondisi</th>
-              <th className="pb-3 pr-4 font-semibold text-right">Qty</th>
-              <th className="pb-3 font-semibold">{isSelesai ? "Hasil Picking" : "Zona Pengambilan"}</th>
-              <th className="pb-3 font-semibold">Catatan</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.items.map((item) => (
-               <tr key={item.item_id} className="border-b border-gray-50 last:border-0 align-top">
-                <td className="py-3 pr-4">
+<div className="overflow-x-auto overscroll-x-contain">
+          <table className="w-full text-sm">
+           <thead>
+             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+               <th className="pb-3 pr-4 font-semibold text-center w-12">No</th>
+               <th className="pb-3 pr-4 font-semibold">Barang</th>
+               <th className="pb-3 pr-4 font-semibold">Kondisi</th>
+               <th className="pb-3 pr-4 font-semibold text-right">Qty</th>
+               <th className="pb-3 font-semibold">{isSelesai ? "Hasil Picking" : "Zona Pengambilan"}</th>
+               <th className="pb-3 font-semibold">Catatan</th>
+             </tr>
+           </thead>
+           <tbody>
+             {data.items.map((item, idx) => (
+                <tr key={item.item_id} className="border-b border-gray-50 last:border-0 align-top">
+                 <td className="py-3 pr-4 text-center text-xs text-slate-500">{idx + 1}</td>
+                 <td className="py-3 pr-4">
                   <p className="font-medium text-gray-800">{item.barang?.nama_barang || "-"}</p>
                   <p className="text-xs text-gray-400">{item.barang?.kode_perangkat || "-"}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">

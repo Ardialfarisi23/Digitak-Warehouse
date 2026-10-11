@@ -188,6 +188,7 @@ export default function StaffHistoryPage() {
             <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+                <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
                 <th className="pb-3 font-semibold">Waktu</th>
                 <th className="pb-3 font-semibold">Aksi</th>
                 <th className="pb-3 font-semibold">Tipe</th>
@@ -196,10 +197,12 @@ export default function StaffHistoryPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((row) => {
+              {items.map((row, index) => {
                 const sj = row.surat_jalan;
+                const rowNumber = (page - 1) * pageSize + index + 1;
                 return (
                   <tr key={String(row.audit_id)} className="border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30">
+                    <td className="px-3 py-3 whitespace-nowrap text-center text-xs text-slate-500">{rowNumber}</td>
                     <td className="py-3 pr-4 text-gray-500">{formatDateTime(row.created_at)}</td>
                     <td className="py-3 pr-4 font-medium text-gray-800">
                       {AKSI_LABEL[row.aksi] || row.aksi}
