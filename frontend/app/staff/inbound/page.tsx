@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { PackageCheck, Plus, X, ChevronDown, Trash2, Upload, Loader2 } from "lucide-react";
+import { PackageCheck, Plus, X, ChevronDown, Trash2, Upload, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import BarangPicker, {
   type BarangPickerItem,
@@ -195,6 +195,9 @@ export default function InboundListPage() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [gudangTujuanFilter, setGudangTujuanFilter] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -1078,7 +1081,51 @@ pic_pemohon_nama: picPemohon.trim() || null,
     return () => clearTimeout(timer);
   }, [toast]);
 
-  const mobileItemsInbound1: MobileCardItem[] = list.map((sj) => {
+  const statusFilterOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const options: { value: string; label: string }[] = [];
+    list.forEach((sj) => {
+      if (seen.has(sj.status)) return;
+      seen.add(sj.status);
+      options.push({ value: sj.status, label: STATUS_META[sj.status]?.label || sj.status });
+    });
+    return options;
+  }, [list]);
+
+  const gudangTujuanFilterOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          list
+            .map((sj) => sj.gudang_tujuan?.nama_gudang)
+            .filter((nama): nama is string => Boolean(nama))
+        )
+      ).sort((a, b) => a.localeCompare(b)),
+    [list]
+  );
+
+  const isFilterActive =
+    searchQuery.trim() !== "" || statusFilter !== "" || gudangTujuanFilter !== "";
+
+  const filteredList = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return list.filter((sj) => {
+      if (query) {
+        const nomorMatch = (sj.nomor_surat_jalan || "").toLowerCase().includes(query);
+        const asalMatch = [sj.gudang_asal?.nama_gudang, sj.supplier?.nama, sj.pengirim_eksternal_nama]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(query);
+        if (!nomorMatch && !asalMatch) return false;
+      }
+      if (statusFilter && sj.status !== statusFilter) return false;
+      if (gudangTujuanFilter && sj.gudang_tujuan?.nama_gudang !== gudangTujuanFilter) return false;
+      return true;
+    });
+  }, [list, searchQuery, statusFilter, gudangTujuanFilter]);
+
+  const mobileItemsInbound1: MobileCardItem[] = filteredList.map((sj) => {
     const meta = STATUS_META[sj.status] || STATUS_META.draft_diajukan;
     const totalUnit = sj.items.reduce((sum, i) => sum + Number(i.qty || 0), 0);
     const tujuanText = sj.gudang_tujuan?.nama_gudang || "-";
@@ -1191,6 +1238,51 @@ pic_pemohon_nama: picPemohon.trim() || null,
         </div>
       )}
 
+      {/* Filter & Pencarian */}
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cari No. Surat Jalan / Asal..."
+            className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+        </div>
+        <div className="relative sm:w-60">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2.5 pl-3 pr-10 text-sm text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+          >
+            <option value="">Semua Status</option>
+            {statusFilterOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        </div>
+        <div className="relative sm:w-60">
+          <select
+            value={gudangTujuanFilter}
+            onChange={(e) => setGudangTujuanFilter(e.target.value)}
+            className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2.5 pl-3 pr-10 text-sm text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+          >
+            <option value="">Semua Gudang</option>
+            {gudangTujuanFilterOptions.map((nama) => (
+              <option key={nama} value={nama}>{nama}</option>
+            ))}
+          </select>
+          <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        </div>
+      </div>
+      {isFilterActive && (
+        <p className="mb-3 text-xs text-slate-500">
+          Menampilkan <span className="font-semibold text-slate-700">{filteredList.length}</span> dari {list.length} data
+        </p>
+      )}
+
       {/* List Inbound */}
       <MobileCardList items={mobileItemsInbound1} />
       <div className="rounded-2xl border border-[#F3D9C7] bg-white hidden md:block">
@@ -1230,14 +1322,14 @@ pic_pemohon_nama: picPemohon.trim() || null,
                   Memuat data...
                 </td>
               </tr>
-            ) : list.length === 0 ? (
+            ) : filteredList.length === 0 ? (
               <tr>
                 <td colSpan={23} className="px-6 py-12 text-center text-gray-400">
-                  Tidak ada Surat Jalan Inbound yang perlu diproses.
+                  {isFilterActive ? "Tidak ada data yang sesuai filter." : "Tidak ada Surat Jalan Inbound yang perlu diproses."}
                 </td>
               </tr>
             ) : (
-              list.map((sj, sjIndex) => {
+              filteredList.map((sj, sjIndex) => {
                 const meta = STATUS_META[sj.status] || STATUS_META.draft_diajukan;
                 const itemRows = sj.items && sj.items.length > 0 ? sj.items : [null];
                 const rowSpan = itemRows.length;
@@ -1271,7 +1363,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
                   return (
                     <tr
                       key={`${sj.surat_jalan_id}-${item ? item.item_id : "empty"}-${itemIdx}`}
-                      className={`border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30 ${itemIdx % 2 === 1 ? "bg-gray-50/50" : ""}`}
+                      className={`border-b border-gray-50 last:border-0 transition-colors hover:bg-orange-50/50 ${sjIndex % 2 === 1 ? "bg-slate-50/70" : "bg-white"}`}
                     >
                       {isFirst && (
                         <>
