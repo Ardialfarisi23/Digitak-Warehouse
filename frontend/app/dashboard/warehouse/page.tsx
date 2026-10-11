@@ -1101,7 +1101,7 @@ export default function WarehouseLayoutPage() {
 
               {selectedWarehouse?.tipe === "dadakan" && (
                 <span className="inline-flex items-center rounded-full border border-[#d6efd6] bg-[#e8fbe8] px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-[#14532d]">
-                  Dadakan
+                  Transit
                 </span>
               )}
             </div>

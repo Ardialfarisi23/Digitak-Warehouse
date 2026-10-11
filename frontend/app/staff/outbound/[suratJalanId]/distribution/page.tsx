@@ -969,7 +969,7 @@ export default function DistributionDetailPage() {
             </select>
             {warehouseOptions.length === 0 && (
               <p className="mt-1 text-xs text-gray-500">
-                Tidak ada Gudang Transit (dadakan) untuk project ini.
+                Tidak ada Gudang Transit untuk project ini.
               </p>
             )}
           </div>

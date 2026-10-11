@@ -760,10 +760,7 @@ export default function PickingDetailPage() {
           : `Picking berhasil disimpan — ${successDetails[0]} dan ${successDetails.length - 1} item lain`;
 
       showToast(successMessage, "success");
-
-      setTimeout(() => {
-        router.push("/staff/outbound");
-      }, 1500);
+      router.push("/staff/outbound");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Terjadi kesalahan saat menyimpan.", "error");
     } finally {

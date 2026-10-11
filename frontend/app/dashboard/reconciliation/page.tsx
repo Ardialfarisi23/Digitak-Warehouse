@@ -851,6 +851,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
             </div>
           </div>
 
+<<<<<<< HEAD
 <div className="overflow-x-auto overflow-y-auto overscroll-x-contain max-h-[calc(100vh-260px)] rounded-2xl border border-slate-200 bg-white shadow-sm">
                <table className="w-max min-w-full table-fixed border-separate border-spacing-0 md:w-full md:table-auto md:border-collapse md:min-w-[1080px] text-left text-xs">
                 <thead className="sticky top-0 z-10 bg-slate-50">
@@ -873,6 +874,28 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                         </th>
                      </tr>
                    </thead>
+=======
+<div className="overflow-x-auto overscroll-x-contain rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <table className="w-max min-w-full table-fixed border-separate border-spacing-0 md:w-full md:table-auto md:border-collapse md:min-w-[1250px] text-left text-sm">
+<thead>
+                    <tr className="border-b border-slate-100 bg-slate-50">
+                      <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
+                      <th className="hidden md:table-cell px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[160px] w-[160px]">Project</th>
+                      <th className="hidden md:table-cell px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[150px] w-[150px]">Cluster Name</th>
+                      <th className="hidden md:table-cell px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px] w-[80px]">PIC</th>
+                      <th className="hidden md:table-cell px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-[80px]">Kode Tiket</th>
+                      <th className="hidden md:table-cell px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-[80px]">BOQ</th>
+                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 sticky left-0 z-20 bg-slate-50 md:static md:z-auto md:bg-transparent w-[160px] min-w-[160px] max-w-[160px] md:w-auto md:min-w-[150px] md:max-w-none">Barang</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">BOQ</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">ADD</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">MOS</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">USED</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[64px] min-w-[64px] md:w-auto md:min-w-[80px] md:max-w-none">REMAINS</th>
+                      <th className="px-3 py-3 text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-[104px] min-w-[104px] md:w-auto md:min-w-[100px] md:max-w-none">Status</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[80px] min-w-[80px] sticky right-0 z-10 bg-slate-50 md:bg-slate-50 border-l border-slate-100 md:border-l">Aksi</th>
+                    </tr>
+                  </thead>
+>>>>>>> origin/develop
 
 <tbody className="divide-y divide-slate-50">
                   {isLoading ? (

@@ -201,7 +201,7 @@ export default function UsersPage() {
       .then((json) => {
         if (cancelled) return;
         const list = Array.isArray(json?.data) ? json.data : Array.isArray(json?.data?.data) ? json.data.data : Array.isArray(json) ? json : [];
-        setWarehouseOptions(list.map((w: any) => ({ id: String(w.gudang_id), nama: w.nama_gudang + (w.tipe === "dadakan" ? " (Dadakan)" : ""), tipe: w.tipe })));
+        setWarehouseOptions(list.map((w: any) => ({ id: String(w.gudang_id), nama: w.nama_gudang + (w.tipe === "dadakan" ? " (Transit)" : ""), tipe: w.tipe })));
       })
       .catch(() => {
         if (!cancelled) setWarehouseOptions([]);
