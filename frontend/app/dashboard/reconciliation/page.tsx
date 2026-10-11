@@ -854,27 +854,31 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
 <div className="overflow-x-auto overscroll-x-contain rounded-2xl border border-slate-200 bg-white shadow-sm">
               <table className="w-max min-w-full table-fixed border-separate border-spacing-0 md:w-full md:table-auto md:border-collapse md:min-w-[1250px] text-left text-sm">
 <thead>
-                      <tr className="border-b border-slate-100 bg-slate-50">
-                        <th className="hidden md:table-cell px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[160px] w-[160px]">Project</th>
-                        <th className="hidden md:table-cell px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[150px] w-[150px]">Cluster Name</th>
-                        <th className="hidden md:table-cell px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px] w-[80px]">PIC</th>
-                        <th className="hidden md:table-cell px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-[80px]">Kode Tiket</th>
-                        <th className="hidden md:table-cell px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-[80px]">BOQ</th>
-                        <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 sticky left-0 z-20 bg-slate-50 md:static md:z-auto md:bg-transparent w-[160px] min-w-[160px] max-w-[160px] md:w-auto md:min-w-[150px] md:max-w-none">Barang</th>
-                        <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">BOQ</th>
-                        <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">ADD</th>
-                        <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">MOS</th>
-                        <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">USED</th>
-                        <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[64px] min-w-[64px] md:w-auto md:min-w-[80px] md:max-w-none">REMAINS</th>
-                        <th className="px-3 py-3 text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-[104px] min-w-[104px] md:w-auto md:min-w-[100px] md:max-w-none">Status</th>
-                        <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[80px] min-w-[80px] sticky right-0 z-10 bg-slate-50 md:bg-slate-50 border-l border-slate-100 md:border-l">Aksi</th>
-                      </tr>
-                    </thead>
+                    <tr className="border-b border-slate-100 bg-slate-50">
+                      <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
+                      <th className="hidden md:table-cell px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[160px] w-[160px]">Project</th>
+                      <th className="hidden md:table-cell px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[150px] w-[150px]">Cluster Name</th>
+                      <th className="hidden md:table-cell px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 min-w-[80px] w-[80px]">PIC</th>
+                      <th className="hidden md:table-cell px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-[80px]">Kode Tiket</th>
+                      <th className="hidden md:table-cell px-2 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-[80px]">BOQ</th>
+                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 sticky left-0 z-20 bg-slate-50 md:static md:z-auto md:bg-transparent w-[160px] min-w-[160px] max-w-[160px] md:w-auto md:min-w-[150px] md:max-w-none">Barang</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">BOQ</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">ADD</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">MOS</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">USED</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[64px] min-w-[64px] md:w-auto md:min-w-[80px] md:max-w-none">REMAINS</th>
+                      <th className="px-3 py-3 text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-[104px] min-w-[104px] md:w-auto md:min-w-[100px] md:max-w-none">Status</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[80px] min-w-[80px] sticky right-0 z-10 bg-slate-50 md:bg-slate-50 border-l border-slate-100 md:border-l">Aksi</th>
+                    </tr>
+                  </thead>
 
               <tbody className="divide-y divide-slate-50">
                 {isLoading ? (
                   Array.from({ length: 7 }).map((_, rowIndex) => (
                     <tr key={rowIndex}>
+                      <td className="px-3 py-2">
+                        <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
+                      </td>
                       {Array.from({ length: 12 }).map((_, colIndex) => (
                         <td key={colIndex} className="px-3 py-0 hidden md:table-cell align-middle h-16 md:h-auto md:py-2">
                           <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
@@ -908,27 +912,26 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                   ))
                 ) : error ? (
                   <tr>
-                    <td colSpan={12} className="px-6 py-16 text-center text-sm text-rose-500">
+                    <td colSpan={13} className="px-6 py-16 text-center text-sm text-rose-500">
                       {error}
                     </td>
                   </tr>
                 ) : filteredRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-6 py-16 text-center">
+                    <td colSpan={13} className="px-6 py-16 text-center">
                       <Package size={28} className="mx-auto text-slate-300" />
                       <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data rekonsiliasi</p>
                       <p className="mt-1 text-xs text-slate-400">Coba ubah filter atau kata pencarian.</p>
                     </td>
                   </tr>
                 ) : (
-                  filteredRecords.map((record) => {
+                  filteredRecords.map((record, index) => {
                     const statusBadge = getStatusBadge(record.status);
-                    const boqCodes = (record.boq_list || [])
-                      .map((boq) => boq.kode_boq || `BOQ-${boq.boq_id}`)
-                      .join(", ");
+                    const rowNumber = index + 1;
                     return (
                       <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
-                        <td className="hidden md:table-cell px-3 py-2">
+                        <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500">{rowNumber}</td>
+                        <td className="px-3 py-2">
                           <p className="font-medium text-slate-900">{record.project_nama || "-"}</p>
                           <p className="text-xs text-slate-400">{record.area || "-"}</p>
                         </td>
@@ -1399,6 +1402,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                           <table className="w-full min-w-[640px] text-left text-sm">
                            <thead>
                              <tr className="border-b border-slate-100 bg-slate-50">
+                               <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
                                <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
                                <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
                                 <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
@@ -1410,6 +1414,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                            <tbody className="divide-y divide-slate-50">
                              {(mitraPreview.preview || []).map((row: any, idx: number) => (
                                <tr key={idx} className="hover:bg-slate-50">
+                                 <td className="px-4 py-2 whitespace-nowrap text-center text-xs text-slate-500">{idx + 1}</td>
                                  <td className="px-4 py-2 font-mono text-xs font-semibold text-orange-600">{row.kode_tiket}</td>
                                  <td className="px-4 py-2 text-slate-700">{row.project_nama}</td>
                                   <td className="px-4 py-2 text-slate-700">{row.nama_barang || "-"}</td>
@@ -1423,9 +1428,10 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                                  </td>
                                </tr>
                              ))}
-                             {(mitraPreview.failed || []).map((row: any, idx: number) => (
-                               <tr key={`fail-${idx}`} className="bg-rose-50/50 hover:bg-rose-50">
-                                 <td className="px-4 py-2 font-mono text-xs font-semibold text-slate-700">{row.kode_tiket || "-"}</td>
+{(mitraPreview.failed || []).map((row: any, idx: number) => (
+                                <tr key={`fail-${idx}`} className="bg-rose-50/50 hover:bg-rose-50">
+                                  <td className="px-4 py-2 whitespace-nowrap text-center text-xs text-slate-500">{idx + 1}</td>
+                                  <td className="px-4 py-2 font-mono text-xs font-semibold text-slate-700">{row.kode_tiket || "-"}</td>
                                  <td className="px-4 py-2 text-slate-700">-</td>
                                  <td className="px-4 py-2 text-slate-700">-</td>
                                   <td className="px-4 py-2 text-right font-mono text-slate-400">-</td>
@@ -1687,6 +1693,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
             <table className="min-w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
+                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Waktu Upload</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama File</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diunggah Oleh</th>
@@ -1701,6 +1708,9 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                 {historyLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i}>
+                      <td className="px-6 py-4">
+                        <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
+                      </td>
                       <td className="px-6 py-4" colSpan={8}>
                         <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                       </td>
@@ -1708,25 +1718,27 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                   ))
                 ) : historyError ? (
                   <tr>
-                    <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={8}>{historyError}</td>
+                    <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={9}>{historyError}</td>
                   </tr>
                 ) : historyData.length === 0 ? (
                   <tr>
-                    <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={8}>
+                    <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={9}>
                       Belum ada riwayat upload laporan mitra.
                     </td>
                   </tr>
                 ) : (
-                  historyData.map((r) => {
+                  historyData.map((r, index) => {
                     const allSuccess = r.failed_rows === 0 && r.success_rows > 0;
                     const hasFailed = r.failed_rows > 0;
                     const overallStatus = allSuccess ? "berhasil" : hasFailed ? "sebagian_gagal" : "draft";
+                    const rowNumber = (historyPage - 1) * 20 + index + 1;
                     return (
                       <tr
                         key={r.upload_id}
                         className="group cursor-pointer transition-colors hover:bg-slate-50"
                         onClick={() => setHistoryDetail(r)}
                       >
+                        <td className="px-6 py-4 whitespace-nowrap text-center text-xs text-slate-500">{rowNumber}</td>
                         <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400">
                           {new Date(r.uploaded_at).toLocaleString("id-ID")}
                         </td>
@@ -1849,6 +1861,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                     <table className="min-w-full text-left text-xs">
                          <thead>
                            <tr className="border-b border-slate-100 bg-slate-50">
+                             <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
                              <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
                              <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 text-right">Used</th>
                              <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
@@ -1856,10 +1869,11 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                            </tr>
                          </thead>
                         <tbody className="divide-y divide-slate-50">
-                          {historyDetail.details.map((d: any) => {
+                          {historyDetail.details.map((d: any, idx: number) => {
                             const duplicate = isDuplicateReason(d.reason);
                             return (
                               <tr key={d.detail_id} className="hover:bg-slate-50">
+                                <td className="px-3 py-2 whitespace-nowrap text-center text-xs text-slate-500">{idx + 1}</td>
                                 <td className="px-3 py-2 font-mono font-semibold text-slate-700">{d.kode_tiket}</td>
                                 <td className="px-3 py-2 text-right font-mono text-slate-600">{d.used}</td>
                                 <td className="px-3 py-2">

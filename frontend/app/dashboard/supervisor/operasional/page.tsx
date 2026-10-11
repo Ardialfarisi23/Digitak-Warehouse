@@ -193,7 +193,7 @@ export default function SupervisorOperasionalPage() {
           : [];
         const list = rawList.map((w: any) => ({
           gudang_id: w.gudang_id,
-          nama_gudang: w.nama_gudang + (w.tipe === "dadakan" ? " (Dadakan)" : ""),
+          nama_gudang: w.nama_gudang + (w.tipe === "dadakan" ? " (Transit)" : ""),
           tipe: w.tipe,
         }));
         if (list.length) {
@@ -575,7 +575,7 @@ export default function SupervisorOperasionalPage() {
               <option value="">Semua Gudang</option>
                     {warehouses.map((wh) => (
                       <option key={wh.gudang_id} value={String(wh.gudang_id)}>
-                        {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Dadakan)" : ""}
+                        {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Transit)" : ""}
                       </option>
                     ))}
             </select>
@@ -1180,7 +1180,7 @@ export default function SupervisorOperasionalPage() {
                     <option value="">Pilih gudang (opsional)</option>
                     {warehouses.map((wh) => (
                       <option key={wh.gudang_id} value={String(wh.gudang_id)}>
-                        {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Dadakan)" : ""}
+                        {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Transit)" : ""}
                       </option>
                     ))}
                   </select>

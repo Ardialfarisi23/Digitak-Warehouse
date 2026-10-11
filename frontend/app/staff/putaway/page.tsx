@@ -154,6 +154,7 @@ export default function PutawayListPage() {
                   if (item == null || item.qty_diterima === null || item.qty_diterima === undefined) return "-";
                   return Number(item.qty_diterima);
                 };
+                const rowNumber = sjIndex + 1;
                 return itemRows.map((item, itemIdx) => {
                   const isFirst = itemIdx === 0;
                   return (

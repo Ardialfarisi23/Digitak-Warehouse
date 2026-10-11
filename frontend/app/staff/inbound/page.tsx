@@ -1234,7 +1234,7 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
     if (transitProjectIni) {
       label += " (Transit - Project Ini)";
     } else if (isTransit) {
-      label += " (Dadakan)";
+      label += " (Transit)";
     }
 
     return { gudang_id: w.gudang_id, label };
@@ -2248,8 +2248,9 @@ pic_pemohon_nama: picPemohon.trim() || null,
             {modalItems.length > 0 && (
               <div className="mt-4 overflow-hidden rounded-xl border border-slate-100 hidden md:block">
                 <table className="w-full text-sm">
-                <thead>
+<thead>
                   <tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
                     <th className="px-3 py-2 font-semibold">Nama Barang</th>
                     <th className="px-3 py-2 font-semibold text-center">Qty Surat Jalan</th>
                     <th className="px-3 py-2 font-semibold text-center">Qty Aktual</th>
@@ -2263,6 +2264,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 <tbody>
                   {modalItems.map((row, idx) => (
                     <tr key={row.id} className={`border-t border-slate-50 ${idx % 2 === 0 ? "bg-white" : "bg-slate-50"}`}>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-center text-xs text-slate-500">{idx + 1}</td>
                       <td className="px-3 py-2.5 font-medium text-gray-800">
                         {row.is_non_master ? row.nama_barang : `${row.kode_perangkat} - ${row.nama_barang}`}
                       </td>

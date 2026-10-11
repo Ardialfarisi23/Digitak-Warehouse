@@ -754,26 +754,28 @@ export default function InboundDetailPage() {
       {/* Tabel pencocokan barang */}
       <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
         <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Cocokkan Barang & Catat Kondisi</p>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
-              <th className="pb-3 pr-4 font-semibold">Kode Barang</th>
-              <th className="pb-3 pr-4 font-semibold">Nama Barang</th>
-              <th className="pb-3 pr-4 font-semibold text-right">Qty Surat Jalan</th>
-              <th className="pb-3 pr-6 font-semibold text-right">Qty Diterima / Ditolak</th>
-              <th className="pb-3 pr-4 font-semibold">Kondisi</th>
-              <th className="pb-3 pr-4 font-semibold">Lokasi/Zona</th>
-              <th className="pb-3 font-semibold">Serial Number</th>
-              <th className="pb-3 font-semibold">Foto</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item, index) => {
+<table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+            <th className="pb-3 pr-4 font-semibold text-center w-12">No</th>
+            <th className="pb-3 pr-4 font-semibold">Kode Barang</th>
+            <th className="pb-3 pr-4 font-semibold">Nama Barang</th>
+            <th className="pb-3 pr-4 font-semibold text-right">Qty Surat Jalan</th>
+            <th className="pb-3 pr-6 font-semibold text-right">Qty Diterima / Ditolak</th>
+            <th className="pb-3 pr-4 font-semibold">Kondisi</th>
+            <th className="pb-3 pr-4 font-semibold">Lokasi/Zona</th>
+            <th className="pb-3 font-semibold">Serial Number</th>
+            <th className="pb-3 font-semibold">Foto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, index) => {
               const selisih = item.qtyDiterima - item.qtyRencana;
               const adaKelebihan = selisih > 0;
               return (
                 <Fragment key={item.itemId}>
                 <tr className="border-b border-gray-50 last:border-0 align-top">
+                  <td className="py-3 pr-4 text-center text-xs text-slate-500">{index + 1}</td>
                   <td className="py-3 pr-4 font-medium text-gray-800">{item.kodeBarang}</td>
                   <td className="py-3 pr-4 text-gray-600">{item.namaBarang}</td>
                   <td className="py-3 pr-4 text-right text-gray-500">{item.qtyRencana}</td>

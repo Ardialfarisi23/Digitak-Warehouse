@@ -241,6 +241,7 @@ export default function SuratJalanListPage() {
                 );
                 const isKritis = itemStokQtys.some((qty) => qty < KRITIS_THRESHOLD);
                 const isMenipis = itemStokQtys.some((qty) => qty >= KRITIS_THRESHOLD && qty < MENIPIS_THRESHOLD);
+                const rowNumber = sjIndex + 1;
 
                 return itemRows.map((item, itemIdx) => {
                   const isFirst = itemIdx === 0;

@@ -545,6 +545,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                  <table className="w-full min-w-[1100px] text-left text-sm">
 <thead>
                       <tr className="border-b border-slate-100 bg-slate-50">
+                        <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Cluster Name</th>
                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
@@ -563,7 +564,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
 {isLoading ? (
                         Array.from({ length: 7 }).map((_, rowIndex) => (
                           <tr key={rowIndex}>
-                            {Array.from({ length: 10 }).map((_, colIndex) => (
+                            {Array.from({ length: 11 }).map((_, colIndex) => (
                               <td key={colIndex} className="px-6 py-4">
                                 <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                               </td>
@@ -572,18 +573,19 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                         ))
                       ) : filteredRecords.length === 0 ? (
                         <tr>
-                          <td colSpan={10} className="px-6 py-16 text-center">
+                          <td colSpan={11} className="px-6 py-16 text-center">
                            <Package size={28} className="mx-auto text-slate-300" />
                            <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data rekonsiliasi</p>
                            <p className="mt-1 text-xs text-slate-400">Coba ubah filter, atau pastikan Anda sudah ditugaskan sebagai PIC gudang.</p>
                          </td>
                        </tr>
                      ) : (
-                       filteredRecords.map((record) => {
-                         const statusBadge = getStatusBadge(record.status);
-                         return (
-                           <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
-                             <td className="px-6 py-4">
+filteredRecords.map((record, index) => {
+                          const statusBadge = getStatusBadge(record.status);
+                          return (
+                            <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
+                              <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500">{index + 1}</td>
+                              <td className="px-6 py-4">
                                <p className="font-medium text-slate-900">{record.project_nama || "-"}</p>
                                <p className="text-xs text-slate-400">{record.area || "-"}</p>
                              </td>
@@ -705,8 +707,9 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] uppercase tracking-wider text-slate-400">
-                      <th className="py-3 px-4 font-semibold">Waktu Upload</th>
+<tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] uppercase tracking-wider text-slate-400">
+                       <th className="py-3 px-4 font-semibold w-12 text-center">No</th>
+                       <th className="py-3 px-4 font-semibold">Waktu Upload</th>
                       <th className="py-3 px-4 font-semibold">Nama File</th>
                       <th className="py-3 px-4 font-semibold">Diunggah Oleh</th>
                       <th className="py-3 px-4 font-semibold">Total</th>

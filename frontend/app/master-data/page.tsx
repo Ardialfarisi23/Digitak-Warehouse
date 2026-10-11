@@ -239,7 +239,6 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
     { key: "gudang_id", label: "Gudang Penugasan", type: "select", options: [] },
     { key: "bisa_menyetir", label: "Punya SIM", type: "checkbox" },
     { key: "is_material_handler", label: "Material Handler", type: "checkbox" },
-    { key: "foto", label: "Foto Personil", type: "file" },
   ],
   vehicles: [
     { key: "jenis_kendaraan", label: "Jenis Kendaraan", type: "text", required: true },
@@ -252,9 +251,9 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
   ],
   warehouses: [
     { key: "nama_gudang", label: "Nama Gudang", type: "text", required: true },
-    { key: "tipe", label: "Tipe", type: "select", required: true, helperText: "Gudang Tetap: lokasi permanen (Kantor Pusat/Cabang). Gudang Dadakan: staging sementara di lokasi klien.", options: [
+    { key: "tipe", label: "Tipe", type: "select", required: true, helperText: "Gudang Tetap: lokasi permanen (Kantor Pusat/Cabang). Gudang Transit: staging sementara di lokasi klien.", options: [
       { value: "tetap", label: "Tetap" },
-      { value: "dadakan", label: "Dadakan" },
+      { value: "dadakan", label: "Transit" },
     ] },
     { key: "project_id", label: "Project", type: "select", required: false, options: [] },
     { key: "alamat", label: "Alamat", type: "textarea" },
@@ -715,7 +714,7 @@ function FormModal({
         .then((result) => {
           if (cancelled) return;
           const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
-          setWarehouseOptions(list.map((w: any) => ({ value: Number(w.gudang_id), label: w.nama_gudang + (w.tipe === "dadakan" ? " (Dadakan)" : ""), tipe: w.tipe })));
+          setWarehouseOptions(list.map((w: any) => ({ value: Number(w.gudang_id), label: w.nama_gudang + (w.tipe === "dadakan" ? " (Transit)" : ""), tipe: w.tipe })));
         })
         .catch(() => {
           if (!cancelled) setWarehouseOptions([]);
@@ -735,7 +734,7 @@ function FormModal({
         .then((result) => {
           if (cancelled) return;
           const list = Array.isArray(result?.data?.data) ? result.data.data : Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
-          setWarehouseOptions(list.map((w: any) => ({ value: Number(w.gudang_id), label: w.nama_gudang + (w.tipe === "dadakan" ? " (Dadakan)" : ""), tipe: w.tipe })));
+          setWarehouseOptions(list.map((w: any) => ({ value: Number(w.gudang_id), label: w.nama_gudang + (w.tipe === "dadakan" ? " (Transit)" : ""), tipe: w.tipe })));
         })
         .catch(() => {
           if (!cancelled) setWarehouseOptions([]);
@@ -884,7 +883,7 @@ function FormModal({
     }
 
     if (tab === "warehouses" && form.tipe === "dadakan" && (!form.project_id || String(form.project_id).trim() === "")) {
-      setError("Gudang Dadakan wajib memiliki Project terkait.");
+      setError("Gudang Transit wajib memiliki Project terkait.");
       return;
     }
 
@@ -1061,15 +1060,13 @@ function FormModal({
                       </div>
                       <div className="text-xs text-slate-500">
                         <p className="font-medium text-slate-700">Foto saat ini</p>
-                        <p>{tab === "personnel" ? "Foto dapat diubah melalui halaman profil personil." : "Klik ganti foto untuk mengubah"}</p>
+                        <p>Klik ganti foto untuk mengubah</p>
                       </div>
                     </div>
 
-                    {tab !== "personnel" && (
-                      <button type="button" onClick={() => handleChange(field.key, null)} className="rounded-full border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">
-                        Ganti Foto
-                      </button>
-                    )}
+                    <button type="button" onClick={() => handleChange(field.key, null)} className="rounded-full border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                      Ganti Foto
+                    </button>
 
                     {form[field.key] instanceof File && <p className="text-[11px] text-slate-400">File terpilih: {(form[field.key] as File).name}</p>}
                   </div>
@@ -2023,7 +2020,7 @@ function MasterDataPageContent() {
       case "projects":
         return ["project_id", "title", "nama_project", "kecamatan", "desa_kelurahan", "cluster_count", "status_aktif"];
       case "personnel":
-        return ["nama", "email", "nik", "posisi", "no_hp", "gudang", "bisa_menyetir", "is_aktif", "foto"];
+        return ["nama", "email", "nik", "posisi", "no_hp", "gudang", "bisa_menyetir", "is_aktif"];
       case "vehicles":
         return ["kendaraan_id", "jenis_kendaraan", "merk", "no_polisi", "gudang", "foto"];
       case "warehouses":
@@ -2071,7 +2068,7 @@ deskripsi: "Deskripsi",
       nama_cluster: "Nama Cluster",
       cluster_id: "Cluster ID",
       cluster_type: "Tipe Cluster",
-      alamat_lengkap: "alamat_lengkap",
+      alamat_lengkap: "Alamat Lengkap",
       homepass_plan: "Homepass Plan",
       cluster_count: "Jumlah Cluster",
     };
@@ -2356,7 +2353,7 @@ deskripsi: "Deskripsi",
             >
               <option value="">Semua Tipe</option>
               <option value="tetap">Tetap</option>
-              <option value="transit">Transit</option>
+              <option value="dadakan">Transit</option>
             </select>
 
             <select
@@ -2475,6 +2472,7 @@ deskripsi: "Deskripsi",
             <table className="w-full text-left border-collapse table-auto text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
+                  <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
                   {columns.map((column) => (
                     <th key={column} className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                       {getColumnLabel(column)}
@@ -2489,6 +2487,9 @@ deskripsi: "Deskripsi",
                 {loading ? (
                   Array.from({ length: 7 }).map((_, rowIndex) => (
                     <tr key={rowIndex}>
+                      <td className="px-3 py-3">
+                        <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
+                      </td>
                       {Array.from({ length: columns.length + 1 }).map((_, colIndex) => (
                         <td key={colIndex} className="px-3 py-3">
                           <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
@@ -2498,28 +2499,30 @@ deskripsi: "Deskripsi",
                   ))
                 ) : error ? (
                   <tr>
-                    <td colSpan={columns.length + 1} className="px-3 py-16 text-center text-sm text-rose-500">
+                    <td colSpan={columns.length + 2} className="px-3 py-16 text-center text-sm text-rose-500">
                       {error}
                     </td>
                   </tr>
                 ) : data.length === 0 ? (
                   <tr>
-                    <td colSpan={columns.length + 1} className="px-3 py-16 text-center text-sm text-slate-400">
+                    <td colSpan={columns.length + 2} className="px-3 py-16 text-center text-sm text-slate-400">
                       Tidak ada data {activeConfig?.label.toLowerCase()}.
                     </td>
                   </tr>
                 ) : (
-                   data.map((record, index) => {
-                     const item = record as Item;
+data.map((record, index) => {
+                      const item = record as Item;
+                      const rowNumber = (meta.page - 1) * ITEMS_PER_PAGE + index + 1;
 
-                      const idFields = activeConfig?.idFields || [activeConfig?.idField || "id"];
+                       const idFields = activeConfig?.idFields || [activeConfig?.idField || "id"];
                      const rawId = idFields.map((field) => (record as any)?.[field]).find((value) => value !== undefined && value !== null && value !== "");
                      const basePrimaryKey = rawId !== undefined && rawId !== null && rawId !== "" ? String(rawId) : String((record as any)?.id ?? `record-${index}`);
                      const primaryKey = `${basePrimaryKey}-${index}`;
 
-                     return (
-                       <tr key={primaryKey} onClick={() => setDetailRecord(record)} className="group cursor-pointer transition-colors hover:bg-slate-50">
-                         {columns.map((column) => {
+return (
+                        <tr key={primaryKey} onClick={() => setDetailRecord(record)} className="group cursor-pointer transition-colors hover:bg-slate-50">
+                          <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500">{rowNumber}</td>
+                          {columns.map((column) => {
                            let value = record[column];
 
                            if (column === "cluster_count") {
@@ -2585,12 +2588,12 @@ deskripsi: "Deskripsi",
 
                            if (column === "tipe" && activeTab === "warehouses") {
                              const tipeVal = String(value || "").toLowerCase();
-                             const isDadakan = tipeVal === "dadakan";
+                             const isTransit = tipeVal === "dadakan";
 
                              return (
                                <td key={column} className="px-3 py-3">
-                                 <span className={["inline-flex rounded-full px-3 py-1 text-xs font-semibold", isDadakan ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-500"].join(" ")}>
-                                   {isDadakan ? "Dadakan" : (value ? formatValue(value) : "-")}
+                                 <span className={["inline-flex rounded-full px-3 py-1 text-xs font-semibold", isTransit ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-500"].join(" ")}>
+                                   {isTransit ? "Transit" : (value ? formatValue(value) : "-")}
                                  </span>
                                </td>
                              );

@@ -357,15 +357,15 @@ export function SupervisorDashboard() {
               </div>
             </div>
 
-            {/* GUDANG DADAKAN AKTIF */}
+            {/* GUDANG TRANSIT AKTIF */}
             <div className="rounded-2xl bg-white p-6 shadow-sm border border-stone-100 space-y-4">
               <div className="flex items-center gap-2">
                 <Radio className="text-orange-500" size={20} />
-                <h3 className="text-lg font-bold text-slate-900">Gudang Dadakan Aktif</h3>
+                <h3 className="text-lg font-bold text-slate-900">Gudang Transit Aktif</h3>
               </div>
 
               {stagingSites.length === 0 ? (
-                <div className="rounded-2xl border-2 border-dashed border-stone-200 bg-[#FAF8F3] p-5 text-center text-xs font-semibold text-slate-400">Belum ada gudang dadakan aktif.</div>
+                <div className="rounded-2xl border-2 border-dashed border-stone-200 bg-[#FAF8F3] p-5 text-center text-xs font-semibold text-slate-400">Belum ada gudang transit aktif.</div>
               ) : (
                 <div className="space-y-3">
                   {stagingSites.slice(0, 5).map((site) => {
@@ -378,7 +378,7 @@ export function SupervisorDashboard() {
                         </div>
 
                         <div className="flex flex-wrap gap-2 text-xs font-bold">
-                          <span className="rounded-md bg-stone-200/70 px-2.5 py-1 text-slate-700">Gudang Dadakan</span>
+                          <span className="rounded-md bg-stone-200/70 px-2.5 py-1 text-slate-700">Gudang Transit</span>
                           <span className={`rounded-md px-2.5 py-1 flex items-center gap-1 ${isStale ? "bg-orange-100 text-orange-700" : "bg-emerald-100 text-emerald-700"}`}>
                             <Clock size={12} /> {isStale ? `Belum Diupdate ${formatStaleAge(site.createdAt)}` : `Diupdate ${formatStaleAge(site.createdAt)}`}
                           </span>
