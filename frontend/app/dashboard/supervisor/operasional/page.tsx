@@ -102,11 +102,24 @@ export default function SupervisorOperasionalPage() {
     no_hp: "",
     email: "",
     nik: "",
-    role: "",
     bisa_menyetir: false,
     is_material_handler: false,
     gudang_id: "" as string,
   });
+
+  const isSupervisorPosisi = useMemo(
+    () => (personilForm.posisi || "").trim().toLowerCase() === "supervisor",
+    [personilForm.posisi]
+  );
+
+  const handlePosisiChange = (value: string) => {
+    const supervisorSelected = value.trim().toLowerCase() === "supervisor";
+    setPersonilForm((prev) => ({
+      ...prev,
+      posisi: value,
+      gudang_id: supervisorSelected ? "" : prev.gudang_id,
+    }));
+  };
 
   const [kendaraanForm, setKendaraanForm] = useState({
     jenis_kendaraan: "",
@@ -272,16 +285,16 @@ export default function SupervisorOperasionalPage() {
 
   const handleEditPersonil = (personil: Personnel) => {
     setSelectedPersonil(personil);
+    const isSupervisor = (personil.posisi || "").trim().toLowerCase() === "supervisor";
     setPersonilForm({
       nama: personil.nama || "",
       posisi: personil.posisi || "",
       no_hp: personil.no_hp || "",
       email: personil.email || "",
       nik: personil.nik || "",
-      role: personil.role || "",
       bisa_menyetir: Boolean(personil.bisa_menyetir),
       is_material_handler: Boolean(personil.is_material_handler),
-      gudang_id: personil.gudang_id ? String(personil.gudang_id) : "",
+      gudang_id: isSupervisor || !personil.gudang_id ? "" : String(personil.gudang_id),
     });
     setFormError(null);
     setIsEditModalOpen(true);
@@ -304,15 +317,18 @@ export default function SupervisorOperasionalPage() {
         no_hp: personilForm.no_hp || null,
         email: personilForm.email || null,
         nik: personilForm.nik || null,
-        role: personilForm.role || null,
         bisa_menyetir: Boolean(personilForm.bisa_menyetir),
         is_material_handler: Boolean(personilForm.is_material_handler),
       };
 
-      const gudangRaw = personilForm.gudang_id || warehouseFilter;
-      const gudangIdNum = Number(gudangRaw);
-      if (gudangRaw && Number.isFinite(gudangIdNum) && gudangIdNum > 0) {
-        payload.gudang_id = gudangIdNum;
+      if (isSupervisorPosisi) {
+        payload.gudang_id = null;
+      } else {
+        const gudangRaw = personilForm.gudang_id || warehouseFilter;
+        const gudangIdNum = Number(gudangRaw);
+        if (gudangRaw && Number.isFinite(gudangIdNum) && gudangIdNum > 0) {
+          payload.gudang_id = gudangIdNum;
+        }
       }
 
       const response = await put(url, payload);
@@ -404,7 +420,7 @@ export default function SupervisorOperasionalPage() {
   }, [filteredPersonnels.length, filteredVehicles.length, filteredItems.length]);
 
   const resetPersonilForm = () => {
-    setPersonilForm({ nama: "", posisi: "", no_hp: "", email: "", nik: "", role: "", bisa_menyetir: false, is_material_handler: false, gudang_id: warehouseFilter ? String(warehouseFilter) : "" });
+    setPersonilForm({ nama: "", posisi: "", no_hp: "", email: "", nik: "", bisa_menyetir: false, is_material_handler: false, gudang_id: warehouseFilter ? String(warehouseFilter) : "" });
     setFormError(null);
   };
 
@@ -424,15 +440,18 @@ export default function SupervisorOperasionalPage() {
         no_hp: personilForm.no_hp || null,
         email: personilForm.email || null,
         nik: personilForm.nik || null,
-        role: personilForm.role || null,
         bisa_menyetir: Boolean(personilForm.bisa_menyetir),
         is_material_handler: Boolean(personilForm.is_material_handler),
       };
 
-      const gudangRaw = personilForm.gudang_id || warehouseFilter;
-      const gudangIdNum = Number(gudangRaw);
-      if (gudangRaw && Number.isFinite(gudangIdNum) && gudangIdNum > 0) {
-        payload.gudang_id = gudangIdNum;
+      if (isSupervisorPosisi) {
+        payload.gudang_id = null;
+      } else {
+        const gudangRaw = personilForm.gudang_id || warehouseFilter;
+        const gudangIdNum = Number(gudangRaw);
+        if (gudangRaw && Number.isFinite(gudangIdNum) && gudangIdNum > 0) {
+          payload.gudang_id = gudangIdNum;
+        }
       }
 
       const res = await post(`${apiBase}/api/personnels`, payload);
@@ -896,7 +915,7 @@ export default function SupervisorOperasionalPage() {
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">Posisi</label>
-                  <select value={personilForm.posisi} onChange={(e) => setPersonilForm((p) => ({ ...p, posisi: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400">
+                  <select value={personilForm.posisi} onChange={(e) => handlePosisiChange(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400">
                     <option value="">Pilih posisi</option>
                     <option value="Supervisor">Supervisor</option>
                     <option value="Staf Gudang">Staf Gudang</option>
@@ -914,10 +933,6 @@ export default function SupervisorOperasionalPage() {
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">NIK</label>
                   <input type="text" value={personilForm.nik} onChange={(e) => setPersonilForm((p) => ({ ...p, nik: e.target.value }))} placeholder="Nomor Induk Karyawan" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">Role</label>
-                  <input type="text" value={personilForm.role} onChange={(e) => setPersonilForm((p) => ({ ...p, role: e.target.value }))} placeholder="Contoh: Admin, Operator" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
-                </div>
                 <div className="sm:col-span-2 flex items-center gap-6">
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={personilForm.bisa_menyetir} onChange={(e) => setPersonilForm((p) => ({ ...p, bisa_menyetir: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#E8632C] focus:ring-[#E8632C]" />
@@ -931,17 +946,26 @@ export default function SupervisorOperasionalPage() {
                 <div className="sm:col-span-2">
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">Gudang</label>
                   <select
-                    value={personilForm.gudang_id}
+                    value={isSupervisorPosisi ? "" : personilForm.gudang_id}
                     onChange={(e) => setPersonilForm((p) => ({ ...p, gudang_id: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                    disabled={isSupervisorPosisi}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                   >
-                    <option value="">Pilih gudang (opsional)</option>
-                    {warehouses.map((wh) => (
-                      <option key={wh.gudang_id} value={String(wh.gudang_id)}>
-                        {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Transit)" : ""}
-                      </option>
-                    ))}
+                    <option value="">
+                      {isSupervisorPosisi ? "Semua Gudang" : "Pilih gudang (opsional)"}
+                    </option>
+                    {!isSupervisorPosisi &&
+                      warehouses.map((wh) => (
+                        <option key={wh.gudang_id} value={String(wh.gudang_id)}>
+                          {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Dadakan)" : ""}
+                        </option>
+                      ))}
                   </select>
+                  {isSupervisorPosisi && (
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      Supervisor memiliki akses lintas gudang, pilihan gudang dinonaktifkan.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -1037,7 +1061,7 @@ export default function SupervisorOperasionalPage() {
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">Posisi</label>
-                  <select value={personilForm.posisi} onChange={(e) => setPersonilForm((p) => ({ ...p, posisi: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400">
+                  <select value={personilForm.posisi} onChange={(e) => handlePosisiChange(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400">
                     <option value="">Pilih posisi</option>
                     <option value="Supervisor">Supervisor</option>
                     <option value="Staf Gudang">Staf Gudang</option>
@@ -1055,10 +1079,6 @@ export default function SupervisorOperasionalPage() {
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">NIK</label>
                   <input type="text" value={personilForm.nik} onChange={(e) => setPersonilForm((p) => ({ ...p, nik: e.target.value }))} placeholder="Nomor Induk Karyawan" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">Role</label>
-                  <input type="text" value={personilForm.role} onChange={(e) => setPersonilForm((p) => ({ ...p, role: e.target.value }))} placeholder="Contoh: Admin, Operator" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
-                </div>
                 <div className="sm:col-span-2 flex items-center gap-6">
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={personilForm.bisa_menyetir} onChange={(e) => setPersonilForm((p) => ({ ...p, bisa_menyetir: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#E8632C] focus:ring-[#E8632C]" />
@@ -1072,17 +1092,26 @@ export default function SupervisorOperasionalPage() {
                 <div className="sm:col-span-2">
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">Gudang</label>
                   <select
-                    value={personilForm.gudang_id}
+                    value={isSupervisorPosisi ? "" : personilForm.gudang_id}
                     onChange={(e) => setPersonilForm((p) => ({ ...p, gudang_id: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                    disabled={isSupervisorPosisi}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                   >
-                    <option value="">Pilih gudang (opsional)</option>
-                    {warehouses.map((wh) => (
-                      <option key={wh.gudang_id} value={String(wh.gudang_id)}>
-                        {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Transit)" : ""}
-                      </option>
-                    ))}
+                    <option value="">
+                      {isSupervisorPosisi ? "Semua Gudang" : "Pilih gudang (opsional)"}
+                    </option>
+                    {!isSupervisorPosisi &&
+                      warehouses.map((wh) => (
+                        <option key={wh.gudang_id} value={String(wh.gudang_id)}>
+                          {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Dadakan)" : ""}
+                        </option>
+                      ))}
                   </select>
+                  {isSupervisorPosisi && (
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      Supervisor memiliki akses lintas gudang, pilihan gudang dinonaktifkan.
+                    </p>
+                  )}
                 </div>
               </div>
 
