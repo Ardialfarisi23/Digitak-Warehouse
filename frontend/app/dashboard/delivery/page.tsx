@@ -143,7 +143,7 @@ export default function AdminDeliveryPage() {
 
   useEffect(() => {
     get(`${API_BASE}/api/warehouses?limit=100`).then((r) => r.json()).then((json) => {
-      setWarehouses(Array.isArray(json?.data) ? json.data.map((w: any) => ({ ...w, nama_gudang: w.nama_gudang + (w.tipe === "dadakan" ? " (Dadakan)" : "") })) : []);
+      setWarehouses(Array.isArray(json?.data) ? json.data.map((w: any) => ({ ...w, nama_gudang: w.nama_gudang + (w.tipe === "dadakan" ? " (Transit)" : "") })) : []);
     }).catch(() => {
       setWarehouses([]);
     });

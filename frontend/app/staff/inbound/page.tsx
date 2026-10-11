@@ -888,7 +888,7 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
     if (transitProjectIni) {
       label += " (Transit - Project Ini)";
     } else if (isTransit) {
-      label += " (Dadakan)";
+      label += " (Transit)";
     }
 
     return { gudang_id: w.gudang_id, label };

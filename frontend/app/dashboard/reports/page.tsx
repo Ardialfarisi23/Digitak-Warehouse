@@ -1284,7 +1284,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
 
         if (whRes.ok) {
           setWarehouses(
-            readList(whJson).map((w: Record<string, unknown>) => ({ id: String(w.gudang_id), nama: (w.nama_gudang as string) + (w.tipe === "dadakan" ? " (Dadakan)" : ""), tipe: w.tipe as string }))
+            readList(whJson).map((w: Record<string, unknown>) => ({ id: String(w.gudang_id), nama: (w.nama_gudang as string) + (w.tipe === "dadakan" ? " (Transit)" : ""), tipe: w.tipe as string }))
           );
         }
 

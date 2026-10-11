@@ -627,7 +627,7 @@ export default function AjukanSuratJalanPage() {
       if (transitProjectIni) {
         label += " (Transit - Project Ini)";
       } else if (isTransit) {
-        label += " (Dadakan)";
+        label += " (Transit)";
       }
 
       return { gudang_id: w.gudang_id, label, isTransit, transitProjectIni };
@@ -1162,7 +1162,7 @@ export default function AjukanSuratJalanPage() {
                       <option value="">Pilih Gudang Asal...</option>
                       {warehouses.filter((w) => w.is_internal === true).map((w) => (
                         <option key={w.gudang_id} value={String(w.gudang_id)}>
-                          {w.nama_gudang} {w.tipe === "dadakan" ? "(Dadakan)" : ""}
+                          {w.nama_gudang} {w.tipe === "dadakan" ? "(Transit)" : ""}
                         </option>
                       ))}
                     </select>
@@ -1309,7 +1309,7 @@ export default function AjukanSuratJalanPage() {
                   {warehouses.length === 0 && <p className="mt-2 text-xs text-gray-400">Belum ada data Gudang di master data.</p>}
                   {jumlahSemuaTransit > 0 && jumlahTransitProjectIni === 0 && (
                     <p className="mt-2 text-xs text-gray-400">
-                      Project ini belum punya Gudang Transit (Dadakan) sendiri.
+                      Project ini belum punya Gudang Transit sendiri.
                     </p>
                   )}
                 </div>
