@@ -78,6 +78,7 @@ export default function SupervisorApprovalOutboundPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -483,6 +484,7 @@ export default function SupervisorApprovalOutboundPage() {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider text-xs border-b border-slate-200">
               <tr>
+                <th className="px-4 py-3 text-center">No</th>
                 <th className="px-4 py-3 break-all">No. Surat Jalan</th>
                 <th className="px-4 py-3">Tanggal</th>
                 {activeTab === "history" ? (
@@ -506,41 +508,43 @@ export default function SupervisorApprovalOutboundPage() {
             <tbody className="divide-y divide-slate-100">
               {isLoading && activeTab === "pending" ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
                     <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
                     <p className="mt-2 text-sm">Memuat data outbound...</p>
                   </td>
                 </tr>
               ) : historyLoading && activeTab === "history" ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
                     <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
                     <p className="mt-2 text-sm">Memuat riwayat...</p>
                   </td>
                 </tr>
               ) : activeTab === "pending" && filteredRequests.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
                     <p className="text-sm font-semibold text-slate-700">Tidak ada pengajuan outbound yang menunggu persetujuan</p>
                     <p className="text-xs text-slate-400">Ganti kata kunci atau pilih filter lain.</p>
                   </td>
                 </tr>
               ) : activeTab === "history" && filteredHistory.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
                     <p className="text-sm font-semibold text-slate-700">Tidak ada riwayat persetujuan outbound</p>
                     <p className="text-xs text-slate-400">Setujui atau tolak pengajuan untuk melihat riwayat.</p>
                   </td>
                 </tr>
               ) : activeTab === "pending" ? (
-                filteredRequests.map((r) => {
+                filteredRequests.map((r, index) => {
                   const kategori = r.kategori_approval || "manual_override";
                   const badgeClass = STATUS_BADGE[kategori] || STATUS_BADGE.manual_override;
                   const label = STATUS_LABEL[kategori] || "Manual Outbound";
                   const isKritis = r.items?.some((item) => item.barang?.kategori?.is_kritis === true);
+                  const rowNumber = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
 
                   return (
                     <tr key={r.surat_jalan_id} className="hover:bg-slate-50/50 transition">
+                      <td className="px-4 py-3 text-center text-xs text-slate-500 font-medium">{rowNumber}</td>
                       <td className="px-4 py-3 font-mono font-bold text-slate-900 break-all">
                         {r.nomor_surat_jalan}
                       </td>
@@ -600,7 +604,7 @@ export default function SupervisorApprovalOutboundPage() {
                   );
                 })
               ) : (
-                filteredHistory.map((r) => {
+                filteredHistory.map((r, index) => {
                   const keputusanBadge =
                     r.keputusan === "disetujui"
                       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -613,9 +617,11 @@ export default function SupervisorApprovalOutboundPage() {
                       : r.keputusan === "ditolak"
                         ? "Ditolak"
                         : r.keputusan || "-";
+                  const rowNumber = (historyPage - 1) * ITEMS_PER_PAGE + index + 1;
 
                   return (
                     <tr key={`${r.surat_jalan_id}-${r.waktu_keputusan}`} className="hover:bg-slate-50/50 transition">
+                      <td className="px-4 py-3 text-center text-xs text-slate-500 font-medium">{rowNumber}</td>
                       <td className="px-4 py-3 font-mono font-bold text-slate-900 break-all">
                         {r.nomor_surat_jalan || "-"}
                       </td>

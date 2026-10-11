@@ -1284,7 +1284,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
 
         if (whRes.ok) {
           setWarehouses(
-            readList(whJson).map((w: Record<string, unknown>) => ({ id: String(w.gudang_id), nama: (w.nama_gudang as string) + (w.tipe === "dadakan" ? " (Dadakan)" : ""), tipe: w.tipe as string }))
+            readList(whJson).map((w: Record<string, unknown>) => ({ id: String(w.gudang_id), nama: (w.nama_gudang as string) + (w.tipe === "dadakan" ? " (Transit)" : ""), tipe: w.tipe as string }))
           );
         }
 
@@ -1784,29 +1784,38 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
           <table className="w-full min-w-[1300px] md:min-w-[1500px] xl:min-w-[1800px] 2xl:min-w-[2040px] table-fixed text-left text-sm border-separate border-spacing-0">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tanggal</th>
-                <th className="w-[150px] min-w-[150px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
-                <th className="w-[240px] min-w-[240px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">No. Surat Jalan</th>
-                <th className="w-[220px] min-w-[220px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Jenis Transaksi</th>
-                <th className="w-[200px] min-w-[200px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                <th className="w-[150px] min-w-[150px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diproses Oleh</th>
-                <th className="hidden xl:table-cell w-[180px] min-w-[180px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Perangkat</th>
-                <th className="w-[260px] min-w-[260px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
-                <th className="hidden xl:table-cell w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Qty</th>
-                <th className="hidden 2xl:table-cell w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Zona</th>
-                <th className="hidden 2xl:table-cell w-[200px] min-w-[200px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Asal → Tujuan</th>
-                <th className="w-10 min-w-10 overflow-hidden px-6 py-4"></th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tanggal</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">No. Surat Jalan</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Jenis Transaksi</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diproses Oleh</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Perangkat</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
+                <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Qty</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Zona</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Asal</th>
+                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tujuan</th>
+                <th className="px-6 py-4 w-10"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {data.map((r) => (
-                <tr
-                  key={r.ledger_id}
-                  className="group cursor-pointer transition-colors hover:bg-slate-50 min-h-16"
-                  onClick={() => setDetailTiket(r)}
-                >
-                  <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400 overflow-hidden">
-                    {new Date(r.waktu_mutasi).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "medium" })}
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i}>
+                    <td className="px-6 py-4" colSpan={13}>
+                      <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
+                    </td>
+                  </tr>
+                ))
+              ) : error ? (
+                <tr>
+                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={13}>{error}</td>
+                </tr>
+              ) : data.length === 0 ? (
+                <tr>
+                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={13}>
+                    Tidak ada pergerakan stok yang cocok dengan filter ini.
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap font-mono font-semibold text-orange-500 overflow-hidden">
                     {r.kode_tiket || "-"}
@@ -1830,61 +1839,25 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                               : "Perpindahan Internal (Putaway)"
                         }</span>
                       )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 overflow-hidden">
-                    <span
-                      className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap shrink-0"
-                      style={{
-                        color: statusColor[r.status_surat_jalan]?.fg || "#6B7280",
-                        backgroundColor: statusColor[r.status_surat_jalan]?.bg || "#F3F4F6",
-                      }}
-                    >
-                      {statusLabel[r.status_surat_jalan] || r.status_surat_jalan || "-"}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 min-w-0 overflow-hidden truncate" title={r.diproses_oleh || "-"}>
-                    {r.diproses_oleh || "-"}
-                  </td>
-                  <td className="hidden xl:table-cell px-6 py-4 whitespace-nowrap font-mono text-xs font-semibold text-slate-700 overflow-hidden">
-                    {r.kode_perangkat || "-"}
-                  </td>
-                  <td className="px-6 py-4 min-w-0 overflow-hidden truncate text-slate-700" title={r.nama_barang || "-"}>
-                    {r.nama_barang || "-"}
-                  </td>
-                  <td className="hidden xl:table-cell px-6 py-4 whitespace-nowrap text-right font-mono text-slate-900 overflow-hidden">
-                    <span className="font-semibold">{r.qty}</span>
-                    {r.satuan && r.satuan !== "-" && (
-                      <span className="ml-1 text-xs font-normal text-slate-400">{r.satuan}</span>
-                    )}
-                  </td>
-                  <td className="hidden 2xl:table-cell px-6 py-4 whitespace-nowrap text-slate-700 overflow-hidden">
-                    {r.zona_kode && r.zona_kode !== "-" ? (
-                      <span>
-                        <span className="text-slate-500">{r.zona_gudang}</span>
-                        <span className="mx-1 text-slate-300">/</span>
-                        <span className="font-mono font-semibold text-slate-800">{r.zona_kode}</span>
-                      </span>
-                    ) : (
-                      <span className="text-slate-300" title="Zona baru terisi setelah item melewati proses putaway">—</span>
-                    )}
-                  </td>
-                  <td className="hidden 2xl:table-cell px-6 py-4 min-w-0 overflow-hidden truncate text-slate-700" title={renderAsal(r) + " → " + renderTujuan(r)}>
-                    {renderAsal(r)}
-                    <span className="mx-1.5 text-slate-400">→</span>
-                    {renderTujuan(r)}
-                  </td>
-                  <td className="px-6 py-4 text-right overflow-hidden">
-                    <button
-                      type="button"
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                      onClick={(e) => { e.stopPropagation(); setDetailTiket(r); }}
-                    >
-                      <Eye size={16} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-700">
+                      {renderAsal(r)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-700">
+                      {renderTujuan(r)}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        type="button"
+                        className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                        onClick={(e) => { e.stopPropagation(); setDetailTiket(r); }}
+                      >
+                        <Eye size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

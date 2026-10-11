@@ -888,7 +888,7 @@ const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes] = await Promise
     if (transitProjectIni) {
       label += " (Transit - Project Ini)";
     } else if (isTransit) {
-      label += " (Dadakan)";
+      label += " (Transit)";
     }
 
     return { gudang_id: w.gudang_id, label };
@@ -1164,30 +1164,46 @@ pic_pemohon_nama: picPemohon.trim() || null,
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
-              <th className="px-6 py-4 font-semibold">Nomor Surat Jalan</th>
-              <th className="px-6 py-4 font-semibold">Asal</th>
-              <th className="px-6 py-4 font-semibold">Tujuan Gudang</th>
-              <th className="px-6 py-4 font-semibold">Tanggal</th>
-              <th className="px-6 py-4 font-semibold">Jumlah Item</th>
-              <th className="px-6 py-4 font-semibold">Status</th>
-              <th className="px-6 py-4 font-semibold text-right">Aksi</th>
+              <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
+              <th className="px-4 py-4 font-semibold">Nomor Surat Jalan</th>
+              <th className="px-4 py-4 font-semibold">Tipe Pengirim</th>
+              <th className="px-4 py-4 font-semibold">Gudang Asal</th>
+              <th className="px-4 py-4 font-semibold">Supplier</th>
+              <th className="px-4 py-4 font-semibold">Nama Vendor Eksternal</th>
+              <th className="px-4 py-4 font-semibold">Gudang Tujuan</th>
+              <th className="px-4 py-4 font-semibold">Tanggal Masuk</th>
+              <th className="px-4 py-4 font-semibold">PIC Pemohon</th>
+              <th className="px-4 py-4 font-semibold">BOQ / Tiket</th>
+              <th className="px-4 py-4 font-semibold">Project</th>
+              <th className="px-4 py-4 font-semibold">Kendaraan</th>
+              <th className="px-4 py-4 font-semibold">No. Polisi</th>
+              <th className="px-4 py-4 font-semibold">Nama Driver</th>
+              <th className="px-4 py-4 font-semibold">Surat Jalan (PDF)</th>
+              <th className="px-4 py-4 font-semibold">Kode Barang</th>
+              <th className="px-4 py-4 font-semibold">Nama Barang</th>
+              <th className="px-4 py-4 font-semibold text-right">Qty</th>
+              <th className="px-4 py-4 font-semibold">Satuan</th>
+              <th className="px-4 py-4 font-semibold">Catatan Item</th>
+              <th className="px-4 py-4 font-semibold">Di Luar BOQ</th>
+              <th className="px-4 py-4 font-semibold">Status</th>
+              <th className="px-4 py-4 font-semibold text-right">Aksi</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={23} className="px-6 py-12 text-center text-gray-400">
                   Memuat data...
                 </td>
               </tr>
             ) : list.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={23} className="px-6 py-12 text-center text-gray-400">
                   Tidak ada Surat Jalan Inbound yang perlu diproses.
                 </td>
               </tr>
             ) : (
-              list.map((sj) => {
+              list.map((sj, sjIndex) => {
                 const meta = STATUS_META[sj.status] || STATUS_META.draft_diajukan;
                 const totalUnit = sj.items.reduce((sum, i) => sum + Number(i.qty || 0), 0);
                 const tujuanText = sj.gudang_tujuan?.nama_gudang || "-";
@@ -1196,61 +1212,149 @@ pic_pemohon_nama: picPemohon.trim() || null,
                   month: "long",
                   year: "numeric",
                 });
+                const tipePengirimLabel =
+                  sj.tipe_pengirim === "internal" ? "Internal" : sj.tipe_pengirim === "external" ? "External" : "-";
+                const kendaraanLabel =
+                  sj.kendaraan_teks ||
+                  (sj.kendaraan
+                    ? sj.kendaraan.merk && sj.kendaraan.merk.trim()
+                      ? `${sj.kendaraan.merk} - ${sj.kendaraan.jenis_kendaraan}`
+                      : sj.kendaraan.jenis_kendaraan
+                    : null) ||
+                  "-";
+                const noPolisiLabel = sj.no_polisi_teks || sj.kendaraan?.no_polisi || "-";
+                const driverLabel = sj.driver_teks || sj.personil_pengantar?.nama || "-";
+                const boqLabel = sj.boq ? sj.boq.boq_number || `BOQ #${sj.boq.boq_id}` : "-";
+                const tiketLabel = sj.boq?.tiket?.kode_tiket || "-";
+                const rowNumber = sjIndex + 1;
 
-                return (
-                  <tr
-                    key={sj.surat_jalan_id}
-                    className="border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30"
-                  >
-                    <td className="px-6 py-4 font-medium text-gray-800">
-                      <span className="flex items-center gap-2">
-                        <PackageCheck size={16} className="text-[#E8632C]" />
-                        {sj.nomor_surat_jalan}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-gray-600">
-                      {sj.tipe_pengirim === "external"
-                        ? `${sj.supplier?.kode ?? ""} - ${sj.supplier?.nama ?? "-"}`
-                        : sj.tipe_pengirim === "internal"
-                        ? sj.gudang_asal?.nama_gudang || "-"
-                        : "-"}
-                    </td>
-                    <td className="px-6 py-4 text-gray-600">{tujuanText}</td>
-                    <td className="px-6 py-4 text-gray-500">{tanggal}</td>
-                    <td className="px-6 py-4 text-gray-600">{totalUnit} unit</td>
-                    <td className="px-6 py-4">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${meta.tone}`}>
-                        {meta.label}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      {sj.status === "diterima_didistribusikan" ? (
-                        <span className="text-sm font-semibold text-gray-400">Selesai</span>
-                      ) : sj.status === "ready_putaway" ? (
-                        <Link
-                          href={`/staff/putaway/${sj.surat_jalan_id}`}
-                          className="text-sm font-semibold text-[#E8632C] hover:underline"
-                        >
-                          Putaway
-                        </Link>
-                      ) : sj.status === "draft_diajukan" &&
-                        (String(user?.id) === String(sj.created_by || sj.creator?.user_id) ||
-                          user?.role === "supervisor" ||
-                          user?.role === "admin_general") ? (
-                        <button
-                          onClick={() => handleCancelDraft(sj.surat_jalan_id)}
-                          disabled={cancellingId === sj.surat_jalan_id}
-                          className="text-sm font-semibold text-rose-600 hover:underline disabled:opacity-60"
-                        >
-                          {cancellingId === sj.surat_jalan_id ? "Membatalkan..." : "Batalkan"}
-                        </button>
-                      ) : (
-                        <Link
-                          href={`/staff/putaway/${sj.surat_jalan_id}`}
-                          className="text-sm font-semibold text-[#E8632C] hover:underline"
-                        >
-                          Buka
-                        </Link>
+                return itemRows.map((item, itemIdx) => {
+                  const isFirst = itemIdx === 0;
+                  return (
+                    <tr
+                      key={`${sj.surat_jalan_id}-${item ? item.item_id : "empty"}-${itemIdx}`}
+                      className={`border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30 ${itemIdx % 2 === 1 ? "bg-gray-50/50" : ""}`}
+                    >
+                      {isFirst && (
+                        <>
+                          <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500" rowSpan={rowSpan}>{rowNumber}</td>
+                          <td className="px-4 py-4 align-top font-medium text-gray-800" rowSpan={rowSpan}>
+                            <span className="flex items-center gap-2">
+                              <PackageCheck size={16} className="text-[#E8632C]" />
+                              {sj.nomor_surat_jalan}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{tipePengirimLabel}</td>
+                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>
+                            {sj.tipe_pengirim === "internal" ? sj.gudang_asal?.nama_gudang || "-" : "-"}
+                          </td>
+                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>
+                            {sj.tipe_pengirim === "external" && sj.supplier?.nama
+                              ? `${sj.supplier.kode} - ${sj.supplier.nama}`
+                              : "-"}
+                          </td>
+                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>
+                            {sj.tipe_pengirim === "external" && !sj.supplier?.nama
+                              ? sj.pengirim_eksternal_nama || "-"
+                              : "-"}
+                          </td>
+                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{tujuanText}</td>
+                          <td className="px-4 py-4 align-top text-gray-500" rowSpan={rowSpan}>{tanggal}</td>
+                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{sj.pic_pemohon_nama || "-"}</td>
+                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>
+                            <span className="block">{boqLabel}</span>
+                            <span className="block text-xs text-gray-400">Tiket: {tiketLabel}</span>
+                          </td>
+                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{sj.project?.nama_project || "-"}</td>
+                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{kendaraanLabel}</td>
+                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{noPolisiLabel}</td>
+                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{driverLabel}</td>
+                          <td className="px-4 py-4 align-top" rowSpan={rowSpan}>
+                            {sj.surat_jalan_url ? (
+                              <a
+                                href={sj.surat_jalan_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-xs font-semibold text-[#E8632C] hover:underline"
+                              >
+                                Lihat PDF
+                              </a>
+                            ) : (
+                              <span className="text-xs text-gray-400">-</span>
+                            )}
+                          </td>
+                        </>
+                      )}
+                      <td className="px-4 py-3 align-top font-medium text-gray-800">
+                        {item?.barang?.kode_perangkat || "-"}
+                      </td>
+                      <td className="px-4 py-3 align-top text-gray-600">{item?.barang?.nama_barang || "-"}</td>
+                      <td className="px-4 py-3 align-top text-right text-gray-600">{item ? Number(item.qty || 0) : "-"}</td>
+                      <td className="px-4 py-3 align-top text-gray-600">
+                        {item?.satuan?.kode_satuan || item?.barang?.satuan_default?.kode_satuan || "-"}
+                      </td>
+                      <td className="px-4 py-3 align-top text-gray-600">{item?.catatan || "-"}</td>
+                      <td className="px-4 py-3 align-top">
+                        {item?.is_di_luar_boq ? (
+                          <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
+                            Ya
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">Tidak</span>
+                        )}
+                      </td>
+                      {isFirst && (
+                        <>
+                          <td className="px-4 py-4 align-top" rowSpan={rowSpan}>
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${meta.tone}`}>
+                              {meta.label}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 align-top text-right" rowSpan={rowSpan}>
+                            {sj.status === "diterima_didistribusikan" ? (
+                              <span className="text-sm font-semibold text-gray-400">Selesai</span>
+                            ) : sj.status === "ready_putaway" ? (
+                              (() => {
+                                const allReceived = (sj.items || []).every(
+                                  (i) => i.qty_diterima !== null && i.qty_diterima !== undefined
+                                );
+                                return allReceived ? (
+                                  <Link
+                                    href={`/staff/putaway/${sj.surat_jalan_id}`}
+                                    className="text-sm font-semibold text-[#E8632C] hover:underline"
+                                  >
+                                    Putaway
+                                  </Link>
+                                ) : (
+                                  <Link
+                                    href={`/staff/inbound/${sj.surat_jalan_id}`}
+                                    className="text-sm font-semibold text-[#E8632C] hover:underline"
+                                  >
+                                    Penerimaan
+                                  </Link>
+                                );
+                              })()
+                            ) : sj.status === "draft_diajukan" &&
+                              (String(user?.id) === String(sj.created_by || sj.creator?.user_id) ||
+                                user?.role === "supervisor" ||
+                                user?.role === "admin_general") ? (
+                              <button
+                                onClick={() => handleCancelDraft(sj.surat_jalan_id)}
+                                disabled={cancellingId === sj.surat_jalan_id}
+                                className="text-sm font-semibold text-rose-600 hover:underline disabled:opacity-60"
+                              >
+                                {cancellingId === sj.surat_jalan_id ? "Membatalkan..." : "Batalkan"}
+                              </button>
+                            ) : (
+                              <Link
+                                href={`/staff/inbound/${sj.surat_jalan_id}`}
+                                className="text-sm font-semibold text-[#E8632C] hover:underline"
+                              >
+                                Buka
+                              </Link>
+                            )}
+                          </td>
+                        </>
                       )}
                     </td>
                   </tr>
@@ -1729,8 +1833,9 @@ pic_pemohon_nama: picPemohon.trim() || null,
             {modalItems.length > 0 && (
               <div className="mt-4 overflow-hidden rounded-xl border border-slate-100 hidden md:block">
                 <table className="w-full text-sm">
-                <thead>
+<thead>
                   <tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
                     <th className="px-3 py-2 font-semibold">Nama Barang</th>
                     <th className="px-3 py-2 font-semibold text-center">Qty Surat Jalan</th>
                     <th className="px-3 py-2 font-semibold text-center">Qty Aktual</th>
@@ -1744,6 +1849,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 <tbody>
                   {modalItems.map((row, idx) => (
                     <tr key={row.id} className={`border-t border-slate-50 ${idx % 2 === 0 ? "bg-white" : "bg-slate-50"}`}>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-center text-xs text-slate-500">{idx + 1}</td>
                       <td className="px-3 py-2.5 font-medium text-gray-800">
                         {row.is_non_master ? row.nama_barang : `${row.kode_perangkat} - ${row.nama_barang}`}
                       </td>
