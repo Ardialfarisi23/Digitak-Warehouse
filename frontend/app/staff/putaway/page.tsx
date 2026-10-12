@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { MapPin, Loader2, AlertCircle } from "lucide-react";
+import { MapPin, Loader2, AlertCircle, Search, ChevronDown } from "lucide-react";
 import { useApi } from "@/lib/api";
 
 type ApiItem = {
@@ -30,6 +30,8 @@ export default function PutawayListPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"MENUNGGU" | "SELESAI">("MENUNGGU");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [gudangTujuanFilter, setGudangTujuanFilter] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -64,15 +66,55 @@ export default function PutawayListPage() {
       (i) => i.qty_diterima !== null && i.qty_diterima !== undefined,
     );
 
-  const filtered = useMemo(
+  const matchesStatus = (sj: ApiSuratJalan) =>
+    activeTab === "MENUNGGU"
+      ? sj.status === "ready_putaway" && received(sj)
+      : sj.status === "diterima_didistribusikan";
+
+  // Opsi filter Tujuan Gudang diambil dinamis dari data yang sudah ada.
+  const gudangTujuanOptions = useMemo(
     () =>
-      list.filter((sj) =>
-        activeTab === "MENUNGGU"
-          ? sj.status === "ready_putaway" && received(sj)
-          : sj.status === "diterima_didistribusikan",
-      ),
-    [list, activeTab],
+      Array.from(
+        new Set(
+          list
+            .map((sj) => sj.gudang_tujuan?.nama_gudang)
+            .filter((nama): nama is string => Boolean(nama))
+        )
+      ).sort((a, b) => a.localeCompare(b)),
+    [list]
   );
+
+  const isFilterActive =
+    searchQuery.trim() !== "" || gudangTujuanFilter !== "";
+
+  const filtered = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return list.filter((sj) => {
+      if (!matchesStatus(sj)) return false;
+      if (
+        gudangTujuanFilter &&
+        (sj.gudang_tujuan?.nama_gudang || "") !== gudangTujuanFilter
+      )
+        return false;
+      if (query) {
+        const haystack = [
+          sj.nomor_surat_jalan,
+          sj.gudang_asal?.nama_gudang,
+          sj.gudang_tujuan?.nama_gudang,
+          ...(sj.items || []).flatMap((item) => [
+            item.barang?.kode_perangkat,
+            item.barang?.nama_barang,
+          ]),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
+      return true;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list, activeTab, searchQuery, gudangTujuanFilter]);
 
   if (loading) {
     return (
@@ -115,6 +157,40 @@ export default function PutawayListPage() {
         </button>
       </div>
 
+      {/* Filter search & gudang — di bawah tab status */}
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cari No. Surat Jalan / Kode / Nama Barang..."
+            className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+        </div>
+        <div className="relative sm:w-60">
+          <select
+            value={gudangTujuanFilter}
+            onChange={(e) => setGudangTujuanFilter(e.target.value)}
+            className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2.5 pl-3 pr-10 text-sm text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+          >
+            <option value="">Semua Gudang</option>
+            {gudangTujuanOptions.map((nama) => (
+              <option key={nama} value={nama}>
+                {nama}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        </div>
+      </div>
+      {isFilterActive && (
+        <p className="mb-3 text-xs text-slate-500">
+          Menampilkan <span className="font-semibold text-slate-700">{filtered.length}</span> dari {list.length} data
+        </p>
+      )}
+
       <div className="rounded-2xl border border-[#F3D9C7] bg-white">
         <div className="overflow-x-auto">
         <table className="w-full min-w-[1100px] text-sm">
@@ -136,13 +212,19 @@ export default function PutawayListPage() {
             {filtered.length === 0 ? (
               <tr>
                 <td colSpan={10} className="px-6 py-12 text-center text-gray-400">
-                  {activeTab === "MENUNGGU" ? "Tidak ada Surat Jalan yang menunggu ditempatkan." : "Belum ada riwayat penempatan."}
+                  {isFilterActive
+                    ? "Tidak ada data yang cocok dengan filter/pencarian."
+                    : activeTab === "MENUNGGU"
+                      ? "Tidak ada Surat Jalan yang menunggu ditempatkan."
+                      : "Belum ada riwayat penempatan."}
                 </td>
               </tr>
             ) : (
               filtered.map((sj, sjIndex) => {
                 const itemRows = sj.items && sj.items.length > 0 ? sj.items : [null];
                 const rowSpan = itemRows.length;
+                // Zebra striping per Surat Jalan: genap putih, ganjil selang-seling.
+                const stripeClass = sjIndex % 2 === 1 ? "bg-slate-50/70" : "bg-white";
                 const tanggal = sj.tanggal
                   ? new Date(sj.tanggal).toLocaleDateString("id-ID", {
                       day: "2-digit",
@@ -160,7 +242,7 @@ export default function PutawayListPage() {
                   return (
                     <tr
                       key={`${sj.surat_jalan_id}-${item ? item.item_id : "empty"}-${itemIdx}`}
-                      className={`border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30 ${itemIdx % 2 === 1 ? "bg-gray-50/50" : ""}`}
+                      className={`border-b border-gray-50 last:border-0 transition-colors ${stripeClass} hover:bg-orange-50/50`}
                     >
                       {isFirst && (
                         <>
