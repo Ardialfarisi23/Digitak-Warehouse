@@ -181,6 +181,8 @@ export default function StaffDashboardPage() {
 
   const staffName = user?.name || user?.username || "Staf Gudang";
 
+  const [warehouseNameMap, setWarehouseNameMap] = useState<Record<string, string>>({});
+
   const zonesByGudang = useMemo(() => {
     return zones.reduce<Record<string, ZoneRow[]>>((acc, zone) => {
       const key = zone.gudangId || "-";
@@ -265,6 +267,30 @@ export default function StaffDashboardPage() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    async function loadWarehouseNames() {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      try {
+        const response = await get(`${baseUrl}/api/warehouses?limit=1000`);
+        if (response.ok) {
+          const json = await response.json();
+          const data = json?.data ?? json ?? [];
+          const list = Array.isArray(data) ? data : (data?.data || []);
+          const map: Record<string, string> = {};
+          for (const w of list) {
+            if (w.gudang_id && w.nama_gudang) {
+              map[String(w.gudang_id)] = w.nama_gudang;
+            }
+          }
+          setWarehouseNameMap(map);
+        }
+      } catch {
+        // silent fail, will fall back to ID
+      }
+    }
+    loadWarehouseNames();
+  }, [get]);
 
   useEffect(() => {
     async function loadZones() {
@@ -610,7 +636,19 @@ export default function StaffDashboardPage() {
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
           Selamat Datang, {staffName}
         </h1>
-        <p className="mt-1 text-sm text-gray-500">Staf Gudang • Digitak WMS</p>
+        <p className="mt-1 text-sm text-gray-500">
+          {(() => {
+            if (profileLoading || staffGudangIds.length === 0) {
+              return belumDitugaskan ? "Staf Gudang • Belum ditugaskan ke gudang" : "Staf Gudang";
+            }
+            const names = staffGudangIds
+              .map((id) => warehouseNameMap[id] || id)
+              .filter(Boolean);
+            return names.length === 0
+              ? "Staf Gudang"
+              : `Staf Gudang • ${names.join(", ")}`;
+          })()}
+        </p>
       </div>
 
       {/* KPI Row — Antrean Barang Masuk & Keluar */}
