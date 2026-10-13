@@ -4,6 +4,7 @@ const reconciliationService = require("../reconciliation/reconciliation.service"
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
 const additionalRepository = require("../additional/additional.repository");
+const { isMosEligibleInbound } = require("../reconciliation/reconciliation.utils");
 
 const AUDIT_AKSI_VALUES = [
   "create",
@@ -1952,20 +1953,48 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
     },
   });
 
-  const shipmentWhere = {
+  // Query outbound Surat Jalan
+  const outboundShipmentWhere = {
     status: { in: ["disetujui", "diterima_didistribusikan"] },
+    tipe: "outbound",
   };
   if (projectId !== "all") {
-    shipmentWhere.project_id = BigInt(projectId);
+    outboundShipmentWhere.project_id = BigInt(projectId);
   }
   if (startDate || endDate) {
-    shipmentWhere.tanggal = {};
-    if (startDate) shipmentWhere.tanggal.gte = new Date(startDate);
-    if (endDate) shipmentWhere.tanggal.lte = new Date(endDate + "T23:59:59");
+    outboundShipmentWhere.tanggal = {};
+    if (startDate) outboundShipmentWhere.tanggal.gte = new Date(startDate);
+    if (endDate) outboundShipmentWhere.tanggal.lte = new Date(endDate + "T23:59:59");
   }
 
-  const suratJalans = await prisma.surat_jalan.findMany({
-    where: shipmentWhere,
+  const outboundSuratJalans = await prisma.surat_jalan.findMany({
+    where: outboundShipmentWhere,
+    include: {
+      items: {
+        select: {
+          qty: true,
+          is_kelebihan: true,
+        },
+      },
+    },
+  });
+
+  // Query inbound Surat Jalan with approved statuses
+  const inboundShipmentWhere = {
+    status: { in: ["ready_putaway", "disetujui", "diterima_didistribusikan"] },
+    tipe: "inbound",
+  };
+  if (projectId !== "all") {
+    inboundShipmentWhere.project_id = BigInt(projectId);
+  }
+  if (startDate || endDate) {
+    inboundShipmentWhere.tanggal = {};
+    if (startDate) inboundShipmentWhere.tanggal.gte = new Date(startDate);
+    if (endDate) inboundShipmentWhere.tanggal.lte = new Date(endDate + "T23:59:59");
+  }
+
+  const inboundSuratJalans = await prisma.surat_jalan.findMany({
+    where: inboundShipmentWhere,
     include: {
       items: {
         select: {
@@ -1979,25 +2008,39 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
   const inboundByProject = new Map();
   const outboundByProject = new Map();
   const additionalByProject = new Map();
+  const inboundMosByProject = new Map();
 
   const additionalTotalsByProject =
     projectId !== "all"
       ? await additionalRepository.getAdditionalTotalsByProjectOnly([Number(projectId)])
       : new Map();
 
-  for (const sj of suratJalans) {
+  // Build inbound MOS map using isMosEligibleInbound
+  for (const sj of inboundSuratJalans) {
     const pid = Number(sj.project_id);
     if (!pid) continue;
     for (const item of sj.items) {
       const qty = Number(item.qty || 0);
-      if (sj.tipe === "inbound") {
-        inboundByProject.set(pid, (inboundByProject.get(pid) || 0) + qty);
+      if (isMosEligibleInbound(sj)) {
+        inboundMosByProject.set(pid, (inboundMosByProject.get(pid) || 0) + qty);
       }
+    }
+  }
+
+  // Build outbound map (for Used/other calculations, NOT for MOS)
+  for (const sj of outboundSuratJalans) {
+    const pid = Number(sj.project_id);
+    if (!pid) continue;
+    for (const item of sj.items) {
+      const qty = Number(item.qty || 0);
       if (sj.tipe === "outbound" && sj.tujuan_tipe !== "gudang") {
         outboundByProject.set(pid, (outboundByProject.get(pid) || 0) + qty);
       }
     }
   }
+
+  // MOS = inbound only (external vendor inbound)
+  const mosByProject = inboundMosByProject;
 
   // Compute approved returns per tiket from the Return module.
   const approvedReturnByTiket = new Map();
@@ -2027,7 +2070,7 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
     const projectIdNum = Number(tiket.project_id);
     const boqPlan = tiket.boq?.items?.reduce((sum, item) => sum + Number(item.qty_rencana || 0), 0) || 0;
     const additional = Number(additionalTotalsByProject.get(projectIdNum) || 0);
-    const mos = Number(outboundByProject.get(projectIdNum) || 0);
+    const mos = Number(mosByProject.get(projectIdNum) || 0);
     const used = tiket.used ? Number(tiket.used) : Number(outboundByProject.get(projectIdNum) || 0);
     const approvedReturnQty = Number(approvedReturnByTiket.get(tiket.tiket_id) || 0);
     const remains = mos - (boqPlan + additional) - used - approvedReturnQty;
@@ -2451,6 +2494,7 @@ const backfillReconciliation = async (actorId) => {
   const inboundByProject = new Map();
   const outboundByProject = new Map();
   const additionalByProject = new Map();
+  const inboundMosByProject = new Map();
 
   const projectIdsForAdditional = Array.from(
     new Set(allSuratJalans.map((sj) => sj.project_id).filter((id) => id != null))
@@ -2468,12 +2512,18 @@ const backfillReconciliation = async (actorId) => {
       const qty = Number(item.qty || 0);
       if (sj.tipe === "inbound") {
         inboundByProject.set(pid, (inboundByProject.get(pid) || 0) + qty);
+        if (isMosEligibleInbound(sj)) {
+          inboundMosByProject.set(pid, (inboundMosByProject.get(pid) || 0) + qty);
+        }
       }
       if (sj.tipe === "outbound" && sj.tujuan_tipe !== "gudang") {
         outboundByProject.set(pid, (outboundByProject.get(pid) || 0) + qty);
       }
     }
   }
+
+  // MOS = inbound only (external vendor inbound)
+  const mosByProject = inboundMosByProject;
 
   const affectedTiketIds = [];
 

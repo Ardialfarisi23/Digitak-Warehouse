@@ -9,6 +9,10 @@ const getReconciliationInventorySchema = z.object({
   clusterId: z.string().optional(),
 });
 
+const getFilterOptionsSchema = z.object({
+  // No query params needed for now, but keeping schema for future extensibility
+});
+
 const upsertRemainsNoteSchema = z.object({
   project_id: z.number().int().positive(),
   cluster_id: z.string().nullable().optional(),
@@ -18,5 +22,6 @@ const upsertRemainsNoteSchema = z.object({
 
 module.exports = {
   getReconciliationInventorySchema,
+  getFilterOptionsSchema,
   upsertRemainsNoteSchema,
 };

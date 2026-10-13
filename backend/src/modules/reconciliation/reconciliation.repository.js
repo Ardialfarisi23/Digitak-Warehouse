@@ -1,9 +1,132 @@
 const prisma = require("../../config/prisma");
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
-const { computeRemains, computeReconciliationStatus, buildPickSummary, buildItemPickSummary } = require("./reconciliation.utils");
+const { computeRemains, computeReconciliationStatus, buildPickSummary, buildItemPickSummary, isMosEligibleInbound } = require("./reconciliation.utils");
 const { surat_jalan_status, boq_status } = require("@prisma/client");
 const additionalRepository = require("../additional/additional.repository");
+const { getBusinessDate, toPrismaDecimal } = require("../return/return.utils");
+
+// Batch fetch approved returns for multiple (tiketId, barangId, namaBarang) triples.
+  // Returns Map<"tiketId-barangId", number>.
+  async function fetchApprovedReturnsBatch(tiketBarangPairs) {
+    if (!tiketBarangPairs || !tiketBarangPairs.length) return new Map();
+
+    // Deduplicate pairs by (tiketId, barangId) - keep first occurrence with its namaBarang
+    const uniquePairsMap = new Map();
+    for (const pair of tiketBarangPairs) {
+      const [t, b, nama] = pair;
+      const key = `${t}-${b}`;
+      if (!uniquePairsMap.has(key)) {
+        uniquePairsMap.set(key, [BigInt(t), BigInt(b), nama ?? null]);
+      }
+    }
+    const uniquePairs = [...uniquePairsMap.values()];
+
+    // Chunk to avoid Prisma OR limit (500 per query)
+    const CHUNK_SIZE = 500;
+    const allApprovedByPair = new Map();
+
+    for (let i = 0; i < uniquePairs.length; i += CHUNK_SIZE) {
+      const chunk = uniquePairs.slice(i, i + CHUNK_SIZE);
+
+      // 1. Fetch latest snapshots for all pairs in one query
+      // Old logic: OR (barang_id match) OR (barang_id null AND nama_barang match)
+      // The nama_barang condition is ONLY included when namaBarang is provided (truthy)
+      const snapshots = await prisma.laporan_mitra.findMany({
+        where: {
+          is_aktif: true,
+          OR: chunk.map(([tiketId, barangId, namaBarang]) => {
+            const conditions = [
+              { tiket_id: tiketId, barang_id: barangId },
+            ];
+            if (namaBarang) {
+              conditions.push({ tiket_id: tiketId, barang_id: null, nama_barang: namaBarang });
+            }
+            return { OR: conditions };
+          }),
+        },
+        orderBy: [
+          { tanggal_laporan: "desc" },
+          { uploaded_at: "desc" },
+          { laporan_id: "desc" },
+        ],
+        select: {
+          tiket_id: true,
+          barang_id: true,
+          nama_barang: true,
+          tanggal_laporan: true,
+          uploaded_at: true,
+          laporan_id: true,
+        },
+      });
+
+      // Keep only latest per (tiketId, barangId) - purely by timestamp from combined results (no path priority)
+      const snapshotByPair = new Map();
+      for (const s of snapshots) {
+        let pairKey;
+        if (s.barang_id !== null) {
+          pairKey = `${s.tiket_id}-${s.barang_id}`;
+        } else if (s.nama_barang) {
+          // Find the pair that has this nama_barang for this tiket_id
+          const foundPair = uniquePairs.find(([t, b, n]) => t === s.tiket_id && n === s.nama_barang);
+          if (foundPair) {
+            pairKey = `${foundPair[0]}-${foundPair[1]}`;
+          } else {
+            continue; // Can't match to any requested pair
+          }
+        } else {
+          continue; // No barang_id and no nama_barang, can't match
+        }
+        // Query is ordered by timestamp desc, so first entry per pairKey is the latest
+        if (!snapshotByPair.has(pairKey)) {
+          snapshotByPair.set(pairKey, s.tanggal_laporan);
+        }
+      }
+
+      if (snapshotByPair.size === 0) continue;
+
+      // 2. Fetch all approved returns for these pairs in one query
+      // Old logic: only by barang_id (no nama_barang fallback for returns)
+      const snapshotEntries = Array.from(snapshotByPair.entries());
+      const returns = await prisma.return_transaction.findMany({
+        where: {
+          status: { in: ["disetujui", "diterima_gudang"] },
+          OR: snapshotEntries.map(([key, snapshotDate]) => {
+            const [tiketId, barangId] = key.split("-").map(BigInt);
+            return {
+              tiket_id: tiketId,
+              barang_id: barangId,
+            };
+          }),
+        },
+        select: {
+          tiket_id: true,
+          barang_id: true,
+          qty: true,
+          effective_return_at: true,
+        },
+      });
+
+      // 3. Filter by business date > snapshot date and sum per pair
+      for (const r of returns) {
+        const key = `${r.tiket_id}-${r.barang_id}`;
+        const snapshotDate = snapshotByPair.get(key);
+        if (!snapshotDate) continue;
+        const bizDate = getBusinessDate(r.effective_return_at);
+        const snapshotBizDate = getBusinessDate(snapshotDate);
+        // Old logic: businessDate > snapshotBusinessDate (strictly greater)
+        if (bizDate > snapshotBizDate) {
+          const current = toPrismaDecimal(allApprovedByPair.get(key) || 0);
+          const add = toPrismaDecimal(r.qty || 0);
+          const sum = current.plus(add);
+          // Round to 2 decimals to match Decimal precision behavior
+          allApprovedByPair.set(key, Math.round(sum.toNumber() * 100) / 100);
+        }
+      }
+    }
+
+    return allApprovedByPair;
+  }
 
 // Stok sudah berkurang saat picking, jadi angka rekonsiliasi tidak boleh naik-turun saat barang di perjalanan.
 const RECONCILIATION_SHIPMENT_STATUSES = [
@@ -13,12 +136,6 @@ const RECONCILIATION_SHIPMENT_STATUSES = [
   surat_jalan_status.tiba_menunggu_konfirmasi,
   surat_jalan_status.diterima_didistribusikan,
 ].filter(Boolean);
-
-const APPROVED_INBOUND_STATUSES = [
-  surat_jalan_status.ready_putaway,
-  surat_jalan_status.disetujui,
-  surat_jalan_status.diterima_didistribusikan,
-];
 
 const getInventory = async (filters = {}, actor = null) => {
   const { search = "", projectId = "all", warehouseId = "all", status = "all", groupBy = "project", clusterId = "all" } = filters;
@@ -324,7 +441,7 @@ const getInventory = async (filters = {}, actor = null) => {
   const inboundByProjectBarang = new Map();
   const outboundByProjectBarang = new Map();
   const additionalByProjectBarang = new Map();
-  const mosByProjectBarang = new Map();
+  const inboundMosByProjectBarang = new Map();
   const usedByProjectBarang = new Map();
 
   const projectIdsForAdditional =
@@ -350,17 +467,18 @@ const getInventory = async (filters = {}, actor = null) => {
 
     if (item.surat_jalan?.tipe === "inbound") {
       inboundByProjectBarang.set(key, (inboundByProjectBarang.get(key) || 0) + qty);
-      // inbound internal (transfer antar gudang) tidak menambah MOS — hanya external (penerimaan supplier)
-      if (APPROVED_INBOUND_STATUSES.includes(item.surat_jalan?.status) && item.surat_jalan?.tipe_pengirim === "external") {
-        mosByProjectBarang.set(key, (mosByProjectBarang.get(key) || 0) + qty);
+      if (isMosEligibleInbound(item.surat_jalan)) {
+        inboundMosByProjectBarang.set(key, (inboundMosByProjectBarang.get(key) || 0) + qty);
       }
     }
 
     if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
       outboundByProjectBarang.set(key, (outboundByProjectBarang.get(key) || 0) + qty);
-      mosByProjectBarang.set(key, (mosByProjectBarang.get(key) || 0) + qty);
     }
   }
+
+  // MOS = inbound only (external vendor inbound)
+  const mosByProjectBarang = inboundMosByProjectBarang;
 
   for (const [key, val] of additionalTotalsByProject) {
     additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + val);
@@ -468,7 +586,7 @@ const getInventory = async (filters = {}, actor = null) => {
     const inboundByClusterBarang = new Map();
     const outboundByClusterBarang = new Map();
     const additionalByClusterBarang = new Map();
-    const mosByClusterBarang = new Map();
+    let mosByClusterBarang = new Map();
     const usedByClusterBarang = new Map();
     const unassignedByProjectBarang = new Map();
 
@@ -583,6 +701,9 @@ const getInventory = async (filters = {}, actor = null) => {
       );
     }
 
+    // Track inbound MOS for cluster mode (inbound only)
+    const inboundMosByClusterBarang = new Map();
+
     for (const item of shipmentItems) {
       const itemId = Number(item.item_id);
       const clusterId = clusterByItemId.get(itemId);
@@ -595,36 +716,31 @@ const getInventory = async (filters = {}, actor = null) => {
 
         if (item.surat_jalan?.tipe === "inbound") {
           inboundByClusterBarang.set(key, (inboundByClusterBarang.get(key) || 0) + qty);
-          // inbound internal (transfer antar gudang) tidak menambah MOS — hanya external (penerimaan supplier)
-          if (APPROVED_INBOUND_STATUSES.includes(item.surat_jalan?.status) && item.surat_jalan?.tipe_pengirim === "external") {
-            mosByClusterBarang.set(key, (mosByClusterBarang.get(key) || 0) + qty);
+          if (isMosEligibleInbound(item.surat_jalan)) {
+            inboundMosByClusterBarang.set(key, (inboundMosByClusterBarang.get(key) || 0) + qty);
           }
         }
 
         if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
           outboundByClusterBarang.set(key, (outboundByClusterBarang.get(key) || 0) + qty);
-          mosByClusterBarang.set(key, (mosByClusterBarang.get(key) || 0) + qty);
         }
       } else {
         const key = `unassigned-${projectIdNum}-${barangId}`;
         if (item.surat_jalan?.tipe === "inbound") {
           inboundByClusterBarang.set(key, (inboundByClusterBarang.get(key) || 0) + qty);
-          // inbound internal (transfer antar gudang) tidak menambah MOS — hanya external (penerimaan supplier)
-          if (APPROVED_INBOUND_STATUSES.includes(item.surat_jalan?.status) && item.surat_jalan?.tipe_pengirim === "external") {
-            mosByClusterBarang.set(key, (mosByClusterBarang.get(key) || 0) + qty);
+          if (isMosEligibleInbound(item.surat_jalan)) {
+            inboundMosByClusterBarang.set(key, (inboundMosByClusterBarang.get(key) || 0) + qty);
           }
         }
         if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
           outboundByClusterBarang.set(key, (outboundByClusterBarang.get(key) || 0) + qty);
-          mosByClusterBarang.set(key, (mosByClusterBarang.get(key) || 0) + qty);
         }
         unassignedByProjectBarang.set(key, (unassignedByProjectBarang.get(key) || 0) + 1);
       }
     }
 
-    for (const [key, val] of additionalByClusterBarangFromAdjustment) {
-      additionalByClusterBarang.set(key, (additionalByClusterBarang.get(key) || 0) + val);
-    }
+    // MOS = inbound only (external vendor inbound)
+    mosByClusterBarang = inboundMosByClusterBarang;
 
     for (const laporan of activeLaporans) {
       const clusterId = resolveClusterId(null, null, laporan, projectClusterMap);
@@ -732,34 +848,42 @@ const getInventory = async (filters = {}, actor = null) => {
     }
 
     const approvedReturnByClusterBarang = new Map();
+    // Collect all (tiketId, barangId, namaBarang) triples for batch query
+    const tiketBarangPairs = [];
+    for (const agg of aggregatedMap.values()) {
+      if (!agg.cluster_id) continue;
+      const clusterId = agg.cluster_id;
+      const barangId = String(agg.barang_id);
+      const namaBarang = agg.nama_barang;
+      for (const item of boqItems) {
+        const tiket = item.boq?.tiket;
+        const cluster = item.boq?.cluster;
+        if (cluster?.cluster_id === clusterId && tiket?.tiket_id) {
+          tiketBarangPairs.push([String(tiket.tiket_id), barangId, namaBarang]);
+        }
+      }
+    }
+    const approvedReturnsBatch = await fetchApprovedReturnsBatch(tiketBarangPairs);
+    // Map back to cluster-barang keys
     for (const agg of aggregatedMap.values()) {
       if (!agg.cluster_id) continue;
       const clusterId = agg.cluster_id;
       const barangId = String(agg.barang_id);
       const key = `${clusterId}-${barangId}`;
-
-      const clusterTickets = new Set();
+      let totalApprovedQty = 0;
       for (const item of boqItems) {
         const tiket = item.boq?.tiket;
         const cluster = item.boq?.cluster;
         if (cluster?.cluster_id === clusterId && tiket?.tiket_id) {
-          clusterTickets.add(tiket.tiket_id);
+          const pairKey = `${tiket.tiket_id}-${barangId}`;
+          totalApprovedQty += approvedReturnsBatch.get(pairKey) || 0;
         }
       }
-
-      let totalApprovedQty = 0;
-      for (const tiketId of clusterTickets) {
-        const { snapshot } = await getLatestPhysicalSnapshot(tiketId, barangId);
-        if (!snapshot) continue;
-        const qty = await getApprovedReturnsAfterSnapshot(tiketId, barangId, snapshot.tanggal_laporan);
-        totalApprovedQty += Number(qty);
-      }
-
       approvedReturnByClusterBarang.set(key, totalApprovedQty);
     }
 
     if (clusterId !== "all") {
-      for (const [key] of aggregatedMap) {
+      for (const [key, agg] of aggregatedMap) {
         const isUnassigned = key.startsWith("unassigned-");
         if (clusterId === "unassigned") {
           if (!isUnassigned) {
@@ -768,11 +892,8 @@ const getInventory = async (filters = {}, actor = null) => {
         } else {
           if (isUnassigned) {
             aggregatedMap.delete(key);
-          } else {
-            const [cid] = key.split("-");
-            if (cid !== clusterId) {
-              aggregatedMap.delete(key);
-            }
+          } else if (String(agg.cluster_id ?? "") !== String(clusterId)) {
+            aggregatedMap.delete(key);
           }
         }
       }
@@ -816,7 +937,7 @@ const getInventory = async (filters = {}, actor = null) => {
       const mos = Number(mosByClusterBarang.get(key) || 0) + importVals.mos;
       const used = Number(usedByClusterBarang.get(key) || 0) + importVals.used;
       const approvedReturnQty = Number(approvedReturnByClusterBarang.get(key) || 0);
-      const remains = computeRemains(mos, agg.boq, additional, used, approvedReturnQty);
+const remains = computeRemains(mos, agg.boq, additional);
       const recStatus = computeReconciliationStatus(remains);
 
       const uniqueTikets = [...new Set(agg.kode_tiket_list)].filter(Boolean);
@@ -1043,31 +1164,35 @@ const getInventory = async (filters = {}, actor = null) => {
 
   // Compute approved returns per project+barang from the Return module.
   const approvedReturnByProjectBarang = new Map();
-
+  // Collect all (tiketId, barangId, namaBarang) triples for batch query
+  const projectTiketBarangPairs = [];
   for (const agg of aggregatedMap.values()) {
     const projectIdNum = Number(agg.project_id);
     const barangId = String(agg.barang_id);
-    const key = `${agg.project_id}-${agg.barang_id}`;
-
-    const projectTickets = new Set();
-
+    const namaBarang = agg.nama_barang;
     for (const item of boqItems) {
       const tiket = item.boq?.tiket;
       const project = tiket?.project || item.boq?.cluster?.project;
       if (Number(project?.project_id || 0) === projectIdNum && tiket?.tiket_id) {
-        projectTickets.add(tiket.tiket_id);
+        projectTiketBarangPairs.push([String(tiket.tiket_id), barangId, namaBarang]);
       }
     }
-
+  }
+  const approvedReturnsBatch = await fetchApprovedReturnsBatch(projectTiketBarangPairs);
+  // Map back to project-barang keys
+  for (const agg of aggregatedMap.values()) {
+    const projectIdNum = Number(agg.project_id);
+    const barangId = String(agg.barang_id);
+    const key = `${agg.project_id}-${agg.barang_id}`;
     let totalApprovedQty = 0;
-    for (const tiketId of projectTickets) {
-      const { snapshot } = await getLatestPhysicalSnapshot(tiketId, barangId);
-      if (!snapshot) continue;
-
-      const qty = await getApprovedReturnsAfterSnapshot(tiketId, barangId, snapshot.tanggal_laporan);
-      totalApprovedQty += Number(qty);
+    for (const item of boqItems) {
+      const tiket = item.boq?.tiket;
+      const project = tiket?.project || item.boq?.cluster?.project;
+      if (Number(project?.project_id || 0) === projectIdNum && tiket?.tiket_id) {
+        const pairKey = `${tiket.tiket_id}-${barangId}`;
+        totalApprovedQty += approvedReturnsBatch.get(pairKey) || 0;
+      }
     }
-
     approvedReturnByProjectBarang.set(key, totalApprovedQty);
   }
 
@@ -1080,7 +1205,7 @@ const getInventory = async (filters = {}, actor = null) => {
       ? Number(usedByProjectBarang.get(key) || 0)
       : Number(outboundByProjectBarang.get(key) || 0)) + importVals.used;
     const approvedReturnQty = Number(approvedReturnByProjectBarang.get(key) || 0);
-    const remains = computeRemains(mos, agg.boq, additional, used, approvedReturnQty);
+    const remains = computeRemains(mos, agg.boq, additional);
 
     const recStatus = computeReconciliationStatus(remains);
 
@@ -1233,4 +1358,5 @@ async function fetchRemainsNotes(rows, isClusterMode) {
 
 module.exports = {
   getInventory,
+  fetchApprovedReturnsBatch,
 };

@@ -1,6 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const fs = require('fs');
 const path = require('path');
+const { getJakartaYear, formatBoqNumber, parseBoqSequence } = require('../src/modules/boq/boq-number.util');
 
 const prisma = new PrismaClient();
 
@@ -225,19 +226,19 @@ async function getOrCreateBoq(tiketId, clusterId) {
     return `new-boq-${tiketId}`;
   }
   // Generate BOQ number
-  const year = new Date().getFullYear();
+  const now = new Date();
+  const year = getJakartaYear(now);
   const lastBoq = await prisma.boq.findFirst({
-    where: { boq_number: { startsWith: `BOQ-${year}-` } },
+    where: { boq_number: { startsWith: `BOQ-${year}` } },
     orderBy: { boq_id: 'desc' },
     select: { boq_number: true }
   });
   let nextNumber = 1;
-  if (lastBoq?.boq_number) {
-    const parts = String(lastBoq.boq_number).split('-');
-    const lastNum = parseInt(parts[parts.length - 1] || '0', 10);
-    nextNumber = lastNum + 1;
+  const lastSeq = parseBoqSequence(lastBoq?.boq_number);
+  if (lastSeq !== null) {
+    nextNumber = lastSeq + 1;
   }
-  const boqNumber = `BOQ-${year}-${String(nextNumber).padStart(4, '0')}`;
+  const boqNumber = formatBoqNumber(now, nextNumber);
   
   const created = await prisma.boq.create({
     data: {

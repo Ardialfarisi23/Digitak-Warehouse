@@ -31,6 +31,59 @@ const getInventory = async (filters = {}, actor = null) => {
   return await reconciliationRepository.getInventory(filters, actor);
 };
 
+const getFilterOptions = async (actor = null) => {
+  const { boq_status } = require("@prisma/client");
+
+  // Get projects that have BOQ items (status draft, aktif, selesai) with source top_down
+  const projectsWithBoq = await prisma.project.findMany({
+    where: {
+      clusters: {
+        some: {
+          boqs: {
+            some: {
+              status: { in: [boq_status.draft, boq_status.aktif, boq_status.selesai] },
+              source: "top_down",
+            },
+          },
+        },
+      },
+    },
+    select: {
+      project_id: true,
+      nama_project: true,
+      clusters: {
+        where: {
+          boqs: {
+            some: {
+              status: { in: [boq_status.draft, boq_status.aktif, boq_status.selesai] },
+              source: "top_down",
+            },
+          },
+        },
+        select: {
+          cluster_id: true,
+          nama_cluster: true,
+        },
+        orderBy: { nama_cluster: "asc" },
+      },
+    },
+    orderBy: { nama_project: "asc" },
+  });
+
+  const projects = projectsWithBoq
+    .filter((p) => p.clusters.length > 0)
+    .map((p) => ({
+      project_id: String(p.project_id),
+      project_nama: p.nama_project,
+      clusters: p.clusters.map((c) => ({
+        cluster_id: c.cluster_id,
+        nama_cluster: c.nama_cluster,
+      })),
+    }));
+
+  return { projects };
+};
+
 const saveRemainsNote = async (payload, user) => {
   const { project_id, cluster_id, barang_id, keterangan } = payload;
 
@@ -122,6 +175,7 @@ const saveRemainsNote = async (payload, user) => {
 
 module.exports = {
   getInventory,
+  getFilterOptions,
   refreshTiketMosUsed,
   saveRemainsNote,
 };

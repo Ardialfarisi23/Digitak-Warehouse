@@ -317,11 +317,11 @@ export default function UsersPage() {
                 className="h-8 w-8 shrink-0 rounded-full border border-slate-200 object-cover"
               />
             ) : (
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
                 {record?.nama
                   ? record?.nama.charAt(0).toUpperCase()
                   : "?"}
-              </div>
+              </span>
             )}
             <span className="truncate">{record?.nama}</span>
           </span>

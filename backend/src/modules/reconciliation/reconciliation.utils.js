@@ -17,8 +17,10 @@ const { Decimal } = require("@prisma/client");
  */
 
 /** Remains = MOS (Sistem) - (BOQ Plan + Additional) */
-function computeRemains(mosSistem, boq, additional, used, approvedReturnQty) {
-  return Number(mosSistem || 0) - (Number(boq || 0) + Number(additional || 0));
+function computeRemains(mos, boq, additional) {
+  const val = Number(mos || 0) - (Number(boq || 0) + Number(additional || 0));
+  const rounded = Math.round(val * 100) / 100;
+  return rounded === -0 ? 0 : rounded;
 }
 
 /**
@@ -103,10 +105,27 @@ function buildItemPickSummary(picks = []) {
   return summary;
 }
 
+/**
+ * Menentukan apakah inbound SJ layak menambah MOS.
+ * - Hanya inbound (bukan outbound)
+ * - Status approved: ready_putaway, disetujui, diterima_didistribusikan
+ * - Memiliki project_id atau cluster_id (barang ditujukan untuk project/cluster)
+ * - WAJIB tipe_pengirim === "external" (vendor/supplier, gudang_asal_id null)
+ */
+function isMosEligibleInbound(sj) {
+  if (!sj || sj.tipe !== "inbound") return false;
+  const APPROVED_INBOUND_STATUSES = ["ready_putaway", "disetujui", "diterima_didistribusikan"];
+  if (!APPROVED_INBOUND_STATUSES.includes(sj.status)) return false;
+  if (!sj.project_id && !sj.cluster_id) return false;
+  if (sj.tipe_pengirim !== "external") return false;
+  return true;
+}
+
 module.exports = {
   computeRemains,
   computeReconciliationStatus,
   aggregateProjectStatus,
   buildPickSummary,
   buildItemPickSummary,
+  isMosEligibleInbound,
 };

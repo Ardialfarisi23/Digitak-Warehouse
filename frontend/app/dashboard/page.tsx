@@ -192,15 +192,9 @@ function DashboardPageContent() {
     }>
   >([]);
 
-<<<<<<< HEAD
-  const fetchDashboardData = useCallback(async () => {
+const fetchDashboardData = useCallback(async () => {
     try {
       const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
-=======
-const fetchDashboardData = async () => {
-      try {
-        const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
->>>>>>> origin/develop
 
       const [statsResponse, projectSummaryResponse] = await Promise.all([
         get(`${apiBase}/api/dashboard`),
@@ -210,74 +204,10 @@ const fetchDashboardData = async () => {
       const statsJson = await statsResponse.json();
       const projectSummaryJson = await projectSummaryResponse.json();
 
-<<<<<<< HEAD
       if (!statsResponse.ok) {
         throw new Error(statsJson?.message || "Gagal mengambil statistik dashboard.");
-=======
-        if (!statsResponse.ok) {
-          throw new Error(statsJson?.message || "Gagal mengambil statistik dashboard.");
-        }
-
-        if (!projectSummaryResponse.ok) {
-          throw new Error(
-            projectSummaryJson?.message || "Gagal mengambil ringkasan project."
-          );
-        }
-
-        const statsData = statsJson?.data || {};
-        setDashboardStats({
-          totalItems: Number(statsData.totalItems ?? statsData.items ?? 0),
-          activeBoq: Number(statsData.activeBoq ?? 0),
-          draftBoq: Number(statsData.draftBoq ?? 0),
-          pendingShipments: Number(statsData.pendingShipments ?? 0),
-          warehouses: Number(statsData.warehouses ?? 0),
-        });
-
-        setKapasitasPerGudang(Array.isArray(statsData.kapasitas_per_gudang) ? statsData.kapasitas_per_gudang : []);
-
-        setProjectSummary(Array.isArray(projectSummaryJson?.data) ? projectSummaryJson.data : []);
-
-        const reconPayload = reconciliationJson?.data;
-        const reconList: Array<Record<string, unknown>> = Array.isArray(reconPayload)
-          ? reconPayload
-          : Array.isArray(reconPayload?.data)
-            ? reconPayload.data
-            : [];
-        const mappedReconRows = reconList.map((row) => {
-          const proj = row?.project as { nama_project?: string } | undefined;
-          return {
-            project_id: String(row?.project_id ?? ""),
-            projectNama: (row?.projectNama ?? proj?.nama_project ?? undefined) as string | undefined,
-            boq: Number(row?.boq ?? 0) || 0,
-            additional: Number(row?.additional ?? 0) || 0,
-            mos: Number(row?.mos ?? 0) || 0,
-            used: Number(row?.used ?? 0) || 0,
-            remains: Number(row?.remains ?? 0) || 0,
-            status: row?.status ? String(row.status) : undefined,
-          };
-        });
-        const seenRecon = new Set<string>();
-        const dedupedReconRows = mappedReconRows.filter((r) => {
-          if (!r.project_id) return true;
-          if (seenRecon.has(r.project_id)) return false;
-          seenRecon.add(r.project_id);
-          return true;
-        });
-        setReconciliationRows(dedupedReconRows);
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error);
-        setDashboardStats(defaultDashboardStats);
-        setProjectSummary([]);
-        setReconciliationRows([]);
-        setKapasitasPerGudang([]);
-      } finally {
-        setIsLoadingProjects(false);
-        setIsLoadingStats(false);
-        setIsLoadingReconciliation(false);
->>>>>>> origin/develop
       }
 
-<<<<<<< HEAD
       if (!projectSummaryResponse.ok) {
         throw new Error(
           projectSummaryJson?.message || "Gagal mengambil ringkasan project."
@@ -328,102 +258,6 @@ const fetchDashboardData = async () => {
       window.removeEventListener("focus", onFocus);
     };
   }, [get, fetchDashboardData]);
-=======
-    useEffect(() => {
-      fetchDashboardData();
-    }, [get]);
-
-    // Refetch project summary when window gains focus (e.g., after creating project in another tab)
-    useEffect(() => {
-      const onVisible = () => {
-        if (document.visibilityState === "visible") {
-          fetchDashboardData();
-        }
-      };
-      const onFocus = () => {
-        fetchDashboardData();
-      };
-      window.addEventListener("visibilitychange", onVisible);
-      window.addEventListener("focus", onFocus);
-      return () => {
-        window.removeEventListener("visibilitychange", onVisible);
-        window.removeEventListener("focus", onFocus);
-      };
-}, [get]);
-
-  useEffect(() => {
-    const fetchActivity = async () => {
-      setIsLoadingActivity(true);
-      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
-      const safeJson = async (res: Response) => {
-        try {
-          return await res.json();
-        } catch {
-          return null;
-        }
-      };
-
-      const [boqRes, outboundRes, inboundRes] = await Promise.allSettled([
-        get(`${apiBase}/api/boqs?page=1&limit=5&sortBy=updated_at&sortOrder=desc`),
-        get(`${apiBase}/api/surat-jalan/outbound/queue`),
-        get(`${apiBase}/api/surat-jalan/inbound`),
-      ]);
-
-      if (boqRes.status === "fulfilled") {
-        const res = boqRes.value;
-        const json = await safeJson(res);
-        if (res.ok) {
-          const list = json?.data?.data ?? json?.data ?? [];
-          setRecentBoqs(Array.isArray(list) ? list : []);
-        } else {
-          setRecentBoqs([]);
-        }
-      } else {
-        setRecentBoqs([]);
-      }
-
-      if (outboundRes.status === "fulfilled") {
-        const res = outboundRes.value;
-        const json = await safeJson(res);
-        if (res.ok) {
-          const list = json?.data ?? [];
-          const arr = Array.isArray(list)
-            ? list
-            : Array.isArray(list?.data)
-              ? list.data
-              : [];
-          setOutboundQueue(arr.slice(0, 5));
-        } else {
-          setOutboundQueue([]);
-        }
-      } else {
-        setOutboundQueue([]);
-      }
-
-      if (inboundRes.status === "fulfilled") {
-        const res = inboundRes.value;
-        const json = await safeJson(res);
-        if (res.ok) {
-          const list = json?.data ?? [];
-          const arr = Array.isArray(list)
-            ? list
-            : Array.isArray(list?.data)
-              ? list.data
-              : [];
-          setInboundList(arr.slice(0, 5));
-        } else {
-          setInboundList([]);
-        }
-      } else {
-        setInboundList([]);
-      }
-
-      setIsLoadingActivity(false);
-    };
-
-    fetchActivity();
-  }, [get]);
->>>>>>> origin/develop
 
   const greeting = `Selamat Pagi, Selamat Beraktivitas! `;
 
@@ -652,10 +486,10 @@ const fetchDashboardData = async () => {
                       </div>
                       <div className="shrink-0 text-right">
                         <div className="text-[10px] uppercase tracking-wide text-slate-400">
-                          Total Unit
+                          Total Item
                         </div>
                         <div className="text-sm font-bold text-slate-900">
-                          {formatNumber(p.hardwareOnSite)}
+                          {formatNumber(p.itemCount)}
                         </div>
                       </div>
                     </div>

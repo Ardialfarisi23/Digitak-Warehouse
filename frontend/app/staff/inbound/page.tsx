@@ -33,15 +33,7 @@ interface InboundItem {
   catatan?: string | null;
   is_di_luar_boq?: boolean;
   satuan?: { kode_satuan?: string } | null;
-<<<<<<< HEAD
-  barang?: {
-    kode_perangkat?: string;
-    nama_barang?: string;
-    satuan_default?: { kode_satuan?: string };
-  } | null;
-=======
   barang?: { kode_perangkat?: string; nama_barang?: string; satuan_default?: { kode_satuan?: string } } | null;
->>>>>>> origin/develop
 }
 
 interface InboundSuratJalan {
@@ -70,17 +62,11 @@ interface InboundSuratJalan {
   kendaraan?: { jenis_kendaraan?: string; merk?: string; no_polisi?: string } | null;
   personil_pengantar?: { nama?: string } | null;
   surat_jalan_url?: string | null;
-<<<<<<< HEAD
-  boq?: {
-    boq_id: number;
-    boq_number?: string;
-=======
-  cluster_id?: string | null;
+cluster_id?: string | null;
   boq?: {
     boq_id: number;
     boq_number?: string;
     cluster?: { cluster_id?: string | null; nama_cluster?: string | null } | null;
->>>>>>> origin/develop
     tiket?: { kode_tiket?: string };
   } | null;
 }
@@ -1727,11 +1713,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
               <th className="px-4 py-4 font-semibold">Nama Vendor Eksternal</th>
               <th className="px-4 py-4 font-semibold">Gudang Tujuan</th>
               <th className="px-4 py-4 font-semibold">PIC Pemohon</th>
-<<<<<<< HEAD
-              <th className="px-4 py-4 font-semibold">Cluster & BOQ</th>
-=======
               <th className="px-4 py-4 font-semibold">BOQ / Tiket (otomatis)</th>
->>>>>>> origin/develop
               <th className="px-4 py-4 font-semibold">Project</th>
               <th className="px-4 py-4 font-semibold">Cluster</th>
               <th className="px-4 py-4 font-semibold">Kendaraan</th>
@@ -1766,10 +1748,6 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 const meta = STATUS_META[sj.status] || STATUS_META.draft_diajukan;
                 const itemRows = sj.items && sj.items.length > 0 ? sj.items : [null];
                 const rowSpan = itemRows.length;
-<<<<<<< HEAD
-                const totalUnit = (sj.items ?? []).reduce((sum, i) => sum + Number(i.qty || 0), 0);
-=======
->>>>>>> origin/develop
                 const tujuanText = sj.gudang_tujuan?.nama_gudang || "-";
                 const tanggalRaw = sj.tanggal || sj.created_at;
                 const tanggal = new Date(tanggalRaw).toLocaleDateString("id-ID", {
@@ -1900,15 +1878,9 @@ pic_pemohon_nama: picPemohon.trim() || null,
                           </td>
                         </>
                       )}
-<<<<<<< HEAD
-                  </tr>
-                );
-=======
                     </tr>
                   );
                 });
->>>>>>> origin/develop
-              })
               })
             )}
           </tbody>
@@ -1933,22 +1905,6 @@ pic_pemohon_nama: picPemohon.trim() || null,
         )}
         <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
           <div>
-<<<<<<< HEAD
-            <label className="mb-1 block text-xs font-medium text-gray-600">Cluster & BOQ <span className="text-rose-500">*</span></label>
-            <BoqPicker
-              value={selectedBoqId}
-              onSelect={(picked) => {
-                setSelectedBoqId(picked.boq_id);
-                if (picked.project_id) {
-                  setSelectedProjectId(String(picked.project_id));
-                }
-              }}
-              placeholder="Pilih Cluster & BOQ"
-              tipe="inbound"
-              excludeStatus="draft,selesai,ditolak"
-              emptyMessage="Tidak ada BOQ yang dapat diajukan."
-            />
-=======
             <label className="mb-1 block text-xs font-medium text-gray-600">Project <span className="text-rose-500">*</span></label>
             <select
               value={selectedProjectId}
@@ -2001,7 +1957,6 @@ pic_pemohon_nama: picPemohon.trim() || null,
             {selectedProjectId && selectedClusterId && !selectedBoqId && (
               <p className="mt-1 text-xs text-gray-500">Memuat BOQ aktif untuk cluster yang dipilih...</p>
             )}
->>>>>>> origin/develop
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-600">Nomor Surat Jalan <span className="text-rose-500">*</span></label>
