@@ -14,6 +14,19 @@ const fetcher = async ([url, get]: [string, Function]) => {
   return response.json();
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  draft_diajukan: "Draft Diajukan",
+  menunggu_verifikasi: "Menunggu Verifikasi",
+  ready_putaway: "Siap Putaway",
+  disetujui: "Disetujui",
+  sedang_dikirim: "Sedang Dikirim",
+  tiba_di_transit: "Tiba di Transit",
+  tiba_menunggu_konfirmasi: "Tiba, Menunggu Konfirmasi",
+  diterima_didistribusikan: "Diterima & Didistribusikan",
+  ditolak: "Ditolak",
+  digenerate: "Digenerate",
+};
+
 export default function ApprovalList() {
   const { get } = useApi();
   const API_URL = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/surat-jalan/inbound`;
@@ -43,7 +56,9 @@ export default function ApprovalList() {
               <p className="text-sm font-semibold text-slate-900">{row.nomor_surat_jalan}</p>
               <p className="text-xs text-slate-500">Tujuan: {row.gudang_tujuan?.nama_gudang || "-"}</p>
             </div>
-            <span className="text-xs font-medium text-slate-600">{row.status}</span>
+            <span className="text-xs font-medium text-slate-600">
+              {STATUS_LABELS[String(row.status || "").toLowerCase()] || row.status}
+            </span>
           </div>
         </div>
       ))}

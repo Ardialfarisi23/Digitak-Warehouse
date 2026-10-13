@@ -475,18 +475,18 @@ export default function SupervisorReconciliationPage() {
         {/* Header */}
         <header className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Rekonsiliasi Inventory (Supervisor)</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Rekonsiliasi Inventory (Supervisor)</h1>
             <p className="mt-1 text-sm text-slate-500">Pantau kesesuaian BOQ dengan realisasi hardware di gudang yang menjadi tanggung jawab Anda.</p>
           </div>
         </header>
 
         {/* Tab Navigation */}
-        <div className="mb-6 flex border-b border-slate-200">
+        <div className="mb-6 flex w-full gap-2 border-b border-slate-100 sm:w-auto">
           <button
             type="button"
             onClick={() => setActiveTab("rekonsiliasi")}
-            className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
-              activeTab === "rekonsiliasi" ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700"
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 border-b-2 px-3 py-2 text-sm sm:px-4 sm:py-2.5 font-medium transition-colors whitespace-normal leading-tight min-h-11 text-center ${
+              activeTab === "rekonsiliasi" ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
           >
             <ClipboardCheck size={16} />
@@ -495,8 +495,8 @@ export default function SupervisorReconciliationPage() {
           <button
             type="button"
             onClick={() => setActiveTab("riwayat")}
-            className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
-              activeTab === "riwayat" ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700"
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 border-b-2 px-3 py-2 text-sm sm:px-4 sm:py-2.5 font-medium transition-colors whitespace-normal leading-tight min-h-11 text-center ${
+              activeTab === "riwayat" ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
           >
             <History size={16} />
@@ -510,7 +510,7 @@ export default function SupervisorReconciliationPage() {
             {error && <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
 
             {/* KPI Cards */}
-             <div className="mb-6 grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 sm:gap-4 lg:grid-cols-6">
+             <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 lg:grid-cols-6">
                <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
                <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
                <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material on Site (termasuk inbound disetujui)" icon={PackageCheck} tone="slate" />
@@ -519,8 +519,8 @@ export default function SupervisorReconciliationPage() {
              </div>
 
             {/* Filters */}
-            <div className="mb-6 flex flex-wrap items-center gap-2">
-              <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+            <div className="mb-6 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
+              <div className="col-span-2 flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
                 <Search size={16} className="shrink-0 text-slate-400" />
                 <input
                   type="text"
@@ -532,7 +532,7 @@ export default function SupervisorReconciliationPage() {
               </div>
 
               {filterOptionsError && (
-                <div className="flex items-center gap-2 text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-full px-3 py-1.5">
+                <div className="col-span-2 flex items-center gap-2 text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-full px-3 py-1.5">
                   <AlertCircle size={12} />
                   <span>{filterOptionsError}</span>
                   <button
@@ -562,7 +562,7 @@ export default function SupervisorReconciliationPage() {
                 <select
                   value={clusterFilter}
                   onChange={(e) => setClusterFilter(e.target.value)}
-                  className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+                  className="w-full min-w-0 min-h-11 text-base sm:text-sm truncate sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-slate-600 shadow-sm outline-none focus:border-orange-400"
                   disabled={clusterOptions.length === 0 || filterOptionsLoading}
                 >
                   <option value="all">Semua Cluster</option>
