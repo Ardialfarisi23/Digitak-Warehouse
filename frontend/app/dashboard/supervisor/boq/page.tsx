@@ -754,9 +754,9 @@ export default function BoqPage() {
       <div className="flex flex-1 flex-col p-6">
         <header className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">BOQ & Surat Tiket</h1>
+            <h1 className="text-2xl font-bold text-slate-900">Cluster & BOQ</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Kelola BOQ (Bill of Quantity) dan Surat Tiket untuk area supervisi Anda.
+              Kelola Cluster, BOQ (Bill of Quantity), dan Surat Tiket untuk area supervisi Anda.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -857,7 +857,7 @@ export default function BoqPage() {
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
                   <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nomor BOQ / Tiket</th>
+                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nomor Cluster & BOQ</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Sumber</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Verifikasi Eksternal</th>
@@ -1321,7 +1321,7 @@ export default function BoqPage() {
         const mosSistem = boq.reconciliation?.mosSistem || 0;
         const used = boq.reconciliation?.used || 0;
         const approvedReturnQty = boq.reconciliation?.approved_return_qty || 0;
-        const remains = mosSistem - (totalBoq + totalAdditional) - used - approvedReturnQty;
+        const remains = mosSistem - (totalBoq + totalAdditional);
         const hasWarning = remains !== 0;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -1333,7 +1333,7 @@ export default function BoqPage() {
                   <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                   <div>
                     <p className="font-semibold">Perhatian: BOQ ini masih memiliki sisa material.</p>
-                     <p className="mt-0.5 text-xs">Remains = <span className="font-semibold">{remains}</span> (MOS Sistem: {mosSistem}, BOQ: {totalBoq}, Additional: {totalAdditional}, Used: {used}, Return: {approvedReturnQty})</p>
+                     <p className="mt-0.5 text-xs">Remains = <span className="font-semibold">{remains}</span> (MOS: {mosSistem}, BOQ: {totalBoq}, Additional: {totalAdditional})</p>
                   </div>
                 </div>
               )}

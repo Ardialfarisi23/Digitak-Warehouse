@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import { Search, PackageCheck, PackageMinus, Package, ClipboardCheck, X, AlertTriangle, Download, History, CheckCircle, Clock, AlertCircle, Plus, Wallet } from "lucide-react";
 
@@ -17,6 +17,7 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 const RECONCILIATION_ENDPOINT = `${API_BASE}/api/reconciliation/inventory`;
+const FILTER_OPTIONS_ENDPOINT = `${API_BASE}/api/reconciliation/filter-options`;
 const HISTORY_ENDPOINT = `${API_BASE}/api/reports/reconciliation/history`;
 
 interface ReconciliationRecord {
@@ -127,6 +128,9 @@ export default function SupervisorReconciliationPage() {
 
   // State Rekonsiliasi
   const [records, setRecords] = useState<ReconciliationRecord[]>([]);
+  const [filterOptions, setFilterOptions] = useState<{ projects: Array<{ project_id: string; project_nama: string; clusters: Array<{ cluster_id: string; nama_cluster: string }> }> } | null>(null);
+  const [filterOptionsLoading, setFilterOptionsLoading] = useState(true);
+  const [filterOptionsError, setFilterOptionsError] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [projectFilter, setProjectFilter] = useState("all");
@@ -137,21 +141,62 @@ export default function SupervisorReconciliationPage() {
   const [adjustmentRecord, setAdjustmentRecord] = useState<ReconciliationRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const fetchIdRef = useRef(0);
 
-  // State Riwayat Input Laporan Mitra
+// State Riwayat Input Laporan Mitra
   const [historyRecords, setHistoryRecords] = useState<HistoryRecord[]>([]);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
-  const fetchReconciliation = async () => {
+  const isSelectionComplete = useMemo(
+    () => projectFilter !== "all" && clusterFilter !== "all",
+    [projectFilter, clusterFilter]
+  );
+
+  const fetchFilterOptions = useCallback(async () => {
+    setFilterOptionsLoading(true);
+    setFilterOptionsError(null);
+    try {
+      const response = await get(FILTER_OPTIONS_ENDPOINT);
+      const json = await response.json();
+      if (!response.ok) {
+        throw new Error(json?.message || "Gagal mengambil opsi filter.");
+      }
+      setFilterOptions(json?.data ?? { projects: [] });
+    } catch (caughtError) {
+      setFilterOptionsError(caughtError instanceof Error ? caughtError.message : "Terjadi kesalahan saat mengambil opsi filter.");
+    } finally {
+      setFilterOptionsLoading(false);
+    }
+  }, [get]);
+
+  const fetchReconciliation = useCallback(async () => {
+    // Only fetch if both project and cluster are selected
+    if (!isSelectionComplete) {
+      setRecords([]);
+      setIsLoading(false);
+      return;
+    }
+
+    // Race condition prevention: increment fetch ID and capture it
+    const currentFetchId = ++fetchIdRef.current;
+
     setIsLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
+      params.set("groupBy", "cluster");
+      params.set("projectId", projectFilter);
+      params.set("clusterId", clusterFilter);
       if (search.trim()) params.set("search", search.trim());
 
       const response = await get(`${RECONCILIATION_ENDPOINT}?${params.toString()}`);
+
+      // Check if this request is still the latest
+      if (currentFetchId !== fetchIdRef.current) {
+        return; // A newer request has been started, discard this response
+      }
 
       if (response.status === 403) {
         setError("Anda tidak memiliki akses ke data rekonsiliasi ini.");
@@ -172,7 +217,7 @@ export default function SupervisorReconciliationPage() {
       const payload = json?.data ?? [];
       const list: any[] = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
 
-const mapped: ReconciliationRecord[] = list.map((item: any) => {
+      const mapped: ReconciliationRecord[] = list.map((item: any) => {
         const boq = Number(item.boq ?? item.qty_boq ?? item.qty_rencana ?? 0);
         const additional = Number(item.additional ?? item.qty_additional ?? 0);
         const mos = Number(item.mos ?? item.hardware_on_site ?? item.qty_on_site ?? 0);
@@ -184,8 +229,8 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
           item.status === "sesuai" || item.status === "perhatian" || item.status === "belum_ada_data"
             ? item.status
             : Number(remains) === 0
-            ? "sesuai"
-            : "perhatian";
+              ? "sesuai"
+              : "perhatian";
 
         return {
           id: String(item.id ?? ""),
@@ -229,7 +274,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [get, projectFilter, clusterFilter, search, isSelectionComplete]);
 
   const fetchHistory = async () => {
     setIsHistoryLoading(true);
@@ -267,10 +312,14 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
 
   useEffect(() => {
     if (!user) return;
-    fetchReconciliation();
+    fetchFilterOptions();
     fetchHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, fetchFilterOptions]);
+
+  useEffect(() => {
+    if (!user) return;
+    fetchReconciliation();
+  }, [user, projectFilter, clusterFilter, fetchReconciliation]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -281,8 +330,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
 
   useEffect(() => {
     fetchReconciliation();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, statusFilter]);
+  }, [search, statusFilter, fetchReconciliation]);
 
   useEffect(() => {
     const onVisible = () => {
@@ -299,41 +347,55 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
       window.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onFocus);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [fetchReconciliation, projectFilter, clusterFilter]);
 
   useEffect(() => {
-    if (projectFilter !== "all" && clusterFilter !== "all") {
+    // If project changed (and not reset to "all"), reset cluster filter to "all"
+    if (projectFilter !== "all") {
       setClusterFilter("all");
     }
   }, [projectFilter]);
 
-  const projectOptions = useMemo(() => {
-    const baseRecords = adjustmentRecord
-      ? records.filter((item) => {
-          const matchesBarang = item.barang_id === adjustmentRecord.barang_id;
-          const matchesCluster =
-            !adjustmentRecord.cluster_id || adjustmentRecord.cluster_id === "-"
-              ? true
-              : item.cluster_id === adjustmentRecord.cluster_id;
-          return matchesBarang && matchesCluster;
-        })
-      : records;
+  // Reset warehouse filter when project or cluster changes
+  useEffect(() => {
+    if (warehouseFilter !== "all") {
+      setWarehouseFilter("all");
+    }
+  }, [projectFilter, clusterFilter]);
 
-    return Array.from(new Map(baseRecords.map((item) => [item.project_id, item.project_nama])).entries());
-  }, [records, adjustmentRecord]);
+  const projectOptions = useMemo((): [string, string][] => {
+    if (!filterOptions) return [];
+    // For main filter dropdown: all projects from filterOptions
+    // For adjustmentRecord (mitra modal): filter by barang_id and cluster_id
+    const projects = filterOptions.projects;
+    if (adjustmentRecord) {
+      // Filter projects that have the specific barang_id in the selected cluster
+      // Since filterOptions doesn't have barang info, we need to check records
+      const baseRecords = records.filter((item) => {
+        const matchesBarang = item.barang_id === adjustmentRecord.barang_id;
+        const matchesCluster =
+          !adjustmentRecord.cluster_id || adjustmentRecord.cluster_id === "-"
+            ? true
+            : item.cluster_id === adjustmentRecord.cluster_id;
+        return matchesBarang && matchesCluster;
+      });
+      return Array.from(new Map(baseRecords.map((item) => [item.project_id, item.project_nama] as [string, string])).entries());
+    }
+    return projects.map((p) => [p.project_id, p.project_nama] as [string, string]);
+  }, [filterOptions, records, adjustmentRecord]);
 
   const warehouseOptions = useMemo(() => {
     return Array.from(new Set(records.map((item) => item.gudang_nama).filter(Boolean)));
   }, [records]);
 
   const clusterOptions = useMemo(() => {
-    if (projectFilter === "all") return [];
-    const projectRecords = records.filter((r) => r.project_id === projectFilter);
-    return Array.from(
-      new Map(projectRecords.map((item) => [item.cluster_id, item.nama_cluster || "-"])).entries()
-    ).sort(([, a], [, b]) => a.localeCompare(b));
-  }, [records, projectFilter]);
+    if (projectFilter === "all" || !filterOptions) return [];
+    const project = filterOptions.projects.find((p) => p.project_id === projectFilter);
+    if (!project) return [];
+    return project.clusters
+      .map((c) => [c.cluster_id, c.nama_cluster])
+      .sort(([, a], [, b]) => a.localeCompare(b));
+  }, [filterOptions, projectFilter]);
 
   const filteredRecords = useMemo(() => {
     return records.filter((record) => {
@@ -373,7 +435,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
   const handleExportCSV = () => {
     if (filteredRecords.length === 0) return;
 
-    const headers = ["Project", "Area", "Cluster", "Kode Tiket", "Kode Perangkat", "Nama Barang", "Gudang", "Satuan", "BOQ", "Additional", "MOS", "Used", "Remains", "Status"];
+    const headers = ["Project", "Area", "Cluster", "Kode Tiket", "Kode Perangkat", "Nama Barang", "Gudang", "Satuan", "BOQ", "Additional", "MOS", "Used", "Sisa Lapangan", "Status"];
 
     const csvRows = [
       headers.join(","),
@@ -453,7 +515,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
                <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material on Site (termasuk inbound disetujui)" icon={PackageCheck} tone="slate" />
                <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan" icon={PackageMinus} tone="slate" />
-               <KpiCard title="Remains" value={formatNumber(summary.remains)} description="Sisa pengiriman (MOS - BOQ)" icon={Wallet} tone={summary.remains < 0 ? "rose" : "slate"} />
+               <KpiCard title="Sisa Lapangan" value={formatNumber(summary.remains)} description="Sisa di lapangan setelah dikurangi BOQ, Additional, Used, dan Return" icon={Wallet} tone={summary.remains < 0 ? "rose" : "slate"} />
              </div>
 
             {/* Filters */}
@@ -469,13 +531,31 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                 />
               </div>
 
-              <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400">
+              {filterOptionsError && (
+                <div className="flex items-center gap-2 text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-full px-3 py-1.5">
+                  <AlertCircle size={12} />
+                  <span>{filterOptionsError}</span>
+                  <button
+                    type="button"
+                    onClick={fetchFilterOptions}
+                    className="text-rose-600 hover:underline"
+                  >
+                    Coba lagi
+                  </button>
+                </div>
+              )}
+
+              <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} disabled={filterOptionsLoading} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 disabled:opacity-50 disabled:cursor-not-allowed">
                 <option value="all">Semua Project</option>
-                {projectOptions.map(([id, nama]) => (
-                  <option key={id} value={id}>
-                    {nama}
-                  </option>
-                ))}
+                {filterOptionsLoading ? (
+                  <option value="" disabled>Memuat...</option>
+                ) : (
+                  projectOptions.map(([id, nama]) => (
+                    <option key={id} value={id}>
+                      {nama}
+                    </option>
+                  ))
+                )}
               </select>
 
               {projectFilter !== "all" && (
@@ -483,10 +563,12 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                   value={clusterFilter}
                   onChange={(e) => setClusterFilter(e.target.value)}
                   className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
-                  disabled={clusterOptions.length === 0}
+                  disabled={clusterOptions.length === 0 || filterOptionsLoading}
                 >
                   <option value="all">Semua Cluster</option>
-                  {clusterOptions.length > 0 ? (
+                  {filterOptionsLoading ? (
+                    <option value="" disabled>Memuat...</option>
+                  ) : clusterOptions.length > 0 ? (
                     clusterOptions.map(([id, nama]) => (
                       <option key={id} value={id}>
                         {nama}
@@ -541,70 +623,82 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                 </div>
               </div>
 
+              {isSelectionComplete && filteredRecords.length > 0 && (() => {
+                const firstRecord = filteredRecords[0];
+                const uniqueKodeTiket = Array.from(new Set(filteredRecords.map((r) => r.kode_tiket).filter(Boolean)));
+                return (
+                  <div className="px-6 py-3 bg-slate-50/50 border-b border-slate-100">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-3 text-sm">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5">Project</p>
+                        <p className="font-medium text-slate-900 truncate">{firstRecord.project_nama}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5">Cluster</p>
+                        <p className="font-medium text-slate-900 truncate">
+                          {firstRecord.nama_cluster}
+                          {firstRecord.cluster_id && (
+                            <span className="ml-1.5 text-[10px] text-slate-400 font-normal">{firstRecord.cluster_id}</span>
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5">Kode Tiket</p>
+                        <p className="font-medium text-slate-900 truncate">
+                          {uniqueKodeTiket.length > 0 ? uniqueKodeTiket.join(", ") : "-"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
               <div className="overflow-x-auto overscroll-x-contain">
-                 <table className="w-full min-w-[1100px] text-left text-sm">
+                 <table className="w-full min-w-[700px] text-left text-sm">
 <thead>
                       <tr className="border-b border-slate-100 bg-slate-50">
                         <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
-                        <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
-                        <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Cluster Name</th>
-                        <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
                         <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
-                         <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
-                          <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
-                          <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
-                        <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Remains</th>
+                        <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
+                        <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
+                        <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
+                        <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Sisa Lapangan</th>
                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
                         <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
                       </tr>
                     </thead>
 
-                   <tbody className="divide-y divide-slate-50">
+<tbody className="divide-y divide-slate-50">
 {isLoading ? (
                         Array.from({ length: 7 }).map((_, rowIndex) => (
                           <tr key={rowIndex}>
-                            {Array.from({ length: 11 }).map((_, colIndex) => (
+                            {Array.from({ length: 9 }).map((_, colIndex) => (
                               <td key={colIndex} className="px-6 py-4">
                                 <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                               </td>
                             ))}
                           </tr>
                         ))
-                      ) : filteredRecords.length === 0 ? (
+) : filteredRecords.length === 0 ? (
                         <tr>
-                          <td colSpan={11} className="px-6 py-16 text-center">
+                          <td colSpan={9} className="px-6 py-16 text-center">
                            <Package size={28} className="mx-auto text-slate-300" />
                            <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data rekonsiliasi</p>
                            <p className="mt-1 text-xs text-slate-400">Coba ubah filter, atau pastikan Anda sudah ditugaskan sebagai PIC gudang.</p>
-                         </td>
-                       </tr>
-                     ) : (
+                          </td>
+                        </tr>
+                      ) : (
 filteredRecords.map((record, index) => {
                           const statusBadge = getStatusBadge(record.status);
                           return (
                             <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
                               <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500">{index + 1}</td>
                               <td className="px-6 py-4">
-                               <p className="font-medium text-slate-900">{record.project_nama || "-"}</p>
-                               <p className="text-xs text-slate-400">{record.area || "-"}</p>
-                             </td>
-
-                             <td className="px-6 py-4">
-                               <p className="font-medium text-slate-900">{record.nama_cluster || "-"}</p>
-                               <p className="text-xs text-slate-400">{record.cluster_id || "-"}</p>
-                             </td>
-
-                             <td className="px-6 py-4">
-                               <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{record.kode_tiket}</span>
-                             </td>
-
-                             <td className="px-6 py-4">
-                               <p className="font-medium text-slate-800">{record.nama_barang}</p>
-                               <p className="text-xs text-slate-400">
-                                 {record.kode_perangkat} • {record.gudang_nama}
-                               </p>
-                             </td>
+                                <p className={` ${record.status === "perhatian" ? "font-semibold text-amber-600" : "font-medium text-slate-800"}`}>{record.nama_barang}</p>
+                                <p className="text-xs text-slate-400">
+                                  {record.kode_perangkat} • {record.gudang_nama}
+                                </p>
+                              </td>
 
 <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.boq)}</td>
                               <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.additional)}</td>
@@ -619,11 +713,11 @@ filteredRecords.map((record, index) => {
                               </td>
 
                              <td className="px-6 py-4">
-                               <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
-                                 <statusBadge.icon size={12} />
-                                 {statusBadge.label}
-                               </span>
-                             </td>
+                                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
+                                  <statusBadge.icon size={12} />
+                                  {statusBadge.label}
+                                </span>
+                              </td>
 
                               <td className="px-4 py-4">
                                 <div className="flex items-center justify-end gap-1">
@@ -636,9 +730,9 @@ filteredRecords.map((record, index) => {
                                 </div>
                               </td>
                            </tr>
-                         );
-                       })
-                     )}
+                          );
+                        })
+                      )}
                    </tbody>
                  </table>
               </div>

@@ -61,7 +61,7 @@ function normalize(raw: ApiBoq): BoqPickerItem {
   };
 }
 
-export default function BoqPicker({ projectId, value, onSelect, placeholder = "Pilih BOQ / Tiket", className, disabled, tipe, statusFilter, excludeStatus, displayField, emptyMessage }: BoqPickerProps) {
+export default function BoqPicker({ projectId, value, onSelect, placeholder = "Pilih Cluster & BOQ", className, disabled, tipe, statusFilter, excludeStatus, displayField, emptyMessage }: BoqPickerProps) {
   const { get } = useApi();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -217,7 +217,7 @@ export default function BoqPicker({ projectId, value, onSelect, placeholder = "P
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Cari BOQ / Tiket..."
+                placeholder="Cari Cluster & BOQ..."
                 className="w-full rounded-md border border-slate-200 pl-7 pr-2 py-1 text-xs outline-none focus:border-orange-400"
               />
             </div>

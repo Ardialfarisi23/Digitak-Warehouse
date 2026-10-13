@@ -62,7 +62,7 @@ interface InboundSuratJalan {
   kendaraan?: { jenis_kendaraan?: string; merk?: string; no_polisi?: string } | null;
   personil_pengantar?: { nama?: string } | null;
   surat_jalan_url?: string | null;
-  cluster_id?: string | null;
+cluster_id?: string | null;
   boq?: {
     boq_id: number;
     boq_number?: string;

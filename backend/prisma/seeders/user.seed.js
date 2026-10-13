@@ -8,7 +8,6 @@ module.exports = async function seedUsers(prisma) {
         update: {
             nama: "Admin General",
             role: "admin_general",
-            is_aktif: true,
         },
         create: {
             nama: "Admin General",
@@ -26,7 +25,6 @@ module.exports = async function seedUsers(prisma) {
         update: {
             nama: "Supervisor Gudang",
             role: "supervisor",
-            is_aktif: true,
         },
         create: {
             nama: "Supervisor Gudang",
@@ -44,7 +42,6 @@ module.exports = async function seedUsers(prisma) {
         update: {
             nama: "Staff Gudang",
             role: "staf_gudang",
-            is_aktif: true,
         },
         create: {
             nama: "Staff Gudang",

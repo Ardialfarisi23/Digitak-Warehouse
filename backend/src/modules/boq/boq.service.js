@@ -37,12 +37,15 @@ const normalizeVerification = (status) => {
   return map[status.toUpperCase()] || status.toLowerCase();
 };
 
+const { getJakartaYear, formatBoqNumber, parseBoqSequence, withBoqNumberRetry } = require("./boq-number.util");
+
 const generateBoqNumber = async () => {
-  const year = new Date().getFullYear();
+  const now = new Date();
+  const year = getJakartaYear(now);
   const lastBoq = await prisma.boq.findFirst({
     where: {
       boq_number: {
-        startsWith: `BOQ-${year}-`,
+        startsWith: `BOQ-${year}`,
       },
     },
     orderBy: { boq_id: 'desc' },
@@ -50,13 +53,12 @@ const generateBoqNumber = async () => {
   });
 
   let nextNumber = 1;
-  if (lastBoq?.boq_number) {
-    const parts = String(lastBoq.boq_number).split('-');
-    const lastNum = parseInt(parts[parts.length - 1] || '0', 10);
-    nextNumber = lastNum + 1;
+  const lastSeq = parseBoqSequence(lastBoq?.boq_number);
+  if (lastSeq !== null) {
+    nextNumber = lastSeq + 1;
   }
 
-  return `BOQ-${year}-${String(nextNumber).padStart(4, "0")}`;
+  return formatBoqNumber(now, nextNumber);
 };
 
 const getBoqIdentifier = (boq) => boq.boq_number || `BOQ-${boq.boq_id}`;
@@ -216,11 +218,8 @@ const create = async (data, userId) => {
     });
   }
 
-  const boqNumber = await generateBoqNumber();
-
-  const boqDataWithMeta = {
+const boqDataWithMeta = {
     ...boqData,
-    boq_number: boqNumber,
     tiket_id: tiket.tiket_id,
     cluster_id: normalizeClusterId(clusterId),
     created_by: userId,
@@ -265,7 +264,7 @@ const create = async (data, userId) => {
         select: { satuan_id: true, kode_satuan: true },
       });
       for (const s of satuanList) {
-        satuanMap.set(s.kode_satuan, s.satuan_id);
+        satuanMap.set(s.satuan, s.satuan_id);
       }
     }
 
@@ -299,7 +298,10 @@ const create = async (data, userId) => {
     };
   }
 
-  const result = await boqRepository.create(boqDataWithMeta);
+  const result = await withBoqNumberRetry(
+    () => generateBoqNumber(),
+    (boqNumber) => boqRepository.create({ ...boqDataWithMeta, boq_number: boqNumber })
+  );
 
   const actor = await prisma.user_account.findUnique({
     where: { user_id: BigInt(userId) },

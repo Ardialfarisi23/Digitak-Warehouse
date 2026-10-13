@@ -2,6 +2,7 @@ const dashboardRepository = require("./dashboard.repository");
 const prisma = require("../../config/prisma");
 const AppError = require("../../shared/errors");
 const reconciliationUtils = require("../reconciliation/reconciliation.utils");
+const { isMosEligibleInbound } = require("../reconciliation/reconciliation.utils");
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
 const additionalRepository = require("../additional/additional.repository");
@@ -257,7 +258,8 @@ const getHardwareReconciliation = async (filters = {}) => {
     shipmentWhere.surat_jalan.project_id = BigInt(projectId);
   }
 
-  const shipmentItems = await prisma.surat_jalan_item.findMany({
+  // Query outbound items (existing)
+  const outboundShipmentItems = await prisma.surat_jalan_item.findMany({
     where: shipmentWhere,
     include: {
       surat_jalan: {
@@ -271,16 +273,46 @@ const getHardwareReconciliation = async (filters = {}) => {
     },
   });
 
+  // Query inbound items with approved statuses
+  const inboundShipmentWhere = {
+    surat_jalan: {
+      status: { in: ["ready_putaway", "disetujui", "diterima_didistribusikan"] },
+      tipe: "inbound",
+    },
+  };
+
+  if (projectId !== "all") {
+    inboundShipmentWhere.surat_jalan.project_id = BigInt(projectId);
+  }
+
+  const inboundShipmentItems = await prisma.surat_jalan_item.findMany({
+    where: inboundShipmentWhere,
+    include: {
+      surat_jalan: {
+        select: {
+          tipe: true,
+          project_id: true,
+          cluster_id: true,
+          tipe_pengirim: true,
+          gudang_asal_id: true,
+          gudang_tujuan_id: true,
+          boq_id: true,
+          tujuan_tipe: true,
+        },
+      },
+    },
+  });
+
   const outboundByProjectBarang = new Map();
   const additionalByProjectBarang = new Map();
-  const mosByProjectBarang = new Map();
+  const inboundMosByProjectBarang = new Map();
 
   const projectIdsForAdditional =
     projectId !== "all"
       ? [BigInt(projectId)]
       : Array.from(
           new Set(
-            shipmentItems
+            outboundShipmentItems
               .map((item) => item.surat_jalan?.project_id)
               .filter((id) => id != null)
           )
@@ -293,7 +325,20 @@ const getHardwareReconciliation = async (filters = {}) => {
         )
       : new Map();
 
-  for (const item of shipmentItems) {
+  // Build inbound MOS map using isMosEligibleInbound
+  for (const item of inboundShipmentItems) {
+    const projectIdNum = Number(item.surat_jalan?.project_id);
+    const barangId = String(item.barang_id);
+    const qty = Number(item.qty || 0);
+    const key = `${projectIdNum}-${barangId}`;
+
+    if (isMosEligibleInbound(item.surat_jalan)) {
+      inboundMosByProjectBarang.set(key, (inboundMosByProjectBarang.get(key) || 0) + qty);
+    }
+  }
+
+  // Build outbound map (for Used/other calculations, NOT for MOS)
+  for (const item of outboundShipmentItems) {
     const projectIdNum = Number(item.surat_jalan?.project_id);
     const barangId = String(item.barang_id);
     const qty = Number(item.qty || 0);
@@ -301,9 +346,11 @@ const getHardwareReconciliation = async (filters = {}) => {
 
     if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
       outboundByProjectBarang.set(key, (outboundByProjectBarang.get(key) || 0) + qty);
-      mosByProjectBarang.set(key, (mosByProjectBarang.get(key) || 0) + qty);
     }
   }
+
+  // MOS = inbound only (external vendor inbound)
+  const mosByProjectBarang = inboundMosByProjectBarang;
 
   for (const [key, val] of additionalTotalsByProject) {
     additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + val);
@@ -452,7 +499,7 @@ const getHardwareReconciliation = async (filters = {}) => {
       ? Number(usedByProjectBarang.get(key) || 0)
       : Number(outboundByProjectBarang.get(key) || 0);
     const approvedReturnQty = Number(approvedReturnByProjectBarang.get(key) || 0);
-    const remains = reconciliationUtils.computeRemains(mos, agg.boq, additional, used, approvedReturnQty);
+    const remains = reconciliationUtils.computeRemains(mos, agg.boq, additional);
 
     const recStatus = reconciliationUtils.computeReconciliationStatus(
       remains,

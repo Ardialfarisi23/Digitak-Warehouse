@@ -732,7 +732,7 @@ export default function InboundDetailPage() {
 
       {/* BOQ / Tiket info */}
       <div className="mb-6 rounded-2xl border border-[#F3D9C7] bg-white p-4">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">BOQ / Tiket</p>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Cluster & BOQ</p>
         {data.boq_id ? (
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <Link
@@ -747,7 +747,7 @@ export default function InboundDetailPage() {
             </span>
           </div>
         ) : (
-          <span className="text-xs text-slate-400">Tidak terhubung ke BOQ/Tiket</span>
+          <span className="text-xs text-slate-400">Tidak terhubung ke Cluster & BOQ</span>
         )}
       </div>
 

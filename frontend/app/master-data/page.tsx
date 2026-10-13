@@ -2018,11 +2018,11 @@ function MasterDataPageContent() {
       case "items":
         return ["kode_perangkat", "nama_barang", "kategori", "satuan_default", "foto"];
       case "projects":
-        return ["project_id", "title", "nama_project", "kecamatan", "desa_kelurahan", "cluster_count", "status_aktif"];
+        return ["title", "nama_project", "kecamatan", "desa_kelurahan", "cluster_count", "status_aktif"];
       case "personnel":
         return ["nama", "email", "nik", "posisi", "no_hp", "gudang", "bisa_menyetir", "is_aktif"];
       case "vehicles":
-        return ["kendaraan_id", "jenis_kendaraan", "merk", "no_polisi", "gudang", "foto"];
+        return ["jenis_kendaraan", "merk", "no_polisi", "kapasitas_angkut", "gudang", "remarks", "foto"];
       case "warehouses":
         return ["nama_gudang", "alamat", "tipe", "is_aktif"];
       case "suppliers":
@@ -2034,13 +2034,12 @@ function MasterDataPageContent() {
     }
   }, [activeTab]);
 
-  function getColumnLabel(column: string) {
+function getColumnLabel(column: string, activeTab?: MasterDataType) {
     const labels: Record<string, string> = {
       kode_perangkat: "Kode",
       nama_barang: "Nama Barang",
       kategori: "Kategori",
       satuan_default: "Satuan",
-      project_id: "ID Project",
       title: "Judul",
       nama_project: "Nama Project",
       kecamatan: "Kecamatan",
@@ -2053,18 +2052,20 @@ function MasterDataPageContent() {
       email: "Email",
       nik: "NIK",
       bisa_menyetir: "Punya SIM",
-      gudang: "Gudang Asal",
+      gudang: activeTab === "vehicles" ? "Gudang Penempatan" : "Gudang Asal",
       kendaraan_id: "ID Kendaraan",
-      jenis_kendaraan: "Tipe",
+      jenis_kendaraan: "Jenis Kendaraan",
       merk: "Merk",
       no_polisi: "No. Polisi",
+      kapasitas_angkut: "Kapasitas Angkut (kg)",
+      remarks: "Keterangan",
       nama_gudang: "Nama Gudang",
-      alamat: "Alamat",
+      alamat: "alamat",
       tipe: "Tipe",
       is_aktif: "Status",
       foto: "Foto",
       kode: "Kode",
-deskripsi: "Deskripsi",
+      deskripsi: "Deskripsi",
       nama_cluster: "Nama Cluster",
       cluster_id: "Cluster ID",
       cluster_type: "Tipe Cluster",
@@ -2475,7 +2476,7 @@ deskripsi: "Deskripsi",
                   <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
                   {columns.map((column) => (
                     <th key={column} className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      {getColumnLabel(column)}
+                      {getColumnLabel(column, activeTab)}
                     </th>
                   ))}
 
@@ -2599,14 +2600,34 @@ return (
                              );
                            }
 
-                            if (column === "gudang") {
-                             const gudangNama = (record as any)?.gudang?.nama_gudang;
-                             return (
-                               <td key={column} className="px-6 py-4 text-sm text-slate-600">
-                                 {gudangNama || "-"}
-                               </td>
-                             );
-                           }
+if (column === "gudang") {
+                              const gudangNama = (record as any)?.gudang?.nama_gudang;
+                              return (
+                                <td key={column} className="px-6 py-4 text-sm text-slate-600">
+                                  {gudangNama || "-"}
+                                </td>
+                              );
+                            }
+
+                            if (column === "kapasitas_angkut") {
+                              const raw = value;
+                              const display = raw === null || raw === undefined || raw === "" ? "-" : `${Number(raw).toLocaleString("id-ID")} kg`;
+                              return (
+                                <td key={column} className="px-3 py-3 text-sm text-slate-600 text-right tabular-nums">
+                                  {display}
+                                </td>
+                              );
+                            }
+
+                            if (column === "remarks") {
+                              const text = String(value || "");
+                              const display = text || "-";
+                              return (
+                                <td key={column} className="px-3 py-3 text-sm text-slate-500 max-w-[200px] truncate" title={text}>
+                                  {display}
+                                </td>
+                              );
+                            }
 
                             if (column === "nama_project" && activeTab === "clusters") {
                               const projectName = (record as any)?.project?.nama_project || "-";
@@ -2654,7 +2675,7 @@ return (
                                 key={column}
                                 className={[
                                   "px-3 py-3",
-                                  column === "kode_perangkat" || column === "kode" || column === "project_id" || column === "personil_id" || column === "kendaraan_id" ? "font-semibold text-orange-500" : "text-slate-500",
+                                  column === "kode_perangkat" || column === "kode" || column === "personil_id" || column === "kendaraan_id" ? "font-semibold text-orange-500" : "text-slate-500",
                                   column === "nama_barang" || column === "nama" || column === "nama_project" || column === "jenis_kendaraan" || column === "nama_gudang" ? "font-medium text-slate-800" : "",
                                   column === "email" || column === "nik" ? "truncate max-w-[150px]" : "",
                                 ].join(" ")}

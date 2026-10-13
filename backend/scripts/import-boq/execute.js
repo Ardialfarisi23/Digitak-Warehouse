@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const config = require('./config');
 const { createAuditLog } = require('../../src/utils/audit-log');
+const { getJakartaYear, formatBoqNumber, parseBoqSequence } = require('../../src/modules/boq/boq-number.util');
 
 const prisma = new PrismaClient();
 
@@ -22,20 +23,21 @@ function checkBackupRecent() {
   return files[0] || null;
 }
 
-async function generateBoqNumber(tx, year = new Date().getFullYear()) {
+async function generateBoqNumber(tx) {
+  const now = new Date();
+  const year = getJakartaYear(now);
   const lastBoq = await tx.boq.findFirst({
-    where: { boq_number: { startsWith: `BOQ-${year}-` } },
+    where: { boq_number: { startsWith: `BOQ-${year}` } },
     orderBy: { boq_id: 'desc' },
     select: { boq_number: true },
   });
 
   let nextNumber = 1;
-  if (lastBoq?.boq_number) {
-    const parts = String(lastBoq.boq_number).split('-');
-    const lastNum = parseInt(parts[parts.length - 1] || '0', 10);
-    nextNumber = lastNum + 1;
+  const lastSeq = parseBoqSequence(lastBoq?.boq_number);
+  if (lastSeq !== null) {
+    nextNumber = lastSeq + 1;
   }
-  return `BOQ-${year}-${String(nextNumber).padStart(4, '0')}`;
+  return formatBoqNumber(now, nextNumber);
 }
 
 async function executeImport(planResult, userId) {

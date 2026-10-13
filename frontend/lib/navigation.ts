@@ -51,7 +51,7 @@ export const navigationConfig: NavItem[] = [
   },
   {
     id: "boq-admin",
-    title: "BOQ & Tiket",
+    title: "Cluster & BOQ",
     href: "/dashboard/boq",
     icon: ClipboardList,
     roles: ["admin"],
@@ -67,7 +67,7 @@ export const navigationConfig: NavItem[] = [
   },
   {
     id: "boq-supervisor",
-    title: "BOQ & Tiket",
+    title: "Cluster & BOQ",
     href: "/dashboard/supervisor/boq",
     icon: ClipboardList,
     roles: ["supervisor"],

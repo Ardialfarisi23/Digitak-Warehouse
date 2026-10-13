@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo, Fragment } from "react";
+import { useState, useCallback, useEffect, useMemo, Fragment, useRef } from "react";
 import {
   Search,
   ChevronDown,
@@ -197,14 +197,14 @@ function Modal({ open, onClose, title, children, className }: { open: boolean; o
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 sm:p-0"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center sm:p-0"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
     >
       <div
-        className={`w-full max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl ${className || ""}`}
+        className={`w-full max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl ${className || ""} sm:max-w-lg`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
@@ -214,7 +214,7 @@ function Modal({ open, onClose, title, children, className }: { open: boolean; o
           <button
             type="button"
             onClick={onClose}
-            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 touch-target"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
             aria-label="Tutup"
           >
             <X size={20} />
@@ -509,243 +509,7 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
         })}
       </div>
     );
-  };
-
-  return (
-    <div>
-      <div className="mb-4 rounded-xl border border-orange-100 bg-orange-50 px-4 py-2 text-xs text-orange-700">
-        Tabel ini bersifat <strong>append-only</strong>. Semua entri dicatat otomatis dan tidak dapat diubah atau dihapus, termasuk oleh Admin General.
-      </div>
-
-      <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-        <div className="col-span-1 sm:col-span-2 lg:col-span-2 xl:col-span-3">
-          <div className="flex min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
-            <Search size={16} className="shrink-0 text-slate-400" />
-            <input
-              value={q}
-              onChange={(e) => { setQ(e.target.value); setPage(1); }}
-              placeholder="Cari Kode Tiket, aksi, atau entitas…"
-              className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-300"
-            />
-          </div>
-        </div>
-
-        <div>
-          <select
-            value={actorRole}
-            onChange={(e) => { setActorRole(e.target.value); setPage(1); }}
-            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
-          >
-            <option value="">Semua peran</option>
-            <option value="admin_general">Admin General</option>
-            <option value="supervisor">Supervisor</option>
-            <option value="staf_gudang">Staf Gudang</option>
-          </select>
-        </div>
-
-        <div>
-          <select
-            value={aksi}
-            onChange={(e) => { setAksi(e.target.value); setPage(1); }}
-            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
-          >
-            <option value="">Semua jenis aksi</option>
-            {aksiList.map((o) => (
-              <option key={o} value={o}>{VALUE_LABELS.audit_aksi[o] || o}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
-          />
-        </div>
-
-        <div>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
-          />
-        </div>
-
-        <div className="sm:col-span-2 lg:col-span-1 xl:col-span-1">
-          <button
-            type="button"
-            onClick={handleExportAuditLog}
-            disabled={exporting}
-            aria-label="Ekspor Audit Log" className="w-full flex items-center justify-center gap-2 rounded-full bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {exporting ? (
-              <span className="flex items-center gap-2">
-                <Loader2 size={16} className="animate-spin" />
-                <span className="hidden sm:inline">Mengekspor...</span>
-              </span>
-            ) : (
-              <span className="flex items-center gap-2">
-                <Download size={16} />
-                <span className="hidden sm:inline">Ekspor</span>
-              </span>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {toast && (
-        <div
-          className={[
-            "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
-            toast.type === "success"
-              ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
-              : toast.type === "warning"
-                ? "border-amber-200/80 bg-amber-50/95 text-amber-800"
-                : "border-rose-200/80 bg-rose-50/95 text-rose-800",
-          ].join(" ")}
-        >
-          <div
-            className={[
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-              toast.type === "success"
-                ? "bg-emerald-100"
-                : toast.type === "warning"
-                  ? "bg-amber-100"
-                  : "bg-rose-100",
-            ].join(" ")}
-          >
-            {toast.type === "success" ? (
-              <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            ) : toast.type === "warning" ? (
-              <svg className="h-5 w-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-              </svg>
-            ) : (
-              <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            )}
-          </div>
-          <p className="flex-1 leading-snug">{toast.message}</p>
-          <button
-            type="button"
-            onClick={() => setToast(null)}
-            className={[
-              "ml-2 shrink-0 rounded-full p-1 transition-colors",
-              toast.type === "success"
-                ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
-                : toast.type === "warning"
-                  ? "text-amber-400 hover:bg-amber-100 hover:text-amber-600"
-                  : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
-            ].join(" ")}
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      )}
-
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1260px] table-fixed text-left text-sm border-separate border-spacing-0">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Waktu</th>
-                <th className="w-[180px] min-w-[180px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Pengguna</th>
-                <th className="w-[140px] min-w-[140px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Peran</th>
-                <th className="w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
-                <th className="w-[280px] min-w-[280px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Entitas Terkait</th>
-                <th className="w-[300px] min-w-[300px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Referensi Tambahan</th>
-                <th className="w-10 min-w-10 overflow-hidden px-6 py-4"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i}>
-                    <td className="px-6 py-4" colSpan={7}>
-                      <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
-                    </td>
-                  </tr>
-                ))
-              ) : error ? (
-                <tr>
-                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={7}>{error}</td>
-                </tr>
-              ) : data.length === 0 ? (
-                <tr>
-                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={7}>
-                    Tidak ada entri audit yang cocok dengan filter ini.
-                  </td>
-                </tr>
-              ) : (
-                data.map((r) => {
-                  const extraRef = getExtraRef(r);
-                  return (
-                    <tr
-                      key={r.audit_id}
-                      className="group cursor-pointer transition-colors hover:bg-slate-50 min-h-16"
-                      onClick={() => setDetailRow(r)}
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400 overflow-hidden">
-                        {formatDateTime(r.created_at)}
-                      </td>
-                      <td className="px-6 py-4 min-w-0 overflow-hidden truncate" title={r.actor_nama}>
-                        <div className="font-semibold text-slate-900 truncate">{r.actor_nama}</div>
-                      </td>
-                      <td className="px-6 py-4 overflow-hidden">
-                        {roleMap[r.actor_role] ? (
-                          <Badge label={roleMap[r.actor_role].label} variant={roleMap[r.actor_role].variant} className="whitespace-nowrap shrink-0" />
-                        ) : (
-                          <span className="text-xs text-slate-500 whitespace-nowrap">{r.actor_role}</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 overflow-hidden">
-                        {aksiMap[r.aksi] ? (
-                          <Badge label={aksiMap[r.aksi].label} icon={aksiMap[r.aksi].icon} variant={aksiMap[r.aksi].variant} className="whitespace-nowrap shrink-0" />
-                        ) : (
-                          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 whitespace-nowrap shrink-0">
-                            {humanizeValue("aksi", r.aksi)}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 min-w-0 overflow-hidden">
-                        <Badge label={getEntityLabel(r)} variant="gray" className="whitespace-nowrap shrink-0" />
-                      </td>
-                      <td className="px-6 py-4 text-xs text-slate-500 min-w-0 overflow-hidden truncate">
-                        {extraRef !== "—" ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-mono whitespace-nowrap shrink-0">
-                            {extraRef}
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-right overflow-hidden">
-                        <button
-                          type="button"
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                          onClick={(e) => { e.stopPropagation(); setDetailRow(r); }}
-                        >
-                          <Eye size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
+};
 
   // Mobile card component for Audit Log
   function AuditLogCard({ row, onClick }: { row: AuditLogEntry; onClick: () => void }) {
@@ -803,11 +567,11 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
         <div className="mt-4 flex items-center justify-end">
           <button
             type="button"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 touch-target"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
             onClick={(e) => { e.stopPropagation(); onClick(); }}
             aria-label="Lihat detail"
           >
-            <Eye size={18} />
+            <Eye size={20} />
           </button>
         </div>
       </div>
@@ -872,7 +636,7 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
               <th className="w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
               <th className="w-[280px] min-w-[280px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Entitas Terkait</th>
               <th className="w-[300px] min-w-[300px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Referensi Tambahan</th>
-              <th className="w-10 min-w-10 overflow-hidden px-6 py-4"></th>
+              <th className="w-16 min-w-16 px-3 py-4 text-right"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
@@ -918,11 +682,13 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
                       "—"
                     )}
                   </td>
-                  <td className="px-6 py-4 text-right overflow-hidden">
+                  <td className="px-3 py-4 text-right">
                     <button
                       type="button"
                       className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                       onClick={(e) => { e.stopPropagation(); setDetailRow(r); }}
+                      aria-label="Lihat detail audit log"
+                      title="Lihat detail"
                     >
                       <Eye size={16} />
                     </button>
@@ -1228,11 +994,11 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
         <div className="mt-4 flex items-center justify-end">
           <button
             type="button"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 touch-target"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
             onClick={(e) => { e.stopPropagation(); onClick(); }}
             aria-label="Lihat detail"
           >
-            <Eye size={18} />
+            <Eye size={20} />
           </button>
         </div>
       </div>
@@ -1817,46 +1583,70 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                   <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={13}>
                     Tidak ada pergerakan stok yang cocok dengan filter ini.
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap font-mono font-semibold text-orange-500 overflow-hidden">
-                    {r.kode_tiket || "-"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap font-mono text-xs font-semibold text-slate-700 overflow-hidden">
-                    {r.nomor_surat_jalan && r.nomor_surat_jalan !== "-" ? r.nomor_surat_jalan : r.return_transaction_id ? `Return #${r.return_transaction_id}` : "-"}
-                  </td>
-                  <td className="px-6 py-4 min-w-0 overflow-hidden">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge
-                        label={r.tipe_surat_jalan === "inbound" ? "Inbound" : r.tipe_surat_jalan === "outbound" ? "Outbound" : r.tipe_surat_jalan || "-"}
-                        variant={r.tipe_surat_jalan === "inbound" ? "green" : r.tipe_surat_jalan === "outbound" ? "orange" : "gray"}
-                        className="whitespace-nowrap shrink-0"
-                      />
-                      {r.is_putaway && (
-                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 whitespace-nowrap shrink-0" title={r.jenis_mutasi === "out" ? "Putaway · keluar (Generic)" : r.jenis_mutasi === "in" ? "Putaway · masuk (Zona)" : "Perpindahan Internal (Putaway)"}>{
-                          r.jenis_mutasi === "out"
-                            ? "Putaway · keluar (Generic)"
-                            : r.jenis_mutasi === "in"
-                              ? "Putaway · masuk (Zona)"
-                              : "Perpindahan Internal (Putaway)"
-                        }</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-slate-700">
-                      {renderAsal(r)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-slate-700">
-                      {renderTujuan(r)}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        type="button"
-                        className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                        onClick={(e) => { e.stopPropagation(); setDetailTiket(r); }}
-                      >
-                        <Eye size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                </tr>
+              ) : (
+                data.map((r) => {
+                  return (
+                    <tr
+                      key={r.ledger_id}
+                      className="group cursor-pointer transition-colors hover:bg-slate-50 min-h-16"
+                      onClick={() => setDetailTiket(r)}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400 overflow-hidden">
+                        {formatDateTime(r.waktu_mutasi)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap font-mono font-semibold text-orange-500 overflow-hidden">
+                        {r.kode_tiket || "-"}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs font-semibold text-slate-700 overflow-hidden">
+                        {r.nomor_surat_jalan && r.nomor_surat_jalan !== "-" ? r.nomor_surat_jalan : r.return_transaction_id ? `Return #${r.return_transaction_id}` : "-"}
+                      </td>
+                      <td className="px-6 py-4 min-w-0 overflow-hidden">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge
+                            label={r.tipe_surat_jalan === "inbound" ? "Inbound" : r.tipe_surat_jalan === "outbound" ? "Outbound" : r.tipe_surat_jalan || "-"}
+                            variant={r.tipe_surat_jalan === "inbound" ? "green" : r.tipe_surat_jalan === "outbound" ? "orange" : "gray"}
+                            className="whitespace-nowrap shrink-0"
+                          />
+                          {r.is_putaway && (
+                            <span
+                              className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 whitespace-nowrap shrink-0"
+                              title={
+                                r.jenis_mutasi === "out"
+                                  ? "Putaway · keluar (Generic)"
+                                  : r.jenis_mutasi === "in"
+                                    ? "Putaway · masuk (Zona)"
+                                    : "Perpindahan Internal (Putaway)"
+                              }
+                            >
+                              {r.jenis_mutasi === "out"
+                                ? "Putaway · keluar (Generic)"
+                                : r.jenis_mutasi === "in"
+                                  ? "Putaway · masuk (Zona)"
+                                  : "Perpindahan Internal (Putaway)"}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                       <td className="px-6 py-4 whitespace-nowrap text-slate-700">
+                         {renderAsal(r)}
+                       </td>
+                       <td className="px-6 py-4 whitespace-nowrap text-slate-700">
+                         {renderTujuan(r)}
+                       </td>
+<td className="px-6 py-4 text-right">
+                          <button
+                            type="button"
+                            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            onClick={(e) => { e.stopPropagation(); setDetailTiket(r); }}
+                            aria-label="Lihat detail"
+                          >
+                            <Eye size={20} />
+                          </button>
+                        </td>
+                      </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -2196,10 +1986,10 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
           </div>
         </div>
 
-        <div className="mt-4 flex items-center justify-end">
+<div className="mt-4 flex items-center justify-end">
           <button
             type="button"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 touch-target"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
             onClick={(e) => { e.stopPropagation(); onClick(); }}
             aria-label="Lihat detail"
           >
@@ -2270,7 +2060,7 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
               <th className="w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Berhasil</th>
               <th className="w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gagal</th>
               <th className="w-[140px] min-w-[140px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-              <th className="w-10 min-w-10 overflow-hidden px-6 py-4"></th>
+              <th className="w-16 min-w-16 px-3 py-4 text-right"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
@@ -2304,14 +2094,15 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
                     {overallStatus === "sebagian_gagal" && <Badge label="Sebagian Gagal" variant="orange" className="whitespace-nowrap shrink-0" />}
                     {overallStatus === "draft" && <Badge label="Draft" variant="gray" className="whitespace-nowrap shrink-0" />}
                   </td>
-                  <td className="px-6 py-4 text-right overflow-hidden">
+                  <td className="px-3 py-4 text-right">
                     <button
                       type="button"
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 touch-target"
+                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                       onClick={(e) => { e.stopPropagation(); setDetailRow(r); }}
                       aria-label="Lihat detail"
+                      title="Lihat detail"
                     >
-                      <Eye size={18} />
+                      <Eye size={20} />
                     </button>
                   </td>
                 </tr>
@@ -2325,13 +2116,6 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
 
   return (
     <div>
-      {mobileCards}
-      {desktopTable}  return (
-    <div>
-      <div className="mb-4 rounded-xl border border-orange-100 bg-orange-50 px-4 py-2 text-xs text-orange-700">
-        Tabel ini menampilkan histori upload laporan mitra. Setiap baris merepresentasikan 1 sesi upload file Excel.
-      </div>
-
       <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
         <div className="col-span-1 sm:col-span-2 lg:col-span-2 xl:col-span-2">
           <div className="flex min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
@@ -2377,156 +2161,48 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1120px] table-fixed text-left text-sm border-separate border-spacing-0">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Waktu Upload</th>
-                <th className="w-[300px] min-w-[300px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama File</th>
-                <th className="w-[240px] min-w-[240px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diunggah Oleh</th>
-                <th className="w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Total</th>
-                <th className="w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Berhasil</th>
-                <th className="w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gagal</th>
-                <th className="w-[140px] min-w-[140px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                <th className="w-10 min-w-10 overflow-hidden px-6 py-4"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i}>
-                    <td className="px-6 py-4" colSpan={8}>
-                      <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
-                    </td>
-                  </tr>
-                ))
-              ) : error ? (
-                <tr>
-                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={8}>{error}</td>
-                </tr>
-              ) : data.length === 0 ? (
-                <tr>
-                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={8}>
-                    Belum ada riwayat upload laporan mitra.
-                  </td>
-                </tr>
-              ) : (
-                data.map((r) => {
-                  const allSuccess = r.failed_rows === 0 && r.success_rows > 0;
-                  const hasFailed = r.failed_rows > 0;
-                  const overallStatus = allSuccess ? "berhasil" : hasFailed ? "sebagian_gagal" : "draft";
-                  return (
-                    <tr
-                      key={r.upload_id}
-                      className="group cursor-pointer transition-colors hover:bg-slate-50 min-h-16"
-                      onClick={() => setDetailRow(r)}
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400 overflow-hidden">
-                        {formatDateTime(r.uploaded_at)}
-                      </td>
-                      <td className="px-6 py-4 min-w-0 overflow-hidden">
-                        <div className="font-semibold text-slate-900 truncate">{renderFilename(r.filename)}</div>
-                      </td>
-                      <td className="px-6 py-4 min-w-0 overflow-hidden">
-                        <div className="font-semibold text-slate-900 truncate" title={r.uploaded_by_nama}>{r.uploaded_by_nama}</div>
-                        <div className="text-xs">
-                          <Badge label={humanizeValue("user_role", r.uploaded_by_role)} variant="gray" className="whitespace-nowrap shrink-0" />
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-center font-mono text-xs text-slate-600 overflow-hidden">{r.total_rows}</td>
-                      <td className="px-6 py-4 text-center font-mono text-xs text-emerald-600 overflow-hidden">{r.success_rows}</td>
-                      <td className="px-6 py-4 text-center font-mono text-xs text-rose-600 overflow-hidden">{r.failed_rows}</td>
-                      <td className="px-6 py-4 overflow-hidden">
-                        {overallStatus === "berhasil" && <Badge label="Berhasil" variant="green" className="whitespace-nowrap shrink-0" />}
-                        {overallStatus === "sebagian_gagal" && <Badge label="Sebagian Gagal" variant="orange" className="whitespace-nowrap shrink-0" />}
-                        {overallStatus === "draft" && <Badge label="Draft" variant="gray" className="whitespace-nowrap shrink-0" />}
-                      </td>
-                      <td className="px-6 py-4 text-right overflow-hidden">
-                        <button
-                          type="button"
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                          onClick={(e) => { e.stopPropagation(); setDetailRow(r); }}
-                        >
-                          <Eye size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {mobileCards}
+      {desktopTable}
 
-      {totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
-          <span>
-            Menampilkan {((page - 1) * limit) + 1}–{Math.min(page * limit, total)} dari {total} entri
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1 || loading}
-              className="rounded-full border border-slate-200 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-50"
-            >
-              Sebelumnya
-            </button>
-            <span className="font-mono">
-              {page} / {totalPages}
-            </span>
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages || loading}
-              className="rounded-full border border-slate-200 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-50"
-            >
-              Selanjutnya
-            </button>
-          </div>
-        </div>
-      )}
+      {detailRow && (
+        <Modal
+          open={!!detailRow}
+          onClose={() => setDetailRow(null)}
+          title="Detail Upload Laporan Mitra"
+          className="max-w-3xl"
+        >
+          {detailRow && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Nama File</p>
+                  <div className="text-sm font-semibold text-slate-800">{renderFilename(detailRow.filename)}</div>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Waktu Upload</p>
+                  <p className="text-sm font-semibold text-slate-800">{formatDateTime(detailRow.uploaded_at)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Diunggah Oleh</p>
+                  <p className="text-sm font-semibold text-slate-800">{detailRow.uploaded_by_nama}</p>
+                  {detailRow.uploaded_by_role && (
+                    <div className="mt-1">
+                      <Badge label={humanizeValue("user_role", detailRow.uploaded_by_role)} variant="gray" />
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Total / Berhasil / Gagal</p>
+                  <p className="text-sm font-semibold text-slate-800">
+                    {detailRow.total_rows} / {detailRow.success_rows} / {detailRow.failed_rows}
+                  </p>
+                </div>
+              </div>
 
-      <Modal
-        open={!!detailRow}
-        onClose={() => setDetailRow(null)}
-        title="Detail Upload Laporan Mitra"
-        className="max-w-3xl"
-      >
-        {detailRow && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs font-medium text-slate-400">Nama File</p>
-                <div className="text-sm font-semibold text-slate-800">{renderFilename(detailRow.filename)}</div>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-400">Waktu Upload</p>
-                <p className="text-sm font-semibold text-slate-800">{formatDateTime(detailRow.uploaded_at)}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-400">Diunggah Oleh</p>
-                <p className="text-sm font-semibold text-slate-800">{detailRow.uploaded_by_nama}</p>
-                {detailRow.uploaded_by_role && (
-                  <div className="mt-1">
-                    <Badge label={humanizeValue("user_role", detailRow.uploaded_by_role)} variant="gray" />
-                  </div>
-                )}
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-400">Total / Berhasil / Gagal</p>
-                <p className="text-sm font-semibold text-slate-800">
-                  {detailRow.total_rows} / {detailRow.success_rows} / {detailRow.failed_rows}
-                </p>
-              </div>
-            </div>
-
-            <div className="border-t border-slate-100 pt-4">
-              <p className="text-xs font-medium text-slate-400 mb-3">Detail Baris</p>
-              {detailRow.details && detailRow.details.length > 0 ? (
-                <div className="overflow-x-auto rounded-lg border border-slate-100">
+              <div className="border-t border-slate-100 pt-4">
+                <p className="text-xs font-medium text-slate-400 mb-3">Detail Baris</p>
+                {detailRow.details && detailRow.details.length > 0 ? (
+                  <div className="overflow-x-auto rounded-lg border border-slate-100">
                     <table className="min-w-full text-left text-xs">
                       <thead>
                         <tr className="border-b border-slate-100 bg-slate-50">
@@ -2585,14 +2261,15 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
                         })}
                       </tbody>
                     </table>
-                </div>
-              ) : (
-                <p className="text-sm text-slate-500">Tidak ada detail baris untuk upload ini.</p>
-              )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">Tidak ada detail baris untuk upload ini.</p>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-      </Modal>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }
@@ -2629,7 +2306,7 @@ export default function LaporanAuditPage() {
   return (
     <div className="flex flex-1 flex-col">
       <div className="w-full">
-<div className="mb-6">
+        <div className="mb-6">
           <div className="text-xs font-semibold uppercase tracking-wide text-orange-500">Admin General</div>
           <h1 className="mt-1 text-xl sm:text-2xl font-bold text-slate-900">Laporan & Audit Menyeluruh</h1>
           <p className="mt-1 text-sm text-slate-500">
@@ -2659,25 +2336,6 @@ export default function LaporanAuditPage() {
                 </button>
               );
             })}
-          </div>
-        </div><div className="overflow-x-auto pb-1 whitespace-nowrap border-b border-slate-100">
-          <div className="flex items-center gap-2 min-w-max">
-          {tabs.map((t) => {
-            const Icon = t.icon;
-            const active = tab === t.key;
-            return (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
-                  active ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                <Icon size={16} />
-                {t.label}
-              </button>
-            );
-          })}
           </div>
         </div>
 

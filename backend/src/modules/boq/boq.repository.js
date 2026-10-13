@@ -3,6 +3,8 @@ const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
 const { normalizeClusterId } = require("../../utils/clusterResolver");
 const additionalRepository = require("../additional/additional.repository");
+const reconciliationUtils = require("../reconciliation/reconciliation.utils");
+const { isMosEligibleInbound } = require("../reconciliation/reconciliation.utils");
 
 const DEFAULT_LIMIT = 10;
 const DEFAULT_PAGE = 1;
@@ -612,14 +614,15 @@ const getExportMatrixData = async () => {
     },
   });
 
-  const shipmentWhere = {
+  // Query outbound items (existing)
+  const outboundShipmentWhere = {
     surat_jalan: {
       status: { in: ["disetujui", "diterima_didistribusikan"] },
     },
   };
 
-  const shipmentItems = await prisma.surat_jalan_item.findMany({
-    where: shipmentWhere,
+  const outboundShipmentItems = await prisma.surat_jalan_item.findMany({
+    where: outboundShipmentWhere,
     include: {
       surat_jalan: {
         select: {
@@ -632,17 +635,45 @@ const getExportMatrixData = async () => {
     },
   });
 
+  // Query inbound items with approved statuses
+  const inboundShipmentWhere = {
+    surat_jalan: {
+      status: { in: ["ready_putaway", "disetujui", "diterima_didistribusikan"] },
+      tipe: "inbound",
+    },
+  };
+
+  const inboundShipmentItems = await prisma.surat_jalan_item.findMany({
+    where: inboundShipmentWhere,
+    include: {
+      surat_jalan: {
+        select: {
+          tipe: true,
+          project_id: true,
+          cluster_id: true,
+          tipe_pengirim: true,
+          gudang_asal_id: true,
+          gudang_tujuan_id: true,
+          boq_id: true,
+          tujuan_tipe: true,
+        },
+      },
+    },
+  });
+
   const inboundByProjectBarang = new Map();
   const outboundByProjectBarang = new Map();
   const additionalByProjectBarang = new Map();
-  const mosByProjectBarang = new Map();
+  const inboundMosByProjectBarang = new Map();
 
+  // Build project IDs for additional from both inbound and outbound
+  const allShipmentItems = [...inboundShipmentItems, ...outboundShipmentItems];
   const additionalTotalsByProject =
-    shipmentItems.length > 0
+    allShipmentItems.length > 0
       ? await additionalRepository.getAdditionalTotalsByProject(
           Array.from(
             new Set(
-              shipmentItems
+              allShipmentItems
                 .map((item) => item.surat_jalan?.project_id)
                 .filter((id) => id != null)
             )
@@ -654,30 +685,32 @@ const getExportMatrixData = async () => {
     additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + val);
   }
 
-  for (const item of shipmentItems) {
+  // Build inbound MOS map using isMosEligibleInbound
+  for (const item of inboundShipmentItems) {
     const projectIdNum = Number(item.surat_jalan?.project_id);
     const barangId = String(item.barang_id);
     const qty = Number(item.qty || 0);
     const key = `${projectIdNum}-${barangId}`;
 
-    if (item.surat_jalan?.tipe === "inbound") {
-      inboundByProjectBarang.set(
-        key,
-        (inboundByProjectBarang.get(key) || 0) + qty
-      );
-    }
-
-    if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
-      outboundByProjectBarang.set(
-        key,
-        (outboundByProjectBarang.get(key) || 0) + qty
-      );
-      mosByProjectBarang.set(
-        key,
-        (mosByProjectBarang.get(key) || 0) + qty
-      );
+    if (isMosEligibleInbound(item.surat_jalan)) {
+      inboundMosByProjectBarang.set(key, (inboundMosByProjectBarang.get(key) || 0) + qty);
     }
   }
+
+  // Build outbound map (for Used/other calculations, NOT for MOS)
+  for (const item of outboundShipmentItems) {
+    const projectIdNum = Number(item.surat_jalan?.project_id);
+    const barangId = String(item.barang_id);
+    const qty = Number(item.qty || 0);
+    const key = `${projectIdNum}-${barangId}`;
+
+    if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
+      outboundByProjectBarang.set(key, (outboundByProjectBarang.get(key) || 0) + qty);
+    }
+  }
+
+  // MOS = inbound only (external vendor inbound)
+  const mosByProjectBarang = inboundMosByProjectBarang;
 
   const usedByProjectBarang = new Map();
 
@@ -785,7 +818,7 @@ const getExportMatrixData = async () => {
       ? Number(usedByProjectBarang.get(key) || 0)
       : Number(outboundByProjectBarang.get(key) || 0);
     const approvedReturnQty = Number(approvedReturnByProjectBarang.get(key) || 0);
-    const remains = mos - (boq + additional) - used - approvedReturnQty;
+    const remains = reconciliationUtils.computeRemains(mos, boq, additional);
 
     return {
       project_id: projectIdNum,
@@ -849,7 +882,7 @@ const getExportMatrixData = async () => {
     proj.mos += row.mos;
     proj.used += row.used;
     proj.approved_return_qty += row.approved_return_qty || 0;
-    proj.remains = proj.mos - (proj.boq + proj.additional) - proj.used - proj.approved_return_qty;
+    proj.remains = reconciliationUtils.computeRemains(proj.mos, proj.boq, proj.additional);
   }
 
   const usedProjectIds = new Set();

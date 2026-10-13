@@ -987,9 +987,9 @@ export default function BoqPage() {
         {/* 1. Header */}
         <header className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
-            <h1 className="text-2xl md:text-3xl font-bold text-slate-900">BOQ & Surat Tiket</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Cluster & BOQ</h1>
             <p className="mt-1 text-sm text-slate-500 line-clamp-2 md:line-clamp-none">
-              Kelola BOQ (Bill of Quantity) dan Surat Tiket proyek.
+              Kelola Cluster, BOQ (Bill of Quantity), dan Surat Tiket proyek.
             </p>
           </div>
 
@@ -1123,7 +1123,7 @@ export default function BoqPage() {
                 <tr className="border-b border-slate-100 bg-slate-50">
                   <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Nomor BOQ / Tiket
+                    Nomor Cluster & BOQ
                   </th>
                   <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
                     Sumber
@@ -2153,7 +2153,7 @@ export default function BoqPage() {
         const mosSistem = boq.reconciliation?.mosSistem || 0;
         const used = boq.reconciliation?.used || 0;
         const approvedReturnQty = boq.reconciliation?.approved_return_qty || 0;
-        const remains = mosSistem - (totalBoq + totalAdditional) - used - approvedReturnQty;
+        const remains = mosSistem - (totalBoq + totalAdditional);
         const hasWarning = remains !== 0;
 
         return (
@@ -2169,9 +2169,9 @@ export default function BoqPage() {
                   <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                   <div>
                     <p className="font-semibold">Perhatian: BOQ ini masih memiliki sisa material.</p>
-                     <p className="mt-0.5 text-xs">
-                       Remains = <span className="font-semibold">{remains}</span> (MOS Sistem: {mosSistem}, BOQ: {totalBoq}, Additional: {totalAdditional}, Used: {used}, Return: {approvedReturnQty})
-                     </p>
+<p className="mt-0.5 text-xs">
+                        Remains = <span className="font-semibold">{remains}</span> (MOS: {mosSistem}, BOQ: {totalBoq}, Additional: {totalAdditional})
+                      </p>
                   </div>
                 </div>
               )}
