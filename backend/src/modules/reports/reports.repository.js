@@ -2571,6 +2571,89 @@ const backfillReconciliation = async (actorId) => {
   return { updated: affectedTiketIds.length };
 };
 
+// Normalisasi kunci kode_tiket agar cocok walau data tersimpan dengan spasi/karakter tak terlihat.
+// Pola yang sama dipakai saat parsing file upload di reports.controller.js.
+const normalizeTicketKey = (value) =>
+  String(value ?? "")
+    .normalize("NFKC")
+    .replace(/[\u00A0\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .toUpperCase();
+
+// Memetakan row tiket_material (batch query) menjadi Map kode_tiket -> info cluster/project.
+// Dipakai untuk memperkaya riwayat upload laporan mitra tanpa query N+1.
+const buildTicketInfoMap = (tikets = []) => {
+  const map = new Map();
+  for (const tiket of tikets) {
+    const key = normalizeTicketKey(tiket?.kode_tiket);
+    if (!key || map.has(key)) continue;
+    const boq = tiket.boq || null;
+    const cluster = boq?.cluster || null;
+    // Urutan fallback cluster: BOQ (wajib ber-cluster) -> kolom cluster_id pada tiket.
+    const clusterId = cluster?.cluster_id || boq?.cluster_id || tiket.cluster_id || null;
+    map.set(key, {
+      project_nama: tiket.project?.nama_project || null,
+      cluster_id: clusterId,
+      nama_cluster: cluster?.nama_cluster || null,
+    });
+  }
+  return map;
+};
+
+// Menambahkan project_nama/cluster_id/nama_cluster pada setiap detail dan
+// ringkasan unik tingkat log. Fungsi murni (tanpa DB) agar mudah diuji.
+const enrichUploadLogs = (logs = [], ticketMap = new Map()) => {
+  // Kumpulkan nilai unik sesuai urutan kemunculan; nilai tampil apa adanya,
+  // tapi perbandingan memakai kunci ternormalisasi agar tidak ganda karena spasi.
+  const collectUnique = (values) => {
+    const seen = new Map();
+    for (const { value, key } of values) {
+      if (value === null || value === undefined) continue;
+      const display = String(value);
+      if (!display) continue;
+      const dedupeKey = key || normalizeTicketKey(display);
+      if (seen.has(dedupeKey)) continue;
+      seen.set(dedupeKey, display);
+    }
+    return [...seen.values()];
+  };
+
+  return logs.map((log) => {
+    const details = (log.details || []).map((detail) => {
+      const info = detail.kode_tiket ? ticketMap.get(normalizeTicketKey(detail.kode_tiket)) : null;
+      return {
+        ...detail,
+        project_nama: detail.project_nama || info?.project_nama || null,
+        cluster_id: info?.cluster_id ?? null,
+        nama_cluster: info?.nama_cluster ?? null,
+      };
+    });
+
+    // Nilai tampil kode_tiket tetap apa adanya (mis. mempertahankan spasi),
+    // hanya dedupe-nya yang memakai kunci ternormalisasi.
+    const kode_tikets = [];
+    const seenKodeTiket = new Set();
+    for (const detail of details) {
+      if (detail.kode_tiket === null || detail.kode_tiket === undefined) continue;
+      const display = String(detail.kode_tiket);
+      if (!display) continue;
+      const key = normalizeTicketKey(detail.kode_tiket);
+      if (seenKodeTiket.has(key)) continue;
+      seenKodeTiket.add(key);
+      kode_tikets.push(display);
+    }
+
+    return {
+      ...log,
+      details,
+      cluster_ids: collectUnique(details.map((d) => ({ value: d.cluster_id, key: null }))),
+      cluster_names: collectUnique(details.map((d) => ({ value: d.nama_cluster, key: null }))),
+      project_names: collectUnique(details.map((d) => ({ value: d.project_nama, key: null }))),
+      kode_tikets,
+    };
+  });
+};
+
 const getReconciliationUploadLogs = async (filters = {}) => {
   const {
     search = "",
@@ -2648,11 +2731,44 @@ const getReconciliationUploadLogs = async (filters = {}) => {
       used: d.used ? Number(d.used) : 0,
       status: d.status,
       reason: d.reason,
+      project_nama: d.project_nama || null,
     })),
   }));
 
+  // Batch tunggal: kumpulkan semua kode_tiket pada halaman ini, lalu ambil info cluster/project-nya.
+  // Kunci dinormalisasi agar cocok dengan data yang tersimpan memiliki spasi tak sengaja.
+  const kodeTiketList = [
+    ...new Set(rows.flatMap((log) => (log.details || []).map((d) => normalizeTicketKey(d.kode_tiket)).filter(Boolean))),
+  ];
+
+  let ticketMap = new Map();
+  if (kodeTiketList.length > 0) {
+    const tikets = await prisma.tiket_material.findMany({
+      where: { kode_tiket: { in: kodeTiketList } },
+      include: {
+        project: {
+          select: {
+            nama_project: true,
+          },
+        },
+        boq: {
+          select: {
+            cluster_id: true,
+            cluster: {
+              select: {
+                cluster_id: true,
+                nama_cluster: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    ticketMap = buildTicketInfoMap(tikets);
+  }
+
   return {
-    data: rows,
+    data: enrichUploadLogs(rows, ticketMap),
     meta: {
       total,
       page: Number(page),
@@ -2674,4 +2790,6 @@ module.exports = {
   getZoneUtilization,
   backfillReconciliation,
   getReconciliationUploadLogs,
+  enrichUploadLogs,
+  buildTicketInfoMap,
 };

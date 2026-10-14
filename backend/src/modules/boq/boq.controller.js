@@ -233,6 +233,13 @@ const getItems = async (req, res, next) => {
     const statusesParam = req.query.statuses;
     const clusterId = req.query.clusterId || undefined;
     const clusterIds = req.query.clusterIds || undefined;
+    // Kata kunci pencarian barang: dipotong 100 karakter, dipecah per spasi,
+    // setiap kata harus cocok (AND) pada nama_barang ATAU kode_perangkat.
+    const searchKeywords = String(req.query.search || "")
+      .trim()
+      .slice(0, 100)
+      .split(/\s+/)
+      .filter(Boolean);
     const statuses = statusesParam
       ? String(statusesParam)
         .split(",")
@@ -252,7 +259,7 @@ const getItems = async (req, res, next) => {
         .map((s) => s.trim())
         .filter(Boolean);
     }
-    const result = await boqService.getItems(projectId, statuses, effectiveClusterId);
+    const result = await boqService.getItems(projectId, statuses, effectiveClusterId, searchKeywords);
     return response.success(res, "Daftar item BOQ berhasil diambil.", result);
   } catch (err) {
     next(err);

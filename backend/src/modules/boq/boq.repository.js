@@ -434,33 +434,77 @@ const getAreas = async () => {
   return areas.map((row) => row.area).filter(Boolean);
 };
 
-const findItemsByProject = async (projectId, clusterId, statuses = ["aktif"]) => {
-  const where = {
-    status: statuses.length === 1 ? statuses[0] : { in: statuses },
-  };
+// Pecah kata kunci berdasarkan spasi; SUDAH di-trim & dibatasi panjang oleh controller.
+const buildBarangSearchConditions = (keywords) =>
+  keywords.map((keyword) => ({
+    items: {
+      some: {
+        barang: {
+          OR: [
+            { nama_barang: { contains: keyword, mode: "insensitive" } },
+            { kode_perangkat: { contains: keyword, mode: "insensitive" } },
+          ],
+        },
+      },
+    },
+  }));
+
+const findItemsByProject = async (projectId, clusterId, statuses = ["aktif"], searchKeywords = []) => {
+  // Semua syarat digabung dengan AND agar filter project/cluster/status lama tetap utuh
+  // dan tidak tertimpa oleh OR milik filter pencarian barang.
+  const conditions = [
+    {
+      status: statuses.length === 1 ? statuses[0] : { in: statuses },
+    },
+  ];
 
   if (clusterId) {
     if (Array.isArray(clusterId)) {
-      where.cluster_id = { in: clusterId.map(String) };
+      conditions.push({ cluster_id: { in: clusterId.map(String) } });
     } else {
-      where.cluster_id = String(clusterId);
+      conditions.push({ cluster_id: String(clusterId) });
     }
   } else if (projectId) {
-    where.OR = [
-      { tiket: { project_id: Number(projectId) } },
-      { cluster: { project_id: Number(projectId) } },
-    ];
+    conditions.push({
+      OR: [
+        { tiket: { project_id: Number(projectId) } },
+        { cluster: { project_id: Number(projectId) } },
+      ],
+    });
+  }
+
+  if (searchKeywords.length > 0) {
+    conditions.push(...buildBarangSearchConditions(searchKeywords));
+  }
+
+  const where = { AND: conditions };
+
+  // Filter item di dalam include: tanpa ini, BOQ yang cocok tetap mengirim
+  // SEMUA item-nya sehingga hasil pencarian tercampur barang tak relevan.
+  // Tiap kata kunci harus cocok (AND) pada nama_barang ATAU kode_perangkat.
+  const itemsInclude = {
+    include: {
+      barang: true,
+      satuan: true,
+    },
+  };
+  if (searchKeywords.length > 0) {
+    itemsInclude.where = {
+      AND: searchKeywords.map((keyword) => ({
+        barang: {
+          OR: [
+            { nama_barang: { contains: keyword, mode: "insensitive" } },
+            { kode_perangkat: { contains: keyword, mode: "insensitive" } },
+          ],
+        },
+      })),
+    };
   }
 
   const boqs = await prisma.boq.findMany({
     where,
     include: {
-      items: {
-        include: {
-          barang: true,
-          satuan: true,
-        },
-      },
+      items: itemsInclude,
       tiket: {
         select: {
           project_id: true,
