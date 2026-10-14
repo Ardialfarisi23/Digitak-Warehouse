@@ -23,7 +23,8 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useApi } from "@/lib/api";
-import { humanizeKey, humanizeValue, VALUE_LABELS } from "@/lib/audit-labels";
+import { humanizeKey, humanizeValue, VALUE_LABELS, getEntityTypeLabel } from "@/lib/audit-labels";
+import { getSuratJalanStatusLabel, SURAT_JALAN_STATUS_LABEL, SURAT_JALAN_STATUS_VALUES } from "@/lib/surat-jalan-status";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -343,22 +344,8 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
     const kode = row.data_sesudah?.kode_tiket || row.data_sebelum?.kode_tiket;
     if (kode) return String(kode);
 
-    const entityTypeLabels: Record<string, string> = {
-      boq: "BOQ",
-      surat_jalan: "Surat Jalan",
-      project: "Project",
-      titik_lapangan: "Titik Lapangan",
-      user_account: "User",
-      item: "Barang",
-      personil: "Personil",
-      vehicle: "Kendaraan",
-      supplier: "Supplier",
-      warehouse: "Gudang",
-      cluster: "Cluster",
-    };
-
     if (row.entity_name) {
-      const label = entityTypeLabels[row.entity_type || ""] || row.entity_type || "Entitas";
+      const label = getEntityTypeLabel(row.entity_type);
       return `${label}: ${row.entity_name}`;
     }
 
@@ -378,15 +365,15 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
       null;
 
     if (fallbackName) {
-      const label = entityTypeLabels[row.entity_type || ""] || row.entity_type || "Entitas";
+      const label = getEntityTypeLabel(row.entity_type);
       return `${label}: ${fallbackName}`;
     }
 
-    if (row.entity_type && row.entity_id && row.entity_id !== "0") {
-      return `${row.entity_type} #${row.entity_id} (data mungkin telah dihapus)`;
-    }
-
-    return row.entity_type || "-";
+    // Entitas tidak ditemukan / sudah dihapus: tampilkan hanya label jenis
+    // entitas (bahasa Indonesia). Tidak pernah menampilkan
+    // "<entity_type> #<id> (data mungkin telah dihapus)".
+    const label = getEntityTypeLabel(row.entity_type);
+    return label !== "-" ? label : "-";
   };
 
   const getExtraRef = (row: AuditLogEntry) => {
@@ -838,39 +825,39 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
     if (label && label !== "-") {
       const badgeLabel = ASAL_TIPE_LABEL[row.asal_tipe || ""] || row.asal_tipe || "";
       return (
-        <span className="inline-flex items-center gap-1.5">
-          <span className="truncate block" title={label}>
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate max-w-[160px]" title={label}>
             {label}
           </span>
           {badgeLabel && (
-            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-600 bg-slate-100 whitespace-nowrap">
+            <span className="shrink-0 whitespace-nowrap inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-600 bg-slate-100">
               {badgeLabel}
             </span>
           )}
         </span>
       );
     }
-    const fallback = row.gudang_asal || "-";
+    const fallback = row.gudang_asal?.trim() || "-";
     return (
-      <span className={fallback === "-" ? "text-slate-300" : ""}>
+      <span className={fallback === "-" ? "text-slate-300" : ""} title={fallback}>
         {fallback}
       </span>
     );
   };
 
   const renderTujuan = (row: StockHistoryEntry) => {
-    const gudang = row.gudang_tujuan || "-";
+    const gudang = row.gudang_tujuan?.trim();
     if (gudang && gudang !== "-") {
-      return <span className="truncate block" title={gudang}>{gudang}</span>;
+      return <span className="block truncate max-w-[160px]" title={gudang}>{gudang}</span>;
     }
-    const lapangan = row.lapangan_tujuan || "-";
+    const lapangan = row.lapangan_tujuan?.trim();
     if (lapangan && lapangan !== "-") {
       return (
-        <span className="inline-flex items-center gap-1.5">
-          <span className="truncate block max-w-[220px]" title={lapangan}>
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate max-w-[160px]" title={lapangan}>
             {lapangan}
           </span>
-          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-600 bg-slate-100 whitespace-nowrap">
+          <span className="shrink-0 whitespace-nowrap inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-600 bg-slate-100">
             Lapangan
           </span>
         </span>
@@ -904,7 +891,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
         backgroundColor: statusColor[r.status_surat_jalan]?.bg || "#F3F4F6",
       }}
     >
-      {statusLabel[r.status_surat_jalan] || r.status_surat_jalan || "-"}
+      {getSuratJalanStatusLabel(r.status_surat_jalan)}
     </span>
   );
 
@@ -1015,7 +1002,6 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
   }, []);
 
   const jenisList = ["inbound", "outbound"];
-  const statusList = ["draft_diajukan", "menunggu_verifikasi", "ready_putaway", "disetujui", "digenerate", "diterima_didistribusikan", "sedang_dikirim", "tiba_menunggu_konfirmasi", "ditolak"];
 
   // Semua dropdown filter diisi dari master data supaya value-nya berupa ID
   // numerik (backend memfilter pakai ID, bukan nama). Limit dikirim eksplisit
@@ -1237,17 +1223,11 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
     outbound: "Outbound",
   };
 
-  const statusLabel: Record<string, string> = {
-    draft_diajukan: "Draft",
-    menunggu_verifikasi: "Menunggu Verifikasi",
-    ready_putaway: "Siap Putaway",
-    disetujui: "Disetujui",
-    digenerate: "Digenerate",
-    tiba_menunggu_konfirmasi: "Menunggu Konfirmasi",
-    diterima_didistribusikan: "Diterima/Didistribusikan",
-    sedang_dikirim: "Sedang Dikirim",
-    ditolak: "Ditolak",
-  };
+  // Label status surat jalan dipakai dari helper bersama (@/lib/surat-jalan-status)
+  // supaya tidak ada lagi kode mentah seperti "ready_putaway" yang tampil.
+  // Daftar status untuk dropdown filter juga ikut dari helper yang sama.
+  const statusLabel: Record<string, string> = SURAT_JALAN_STATUS_LABEL as Record<string, string>;
+  const statusOptions = SURAT_JALAN_STATUS_VALUES;
 
   return (
     <div>
@@ -1332,8 +1312,8 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
               className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
             >
               <option value="">Semua status</option>
-              {statusList.map((o) => (
-                <option key={o} value={o}>{statusLabel[o] || o}</option>
+              {statusOptions.map((o) => (
+                <option key={o} value={o}>{statusLabel[o] || getSuratJalanStatusLabel(o)}</option>
               ))}
             </select>
             <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1547,61 +1527,85 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
       {/* Desktop table (md+) */}
       <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1300px] md:min-w-[1500px] xl:min-w-[1800px] 2xl:min-w-[2040px] table-fixed text-left text-sm border-separate border-spacing-0">
+          <table className="w-full min-w-[1100px] table-fixed text-left text-sm border-separate border-spacing-0">
+            <colgroup>
+              <col className="w-[60px]" />
+              <col className="w-[110px]" />
+              <col className="w-[130px]" />
+              <col className="w-[160px]" />
+              <col className="w-[140px]" />
+              <col className="w-[130px]" />
+              <col className="w-[130px]" />
+              <col className="w-[130px]" />
+              <col className="w-[180px]" />
+              <col className="w-[80px]" />
+              <col className="w-[140px]" />
+              <col className="w-[200px]" />
+              <col className="w-[200px]" />
+              <col className="w-[60px]" />
+            </colgroup>
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tanggal</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">No. Surat Jalan</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Jenis Transaksi</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diproses Oleh</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Perangkat</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
-                <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Qty</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Zona</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Asal</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tujuan</th>
-                <th className="px-6 py-4 w-10"></th>
+                <th className="px-4 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">No</th>
+                <th className="px-4 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tanggal</th>
+                <th className="px-4 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
+                <th className="px-4 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">No. Surat Jalan</th>
+                <th className="px-4 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Jenis Transaksi</th>
+                <th className="px-4 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
+                <th className="px-4 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diproses Oleh</th>
+                <th className="px-4 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Perangkat</th>
+                <th className="px-4 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
+                <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Qty</th>
+                <th className="px-4 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Zona</th>
+                <th className="px-4 py-4 min-w-[200px] text-[11px] font-semibold uppercase tracking-wide text-slate-400">Asal</th>
+                <th className="px-4 py-4 min-w-[200px] text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tujuan</th>
+                <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody>
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4" colSpan={13}>
+                    <td className="px-4 py-4" colSpan={14}>
                       <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                     </td>
                   </tr>
                 ))
               ) : error ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={13}>{error}</td>
+                  <td className="px-4 py-16 text-center text-sm text-rose-500" colSpan={14}>{error}</td>
                 </tr>
               ) : data.length === 0 ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={13}>
+                  <td className="px-4 py-16 text-center text-sm text-slate-400" colSpan={14}>
                     Tidak ada pergerakan stok yang cocok dengan filter ini.
                   </td>
                 </tr>
               ) : (
-                data.map((r) => {
+                data.map((r, rowIndex) => {
                   return (
                     <tr
                       key={r.ledger_id}
-                      className="group cursor-pointer transition-colors hover:bg-slate-50 min-h-16"
+                      className="group cursor-pointer transition-colors border-b border-gray-50 last:border-0 odd:bg-white even:bg-slate-50 hover:bg-slate-50"
                       onClick={() => setDetailTiket(r)}
                     >
-                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400 overflow-hidden">
+                      <td className="px-4 py-4 overflow-hidden text-xs text-slate-400">
+                        {(page - 1) * limit + rowIndex + 1}
+                      </td>
+                      <td className="px-4 py-4 overflow-hidden font-mono text-xs whitespace-nowrap text-slate-400">
                         {formatDateTime(r.waktu_mutasi)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap font-mono font-semibold text-orange-500 overflow-hidden">
-                        {r.kode_tiket || "-"}
+                      <td className="px-4 py-4 overflow-hidden">
+                        <span className="block truncate max-w-[130px] font-mono font-semibold text-orange-500" title={r.kode_tiket || "-"}>
+                          {r.kode_tiket || "-"}
+                        </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs font-semibold text-slate-700 overflow-hidden">
-                        {r.nomor_surat_jalan && r.nomor_surat_jalan !== "-" ? r.nomor_surat_jalan : r.return_transaction_id ? `Return #${r.return_transaction_id}` : "-"}
+                      <td className="px-4 py-4 overflow-hidden">
+                        <span className="block truncate max-w-[150px] font-mono text-xs font-semibold text-slate-700" title={r.nomor_surat_jalan && r.nomor_surat_jalan !== "-" ? r.nomor_surat_jalan : r.return_transaction_id ? `Return #${r.return_transaction_id}` : "-"}>
+                          {r.nomor_surat_jalan && r.nomor_surat_jalan !== "-" ? r.nomor_surat_jalan : r.return_transaction_id ? `Return #${r.return_transaction_id}` : "-"}
+                        </span>
                       </td>
-                      <td className="px-6 py-4 min-w-0 overflow-hidden">
+                      <td className="px-4 py-4 overflow-hidden">
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge
                             label={r.tipe_surat_jalan === "inbound" ? "Inbound" : r.tipe_surat_jalan === "outbound" ? "Outbound" : r.tipe_surat_jalan || "-"}
@@ -1610,7 +1614,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                           />
                           {r.is_putaway && (
                             <span
-                              className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 whitespace-nowrap shrink-0"
+                              className="inline-flex shrink-0 items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-slate-600"
                               title={
                                 r.jenis_mutasi === "out"
                                   ? "Putaway · keluar (Generic)"
@@ -1628,23 +1632,68 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                           )}
                         </div>
                       </td>
-                       <td className="px-6 py-4 whitespace-nowrap text-slate-700">
-                         {renderAsal(r)}
-                       </td>
-                       <td className="px-6 py-4 whitespace-nowrap text-slate-700">
-                         {renderTujuan(r)}
-                       </td>
-<td className="px-6 py-4 text-right">
-                          <button
-                            type="button"
-                            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                            onClick={(e) => { e.stopPropagation(); setDetailTiket(r); }}
-                            aria-label="Lihat detail"
-                          >
-                            <Eye size={20} />
-                          </button>
-                        </td>
-                      </tr>
+                      <td className="px-4 py-4 overflow-hidden">
+                        <span
+                          className="inline-flex shrink-0 items-center rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap"
+                          style={{
+                            color: statusColor[r.status_surat_jalan]?.fg || "#6B7280",
+                            backgroundColor: statusColor[r.status_surat_jalan]?.bg || "#F3F4F6",
+                          }}
+                        >
+                          {getSuratJalanStatusLabel(r.status_surat_jalan)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 overflow-hidden">
+                        <span className="block truncate max-w-[130px] text-slate-700" title={r.diproses_oleh || "-"}>
+                          {r.diproses_oleh || "-"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 overflow-hidden">
+                        <span className="block truncate max-w-[130px] font-mono text-xs text-slate-500" title={r.kode_perangkat || "-"}>
+                          {r.kode_perangkat || "-"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 overflow-hidden">
+                        <span className="block break-words text-slate-800" title={r.nama_barang || "-"}>
+                          {r.nama_barang || "-"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <span className="font-mono font-semibold text-slate-800">
+                          {Number(r.qty ?? 0).toLocaleString("id-ID")}
+                        </span>
+                        {r.satuan && r.satuan !== "-" && (
+                          <span className="ml-1 text-xs text-slate-400">{r.satuan}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 overflow-hidden">
+                        {r.zona_kode && r.zona_kode !== "-" ? (
+                          <span className="block truncate max-w-[130px]" title={`${r.zona_gudang} / ${r.zona_kode}`}>
+                            <span className="text-slate-500">{r.zona_gudang}</span>
+                            <span className="mx-1 text-slate-300">/</span>
+                            <span className="font-mono font-semibold text-slate-800">{r.zona_kode}</span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-300">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 min-w-[200px] overflow-hidden text-slate-700">
+                        {renderAsal(r)}
+                      </td>
+                      <td className="px-4 py-4 min-w-[200px] overflow-hidden text-slate-700">
+                        {renderTujuan(r)}
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <button
+                          type="button"
+                          className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                          onClick={(e) => { e.stopPropagation(); setDetailTiket(r); }}
+                          aria-label="Lihat detail"
+                        >
+                          <Eye size={18} />
+                        </button>
+                      </td>
+                    </tr>
                   );
                 })
               )}
@@ -1815,7 +1864,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                 </div>
                 <div>
                   <p className="text-xs font-medium text-slate-400">Status</p>
-                  <p className="text-sm text-slate-800">{statusLabel[detailTiket.status_surat_jalan] || detailTiket.status_surat_jalan}</p>
+                  <p className="text-sm text-slate-800">{getSuratJalanStatusLabel(detailTiket.status_surat_jalan)}</p>
                 </div>
                 <div>
                   <p className="text-xs font-medium text-slate-400">Diproses Oleh</p>

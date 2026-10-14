@@ -168,6 +168,23 @@ const MASTER_DATA_TABS: MasterDataTab[] = [
 // Kategori barang sesuai PRD 7.1
 const ITEM_CATEGORIES = ["Server", "Networking", "Endpoint/Laptop", "Storage", "Power/UPS", "Kabel & Aksesoris"];
 
+// Posisi personil. Nilai mengikuti field posisi di database (lihat
+// backend users.repository.js roleToPosisi) supaya filter & form
+// memakai string yang sama persis dengan yang tersimpan.
+const PERSONNEL_POSISI_OPTIONS = ["Admin", "Supervisor", "Staff Gudang"];
+
+// Jenis kendaraan standar. Mengikuti nilai yang sudah dipakai di
+// seeders backend agar filter membandingkan string yang sama.
+const JENIS_KENDARAAN_OPTIONS = [
+  "Pickup",
+  "Truk Box",
+  "Truk Engkel",
+  "Mobil Operasional",
+  "Forklift",
+  "Motor",
+  "Lainnya",
+];
+
 const TAB_PERMISSIONS: Record<MasterDataType, { create: string[]; edit: string[]; delete: string[] }> = {
   items: {
     create: [ROLE.ADMIN],
@@ -232,7 +249,7 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
   ],
   personnel: [
     { key: "nama", label: "Nama", type: "text", required: true },
-    { key: "posisi", label: "Jabatan", type: "select", options: ["Supervisor", "Staf Gudang"] },
+    { key: "posisi", label: "Jabatan", type: "select", options: PERSONNEL_POSISI_OPTIONS },
     { key: "no_hp", label: "Telepon", type: "text" },
     { key: "nik", label: "NIK", type: "text" },
     { key: "email", label: "Email", type: "text" },
@@ -241,7 +258,7 @@ const TAB_FIELDS: Record<MasterDataType, FieldConfig[]> = {
     { key: "is_material_handler", label: "Material Handler", type: "checkbox" },
   ],
   vehicles: [
-    { key: "jenis_kendaraan", label: "Jenis Kendaraan", type: "text", required: true },
+    { key: "jenis_kendaraan", label: "Jenis Kendaraan", type: "select", required: true, options: JENIS_KENDARAAN_OPTIONS },
     { key: "merk", label: "Merk", type: "text" },
     { key: "no_polisi", label: "No. Polisi", type: "text", required: true },
     { key: "kapasitas_angkut", label: "Kapasitas Angkut (kg)", type: "text" },
@@ -836,6 +853,23 @@ function FormModal({
       });
     }
 
+    if (tab === "clusters") {
+      const clusterIdField = formFields.find((field) => field.key === "cluster_id");
+      const projectField = formFields.find((field) => field.key === "project_id");
+
+      if (mode === "edit") {
+        if (!clusterIdField) return formFields;
+        return [clusterIdField, ...formFields.filter((field) => field.key !== "cluster_id")];
+      }
+
+      if (!clusterIdField || !projectField) return formFields;
+      return [
+        projectField,
+        clusterIdField,
+        ...formFields.filter((field) => field.key !== "project_id" && field.key !== "cluster_id"),
+      ];
+    }
+
     return formFields;
   }, [tab, formFields, form.tipe, mode]);
 
@@ -1116,15 +1150,28 @@ function FormModal({
                     className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400 disabled:opacity-60 disabled:bg-slate-50 disabled:cursor-not-allowed"
                   >
                     <option value="">Pilih {field.label.toLowerCase()}</option>
-                    {(field.options || []).map((opt) => {
-                      const optValue = typeof opt === "string" ? opt : String((opt as any).value);
-                      const optLabel = typeof opt === "string" ? opt : (opt as any).label;
-                      return (
-                        <option key={optValue} value={optValue}>
-                          {optLabel}
-                        </option>
-                      );
-                    })}
+                    {(() => {
+                      const rawOptions = field.options || [];
+                      const optionValues = rawOptions.map((opt) => String(typeof opt === "string" ? opt : (opt as any).value));
+                      const currentValue = String(form[field.key] ?? "");
+
+                      // Pertahankan nilai lama yang tidak ada di daftar opsi
+                      // supaya data existing tidak hilang saat diedit.
+                      const allOptions =
+                        currentValue && !optionValues.includes(currentValue)
+                          ? [...rawOptions, currentValue as any]
+                          : rawOptions;
+
+                      return allOptions.map((opt) => {
+                        const optValue = String(typeof opt === "string" ? opt : (opt as any).value);
+                        const optLabel = typeof opt === "string" ? opt : (opt as any).label;
+                        return (
+                          <option key={optValue} value={optValue}>
+                            {optLabel}
+                          </option>
+                        );
+                      });
+                    })()}
                   </select>
                 ) : field.type === "textarea" ? (
                   <textarea
@@ -1929,6 +1976,32 @@ function MasterDataPageContent() {
   const [unitOptions, setUnitOptions] = useState<Array<{ value: number; label: string }>>([]);
   const [projectOptions, setProjectOptions] = useState<Array<{ value: number; label: string }>>([]);
 
+  // Opsi filter yang digabung dari konstanta standar + nilai yang benar-benar
+  // ada di data terbaru, supaya baris dengan nilai lama/berbeda tetap bisa disaring.
+  const posisiOptions = useMemo(() => {
+    const fromData = Array.from(
+      new Set(data.map((r) => String((r as any)?.posisi ?? "")).filter(Boolean))
+    );
+    const merged = [
+      ...PERSONNEL_POSISI_OPTIONS,
+      ...fromData.filter((v) => !PERSONNEL_POSISI_OPTIONS.includes(v)),
+    ];
+
+    return merged.sort((a, b) => a.localeCompare(b));
+  }, [data]);
+
+  const jenisKendaraanOptions = useMemo(() => {
+    const fromData = Array.from(
+      new Set(data.map((r) => String((r as any)?.jenis_kendaraan ?? "")).filter(Boolean))
+    );
+    const merged = [
+      ...JENIS_KENDARAAN_OPTIONS,
+      ...fromData.filter((v) => !JENIS_KENDARAAN_OPTIONS.includes(v)),
+    ];
+
+    return merged.sort((a, b) => a.localeCompare(b));
+  }, [data]);
+
   // Modal state
   const [formModal, setFormModal] = useState<{
     mode: "create" | "edit";
@@ -1961,8 +2034,20 @@ function MasterDataPageContent() {
     get(new URL("/api/warehouses", baseUrl).toString())
       .then((res) => res.json())
       .then((json) => {
-        const list = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
-        setWarehouseOptions(list.map((w: any) => ({ value: Number(w.gudang_id), label: w.nama_gudang })));
+        const list = Array.isArray(json?.data?.data)
+          ? json.data.data
+          : Array.isArray(json?.data)
+            ? json.data
+            : Array.isArray(json)
+              ? json
+              : [];
+
+        setWarehouseOptions(
+          list.map((w: any) => ({
+            value: Number(w.gudang_id),
+            label: w.nama_gudang + (w.tipe === "dadakan" ? " (Transit)" : ""),
+          }))
+        );
       })
       .catch(() => setWarehouseOptions([]));
   }, [get]);
@@ -2028,7 +2113,7 @@ function MasterDataPageContent() {
       case "suppliers":
         return ["kode", "nama", "deskripsi", "is_aktif"];
       case "clusters":
-        return ["nama_project", "nama_cluster", "cluster_id", "cluster_type", "alamat_lengkap", "homepass_plan", "status_aktif"];
+        return ["cluster_id", "nama_project", "nama_cluster", "cluster_type", "alamat_lengkap", "homepass_plan", "status_aktif"];
       default:
         return ["id"];
     }
@@ -2075,6 +2160,19 @@ function getColumnLabel(column: string, activeTab?: MasterDataType) {
     };
 
     return labels[column] || column;
+  }
+
+  // Kolom bertipe ID ditampilkan menonjol, KECUALI pada tab Personil &
+  // Kendaraan yang isi selnya harus normal (font-normal, tidak bold).
+  function isEmphasizedIdColumn(column: string, activeTab?: MasterDataType) {
+    if (activeTab === "personnel" || activeTab === "vehicles") return false;
+    return column === "kode_perangkat" || column === "kode" || column === "personil_id" || column === "kendaraan_id";
+  }
+
+  // Kolom nama ditampilkan medium-weight, KECUALI pada tab Personil & Kendaraan.
+  function isEmphasizedNameColumn(column: string, activeTab?: MasterDataType) {
+    if (activeTab === "personnel" || activeTab === "vehicles") return false;
+    return column === "nama_barang" || column === "nama" || column === "nama_project" || column === "jenis_kendaraan" || column === "nama_gudang";
   }
 
   // -------------------------------------------------------------------------
@@ -2318,8 +2416,9 @@ function getColumnLabel(column: string, activeTab?: MasterDataType) {
               className="w-full sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
             >
               <option value="">Semua Posisi</option>
-              <option value="Supervisor">Supervisor</option>
-              <option value="Staf Gudang">Staf Gudang</option>
+              {posisiOptions.map((posisi) => (
+                <option key={posisi} value={posisi}>{posisi}</option>
+              ))}
             </select>
 
             <select
@@ -2403,11 +2502,9 @@ function getColumnLabel(column: string, activeTab?: MasterDataType) {
               className="w-full sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
             >
               <option value="">Semua Jenis Kendaraan</option>
-              <option value="truk">Truk</option>
-              <option value="pickup">Pickup</option>
-              <option value="van">Van</option>
-              <option value="motor">Motor</option>
-              <option value="lainnya">Lainnya</option>
+              {jenisKendaraanOptions.map((jenis) => (
+                <option key={jenis} value={jenis}>{jenis}</option>
+              ))}
             </select>
 
             <select
@@ -2629,15 +2726,15 @@ if (column === "gudang") {
                               );
                             }
 
-                            if (column === "nama_project" && activeTab === "clusters") {
-                              const projectName = (record as any)?.project?.nama_project || "-";
+                             if (column === "nama_project" && activeTab === "clusters") {
+                               const projectName = (record as any)?.project?.nama_project || "-";
 
-                              return (
-                                <td key={column} className="px-3 py-3 text-sm font-medium text-slate-800">
-                                  {projectName}
-                                </td>
-                              );
-                            }
+                               return (
+                                 <td key={column} className="px-3 py-3 text-sm text-slate-800">
+                                   {projectName}
+                                 </td>
+                               );
+                             }
 
                             if (column === "alamat_lengkap" && activeTab === "clusters") {
                               const alamat = (record as any)?.alamat_lengkap || "-";
@@ -2670,19 +2767,19 @@ if (column === "gudang") {
                             );
                           }
 
-                            return (
-                              <td
-                                key={column}
-                                className={[
-                                  "px-3 py-3",
-                                  column === "kode_perangkat" || column === "kode" || column === "personil_id" || column === "kendaraan_id" ? "font-semibold text-orange-500" : "text-slate-500",
-                                  column === "nama_barang" || column === "nama" || column === "nama_project" || column === "jenis_kendaraan" || column === "nama_gudang" ? "font-medium text-slate-800" : "",
-                                  column === "email" || column === "nik" ? "truncate max-w-[150px]" : "",
-                                ].join(" ")}
-                              >
-                                {formatValue(value)}
-                              </td>
-                            );
+                             return (
+                               <td
+                                 key={column}
+                                 className={[
+                                   "px-3 py-3",
+                                   isEmphasizedIdColumn(column, activeTab) ? "font-semibold text-orange-500" : "text-slate-500",
+                                   isEmphasizedNameColumn(column, activeTab) ? "font-medium text-slate-800" : "",
+                                   column === "email" || column === "nik" ? "truncate max-w-[150px]" : "",
+                                 ].join(" ")}
+                               >
+                                 {formatValue(value)}
+                               </td>
+                             );
                         })}
 
                         {/* Aksi */}
