@@ -474,6 +474,7 @@ function PreviewInboundModal({
           </button>
           <button
             type="button"
+            data-testid="inbound-confirm-save"
             onClick={onConfirm}
             disabled={submitting}
             className="rounded-xl bg-[#E8632C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
@@ -1727,6 +1728,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
           </p>
         </div>
         <Button
+          data-testid="inbound-open-modal"
           onClick={openModal}
           className="h-auto rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F]"
         >
@@ -1999,6 +2001,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-600">Project <span className="text-rose-500">*</span></label>
             <select
+              data-testid="inbound-project-select"
               value={selectedProjectId}
               onChange={(e) => {
                 setSelectedProjectId(e.target.value);
@@ -2020,6 +2023,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-600">Cluster <span className="text-rose-500">*</span></label>
             <select
+              data-testid="inbound-cluster-select"
               value={selectedClusterId}
               disabled={!selectedProjectId || loadingClusters}
               onChange={(e) => {
@@ -2054,6 +2058,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
             <label className="mb-1 block text-xs font-medium text-gray-600">Nomor Surat Jalan <span className="text-rose-500">*</span></label>
             <input
               type="text"
+              data-testid="inbound-nomor-sj"
               value={nomorSuratJalan}
               onChange={(e) => setNomorSuratJalan(e.target.value)}
               placeholder="Nomor surat jalan dari vendor/pihak luar"
@@ -2065,6 +2070,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
             <label className="mb-1 block text-xs font-medium text-gray-600">Tanggal Masuk <span className="text-rose-500">*</span></label>
             <input
               type="date"
+              data-testid="inbound-tanggal"
               value={tanggalMasuk}
               onChange={(e) => setTanggalMasuk(e.target.value)}
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
@@ -2161,6 +2167,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
             <label className="mb-1 block text-xs font-medium text-gray-600">Gudang Tujuan <span className="text-rose-500">*</span></label>
             <div className="relative">
               <select
+                data-testid="inbound-gudang-tujuan"
                 value={selectedGudangTujuanId}
                 onChange={(e) => setSelectedGudangTujuanId(e.target.value)}
                 className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
@@ -2179,6 +2186,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
             <label className="mb-1 block text-xs font-medium text-gray-600">PIC / Penerima</label>
             <input
               type="text"
+              data-testid="inbound-pic"
               value={picPemohon}
               onChange={(e) => setPicPemohon(e.target.value)}
               placeholder="Nama pemohon barang"
@@ -2192,6 +2200,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
             </label>
             <input
               type="text"
+              data-testid="inbound-kendaraan"
               value={kendaraanNamaTeks}
               onChange={(e) => setKendaraanNamaTeks(e.target.value)}
               placeholder="Contoh: Truk Box Mitsubishi Canter"
@@ -2210,6 +2219,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
             </label>
             <input
               type="text"
+              data-testid="inbound-no-polisi"
               value={kendaraanNoPolisTeks}
               onChange={(e) => setKendaraanNoPolisTeks(e.target.value)}
               placeholder="Contoh: B 9123 CD"
@@ -2228,6 +2238,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
             </label>
             <input
               type="text"
+              data-testid="inbound-driver"
               value={driverNamaTeks}
               onChange={(e) => setDriverNamaTeks(e.target.value)}
               placeholder="Contoh: Budi Santoso"
@@ -2322,6 +2333,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Qty Surat Jalan</label>
                 <input
                   type="number"
+                  data-testid="inbound-item-qty"
                   min={1}
                   value={draftItem.qtySuratJalan}
                   onChange={(e) => setDraftItemQty(Number(e.target.value))}
@@ -2341,6 +2353,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
               <div className="col-span-2">
                 <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Kondisi</label>
                 <select
+                  data-testid="inbound-item-kondisi"
                   value={draftItem.kondisi}
                   onChange={(e) => {
                     setDraftItemKondisi(e.target.value);
@@ -2487,6 +2500,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
               </div>
               <button
                 type="button"
+                data-testid="inbound-add-item"
                 onClick={handleCheckDraftItem}
                 className="flex items-center gap-1 rounded-lg bg-[#E8632C] px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-[#D9591F]"
               >
@@ -2613,6 +2627,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
             Batal
           </Button>
           <Button
+            data-testid="inbound-submit"
             onClick={handleSubmitInbound}
             disabled={!canSubmitModal || submitting}
             className="bg-[#E8632C] hover:bg-[#D9591F]"
@@ -2913,6 +2928,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 </p>
               <button
                 type="button"
+                data-testid="inbound-success-ok"
                 onClick={handleSuccessModalClose}
                 className="mt-6 w-full rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F]"
               >

@@ -1,0 +1,1332 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "D:\\Project\\digitak-warehouse\\node_modules\\@playwright\\test\\cli.js",
+      "test"
+    ],
+    "configFile": "D:\\Project\\digitak-warehouse\\playwright.config.ts",
+    "rootDir": "D:/Project/digitak-warehouse/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "D:/Project/digitak-warehouse/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "D:/Project/digitak-warehouse/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "filteredProjects": [
+      {
+        "grep": {},
+        "grepInvert": null,
+        "outputDir": "D:\\Project\\digitak-warehouse\\test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "name": "chromium",
+        "testDir": "D:\\Project\\digitak-warehouse\\tests",
+        "snapshotDir": "D:\\Project\\digitak-warehouse\\tests",
+        "testIgnore": [],
+        "testMatch": "**/*.@(spec|test).?(c|m)[jt]s?(x)",
+        "timeout": 30000,
+        "use": {
+          "baseURL": "http://localhost:3000",
+          "trace": "on-first-retry",
+          "screenshot": "only-on-failure",
+          "video": "retain-on-failure",
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.8078.4 Safari/537.36",
+          "viewport": {
+            "width": 1280,
+            "height": 720
+          },
+          "screen": {
+            "width": 1920,
+            "height": 1080
+          },
+          "deviceScaleFactor": 1,
+          "isMobile": false,
+          "hasTouch": false,
+          "defaultBrowserType": "chromium"
+        },
+        "dependencies": [],
+        "ignoreSnapshots": false,
+        "__projectId": "chromium"
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "html",
+        {
+          "outputFolder": "playwright-report",
+          "open": "never"
+        }
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "default",
+    "updateSourceMethod": "patch",
+    "version": "1.64.0",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "blackbox\\auth.spec.ts",
+      "file": "blackbox/auth.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Blackbox Testing: Autentikasi & Sesi (AUTH-01 s/d AUTH-12)",
+          "file": "blackbox/auth.spec.ts",
+          "line": 5,
+          "column": 6,
+          "specs": [
+            {
+              "title": "AUTH-01: [Positif/EP] Login Admin General dengan kredensial valid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1716,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:12.537Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5f57c7db84752b0fea9d-9696561d62ef264cc2e3",
+              "file": "blackbox/auth.spec.ts",
+              "line": 13,
+              "column": 7
+            },
+            {
+              "title": "AUTH-02: [Positif/EP] Login Supervisor dengan kredensial valid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1717,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:14.450Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5f57c7db84752b0fea9d-67e416d913cd9057247d",
+              "file": "blackbox/auth.spec.ts",
+              "line": 24,
+              "column": 7
+            },
+            {
+              "title": "AUTH-03: [Positif/EP] Login Staf Gudang dengan kredensial valid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1598,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:16.186Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5f57c7db84752b0fea9d-c6b249470bc1d8504045",
+              "file": "blackbox/auth.spec.ts",
+              "line": 30,
+              "column": 7
+            },
+            {
+              "title": "AUTH-04: [Negatif/EP] Login dengan email tidak terdaftar",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1388,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:17.805Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5f57c7db84752b0fea9d-0e65071805ec656a63ad",
+              "file": "blackbox/auth.spec.ts",
+              "line": 36,
+              "column": 7
+            },
+            {
+              "title": "AUTH-05: [Negatif/EP] Login dengan password salah",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1410,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:19.206Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5f57c7db84752b0fea9d-a214b88bd8cd148918c6",
+              "file": "blackbox/auth.spec.ts",
+              "line": 41,
+              "column": 7
+            },
+            {
+              "title": "AUTH-06: [Negatif/EG] Login dengan format email tidak valid (HTML5 / Zod)",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 6308,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' })\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' }) with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' })\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' })\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' }) with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' })\u001b[22m\n\n    at LoginPage.expectValidationError (D:\\Project\\digitak-warehouse\\tests\\pages\\LoginPage.ts:39:32)\n    at D:\\Project\\digitak-warehouse\\tests\\blackbox\\auth.spec.ts:49:21",
+                        "location": {
+                          "file": "D:\\Project\\digitak-warehouse\\tests\\pages\\LoginPage.ts",
+                          "column": 32,
+                          "line": 39
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39mpages\\LoginPage.ts:39\n\n\u001b[0m \u001b[90m 37 |\u001b[39m   \u001b[36masync\u001b[39m expectValidationError(messageSubstring\u001b[33m:\u001b[39m string) {\n \u001b[90m 38 |\u001b[39m     \u001b[36mconst\u001b[39m errorLocator \u001b[33m=\u001b[39m \u001b[36mthis\u001b[39m\u001b[33m.\u001b[39mpage\u001b[33m.\u001b[39mlocator(\u001b[32m\".text-rose-500\"\u001b[39m)\u001b[33m.\u001b[39mfilter({ hasText\u001b[33m:\u001b[39m messageSubstring })\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 39 |\u001b[39m     \u001b[36mawait\u001b[39m expect(errorLocator)\u001b[33m.\u001b[39mtoBeVisible({ timeout\u001b[33m:\u001b[39m \u001b[35m5000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 40 |\u001b[39m   }\n \u001b[90m 41 |\u001b[39m }\n \u001b[90m 42 |\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "D:\\Project\\digitak-warehouse\\tests\\pages\\LoginPage.ts",
+                            "column": 32,
+                            "line": 39
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' })\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' }) with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' })\u001b[22m\n\n\n   at pages\\LoginPage.ts:39\n\n  37 |   async expectValidationError(messageSubstring: string) {\n  38 |     const errorLocator = this.page.locator(\".text-rose-500\").filter({ hasText: messageSubstring });\n> 39 |     await expect(errorLocator).toBeVisible({ timeout: 5000 });\n     |                                ^\n  40 |   }\n  41 | }\n  42 |\n    at LoginPage.expectValidationError (D:\\Project\\digitak-warehouse\\tests\\pages\\LoginPage.ts:39:32)\n    at D:\\Project\\digitak-warehouse\\tests\\blackbox\\auth.spec.ts:49:21"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:20.628Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\blackbox-auth-Blackbox-Tes-1a8a9-mail-tidak-valid-HTML5-Zod--chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\blackbox-auth-Blackbox-Tes-1a8a9-mail-tidak-valid-HTML5-Zod--chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\blackbox-auth-Blackbox-Tes-1a8a9-mail-tidak-valid-HTML5-Zod--chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "D:\\Project\\digitak-warehouse\\tests\\pages\\LoginPage.ts",
+                        "column": 32,
+                        "line": 39
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "5f57c7db84752b0fea9d-e36a566b3e0df860fdf3",
+              "file": "blackbox/auth.spec.ts",
+              "line": 46,
+              "column": 7
+            },
+            {
+              "title": "AUTH-07: [Negatif/BVA] Login dengan password di bawah 6 karakter",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1414,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:27.550Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5f57c7db84752b0fea9d-0e941547f258565914f3",
+              "file": "blackbox/auth.spec.ts",
+              "line": 52,
+              "column": 7
+            },
+            {
+              "title": "AUTH-09: [Negatif/EG] Login dengan input kosong",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1357,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:29.103Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5f57c7db84752b0fea9d-9fc757a48d0f3a2bb244",
+              "file": "blackbox/auth.spec.ts",
+              "line": 57,
+              "column": 7
+            },
+            {
+              "title": "AUTH-10: [Negatif/EG] Percobaan SQL Injection pada form login",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 6364,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' })\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' }) with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' })\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' })\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' }) with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' })\u001b[22m\n\n    at LoginPage.expectValidationError (D:\\Project\\digitak-warehouse\\tests\\pages\\LoginPage.ts:39:32)\n    at D:\\Project\\digitak-warehouse\\tests\\blackbox\\auth.spec.ts:66:21",
+                        "location": {
+                          "file": "D:\\Project\\digitak-warehouse\\tests\\pages\\LoginPage.ts",
+                          "column": 32,
+                          "line": 39
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39mpages\\LoginPage.ts:39\n\n\u001b[0m \u001b[90m 37 |\u001b[39m   \u001b[36masync\u001b[39m expectValidationError(messageSubstring\u001b[33m:\u001b[39m string) {\n \u001b[90m 38 |\u001b[39m     \u001b[36mconst\u001b[39m errorLocator \u001b[33m=\u001b[39m \u001b[36mthis\u001b[39m\u001b[33m.\u001b[39mpage\u001b[33m.\u001b[39mlocator(\u001b[32m\".text-rose-500\"\u001b[39m)\u001b[33m.\u001b[39mfilter({ hasText\u001b[33m:\u001b[39m messageSubstring })\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 39 |\u001b[39m     \u001b[36mawait\u001b[39m expect(errorLocator)\u001b[33m.\u001b[39mtoBeVisible({ timeout\u001b[33m:\u001b[39m \u001b[35m5000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 40 |\u001b[39m   }\n \u001b[90m 41 |\u001b[39m }\n \u001b[90m 42 |\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "D:\\Project\\digitak-warehouse\\tests\\pages\\LoginPage.ts",
+                            "column": 32,
+                            "line": 39
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' })\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' }) with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('.text-rose-500').filter({ hasText: 'Format email tidak valid' })\u001b[22m\n\n\n   at pages\\LoginPage.ts:39\n\n  37 |   async expectValidationError(messageSubstring: string) {\n  38 |     const errorLocator = this.page.locator(\".text-rose-500\").filter({ hasText: messageSubstring });\n> 39 |     await expect(errorLocator).toBeVisible({ timeout: 5000 });\n     |                                ^\n  40 |   }\n  41 | }\n  42 |\n    at LoginPage.expectValidationError (D:\\Project\\digitak-warehouse\\tests\\pages\\LoginPage.ts:39:32)\n    at D:\\Project\\digitak-warehouse\\tests\\blackbox\\auth.spec.ts:66:21"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:30.474Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\blackbox-auth-Blackbox-Tes-28e65-L-Injection-pada-form-login-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\blackbox-auth-Blackbox-Tes-28e65-L-Injection-pada-form-login-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\blackbox-auth-Blackbox-Tes-28e65-L-Injection-pada-form-login-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "D:\\Project\\digitak-warehouse\\tests\\pages\\LoginPage.ts",
+                        "column": 32,
+                        "line": 39
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "5f57c7db84752b0fea9d-da4aff6fe5c18da7b477",
+              "file": "blackbox/auth.spec.ts",
+              "line": 63,
+              "column": 7
+            },
+            {
+              "title": "AUTH-11: [Negatif/DT] Login menggunakan akun yang telah dinonaktifkan",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1429,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:37.568Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5f57c7db84752b0fea9d-e027242af6f0808379d0",
+              "file": "blackbox/auth.spec.ts",
+              "line": 70,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "blackbox\\inbound.spec.ts",
+      "file": "blackbox/inbound.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Blackbox Testing: Surat Jalan Inbound (INB-01 s/d INB-10)",
+          "file": "blackbox/inbound.spec.ts",
+          "line": 5,
+          "column": 6,
+          "specs": [
+            {
+              "title": "INB-01: [Positif/EP] Memuat halaman Penerimaan (Inbound) dan tabel data",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2220,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:39.148Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "9d7fc540c52b03e96ce4-a69d5f9371f98a98e15c",
+              "file": "blackbox/inbound.spec.ts",
+              "line": 14,
+              "column": 7
+            },
+            {
+              "title": "INB-02: [Positif/EP] Pencarian Surat Jalan pada tabel Inbound",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3334,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:41.382Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "9d7fc540c52b03e96ce4-2087c373a3d36d6dfcec",
+              "file": "blackbox/inbound.spec.ts",
+              "line": 19,
+              "column": 7
+            },
+            {
+              "title": "INB-03: [Positif/ST] Membuka modal Input Inbound",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2632,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:44.727Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "9d7fc540c52b03e96ce4-95babe7206a7dddef598",
+              "file": "blackbox/inbound.spec.ts",
+              "line": 26,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "blackbox\\master-data.spec.ts",
+      "file": "blackbox/master-data.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Blackbox Testing: Master Data (MSTR-01 s/d MSTR-10)",
+          "file": "blackbox/master-data.spec.ts",
+          "line": 5,
+          "column": 6,
+          "specs": [
+            {
+              "title": "MSTR-01: [Positif/EP] Membuka daftar Master Barang dan memfilter data",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2970,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:47.379Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6048d3850daa4abbf3d9-4a7acb0b3e17f314c86b",
+              "file": "blackbox/master-data.spec.ts",
+              "line": 15,
+              "column": 7
+            },
+            {
+              "title": "MSTR-04: [Positif/EP] Membuka Master Gudang dan verifikasi list gudang",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3096,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:50.361Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6048d3850daa4abbf3d9-a67afe695e519569be7f",
+              "file": "blackbox/master-data.spec.ts",
+              "line": 24,
+              "column": 7
+            },
+            {
+              "title": "MSTR-06: [Positif/EP] Membuka Master Kendaraan",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3012,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:53.471Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6048d3850daa4abbf3d9-75417e421e5c2506de32",
+              "file": "blackbox/master-data.spec.ts",
+              "line": 32,
+              "column": 7
+            },
+            {
+              "title": "MSTR-10: [Negatif/EG] XSS Safety pada input pencarian Master Data",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3023,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:56.496Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6048d3850daa4abbf3d9-db5d90391dc6ac9fed3c",
+              "file": "blackbox/master-data.spec.ts",
+              "line": 37,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "blackbox\\rbac.spec.ts",
+      "file": "blackbox/rbac.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Blackbox Testing: Role-Based Access Control / RBAC (RBAC-01 s/d RBAC-06)",
+          "file": "blackbox/rbac.spec.ts",
+          "line": 5,
+          "column": 6,
+          "specs": [
+            {
+              "title": "RBAC-06: [Negatif/EG] Akses rute terlindungi tanpa token mengarahkan ke halaman login",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 168,
+                      "error": {
+                        "message": "Error: page.evaluate: SecurityError: Failed to read the 'localStorage' property from 'Window': Access is denied for this document.\n    at UtilityScript.evaluate (<anonymous>:372:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)",
+                        "stack": "Error: page.evaluate: SecurityError: Failed to read the 'localStorage' property from 'Window': Access is denied for this document.\n    at UtilityScript.evaluate (<anonymous>:372:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)\n    at UtilityScript.evaluate (<anonymous>:372:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)\n    at clearSession (D:\\Project\\digitak-warehouse\\tests\\utils\\helpers.ts:44:14)\n    at D:\\Project\\digitak-warehouse\\tests\\blackbox\\rbac.spec.ts:7:23",
+                        "location": {
+                          "file": "<anonymous>",
+                          "column": 16,
+                          "line": 372
+                        }
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "<anonymous>",
+                            "column": 16,
+                            "line": 372
+                          },
+                          "message": "Error: page.evaluate: SecurityError: Failed to read the 'localStorage' property from 'Window': Access is denied for this document.\n    at UtilityScript.evaluate (<anonymous>:372:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)\n    at UtilityScript.evaluate (<anonymous>:372:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)\n    at clearSession (D:\\Project\\digitak-warehouse\\tests\\utils\\helpers.ts:44:14)\n    at D:\\Project\\digitak-warehouse\\tests\\blackbox\\rbac.spec.ts:7:23"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:07:59.540Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\blackbox-rbac-Blackbox-Tes-936e8-engarahkan-ke-halaman-login-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\blackbox-rbac-Blackbox-Tes-936e8-engarahkan-ke-halaman-login-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\blackbox-rbac-Blackbox-Tes-936e8-engarahkan-ke-halaman-login-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "<anonymous>",
+                        "column": 16,
+                        "line": 372
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "1f40c72c2117af5b57dc-1593b8243372b06c34de",
+              "file": "blackbox/rbac.spec.ts",
+              "line": 6,
+              "column": 7
+            },
+            {
+              "title": "RBAC-01: [Negatif/DT] Staf Gudang mencoba akses halaman manajemen pengguna Admin (/dashboard/users)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3908,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:08:00.303Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "1f40c72c2117af5b57dc-02450682dc2e581fb981",
+              "file": "blackbox/rbac.spec.ts",
+              "line": 14,
+              "column": 7
+            },
+            {
+              "title": "RBAC-02: [Negatif/DT] Staf Gudang mencoba akses halaman Approval Supervisor",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3740,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:08:04.342Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "1f40c72c2117af5b57dc-04064a20d9e02a6b82d9",
+              "file": "blackbox/rbac.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "RBAC-03: [Positif/DT] Supervisor mengakses area operasional supervisor",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 10427,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('aside a:has-text(\"Approval\"), nav a:has-text(\"Approval\")').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('aside a:has-text(\"Approval\"), nav a:has-text(\"Approval\")').first() with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for locator('aside a:has-text(\"Approval\"), nav a:has-text(\"Approval\")').first()\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('aside a:has-text(\"Approval\"), nav a:has-text(\"Approval\")').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('aside a:has-text(\"Approval\"), nav a:has-text(\"Approval\")').first() with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for locator('aside a:has-text(\"Approval\"), nav a:has-text(\"Approval\")').first()\u001b[22m\n\n    at DashboardPage.expectSidebarItemVisible (D:\\Project\\digitak-warehouse\\tests\\pages\\DashboardPage.ts:25:32)\n    at D:\\Project\\digitak-warehouse\\tests\\blackbox\\rbac.spec.ts:42:25",
+                        "location": {
+                          "file": "D:\\Project\\digitak-warehouse\\tests\\pages\\DashboardPage.ts",
+                          "column": 32,
+                          "line": 25
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39mpages\\DashboardPage.ts:25\n\n\u001b[0m \u001b[90m 23 |\u001b[39m   \u001b[36masync\u001b[39m expectSidebarItemVisible(text\u001b[33m:\u001b[39m string) {\n \u001b[90m 24 |\u001b[39m     \u001b[36mconst\u001b[39m item \u001b[33m=\u001b[39m \u001b[36mthis\u001b[39m\u001b[33m.\u001b[39mpage\u001b[33m.\u001b[39mlocator(\u001b[32m`aside a:has-text(\"${text}\"), nav a:has-text(\"${text}\")`\u001b[39m)\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 25 |\u001b[39m     \u001b[36mawait\u001b[39m expect(item\u001b[33m.\u001b[39mfirst())\u001b[33m.\u001b[39mtoBeVisible({ timeout\u001b[33m:\u001b[39m \u001b[35m8000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 26 |\u001b[39m   }\n \u001b[90m 27 |\u001b[39m\n \u001b[90m 28 |\u001b[39m   \u001b[36masync\u001b[39m expectSidebarItemNotVisible(text\u001b[33m:\u001b[39m string) {\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "D:\\Project\\digitak-warehouse\\tests\\pages\\DashboardPage.ts",
+                            "column": 32,
+                            "line": 25
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('aside a:has-text(\"Approval\"), nav a:has-text(\"Approval\")').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('aside a:has-text(\"Approval\"), nav a:has-text(\"Approval\")').first() with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for locator('aside a:has-text(\"Approval\"), nav a:has-text(\"Approval\")').first()\u001b[22m\n\n\n   at pages\\DashboardPage.ts:25\n\n  23 |   async expectSidebarItemVisible(text: string) {\n  24 |     const item = this.page.locator(`aside a:has-text(\"${text}\"), nav a:has-text(\"${text}\")`);\n> 25 |     await expect(item.first()).toBeVisible({ timeout: 8000 });\n     |                                ^\n  26 |   }\n  27 |\n  28 |   async expectSidebarItemNotVisible(text: string) {\n    at DashboardPage.expectSidebarItemVisible (D:\\Project\\digitak-warehouse\\tests\\pages\\DashboardPage.ts:25:32)\n    at D:\\Project\\digitak-warehouse\\tests\\blackbox\\rbac.spec.ts:42:25"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:08:08.095Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\blackbox-rbac-Blackbox-Tes-4adf5-area-operasional-supervisor-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\blackbox-rbac-Blackbox-Tes-4adf5-area-operasional-supervisor-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\blackbox-rbac-Blackbox-Tes-4adf5-area-operasional-supervisor-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "D:\\Project\\digitak-warehouse\\tests\\pages\\DashboardPage.ts",
+                        "column": 32,
+                        "line": 25
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "1f40c72c2117af5b57dc-1eaeee62af615e74858b",
+              "file": "blackbox/rbac.spec.ts",
+              "line": 35,
+              "column": 7
+            },
+            {
+              "title": "RBAC-05: [Positif/DT] Admin General mengakses dashboard & menu lengkap",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 10606,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first() with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first()\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first() with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first()\u001b[22m\n\n    at DashboardPage.expectSidebarItemVisible (D:\\Project\\digitak-warehouse\\tests\\pages\\DashboardPage.ts:25:32)\n    at D:\\Project\\digitak-warehouse\\tests\\blackbox\\rbac.spec.ts:51:25",
+                        "location": {
+                          "file": "D:\\Project\\digitak-warehouse\\tests\\pages\\DashboardPage.ts",
+                          "column": 32,
+                          "line": 25
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39mpages\\DashboardPage.ts:25\n\n\u001b[0m \u001b[90m 23 |\u001b[39m   \u001b[36masync\u001b[39m expectSidebarItemVisible(text\u001b[33m:\u001b[39m string) {\n \u001b[90m 24 |\u001b[39m     \u001b[36mconst\u001b[39m item \u001b[33m=\u001b[39m \u001b[36mthis\u001b[39m\u001b[33m.\u001b[39mpage\u001b[33m.\u001b[39mlocator(\u001b[32m`aside a:has-text(\"${text}\"), nav a:has-text(\"${text}\")`\u001b[39m)\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 25 |\u001b[39m     \u001b[36mawait\u001b[39m expect(item\u001b[33m.\u001b[39mfirst())\u001b[33m.\u001b[39mtoBeVisible({ timeout\u001b[33m:\u001b[39m \u001b[35m8000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 26 |\u001b[39m   }\n \u001b[90m 27 |\u001b[39m\n \u001b[90m 28 |\u001b[39m   \u001b[36masync\u001b[39m expectSidebarItemNotVisible(text\u001b[33m:\u001b[39m string) {\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "D:\\Project\\digitak-warehouse\\tests\\pages\\DashboardPage.ts",
+                            "column": 32,
+                            "line": 25
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first() with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first()\u001b[22m\n\n\n   at pages\\DashboardPage.ts:25\n\n  23 |   async expectSidebarItemVisible(text: string) {\n  24 |     const item = this.page.locator(`aside a:has-text(\"${text}\"), nav a:has-text(\"${text}\")`);\n> 25 |     await expect(item.first()).toBeVisible({ timeout: 8000 });\n     |                                ^\n  26 |   }\n  27 |\n  28 |   async expectSidebarItemNotVisible(text: string) {\n    at DashboardPage.expectSidebarItemVisible (D:\\Project\\digitak-warehouse\\tests\\pages\\DashboardPage.ts:25:32)\n    at D:\\Project\\digitak-warehouse\\tests\\blackbox\\rbac.spec.ts:51:25"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:08:19.099Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\blackbox-rbac-Blackbox-Tes-4de52-kses-dashboard-menu-lengkap-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\blackbox-rbac-Blackbox-Tes-4de52-kses-dashboard-menu-lengkap-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\blackbox-rbac-Blackbox-Tes-4de52-kses-dashboard-menu-lengkap-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "D:\\Project\\digitak-warehouse\\tests\\pages\\DashboardPage.ts",
+                        "column": 32,
+                        "line": 25
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "1f40c72c2117af5b57dc-a912006fd53a2b63ffdd",
+              "file": "blackbox/rbac.spec.ts",
+              "line": 45,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "e2e\\inbound-putaway-flow.spec.ts",
+      "file": "e2e/inbound-putaway-flow.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "E2E User Journey 02: Inbound Material and Warehouse Management",
+          "file": "e2e/inbound-putaway-flow.spec.ts",
+          "line": 5,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Staf Gudang memeriksa Inbound -> Membuka Lokasi & Putaway -> Admin memverifikasi laporan",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6526,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:08:30.433Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "deebea9af0964cbf7fd0-afedb2a9b3dfe08f31b4",
+              "file": "e2e/inbound-putaway-flow.spec.ts",
+              "line": 6,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "e2e\\outbound-approval-flow.spec.ts",
+      "file": "e2e/outbound-approval-flow.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "E2E User Journey 03: Outbound Delivery and Supervisor Approval Workflow",
+          "file": "e2e/outbound-approval-flow.spec.ts",
+          "line": 5,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Alur Outbound: Admin/Staff melihat Surat Jalan -> Supervisor membuka Antrian Approval -> Verifikasi Navigasi",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4408,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:08:37.095Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7a0a4d0256e097c68be9-eab60bc253b93476e762",
+              "file": "e2e/outbound-approval-flow.spec.ts",
+              "line": 6,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "e2e\\user-journey-auth-rbac.spec.ts",
+      "file": "e2e/user-journey-auth-rbac.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "E2E User Journey 01: Multi-Role Authentication, RBAC, and Navigation Workflow",
+          "file": "e2e/user-journey-auth-rbac.spec.ts",
+          "line": 6,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Siklus Lengkap: Login Admin -> Akses Dashboard & Master Data -> Logout -> Login Supervisor -> Verifikasi Otorisasi -> Login Staff",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 9912,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first() with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first()\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first() with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first()\u001b[22m\n\n    at DashboardPage.expectSidebarItemVisible (D:\\Project\\digitak-warehouse\\tests\\pages\\DashboardPage.ts:25:32)\n    at D:\\Project\\digitak-warehouse\\tests\\e2e\\user-journey-auth-rbac.spec.ts:22:25",
+                        "location": {
+                          "file": "D:\\Project\\digitak-warehouse\\tests\\pages\\DashboardPage.ts",
+                          "column": 32,
+                          "line": 25
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39mpages\\DashboardPage.ts:25\n\n\u001b[0m \u001b[90m 23 |\u001b[39m   \u001b[36masync\u001b[39m expectSidebarItemVisible(text\u001b[33m:\u001b[39m string) {\n \u001b[90m 24 |\u001b[39m     \u001b[36mconst\u001b[39m item \u001b[33m=\u001b[39m \u001b[36mthis\u001b[39m\u001b[33m.\u001b[39mpage\u001b[33m.\u001b[39mlocator(\u001b[32m`aside a:has-text(\"${text}\"), nav a:has-text(\"${text}\")`\u001b[39m)\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 25 |\u001b[39m     \u001b[36mawait\u001b[39m expect(item\u001b[33m.\u001b[39mfirst())\u001b[33m.\u001b[39mtoBeVisible({ timeout\u001b[33m:\u001b[39m \u001b[35m8000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 26 |\u001b[39m   }\n \u001b[90m 27 |\u001b[39m\n \u001b[90m 28 |\u001b[39m   \u001b[36masync\u001b[39m expectSidebarItemNotVisible(text\u001b[33m:\u001b[39m string) {\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "D:\\Project\\digitak-warehouse\\tests\\pages\\DashboardPage.ts",
+                            "column": 32,
+                            "line": 25
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first()\nExpected: visible\nTimeout: 8000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first() with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for locator('aside a:has-text(\"Master Data\"), nav a:has-text(\"Master Data\")').first()\u001b[22m\n\n\n   at pages\\DashboardPage.ts:25\n\n  23 |   async expectSidebarItemVisible(text: string) {\n  24 |     const item = this.page.locator(`aside a:has-text(\"${text}\"), nav a:has-text(\"${text}\")`);\n> 25 |     await expect(item.first()).toBeVisible({ timeout: 8000 });\n     |                                ^\n  26 |   }\n  27 |\n  28 |   async expectSidebarItemNotVisible(text: string) {\n    at DashboardPage.expectSidebarItemVisible (D:\\Project\\digitak-warehouse\\tests\\pages\\DashboardPage.ts:25:32)\n    at D:\\Project\\digitak-warehouse\\tests\\e2e\\user-journey-auth-rbac.spec.ts:22:25"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-14T02:08:41.525Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\e2e-user-journey-auth-rbac-56c1f-asi-Otorisasi---Login-Staff-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\e2e-user-journey-auth-rbac-56c1f-asi-Otorisasi---Login-Staff-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\Project\\digitak-warehouse\\test-results\\e2e-user-journey-auth-rbac-56c1f-asi-Otorisasi---Login-Staff-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "D:\\Project\\digitak-warehouse\\tests\\pages\\DashboardPage.ts",
+                        "column": 32,
+                        "line": 25
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "dd37c82c9ace5808b5cf-5947e624513235cade0e",
+              "file": "e2e/user-journey-auth-rbac.spec.ts",
+              "line": 7,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-14T02:07:11.942Z",
+    "duration": 99591.886,
+    "expected": 19,
+    "skipped": 0,
+    "unexpected": 6,
+    "flaky": 0
+  }
+}

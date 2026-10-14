@@ -956,7 +956,6 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
 
         {isSelectionComplete && filteredRecords.length > 0 && (() => {
           const firstRecord = filteredRecords[0];
-          const uniquePic = Array.from(new Set(filteredRecords.map((r) => r.pic_nama).filter(Boolean)));
           const uniqueKodeTiket = Array.from(new Set(filteredRecords.map((r) => r.kode_tiket).filter(Boolean)));
           const uniqueBoqCodes = Array.from(
             new Set(filteredRecords.flatMap((r) => (r.boq_list || []).map((boq) => boq.kode_boq).filter(Boolean)))
@@ -965,23 +964,16 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
             <div className="px-6 py-3 bg-slate-50/50 border-b border-slate-100">
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-sm">
                 <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5">Cluster ID</p>
+                  <p className="font-medium text-slate-900 truncate">{firstRecord.cluster_id || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5">Cluster Name</p>
+                  <p className="font-medium text-slate-900 truncate">{firstRecord.nama_cluster || "-"}</p>
+                </div>
+                <div>
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5">Project</p>
                   <p className="font-medium text-slate-900 truncate">{firstRecord.project_nama}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5">Cluster</p>
-                  <p className="font-medium text-slate-900 truncate">
-                    {firstRecord.nama_cluster}
-                    {firstRecord.cluster_id && (
-                      <span className="ml-1.5 text-[10px] text-slate-400 font-normal">{firstRecord.cluster_id}</span>
-                    )}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5">PIC</p>
-                  <p className="font-medium text-slate-900 truncate">
-                    {uniquePic.length > 0 ? uniquePic.join(", ") : "-"}
-                  </p>
                 </div>
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5">Kode Tiket</p>
@@ -1312,17 +1304,36 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                 </div>
               )}
 
-              {selectedRecord.used <= selectedRecord.mos && selectedRecord.remains < 0 && (
-                <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                  <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600" />
-                  <div>
-                    <p className="text-sm font-semibold text-amber-800">Pengiriman belum memenuhi BOQ</p>
-                    <p className="mt-1 text-xs leading-relaxed text-amber-700">
-                      Kurang {formatNumber(Math.abs(selectedRecord.remains))} {selectedRecord.satuan} dari BOQ (MOS - BOQ).
-                    </p>
+              {(() => {
+                const remainsValue = Number(selectedRecord.remains);
+                const remainsNote = !Number.isFinite(remainsValue) || remainsValue === 0
+                  ? null
+                  : remainsValue < 0
+                    ? {
+                        title: "Pengiriman belum memenuhi BOQ",
+                        detail: `Kurang ${formatNumber(Math.abs(remainsValue))} ${selectedRecord.satuan} dari BOQ (MOS - BOQ).`,
+                        tone: "amber" as const,
+                      }
+                    : {
+                        title: "Pengiriman melebihi BOQ",
+                        detail: `Lebih ${formatNumber(remainsValue)} ${selectedRecord.satuan} dari BOQ (MOS - BOQ).`,
+                        tone: "blue" as const,
+                      };
+                if (!remainsNote) return null;
+                const toneClass =
+                  remainsNote.tone === "amber"
+                    ? { box: "border-amber-200 bg-amber-50", icon: "text-amber-600", title: "text-amber-800", desc: "text-amber-700" }
+                    : { box: "border-blue-200 bg-blue-50", icon: "text-blue-600", title: "text-blue-800", desc: "text-blue-700" };
+                return (
+                  <div className={`flex gap-3 rounded-2xl border p-4 ${toneClass.box}`}>
+                    <AlertTriangle size={18} className={`mt-0.5 shrink-0 ${toneClass.icon}`} />
+                    <div>
+                      <p className={`text-sm font-semibold ${toneClass.title}`}>{remainsNote.title}</p>
+                      <p className={`mt-1 text-xs leading-relaxed ${toneClass.desc}`}>{remainsNote.detail}</p>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {selectedRecord.temuan_penerimaan && selectedRecord.temuan_penerimaan.jumlah_item_bertemuan_selisih > 0 && (
                 <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">

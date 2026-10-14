@@ -11,12 +11,64 @@ const reconciliationService = require("../reconciliation/reconciliation.service"
 
 const RECONCILIATION_REQUIRED_COLUMNS = [
   { name: "Kode Tiket", aliases: ["Kode Tiket", "kode_tiket", "KODE_TIKET"] },
-  { name: "Project", aliases: ["Project", "project", "Nama Project"] },
+  { name: "Project Name", aliases: ["Project Name", "Project", "project", "Nama Project"] },
   { name: "Nama Barang", aliases: ["Nama Barang", "nama_barang", "Barang"] },
-  { name: "Used", aliases: ["Used", "used"] },
+  { name: "Angka Used", aliases: ["Angka Used", "Used", "used"] },
   { name: "Kondisi", aliases: ["Kondisi", "kondisi", "KONDISI"] },
-  { name: "Catatan", aliases: ["Catatan", "catatan", "Keterangan"] },
+  { name: "Keterangan", aliases: ["Keterangan", "Catatan", "catatan"] },
 ];
+
+// Kolom opsional: hanya informasi di file upload, tidak dipakai untuk mencocokkan data sistem.
+const RECONCILIATION_OPTIONAL_COLUMNS = [
+  { name: "Cluster ID", aliases: ["Cluster ID", "cluster_id"] },
+  { name: "Cluster Name", aliases: ["Cluster Name", "cluster_name", "Nama Cluster", "nama_cluster"] },
+];
+
+// Pencocokan nama header tidak sensitif huruf besar/kecil dan spasi berlebih.
+const normalizeHeaderKey = (value) =>
+  String(value ?? "")
+    .normalize("NFKC")
+    .replace(/[\u00A0\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+
+const RECONCILIATION_COLUMN_ALIASES = {};
+[...RECONCILIATION_REQUIRED_COLUMNS, ...RECONCILIATION_OPTIONAL_COLUMNS].forEach((col) => {
+  RECONCILIATION_COLUMN_ALIASES[col.name] = col.aliases;
+});
+
+const findMissingReconciliationColumns = (rowKeys) => {
+  const normalizedKeys = rowKeys.map(normalizeHeaderKey);
+  return RECONCILIATION_REQUIRED_COLUMNS.filter(
+    (col) => !col.aliases.some((alias) => normalizedKeys.includes(normalizeHeaderKey(alias)))
+  ).map((col) => col.name);
+};
+
+const pickRowValue = (row, aliases) => {
+  for (const alias of aliases) {
+    const normalizedAlias = normalizeHeaderKey(alias);
+    for (const key of Object.keys(row)) {
+      if (normalizeHeaderKey(key) === normalizedAlias) {
+        const value = row[key];
+        if (value !== undefined && value !== null && value !== "") return value;
+      }
+    }
+  }
+  return null;
+};
+
+const readReconciliationRow = (row) => {
+  const usedRaw = pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Angka Used"]);
+  return {
+    kodeTiket: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Kode Tiket"]),
+    projectName: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Project Name"]),
+    namaBarang: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Nama Barang"]),
+    used: usedRaw === null ? 0 : Number(usedRaw),
+    kondisi: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Kondisi"]),
+    catatan: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Keterangan"]),
+  };
+};
 
 const KONDISI_BARANG_VALUES = new Set(["baik", "rusak_ringan", "rusak_berat", "tidak_sesuai_spek", "doa"]);
 const KONDISI_BARANG_LABEL_MAP = new Map([
@@ -346,9 +398,7 @@ const uploadReconciliationFile = async (req, res, next) => {
       }
 
       const firstRowKeys = Object.keys(jsonData[0] || {});
-      const missingColumns = RECONCILIATION_REQUIRED_COLUMNS
-        .filter((col) => !col.aliases.some((alias) => firstRowKeys.includes(alias)))
-        .map((col) => col.name);
+      const missingColumns = findMissingReconciliationColumns(firstRowKeys);
 
       if (missingColumns.length > 0) {
         fs.unlinkSync(req.file.path);
@@ -401,7 +451,14 @@ const uploadReconciliationFile = async (req, res, next) => {
 
       for (let i = 0; i < jsonData.length; i++) {
         const row = jsonData[i];
-        const rawKodeTiket = row["Kode Tiket"] || row["kode_tiket"] || row["KODE_TIKET"];
+        const {
+          kodeTiket: rawKodeTiket,
+          projectName,
+          namaBarang,
+          used,
+          kondisi,
+          catatan,
+        } = readReconciliationRow(row);
         const kodeTiket = rawKodeTiket
           ? String(rawKodeTiket)
               .normalize("NFKC")
@@ -409,11 +466,6 @@ const uploadReconciliationFile = async (req, res, next) => {
               .trim()
               .toUpperCase()
           : null;
-        const projectName = row["Project"] || row["project"] || row["Nama Project"] || null;
-        const used = Number(row["Used"] || row["used"] || 0);
-        const namaBarang = row["Nama Barang"] || row["nama_barang"] || row["Barang"] || null;
-        const kondisi = row["Kondisi"] || row["kondisi"] || row["KONDISI"] || null;
-        const catatan = row["Catatan"] || row["catatan"] || row["Keterangan"] || null;
 
         if (!kodeTiket) {
           failed.push({ row: i + 2, used, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak ditemukan" });
@@ -818,28 +870,40 @@ const downloadReconciliationTemplate = async (req, res, next) => {
       right: { style: "thin" },
     };
 
-    const headers = ["Kode Tiket", "Project", "Nama Barang", "Used", "Kondisi", "Catatan"];
-    headers.forEach((header, index) => {
+    const templateColumns = [
+      { header: "Cluster ID", example: "CL-0001", width: 18 },
+      { header: "Cluster Name", example: "Cluster Contoh", width: 24 },
+      { header: "Project Name", example: "Project A", width: 24 },
+      { header: "Kode Tiket", example: "TIKET-001", width: 18 },
+      { header: "Nama Barang", example: "Kabel Fiber Optik", width: 28 },
+      { header: "Angka Used", example: 3, width: 14, numeric: true },
+      { header: "Kondisi", example: "Baik", width: 16 },
+      { header: "Keterangan", example: "Contoh catatan opsional", width: 32 },
+    ];
+
+    templateColumns.forEach((column, index) => {
       const cell = worksheet.getCell(1, index + 1);
-      cell.value = header;
+      cell.value = column.header;
       cell.font = headerFont;
       cell.fill = headerFill;
       cell.alignment = { horizontal: "center", vertical: "middle" };
       cell.border = borderStyle;
     });
 
-    const exampleRow = ["TIKET-001", "Project A", "Kabel Fiber Optik", 3, "Baik", "Contoh catatan opsional"];
-    exampleRow.forEach((value, colIndex) => {
-      const cell = worksheet.getCell(2, colIndex + 1);
-      cell.value = value;
+    templateColumns.forEach((column, index) => {
+      const cell = worksheet.getCell(2, index + 1);
+      cell.value = column.example;
       cell.border = borderStyle;
       cell.alignment = { vertical: "middle" };
+      if (column.numeric) {
+        cell.numFmt = "0";
+      }
     });
 
     worksheet.getRow(1).height = 22;
-    for (let i = 1; i <= headers.length; i++) {
-      worksheet.getColumn(i).width = 28;
-    }
+    templateColumns.forEach((column, index) => {
+      worksheet.getColumn(index + 1).width = column.width;
+    });
 
     const buffer = await workbook.xlsx.writeBuffer();
     const filename = "Template_Rekonsiliasi.xlsx";
@@ -884,4 +948,8 @@ module.exports = {
   confirmReconciliationUpload,
   getReconciliationUploadLogs,
   downloadReconciliationTemplate,
+  RECONCILIATION_REQUIRED_COLUMNS,
+  RECONCILIATION_OPTIONAL_COLUMNS,
+  findMissingReconciliationColumns,
+  readReconciliationRow,
 };

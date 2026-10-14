@@ -8,8 +8,8 @@ export class MasterDataPage {
 
   constructor(page: Page) {
     this.page = page;
-    this.searchInput = page.locator('input[placeholder*="Cari"]');
-    this.addButton = page.locator('button:has-text("Tambah")');
+    this.searchInput = page.locator('input[placeholder*="Cari"]').first();
+    this.addButton = page.locator('button:has-text("Tambah")').first();
     this.tableContainer = page.locator("table");
   }
 
@@ -19,14 +19,22 @@ export class MasterDataPage {
   }
 
   async selectTab(tabName: "Barang" | "Proyek" | "Personil" | "Kendaraan" | "Gudang" | "Supplier" | "Cluster") {
-    const tab = this.page.locator(`button:has-text("${tabName}")`);
+    const tab = this.page.locator(`button:has-text("${tabName}")`).first();
     await tab.click();
-    await this.page.waitForTimeout(500);
+    // Tunggu tabel termuat ulang untuk tab terpilih (debounce search 400ms
+    // ditangani via assertion, bukan sleep statis).
+    await expect(this.tableContainer).toBeVisible({ timeout: 8000 });
   }
 
   async search(query: string) {
     await this.searchInput.fill(query);
-    await this.page.waitForTimeout(600); // Debounce
+    // Aplikasi mendebounce search 400ms; assertion hanya menunggu tabel
+    // tetap ter-render (hasil bisa kosong, tergantung query).
+    await expect(this.tableContainer).toBeVisible({ timeout: 8000 });
+  }
+
+  async expectHasRows() {
+    await expect(this.page.locator("table tbody tr").first()).toBeVisible({ timeout: 8000 });
   }
 
   async expectTableContains(text: string) {

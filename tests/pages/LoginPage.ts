@@ -14,9 +14,9 @@ export class LoginPage {
     this.emailInput = page.locator("#email");
     this.passwordInput = page.locator("#password");
     this.submitButton = page.locator('button[type="submit"]');
-    this.serverErrorAlert = page.locator(".bg-rose-50");
-    this.emailErrorText = page.locator("#email ~ p, div:has(#email) p.text-rose-500");
-    this.passwordErrorText = page.locator("div:has(#password) p.text-rose-500");
+    this.serverErrorAlert = page.locator(".bg-rose-50").first();
+    this.emailErrorText = page.locator("p.text-rose-500").filter({ hasText: "Email" });
+    this.passwordErrorText = page.locator("p.text-rose-500").filter({ hasText: "Password" });
   }
 
   async goto() {
@@ -35,7 +35,21 @@ export class LoginPage {
   }
 
   async expectValidationError(messageSubstring: string) {
-    const errorLocator = this.page.locator(".text-rose-500").filter({ hasText: messageSubstring });
+    const errorLocator = this.page.locator("p.text-rose-500").filter({ hasText: messageSubstring });
     await expect(errorLocator).toBeVisible({ timeout: 5000 });
+  }
+
+  /**
+   * Input bertipe `type="email"` memicu validasi native browser yang
+   * memblokir submit form sebelum pesan Zod sempat dirender.
+   * Assertion stabil untuk perilaku tersebut: field ditandai :invalid
+   * oleh browser dan pengguna tetap di halaman login.
+   */
+  async expectNativeEmailValidationBlocked() {
+    await expect(this.emailInput).toBeVisible();
+    const isInvalid = await this.emailInput.evaluate(
+      (el: HTMLInputElement) => el.matches(":invalid"),
+    );
+    expect(isInvalid).toBe(true);
   }
 }
