@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { PackageCheck, Plus, X, ChevronDown, Trash2, Upload, Loader2 } from "lucide-react";
+import { PackageCheck, Plus, X, ChevronDown, ChevronRight, Filter, Search, Trash2, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import BarangPicker, {
   type BarangPickerItem,
@@ -492,6 +492,92 @@ export default function InboundListPage() {
   const [list, setList] = useState<InboundSuratJalan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Pencarian teks (nomor SJ / project) — klien-side.
+  const [searchQuery, setSearchQuery] = useState("");
+  // Filter lanjutan di dalam panel "Filter": status multi-select, rentang
+  // tanggal, dan gudang (tujuan/asal) — semuanya klien-side, dikombinasikan.
+  const [statusFilter, setStatusFilter] = useState<InboundStatus[]>([]);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [gudangFilter, setGudangFilter] = useState("");
+  const [filterOpen, setFilterOpen] = useState(false);
+  // Row info+item yang sedang dibuka di tabel desktop.
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const filterRef = useRef<HTMLDivElement | null>(null);
+
+  // Tutup panel filter saat klik di luar / tekan Escape.
+  useEffect(() => {
+    if (!filterOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setFilterOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFilterOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [filterOpen]);
+
+  // Halaman ini bisa dibuka dari halaman lain (mis. setelah simpan) — selalu
+  // mulai dari atas supaya judul + tombol aksi tidak tertinggal ter-scroll.
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, []);
+
+  // Opsi gudang diambil dari data yang sudah dimuat (tujuan & asal).
+  const gudangOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const sj of list) {
+      if (sj.gudang_tujuan?.nama_gudang) names.add(sj.gudang_tujuan.nama_gudang);
+      if (sj.gudang_asal?.nama_gudang) names.add(sj.gudang_asal.nama_gudang);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b, "id-ID"));
+  }, [list]);
+
+  const activeFilterCount =
+    (statusFilter.length > 0 ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) + (gudangFilter ? 1 : 0);
+  const hasAnyFilter = activeFilterCount > 0 || searchQuery.trim().length > 0;
+
+  const clearFilters = () => {
+    setStatusFilter([]);
+    setDateFrom("");
+    setDateTo("");
+    setGudangFilter("");
+    setSearchQuery("");
+  };
+
+  const toggleStatusFilter = (status: InboundStatus) => {
+    setStatusFilter((prev) =>
+      prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]
+    );
+  };
+
+  const filtered = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase("id-ID");
+    const fromTime = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
+    const toTime = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
+    return list.filter((sj) => {
+      const matchesStatus = statusFilter.length === 0 || statusFilter.includes(sj.status);
+      const matchesSearch =
+        !query ||
+        sj.nomor_surat_jalan.toLocaleLowerCase("id-ID").includes(query) ||
+        (sj.project?.nama_project || "").toLocaleLowerCase("id-ID").includes(query);
+      const waktu = new Date(sj.tanggal || sj.created_at).getTime();
+      const matchesFrom = fromTime === null || waktu >= fromTime;
+      const matchesTo = toTime === null || waktu <= toTime;
+      const matchesGudang =
+        !gudangFilter ||
+        sj.gudang_tujuan?.nama_gudang === gudangFilter ||
+        sj.gudang_asal?.nama_gudang === gudangFilter;
+      return matchesStatus && matchesSearch && matchesFrom && matchesTo && matchesGudang;
+    });
+  }, [list, statusFilter, searchQuery, dateFrom, dateTo, gudangFilter]);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
 
@@ -1549,7 +1635,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
     return () => clearTimeout(timer);
   }, [toast]);
 
-  const mobileItemsInbound1: MobileCardItem[] = list.map((sj) => {
+  const mobileItemsInbound1: MobileCardItem[] = filtered.map((sj) => {
     const meta = STATUS_META[sj.status] || STATUS_META.draft_diajukan;
     const totalUnit = sj.items.reduce((sum, i) => sum + Number(i.qty || 0), 0);
     const tujuanText = sj.gudang_tujuan?.nama_gudang || "-";
@@ -1565,16 +1651,17 @@ pic_pemohon_nama: picPemohon.trim() || null,
       "-";
 
     const tipePengirimLabel = sj.tipe_pengirim === "internal" ? "Internal" : sj.tipe_pengirim === "external" ? "External" : "-";
-    const kendaraanLabel =
-      sj.kendaraan_teks ||
-      (sj.kendaraan
-        ? sj.kendaraan.merk && sj.kendaraan.merk.trim()
-          ? `${sj.kendaraan.merk} - ${sj.kendaraan.jenis_kendaraan}`
-          : sj.kendaraan.jenis_kendaraan
-        : null) ||
-      "-";
+    const pengirimText =
+      sj.tipe_pengirim === "external"
+        ? sj.supplier?.nama
+          ? `${sj.supplier.kode} - ${sj.supplier.nama}`
+          : sj.pengirim_eksternal_nama || "-"
+        : sj.tipe_pengirim === "internal"
+        ? sj.gudang_asal?.nama_gudang || "-"
+        : "-";
     const fields: MobileCardField[] = [
       { label: "Tanggal", value: tanggal },
+      { label: "Pengirim", value: `${pengirimText} (${tipePengirimLabel})` },
       { label: "Tujuan", value: tujuanText },
       { label: "Project", value: sj.project?.nama_project || "-" },
       { label: "Cluster", value: clusterLabel },
@@ -1672,20 +1759,137 @@ pic_pemohon_nama: picPemohon.trim() || null,
 
   return (
     <div className="px-8 py-6">
-      <div className="mb-6 flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Penerimaan (Inbound)</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Daftar Surat Jalan barang masuk yang perlu dicocokkan & dicatat kondisinya
-          </p>
-        </div>
-        <Button
-          onClick={openModal}
-          className="h-auto rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F]"
-        >
-          <Plus size={16} className="mr-2" />
-          Input Inbound
-        </Button>
+      {/* Toolbar: judul + aksi di kiri, kontrol di kanan (tumpuk di layar kecil) */}
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-3xl font-bold text-gray-900">Penerimaan (Inbound)</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Daftar Surat Jalan barang masuk yang perlu dicocokkan & dicatat kondisinya
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Cari nomor SJ / project..."
+                className="w-full rounded-lg border border-[#F3D9C7] bg-white py-2 pl-9 pr-3 text-sm text-gray-700 placeholder:text-gray-400 focus:border-[#E8632C] focus:outline-none sm:w-64"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative" ref={filterRef}>
+                <button
+                  type="button"
+                  onClick={() => setFilterOpen((v) => !v)}
+                  aria-expanded={filterOpen}
+                  className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                    activeFilterCount > 0
+                      ? "border-[#E8632C] bg-[#FDECE1] text-[#E8632C]"
+                      : "border-[#F3D9C7] bg-white text-gray-700 hover:border-[#E8632C] hover:text-[#E8632C]"
+                  }`}
+                >
+                  <Filter size={15} />
+                  Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+                  <ChevronDown size={14} className={filterOpen ? "rotate-180 transition-transform" : "transition-transform"} />
+                </button>
+
+                {filterOpen && (
+                  <div className="absolute right-0 z-30 mt-2 w-[19rem] rounded-2xl border border-[#F3D9C7] bg-white p-4 shadow-xl">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Status</p>
+                    <div className="mb-4 max-h-40 space-y-1.5 overflow-y-auto pr-1">
+                      {(Object.keys(STATUS_META) as InboundStatus[]).map((status) => (
+                        <label key={status} className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={statusFilter.includes(status)}
+                            onChange={() => toggleStatusFilter(status)}
+                            className="h-4 w-4 rounded border-gray-300 accent-[#E8632C]"
+                          />
+                          <span className="truncate">{STATUS_META[status].label}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Tanggal Masuk</p>
+                    <div className="mb-4 grid grid-cols-2 gap-2">
+                      <label className="block text-xs text-gray-500">
+                        Dari
+                        <input
+                          type="date"
+                          value={dateFrom}
+                          onChange={(e) => setDateFrom(e.target.value)}
+                          className="mt-1 w-full rounded-lg border border-[#F3D9C7] px-2 py-1.5 text-xs text-gray-700 focus:border-[#E8632C] focus:outline-none"
+                        />
+                      </label>
+                      <label className="block text-xs text-gray-500">
+                        Sampai
+                        <input
+                          type="date"
+                          value={dateTo}
+                          onChange={(e) => setDateTo(e.target.value)}
+                          className="mt-1 w-full rounded-lg border border-[#F3D9C7] px-2 py-1.5 text-xs text-gray-700 focus:border-[#E8632C] focus:outline-none"
+                        />
+                      </label>
+                    </div>
+
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Gudang</p>
+                    <select
+                      value={gudangFilter}
+                      onChange={(e) => setGudangFilter(e.target.value)}
+                      className="mb-4 w-full rounded-lg border border-[#F3D9C7] bg-white px-2 py-2 text-sm text-gray-700 focus:border-[#E8632C] focus:outline-none"
+                    >
+                      <option value="">Semua gudang</option>
+                      {gudangOptions.map((nama) => <option key={nama} value={nama}>{nama}</option>)}
+                    </select>
+
+                    <div className="flex items-center justify-between gap-2 border-t border-stone-100 pt-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStatusFilter([]);
+                          setDateFrom("");
+                          setDateTo("");
+                          setGudangFilter("");
+                        }}
+                        className="text-xs font-medium text-gray-500 hover:text-gray-700"
+                      >
+                        Reset
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFilterOpen(false)}
+                        className="rounded-lg bg-[#E8632C] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#D9591F]"
+                      >
+                        Terapkan
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {hasAnyFilter && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-500 hover:border-rose-200 hover:text-rose-600"
+                >
+                  <X size={14} />
+                  Bersihkan filter
+                </button>
+              )}
+
+              <Button
+                onClick={openModal}
+                className="h-auto w-full rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F] sm:w-auto sm:ml-auto lg:ml-0"
+              >
+                <Plus size={16} className="mr-2" />
+                Input Inbound
+              </Button>
+            </div>
+          </div>
       </div>
 
       {error && (
@@ -1701,31 +1905,18 @@ pic_pemohon_nama: picPemohon.trim() || null,
       <MobileCardList items={mobileItemsInbound1} />
       <div className="rounded-2xl border border-[#F3D9C7] bg-white hidden md:block">
         <div className="overflow-x-auto">
-        <table className="w-full min-w-[1700px] text-sm">
+        <table className="w-full min-w-[1100px] text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+              <th className="w-10 px-2 py-4 font-semibold"></th>
               <th className="px-4 py-4 font-semibold">No</th>
               <th className="px-4 py-4 font-semibold">Tanggal Masuk</th>
               <th className="px-4 py-4 font-semibold">Nomor Surat Jalan</th>
-              <th className="px-4 py-4 font-semibold">Tipe Pengirim</th>
-              <th className="px-4 py-4 font-semibold">Gudang Asal</th>
-              <th className="px-4 py-4 font-semibold">Supplier</th>
-              <th className="px-4 py-4 font-semibold">Nama Vendor Eksternal</th>
+              <th className="px-4 py-4 font-semibold">Pengirim</th>
               <th className="px-4 py-4 font-semibold">Gudang Tujuan</th>
-              <th className="px-4 py-4 font-semibold">PIC Pemohon</th>
-              <th className="px-4 py-4 font-semibold">BOQ / Tiket (otomatis)</th>
               <th className="px-4 py-4 font-semibold">Project</th>
               <th className="px-4 py-4 font-semibold">Cluster</th>
-              <th className="px-4 py-4 font-semibold">Kendaraan</th>
-              <th className="px-4 py-4 font-semibold">No. Polisi</th>
-              <th className="px-4 py-4 font-semibold">Nama Driver</th>
-              <th className="px-4 py-4 font-semibold">Surat Jalan (PDF)</th>
-              <th className="px-4 py-4 font-semibold">Kode Barang</th>
-              <th className="px-4 py-4 font-semibold">Nama Barang</th>
-              <th className="px-4 py-4 font-semibold text-right">Qty</th>
-              <th className="px-4 py-4 font-semibold">Satuan</th>
-              <th className="px-4 py-4 font-semibold">Catatan Item</th>
-              <th className="px-4 py-4 font-semibold">Di Luar BOQ</th>
+              <th className="px-4 py-4 font-semibold text-right">Jumlah Item</th>
               <th className="px-4 py-4 font-semibold">Status</th>
               <th className="px-4 py-4 font-semibold text-right">Aksi</th>
             </tr>
@@ -1733,21 +1924,22 @@ pic_pemohon_nama: picPemohon.trim() || null,
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={24} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={11} className="px-6 py-12 text-center text-gray-400">
                   Memuat data...
                 </td>
               </tr>
-            ) : list.length === 0 ? (
+            ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={24} className="px-6 py-12 text-center text-gray-400">
-                  Tidak ada Surat Jalan Inbound yang perlu diproses.
+                <td colSpan={11} className="px-6 py-12 text-center text-gray-400">
+                  Tidak ada Surat Jalan Inbound pada filter ini.
                 </td>
               </tr>
             ) : (
-              list.map((sj, sjIndex) => {
+              filtered.map((sj, sjIndex) => {
                 const meta = STATUS_META[sj.status] || STATUS_META.draft_diajukan;
-                const itemRows = sj.items && sj.items.length > 0 ? sj.items : [null];
-                const rowSpan = itemRows.length;
+                const itemRows = sj.items || [];
+                const totalQty = itemRows.reduce((sum, i) => sum + Number(i.qty || 0), 0);
+                const isExpanded = expandedId === sj.surat_jalan_id;
                 const tujuanText = sj.gudang_tujuan?.nama_gudang || "-";
                 const tanggalRaw = sj.tanggal || sj.created_at;
                 const tanggal = new Date(tanggalRaw).toLocaleDateString("id-ID", {
@@ -1755,6 +1947,14 @@ pic_pemohon_nama: picPemohon.trim() || null,
                   month: "long",
                   year: "numeric",
                 });
+                const pengirimText =
+                  sj.tipe_pengirim === "external"
+                    ? sj.supplier?.nama
+                      ? `${sj.supplier.kode} - ${sj.supplier.nama}`
+                      : sj.pengirim_eksternal_nama || "-"
+                    : sj.tipe_pengirim === "internal"
+                    ? sj.gudang_asal?.nama_gudang || "-"
+                    : "-";
                 const tipePengirimLabel =
                   sj.tipe_pengirim === "internal" ? "Internal" : sj.tipe_pengirim === "external" ? "External" : "-";
                 const kendaraanLabel =
@@ -1776,111 +1976,137 @@ pic_pemohon_nama: picPemohon.trim() || null,
                   sj.boq?.cluster?.cluster_id ||
                   sj.cluster_id ||
                   "-";
-                const allReceived = (sj.items || []).every(
+                const allReceived = itemRows.every(
                   (i) => i.qty_diterima !== null && i.qty_diterima !== undefined
                 );
 
-                return itemRows.map((item, itemIdx) => {
-                  const isFirst = itemIdx === 0;
-                  return (
-                    <tr
-                      key={`${sj.surat_jalan_id}-${item ? item.item_id : "empty"}-${itemIdx}`}
-                      className={`border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30 ${itemIdx % 2 === 1 ? "bg-gray-50/50" : ""}`}
-                    >
-                      {isFirst && (
-                        <>
-                          <td className="px-4 py-4 align-top font-medium text-gray-700" rowSpan={rowSpan}>{sjIndex + 1}</td>
-                          <td className="px-4 py-4 align-top text-gray-500" rowSpan={rowSpan}>{tanggal}</td>
-                          <td className="px-4 py-4 align-top font-medium text-gray-800" rowSpan={rowSpan}>
-                            <span className="flex items-center gap-2">
-                              <PackageCheck size={16} className="text-[#E8632C]" />
-                              {sj.nomor_surat_jalan}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{tipePengirimLabel}</td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>
-                            {sj.tipe_pengirim === "internal" ? sj.gudang_asal?.nama_gudang || "-" : "-"}
-                          </td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>
-                            {sj.tipe_pengirim === "external" && sj.supplier?.nama
-                              ? `${sj.supplier.kode} - ${sj.supplier.nama}`
-                              : "-"}
-                          </td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>
-                            {sj.tipe_pengirim === "external" && !sj.supplier?.nama
-                              ? sj.pengirim_eksternal_nama || "-"
-                              : "-"}
-                          </td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{tujuanText}</td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{sj.pic_pemohon_nama || "-"}</td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>
-                            <span className="block">{boqLabel}</span>
-                            <span className="block text-xs text-gray-400">Tiket: {tiketLabel}</span>
-                          </td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{sj.project?.nama_project || "-"}</td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{clusterLabel}</td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{kendaraanLabel}</td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{noPolisiLabel}</td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{driverLabel}</td>
-                          <td className="px-4 py-4 align-top" rowSpan={rowSpan}>
-                            {sj.surat_jalan_url ? (
-                              <a href={sj.surat_jalan_url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#E8632C] hover:underline">
-                                Lihat PDF
-                              </a>
-                            ) : (
-                              <span className="text-xs text-gray-400">-</span>
-                            )}
-                          </td>
-                        </>
-                      )}
-                      <td className="px-4 py-3 align-top font-medium text-gray-800">{item?.barang?.kode_perangkat || "-"}</td>
-                      <td className="px-4 py-3 align-top text-gray-600">{item?.barang?.nama_barang || item?.nama_barang || "-"}</td>
-                      <td className="px-4 py-3 align-top text-right text-gray-600">{item ? Number(item.qty || 0) : "-"}</td>
-                      <td className="px-4 py-3 align-top text-gray-600">
-                        {item?.satuan?.kode_satuan || item?.barang?.satuan_default?.kode_satuan || "-"}
+                return (
+                  <Fragment key={sj.surat_jalan_id}>
+                    <tr className="border-b border-gray-100 hover:bg-[#FDECE1]/30">
+                      <td className="px-2 py-4 align-top">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedId(isExpanded ? null : sj.surat_jalan_id)}
+                          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                          aria-label={isExpanded ? "Tutup detail" : "Buka detail"}
+                        >
+                          {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        </button>
                       </td>
-                      <td className="px-4 py-3 align-top text-gray-600">{item?.catatan || "-"}</td>
-                      <td className="px-4 py-3 align-top">
-                        {item?.is_di_luar_boq ? (
-                          <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">Ya</span>
+                      <td className="px-4 py-4 align-top font-medium text-gray-700">{sjIndex + 1}</td>
+                      <td className="px-4 py-4 align-top text-gray-500">{tanggal}</td>
+                      <td className="px-4 py-4 align-top font-medium text-gray-800">
+                        <span className="flex items-center gap-2">
+                          <PackageCheck size={16} className="text-[#E8632C]" />
+                          {sj.nomor_surat_jalan}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 align-top text-gray-600">
+                        {pengirimText}
+                        <span className="ml-1 text-xs text-gray-400">({tipePengirimLabel})</span>
+                      </td>
+                      <td className="px-4 py-4 align-top text-gray-600">{tujuanText}</td>
+                      <td className="px-4 py-4 align-top text-gray-600">{sj.project?.nama_project || "-"}</td>
+                      <td className="px-4 py-4 align-top text-gray-600">{clusterLabel}</td>
+                      <td className="px-4 py-4 align-top text-right text-gray-600">
+                        {itemRows.length} barang · {totalQty} unit
+                      </td>
+                      <td className="px-4 py-4 align-top">
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${meta.tone}`}>{meta.label}</span>
+                      </td>
+                      <td className="px-4 py-4 align-top text-right">
+                        {sj.status === "diterima_didistribusikan" ? (
+                          <span className="text-sm font-semibold text-gray-400">Selesai</span>
+                        ) : sj.status === "ready_putaway" ? (
+                          allReceived ? (
+                            <Link href={`/staff/putaway/${sj.surat_jalan_id}`} className="text-sm font-semibold text-[#E8632C] hover:underline">Putaway</Link>
+                          ) : (
+                            <Link href={`/staff/inbound/${sj.surat_jalan_id}`} className="text-sm font-semibold text-[#E8632C] hover:underline">Penerimaan</Link>
+                          )
+                        ) : sj.status === "draft_diajukan" &&
+                          (String(user?.id) === String(sj.created_by || sj.creator?.user_id) ||
+                            user?.role === "supervisor" ||
+                            user?.role === "admin_general") ? (
+                          <button
+                            onClick={() => handleCancelDraft(sj.surat_jalan_id)}
+                            disabled={cancellingId === sj.surat_jalan_id}
+                            className="text-sm font-semibold text-rose-600 hover:underline disabled:opacity-60"
+                          >
+                            {cancellingId === sj.surat_jalan_id ? "Membatalkan..." : "Batalkan"}
+                          </button>
                         ) : (
-                          <span className="text-xs text-gray-400">Tidak</span>
+                          <Link href={`/staff/inbound/${sj.surat_jalan_id}`} className="text-sm font-semibold text-[#E8632C] hover:underline">Buka</Link>
                         )}
                       </td>
-                      {isFirst && (
-                        <>
-                          <td className="px-4 py-4 align-top" rowSpan={rowSpan}>
-                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${meta.tone}`}>{meta.label}</span>
-                          </td>
-                          <td className="px-4 py-4 align-top text-right" rowSpan={rowSpan}>
-                            {sj.status === "diterima_didistribusikan" ? (
-                              <span className="text-sm font-semibold text-gray-400">Selesai</span>
-                            ) : sj.status === "ready_putaway" ? (
-                              allReceived ? (
-                                <Link href={`/staff/putaway/${sj.surat_jalan_id}`} className="text-sm font-semibold text-[#E8632C] hover:underline">Putaway</Link>
-                              ) : (
-                                <Link href={`/staff/inbound/${sj.surat_jalan_id}`} className="text-sm font-semibold text-[#E8632C] hover:underline">Penerimaan</Link>
-                              )
-                            ) : sj.status === "draft_diajukan" &&
-                              (String(user?.id) === String(sj.created_by || sj.creator?.user_id) ||
-                                user?.role === "supervisor" ||
-                                user?.role === "admin_general") ? (
-                              <button
-                                onClick={() => handleCancelDraft(sj.surat_jalan_id)}
-                                disabled={cancellingId === sj.surat_jalan_id}
-                                className="text-sm font-semibold text-rose-600 hover:underline disabled:opacity-60"
-                              >
-                                {cancellingId === sj.surat_jalan_id ? "Membatalkan..." : "Batalkan"}
-                              </button>
-                            ) : (
-                              <Link href={`/staff/inbound/${sj.surat_jalan_id}`} className="text-sm font-semibold text-[#E8632C] hover:underline">Buka</Link>
-                            )}
-                          </td>
-                        </>
-                      )}
                     </tr>
-                  );
-                });
+                    {isExpanded && (
+                      <tr className="border-b border-gray-100 bg-gray-50/60">
+                        <td colSpan={11} className="px-6 py-4">
+                          <div className="rounded-xl border border-slate-100 bg-white p-4">
+                            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                              Info Pengiriman
+                            </p>
+                            <div className="mb-4 grid grid-cols-2 gap-x-8 gap-y-1.5 text-sm md:grid-cols-3">
+                              <div className="flex gap-1.5"><span className="text-gray-500">PIC Pemohon:</span><span className="font-medium text-gray-800">{sj.pic_pemohon_nama || "-"}</span></div>
+                              <div className="flex gap-1.5"><span className="text-gray-500">BOQ:</span><span className="font-medium text-gray-800">{boqLabel}</span></div>
+                              <div className="flex gap-1.5"><span className="text-gray-500">Tiket:</span><span className="font-medium text-gray-800">{tiketLabel}</span></div>
+                              <div className="flex gap-1.5"><span className="text-gray-500">Kendaraan:</span><span className="font-medium text-gray-800">{kendaraanLabel}</span></div>
+                              <div className="flex gap-1.5"><span className="text-gray-500">No. Polisi:</span><span className="font-medium text-gray-800">{noPolisiLabel}</span></div>
+                              <div className="flex gap-1.5"><span className="text-gray-500">Driver:</span><span className="font-medium text-gray-800">{driverLabel}</span></div>
+                              <div className="flex gap-1.5">
+                                <span className="text-gray-500">Surat Jalan:</span>
+                                {sj.surat_jalan_url ? (
+                                  <a href={sj.surat_jalan_url} target="_blank" rel="noreferrer" className="font-semibold text-[#E8632C] hover:underline">Lihat PDF</a>
+                                ) : (
+                                  <span className="font-medium text-gray-800">-</span>
+                                )}
+                              </div>
+                            </div>
+                            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Daftar Barang</p>
+                            {itemRows.length === 0 ? (
+                              <p className="text-sm text-gray-400">Belum ada barang.</p>
+                            ) : (
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+                                      <th className="py-2 pr-3 font-semibold">Kode Barang</th>
+                                      <th className="py-2 pr-3 font-semibold">Nama Barang</th>
+                                      <th className="py-2 pr-3 text-right font-semibold">Qty</th>
+                                      <th className="py-2 pr-3 font-semibold">Satuan</th>
+                                      <th className="py-2 pr-3 font-semibold">Catatan</th>
+                                      <th className="py-2 font-semibold">Di Luar BOQ</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {itemRows.map((item) => (
+                                      <tr key={item.item_id} className="border-b border-gray-50 last:border-0">
+                                        <td className="py-2 pr-3 font-medium text-gray-800">{item?.barang?.kode_perangkat || "-"}</td>
+                                        <td className="py-2 pr-3 text-gray-600">{item?.barang?.nama_barang || item?.nama_barang || "-"}</td>
+                                        <td className="py-2 pr-3 text-right text-gray-600">{Number(item?.qty || 0)}</td>
+                                        <td className="py-2 pr-3 text-gray-600">
+                                          {item?.satuan?.kode_satuan || item?.barang?.satuan_default?.kode_satuan || "-"}
+                                        </td>
+                                        <td className="py-2 pr-3 text-gray-600">{item?.catatan || "-"}</td>
+                                        <td className="py-2">
+                                          {item?.is_di_luar_boq ? (
+                                            <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">Ya</span>
+                                          ) : (
+                                            <span className="text-xs text-gray-400">Tidak</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
               })
             )}
           </tbody>
@@ -2521,7 +2747,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
             Batal
           </Button>
           <Button
-            onClick={handlePreviewInbound}
+            onClick={handleSubmitInbound}
             disabled={!canSubmitModal || submitting}
             className="bg-[#E8632C] hover:bg-[#D9591F]"
           >

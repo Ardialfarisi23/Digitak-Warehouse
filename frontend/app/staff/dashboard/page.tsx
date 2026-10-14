@@ -630,8 +630,7 @@ export default function StaffDashboardPage() {
   };
 
   return (
-    <div className="px-4 sm:px-6 py-4 sm:py-6">
-      {/* Header */}
+    <div className="px-8 py-6">
       <div className="mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
           Selamat Datang, {staffName}
@@ -802,10 +801,10 @@ export default function StaffDashboardPage() {
         </div>
       </div>
 
-      {/* Baris bawah — 2/3 + 1/3 */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+      {/* Baris bawah — Aktivitas Terkini & Tugas Prioritas Berikutnya */}
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
         {/* Aktivitas Terkini */}
-        <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6 lg:col-span-2">
+        <div className="flex-1 rounded-2xl border border-[#F3D9C7] bg-white p-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
             Aktivitas Terkini
           </p>
@@ -839,41 +838,42 @@ export default function StaffDashboardPage() {
 
               {/* Desktop table view */}
               <div className="hidden md:block overflow-x-auto overscroll-x-contain">
-<table className="w-full text-sm">
-               <thead>
-                 <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
-                   <th className="pb-3 font-semibold text-center w-12">No</th>
-                   <th className="pb-3 font-semibold">Waktu</th>
-                   <th className="pb-3 font-semibold">Aktivitas</th>
-                   <th className="pb-3 font-semibold">Lokasi</th>
-                   <th className="pb-3 font-semibold">Status</th>
-                 </tr>
-               </thead>
-               <tbody>
-                 {activities.map((row, i) => (
-                   <tr
-                     key={i}
-                     className="border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30"
-                   >
-                     <td className="py-3 pr-4 text-center text-xs text-slate-500">{i + 1}</td>
-                     <td className="py-3 pr-4 text-gray-500">{row.time}</td>
-                    <td className="py-3 pr-4 font-medium text-gray-800">
-                      {row.activity}
-                    </td>
-                    <td className="py-3 pr-4 text-gray-500">{row.location}</td>
-                    <td className="py-3">
-                      <StatusBadge>{row.status}</StatusBadge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              </table>
-            </div>
-</>
-      )}
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+                      <th className="pb-3 font-semibold text-center w-12">No</th>
+                      <th className="pb-3 font-semibold">Waktu</th>
+                      <th className="pb-3 font-semibold">Aktivitas</th>
+                      <th className="pb-3 font-semibold">Lokasi</th>
+                      <th className="pb-3 font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activities.map((row, i) => (
+                      <tr
+                        key={i}
+                        className="border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30"
+                      >
+                        <td className="py-3 pr-4 text-center text-xs text-slate-500">{i + 1}</td>
+                        <td className="py-3 pr-4 text-gray-500">{row.time}</td>
+                        <td className="py-3 pr-4 font-medium text-gray-800">
+                          {row.activity}
+                        </td>
+                        <td className="py-3 pr-4 text-gray-500">{row.location}</td>
+                        <td className="py-3">
+                          <StatusBadge>{row.status}</StatusBadge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
 
         {/* Tugas Prioritas Berikutnya */}
-        <div className="flex flex-col justify-between rounded-2xl bg-gray-900 p-6 text-white">
+        <div className="flex w-full flex-col justify-between rounded-2xl bg-gray-900 p-6 text-white lg:w-96 lg:flex-shrink-0">
           <div>
             <div className="mb-4 flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
@@ -924,10 +924,9 @@ export default function StaffDashboardPage() {
               Mulai Tugas Berikutnya
               <ArrowRight size={16} />
             </a>
-)}
+          )}
         </div>
       </div>
-    </div>
 
       {/* Pengajuan Saya */}
       <div className="mt-6 rounded-2xl border border-[#F3D9C7] bg-white p-6">
