@@ -22,10 +22,11 @@ export class DashboardPage {
    * Expand dulu sebelum assertion berbasis teks; auto-wait tanpa sleep statis.
    */
   async ensureSidebarExpanded() {
-    const isCollapsed = await this.sidebarExpandButton.isVisible().catch(() => false);
-    if (isCollapsed) {
+    // Tunggu sidebar selesai render (tombol toggle expand/collapse muncul)
+    await expect(this.sidebarExpandButton.or(this.sidebarCollapseButton).first()).toBeVisible({ timeout: 10000 });
+    if (await this.sidebarExpandButton.isVisible()) {
       await this.sidebarExpandButton.click();
-      await expect(this.sidebarCollapseButton).toBeVisible();
+      await expect(this.sidebarCollapseButton).toBeVisible({ timeout: 5000 });
     }
   }
 

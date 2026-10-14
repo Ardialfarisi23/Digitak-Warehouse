@@ -2109,6 +2109,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
               </button>
               <button
                 type="button"
+                data-testid="inbound-asal-external"
                 onClick={() => setSelectedAsalTipe("external")}
                 className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
                   selectedAsalTipe === "external"
@@ -2137,6 +2138,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 ) : (
                   <input
                     type="text"
+                    data-testid="inbound-vendor-manual-name"
                     value={pengirimEksternalNama}
                     onChange={(e) => setPengirimEksternalNama(e.target.value)}
                     placeholder="Nama vendor / pengirim eksternal"
@@ -2146,6 +2148,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 <label className="mt-2 flex items-center gap-2 text-xs text-slate-500">
                   <input
                     type="checkbox"
+                    data-testid="inbound-vendor-manual-toggle"
                     checked={isVendorManual}
                     onChange={(e) => {
                       const checked = e.target.checked;

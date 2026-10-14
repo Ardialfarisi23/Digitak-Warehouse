@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../fixtures/ui-fixtures";
 import { injectSession } from "../utils/helpers";
 import { SupervisorApprovalPage } from "../pages/SupervisorApprovalPage";
 

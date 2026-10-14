@@ -6,6 +6,7 @@
     "test": "playwright test",
     "test:e2e": "playwright test tests/e2e",
     "test:blackbox": "playwright test tests/blackbox",
+    "test:api": "playwright test tests/blackbox/api-contracts.spec.ts",
     "test:headed": "playwright test --headed",
     "test:report": "playwright show-report"
   },

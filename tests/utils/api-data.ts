@@ -29,20 +29,31 @@ async function apiGet(path: string, token: string): Promise<any> {
 }
 
 /**
+ * Beberapa endpoint mengembalikan array langsung di `data`, beberapa lain
+ * membungkusnya di `data.data` (paginasi). Helper ini menormalkan keduanya.
+ */
+function extractArray(json: any): any[] {
+  const d = json?.data;
+  if (Array.isArray(d)) return d;
+  if (d && Array.isArray(d.data)) return d.data;
+  return [];
+}
+
+/**
  * Mengumpulkan data yang dibutuhkan form Input Inbound:
  * project aktif -> cluster -> BOQ aktif -> gudang tujuan -> barang dari BOQ.
  */
 export async function fetchInboundFormData(token: string): Promise<InboundFormData> {
-  const projects = await apiGet("/api/projects", token);
-  const project = (projects.data ?? [])[0];
+  const projectsJson = await apiGet("/api/projects", token);
+  const project = extractArray(projectsJson)[0];
   if (!project) throw new Error("Tidak ada project untuk data uji inbound.");
 
-  const clusters = await apiGet(`/api/clusters?project_id=${encodeURIComponent(project.project_id)}`, token);
-  const cluster = (clusters.data ?? []).find((c: any) => c.cluster_id);
+  const clustersJson = await apiGet(`/api/clusters?project_id=${encodeURIComponent(project.project_id)}`, token);
+  const cluster = extractArray(clustersJson).find((c: any) => c.cluster_id);
   if (!cluster) throw new Error("Tidak ada cluster untuk project terpilih.");
 
-  const boqs = await apiGet("/api/boqs?limit=200", token);
-  const boq = (boqs.data ?? []).find(
+  const boqsJson = await apiGet("/api/boqs?limit=200", token);
+  const boq = extractArray(boqsJson).find(
     (b: any) => String(b.cluster_id) === String(cluster.cluster_id) && b.status === "aktif",
   );
   if (!boq) throw new Error(`Tidak ada BOQ aktif untuk cluster ${cluster.cluster_id}.`);
@@ -51,8 +62,9 @@ export async function fetchInboundFormData(token: string): Promise<InboundFormDa
   const boqItem = (boqDetail.data?.items ?? []).find((it: any) => it.barang?.barang_id);
   if (!boqItem) throw new Error("BOQ aktif tidak memiliki item barang.");
 
-  const warehouses = await apiGet("/api/warehouses?limit=1000&is_aktif=true", token);
-  const warehouse = (warehouses.data ?? []).find((w: any) => w.tipe !== "dadakan") ?? (warehouses.data ?? [])[0];
+  const warehousesJson = await apiGet("/api/warehouses?limit=1000&is_aktif=true", token);
+  const warehouses = extractArray(warehousesJson);
+  const warehouse = warehouses.find((w: any) => w.tipe !== "dadakan") ?? warehouses[0];
   if (!warehouse) throw new Error("Tidak ada gudang aktif untuk data uji inbound.");
 
   return {

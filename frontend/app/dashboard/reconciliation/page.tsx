@@ -27,7 +27,6 @@ import {
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole, formatRole } from "@/lib/navigation";
-import BoqPicker, { type BoqPickerItem } from "@/components/BoqPicker";
 import BarangPicker, { type BarangPickerItem } from "@/components/BarangPicker";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { useAccountStatusGuard } from "@/hooks/use-account-status-guard";
@@ -97,6 +96,36 @@ interface ReconciliationRecord {
   } | null;
 }
 
+interface ReconciliationUploadLog {
+  upload_id: string;
+  filename: string;
+  file_url?: string | null;
+  uploaded_at: string;
+  uploaded_by: string;
+  uploaded_by_nama: string;
+  uploaded_by_role: string;
+  total_rows: number;
+  success_rows: number;
+  failed_rows: number;
+  details?: ReconciliationUploadLogDetail[];
+  cluster_ids?: string[];
+  cluster_names?: string[];
+  project_names?: string[];
+  kode_tikets?: string[];
+}
+
+interface ReconciliationUploadLogDetail {
+  detail_id: string;
+  kode_tiket: string;
+  mos: number;
+  used: number;
+  status: string;
+  reason?: string | null;
+  project_nama?: string | null;
+  cluster_id?: string | null;
+  nama_cluster?: string | null;
+}
+
 const formatNumber = (value: number) => {
   return new Intl.NumberFormat("id-ID", {
     maximumFractionDigits: 2,
@@ -128,6 +157,22 @@ function stripDuplicatePrefix(reason?: string | null) {
     return reason.slice(DUPLICATE_REASON_PREFIX.length);
   }
   return reason;
+}
+
+// Sel multi-nilai pada tabel Riwayat: 0 nilai -> "-", 1 nilai -> nilainya,
+// >1 nilai -> nilai pertama + "+N". Daftar lengkap menjadi title (tooltip).
+function renderMultiValue(values?: string[]) {
+  const list = (values || []).filter((value) => value !== null && value !== undefined && String(value) !== "");
+  if (list.length === 0) {
+    return <span className="text-slate-400">-</span>;
+  }
+  const extra = list.length - 1;
+  return (
+    <div className="flex max-w-[200px] items-center gap-1" title={list.join(", ")}>
+      <span className="truncate text-[10px] text-slate-600">{String(list[0])}</span>
+      {extra > 0 && <span className="shrink-0 text-[10px] text-slate-400">+{extra}</span>}
+    </div>
+  );
 }
 
 export default function ReconciliationInventoryPage() {
@@ -174,17 +219,109 @@ export default function ReconciliationInventoryPage() {
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedBoqId, setSelectedBoqId] = useState("");
   const [selectedKodeTiket, setSelectedKodeTiket] = useState("");
+  const [selectedClusterId, setSelectedClusterId] = useState("");
+  const [clusterBoqs, setClusterBoqs] = useState<Array<{ boq_id: string; kode_tiket: string; boq_number: string; has_real_tiket: boolean }>>([]);
+  const [clusterBoqsLoading, setClusterBoqsLoading] = useState(false);
+  const [clusterBoqsError, setClusterBoqsError] = useState<string | null>(null);
+  const [manualRowsResetNotice, setManualRowsResetNotice] = useState(false);
+  const clusterBoqFetchRef = useRef(0);
+
+  // Cluster list for the manual mitra modal, taken from the already loaded filter-options payload.
+  const manualClusterOptions = useMemo<Array<[string, string]>>(() => {
+    if (!selectedProjectId || !filterOptions) return [];
+    const project = filterOptions.projects.find((p) => p.project_id === selectedProjectId);
+    if (!project) return [];
+    return project.clusters.map((c) => [c.cluster_id, c.nama_cluster] as [string, string]);
+  }, [filterOptions, selectedProjectId]);
+
+  // Resolve the BOQ (and therefore the kode tiket) behind the scenes once a cluster is picked.
+  // Cluster BOQ resolution type: kode_tiket = real ticket code when present, else boq_number.
+  type ClusterBoq = { boq_id: string; kode_tiket: string; boq_number: string; has_real_tiket: boolean };
+
+  const handleClusterChange = (clusterId: string) => {
+    const previousClusterId = selectedClusterId;
+    const hadFilledRows = manualRows.some((row) => Boolean(row.barang_id.trim() || row.nama_barang.trim()));
+    setManualRowsResetNotice(false);
+
+    setSelectedClusterId(clusterId);
+    setSelectedBoqId("");
+    setSelectedKodeTiket("");
+    setManualRows([]);
+    setClusterBoqs([]);
+    setClusterBoqsError(null);
+
+    if (previousClusterId && hadFilledRows) {
+      setManualRowsResetNotice(true);
+    }
+
+    if (!clusterId || !selectedProjectId) {
+      setClusterBoqsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const requestId = ++clusterBoqFetchRef.current;
+    setClusterBoqsLoading(true);
+
+    const params = new URLSearchParams();
+    params.set("projectId", selectedProjectId);
+    params.set("clusterId", clusterId);
+    params.set("limit", "50");
+
+    get(`${API_BASE}/api/boqs?${params.toString()}`)
+      .then(async (res) => {
+        const json = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(json?.message || "Gagal memuat BOQ cluster.");
+        }
+        const rawList: unknown[] = Array.isArray(json?.data) ? json.data : Array.isArray(json?.data?.data) ? json.data.data : [];
+        const mapped: ClusterBoq[] = rawList
+          .map((raw) => {
+            const row = raw as { boq_id?: number | string; id?: number | string; kode_tiket?: string; ticketNumber?: string; boqNumber?: string; boq_number?: string };
+            const boqId = String(row.boq_id ?? row.id ?? "");
+            if (!boqId) return null;
+            // ticketNumber berasal dari transformBoq (boq.tiket.kode_tiket) -> kosong bila BOQ tanpa tiket.
+            const realTiket = String(row.ticketNumber ?? row.kode_tiket ?? "").trim();
+            // boqNumber selalu terisi: `BOQ-${boq_id}` bila boq_number null.
+            const boqNumber = String(row.boqNumber ?? row.boq_number ?? "").trim() || `BOQ-${boqId}`;
+            return { boq_id: boqId, kode_tiket: realTiket || boqNumber, boq_number: boqNumber, has_real_tiket: Boolean(realTiket) };
+          })
+          .filter((item): item is ClusterBoq => item !== null);
+        if (cancelled || requestId !== clusterBoqFetchRef.current) return;
+        setClusterBoqs(mapped);
+        if (mapped.length === 1) {
+          setSelectedBoqId(mapped[0].boq_id);
+          setSelectedKodeTiket(mapped[0].kode_tiket);
+        }
+      })
+      .catch((err) => {
+        if (cancelled || requestId !== clusterBoqFetchRef.current) return;
+        setClusterBoqs([]);
+        setClusterBoqsError(err instanceof Error ? err.message : "Gagal memuat BOQ cluster.");
+      })
+      .finally(() => {
+        if (!cancelled && requestId === clusterBoqFetchRef.current) setClusterBoqsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  };
 
   const boqItemsQueryParams = useMemo(() => ({ projectId: selectedProjectId }), [selectedProjectId]);
-  const manualBoqItemsQueryParams = useMemo(
-    () => ({ projectId: selectedProjectId, statuses: "draft,aktif,selesai" }),
-    [selectedProjectId]
-  );
+  const manualBoqItemsQueryParams = useMemo(() => {
+    const params: { projectId: string; statuses: string; clusterId?: string } = {
+      projectId: selectedProjectId,
+      statuses: "draft,aktif,selesai",
+    };
+    if (selectedClusterId) params.clusterId = selectedClusterId;
+    return params;
+  }, [selectedProjectId, selectedClusterId]);
   const [exporting, setExporting] = useState(false);
   const [mitraReportMeta, setMitraReportMeta] = useState({ tanggal_laporan: new Date().toISOString().slice(0, 10), pic_mitra: "" });
 
   const [reconcTab, setReconcTab] = useState<"inventory" | "history">("inventory");
-  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [historyData, setHistoryData] = useState<ReconciliationUploadLog[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
@@ -501,6 +638,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
       } else {
         const projectName = projectOptions.find(([id]) => id === selectedProjectId)?.[1] || "";
         preview = manualRows.map((row) => ({
+          boq_id: selectedBoqId || null,
           kode_tiket: selectedKodeTiket,
           project_nama: projectName,
           nama_barang: row.nama_barang.trim(),
@@ -556,6 +694,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
 
   const addManualRow = () => {
     setMitraError(null);
+    setManualRowsResetNotice(false);
     setManualRows((prev) => [
       ...prev,
       {
@@ -594,9 +733,13 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
     setMitraError(null);
     setMitraConfirming(false);
     setManualRows([]);
+    setManualRowsResetNotice(false);
     setSelectedProjectId("");
+    setSelectedClusterId("");
     setSelectedBoqId("");
     setSelectedKodeTiket("");
+    setClusterBoqs([]);
+    setClusterBoqsError(null);
     setMitraReportMeta({ tanggal_laporan: new Date().toISOString().slice(0, 10), pic_mitra: "" });
   };
 
@@ -608,9 +751,13 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
     setMitraError(null);
     setMitraConfirming(false);
     setManualRows([]);
+    setManualRowsResetNotice(false);
     setSelectedProjectId("");
+    setSelectedClusterId("");
     setSelectedBoqId("");
     setSelectedKodeTiket("");
+    setClusterBoqs([]);
+    setClusterBoqsError(null);
     setMitraReportMeta({ tanggal_laporan: new Date().toISOString().slice(0, 10), pic_mitra: "" });
   };
 
@@ -1584,7 +1731,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                 <div className="space-y-4">
                   <button
                     type="button"
-                    onClick={() => { setMitraFlow("select"); setManualRows([]); setMitraError(null); setSelectedProjectId(""); setSelectedBoqId(""); setSelectedKodeTiket(""); setMitraReportMeta({ tanggal_laporan: new Date().toISOString().slice(0, 10), pic_mitra: "" }); }}
+                    onClick={() => { setMitraFlow("select"); setManualRows([]); setManualRowsResetNotice(false); setMitraError(null); setSelectedProjectId(""); setSelectedClusterId(""); setSelectedBoqId(""); setSelectedKodeTiket(""); setClusterBoqs([]); setClusterBoqsError(null); setMitraReportMeta({ tanggal_laporan: new Date().toISOString().slice(0, 10), pic_mitra: "" }); }}
                     className="flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-slate-600"
                   >
                     <ArrowUpRight size={12} className="-rotate-90" />
@@ -1620,9 +1767,11 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                         value={selectedProjectId}
                         onChange={(e) => {
                           setSelectedProjectId(e.target.value);
+                          setSelectedClusterId("");
                           setSelectedBoqId("");
                           setSelectedKodeTiket("");
                           setManualRows([]);
+                          setManualRowsResetNotice(false);
                         }}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
                       >
@@ -1635,25 +1784,92 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                       </select>
                     </div>
                     <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">Cluster Name</label>
+                      <select
+                        value={selectedClusterId}
+                        onChange={(e) => handleClusterChange(e.target.value)}
+                        disabled={!selectedProjectId}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-400"
+                      >
+                        <option value="">Pilih Cluster</option>
+                        {manualClusterOptions.map(([id, nama]) => (
+                          <option key={id} value={id}>
+                            {nama}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedProjectId && manualClusterOptions.length === 0 && (
+                        <p className="mt-1 text-[11px] text-slate-400">Project ini belum memiliki cluster.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">Cluster ID</label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={selectedClusterId || "-"}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm text-slate-500 outline-none"
+                      />
+                    </div>
+                    <div>
                       <label className="mb-1 block text-xs font-semibold text-slate-500">Kode Tiket</label>
-                       <BoqPicker
-                         value={selectedBoqId}
-                         onSelect={(picked: BoqPickerItem) => {
-                           setSelectedBoqId(picked.boq_id);
-                           setSelectedKodeTiket(picked.kode_tiket);
-                           if (picked.project_id) {
-                             setSelectedProjectId(String(picked.project_id));
-                           }
-                         }}
-                         placeholder="Pilih Kode Tiket"
-                         disabled={!selectedProjectId}
-                         projectId={selectedProjectId || undefined}
-                         displayField="kode_tiket"
-                       />
+                      {clusterBoqsLoading ? (
+                        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-400">
+                          <Loader2 size={14} className="animate-spin" />
+                          Memuat…
+                        </div>
+                      ) : clusterBoqsError ? (
+                        <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">{clusterBoqsError}</p>
+                      ) : !selectedClusterId ? (
+                        <p className="rounded-xl border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-400">Pilih cluster terlebih dahulu.</p>
+                      ) : clusterBoqs.length === 0 ? (
+                        <p className="rounded-xl border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-400">Cluster ini belum memiliki BOQ.</p>
+                      ) : clusterBoqs.length === 1 ? (
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                          {clusterBoqs[0].has_real_tiket ? (
+                            <>
+                              <span className="text-[11px] text-slate-400">Kode Tiket: </span>
+                              <span className="font-mono font-semibold text-slate-800">{clusterBoqs[0].kode_tiket}</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-[11px] text-slate-400">BOQ: </span>
+                              <span className="font-mono text-slate-500">{clusterBoqs[0].boq_number}</span>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        <select
+                          value={selectedBoqId}
+                          onChange={(e) => {
+                            const picked = clusterBoqs.find((b) => b.boq_id === e.target.value);
+                            setSelectedBoqId(picked?.boq_id || "");
+                            setSelectedKodeTiket(picked?.kode_tiket || "");
+                            setManualRows([]);
+                            setManualRowsResetNotice(false);
+                          }}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
+                        >
+                          <option value="">Pilih Kode Tiket / BOQ</option>
+                          {clusterBoqs.map((b) => (
+                            <option key={b.boq_id} value={b.boq_id}>
+                              {b.has_real_tiket ? b.kode_tiket : `BOQ: ${b.boq_number}`}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   </div>
 
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    {manualRowsResetNotice && (
+                      <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-700">
+                        Daftar item direset karena cluster diganti.
+                      </p>
+                    )}
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Daftar Item Barang</p>
                       <button
@@ -1669,7 +1885,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
 
                     {manualRows.length === 0 ? (
                       <div className="mt-3 rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-xs text-slate-400">
-                        {selectedKodeTiket ? "Belum ada barang. Klik 'Tambah Item' untuk menambah." : "Pilih Kode Tiket terlebih dahulu."}
+                        {selectedKodeTiket ? "Belum ada barang. Klik 'Tambah Item' untuk menambah." : "Pilih Project dan Cluster terlebih dahulu."}
                       </div>
                     ) : (
                       <div className="mt-3 space-y-2">
@@ -1823,8 +2039,12 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                    <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 w-10 text-center">No</th>
                    <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Waktu Upload</th>
                    <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Nama File</th>
-                   <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Diunggah Oleh</th>
-                   <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Total</th>
+                    <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Diunggah Oleh</th>
+                    <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Cluster ID</th>
+                    <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Cluster Name</th>
+                    <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Project Name</th>
+                    <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Kode Tiket</th>
+                    <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Total</th>
                    <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Berhasil</th>
                    <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Gagal</th>
                    <th className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Status</th>
@@ -1838,20 +2058,20 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                        <td className="px-3 py-1.5">
                          <div className="h-3 animate-pulse rounded-lg bg-slate-100" />
                        </td>
-                       <td className="px-3 py-1.5" colSpan={8}>
-                         <div className="h-3 animate-pulse rounded-lg bg-slate-100" />
-                       </td>
+                        <td className="px-3 py-1.5" colSpan={12}>
+                          <div className="h-3 animate-pulse rounded-lg bg-slate-100" />
+                        </td>
                      </tr>
                    ))
                  ) : historyError ? (
                    <tr>
-                     <td className="px-6 py-16 text-center text-xs text-rose-500" colSpan={9}>{historyError}</td>
+                      <td className="px-6 py-16 text-center text-xs text-rose-500" colSpan={13}>{historyError}</td>
                    </tr>
                  ) : historyData.length === 0 ? (
                    <tr>
-                     <td className="px-6 py-16 text-center text-xs text-slate-400" colSpan={9}>
-                       Belum ada riwayat upload laporan mitra.
-                     </td>
+                      <td className="px-6 py-16 text-center text-xs text-slate-400" colSpan={13}>
+                        Belum ada riwayat upload laporan mitra.
+                      </td>
                    </tr>
                  ) : (
                    historyData.map((r, index) => {
@@ -1872,11 +2092,15 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                          <td className="px-3 py-1.5">
                            <div className="truncate max-w-[220px] font-semibold text-slate-900 text-xs" title={r.filename || "-"}>{r.filename || "-"}</div>
                          </td>
-                         <td className="px-3 py-1.5">
-                           <div className="truncate max-w-[180px] font-semibold text-slate-900 text-xs" title={r.uploaded_byNama || "-"}>{r.uploaded_byNama || "-"}</div>
-                           <div className="truncate max-w-[180px] text-[10px] text-slate-500" title={formatRole(r.uploaded_by_role)}>{formatRole(r.uploaded_by_role)}</div>
-                         </td>
-                         <td className="px-3 py-1.5 text-center font-mono text-[10px] text-slate-600 whitespace-nowrap">{r.total_rows}</td>
+                          <td className="px-3 py-1.5">
+                            <div className="truncate max-w-[180px] font-semibold text-slate-900 text-xs" title={r.uploaded_by_nama || "-"}>{r.uploaded_by_nama || "-"}</div>
+                            <div className="truncate max-w-[180px] text-[10px] text-slate-500" title={formatRole(r.uploaded_by_role)}>{formatRole(r.uploaded_by_role)}</div>
+                          </td>
+                          <td className="px-3 py-1.5">{renderMultiValue(r.cluster_ids)}</td>
+                          <td className="px-3 py-1.5">{renderMultiValue(r.cluster_names)}</td>
+                          <td className="px-3 py-1.5">{renderMultiValue(r.project_names)}</td>
+                          <td className="px-3 py-1.5">{renderMultiValue(r.kode_tikets)}</td>
+                          <td className="px-3 py-1.5 text-center font-mono text-[10px] text-slate-600 whitespace-nowrap">{r.total_rows}</td>
                          <td className="px-3 py-1.5 text-center font-mono text-[10px] text-emerald-600 whitespace-nowrap">{r.success_rows}</td>
                          <td className="px-3 py-1.5 text-center font-mono text-[10px] text-rose-600 whitespace-nowrap">{r.failed_rows}</td>
                          <td className="px-3 py-1.5 whitespace-nowrap">

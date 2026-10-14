@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../fixtures/ui-fixtures";
 import { injectSession, clearSession, apiRequest, getAuthToken } from "../utils/helpers";
 import { TEST_USERS } from "../fixtures/test-data";
 import { DashboardPage } from "../pages/DashboardPage";

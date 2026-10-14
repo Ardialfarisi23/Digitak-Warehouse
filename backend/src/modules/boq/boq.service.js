@@ -856,8 +856,8 @@ const getExportMatrixData = async () => {
   return await boqRepository.getExportMatrixData();
 };
 
-const getItems = async (projectId, statuses, clusterId = null) => {
-  return await boqRepository.findItemsByProject(projectId, clusterId, statuses);
+const getItems = async (projectId, statuses, clusterId = null, searchKeywords = []) => {
+  return await boqRepository.findItemsByProject(projectId, clusterId, statuses, searchKeywords);
 };
 
 const checkTicketAvailability = async (ticketNumber, excludeBoqId = null) => {

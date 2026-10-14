@@ -2,12 +2,14 @@ import { Page, Locator, expect } from "@playwright/test";
 
 export class MasterDataPage {
   readonly page: Page;
+  readonly pageHeading: Locator;
   readonly searchInput: Locator;
   readonly addButton: Locator;
   readonly tableContainer: Locator;
 
   constructor(page: Page) {
     this.page = page;
+    this.pageHeading = page.locator('h1:has-text("Master Data")');
     this.searchInput = page.locator('input[placeholder*="Cari"]').first();
     this.addButton = page.locator('button:has-text("Tambah")').first();
     this.tableContainer = page.locator("table");
@@ -15,6 +17,7 @@ export class MasterDataPage {
 
   async goto() {
     await this.page.goto("/master-data");
+    await expect(this.pageHeading).toBeVisible({ timeout: 10000 });
     await expect(this.searchInput).toBeVisible({ timeout: 10000 });
   }
 

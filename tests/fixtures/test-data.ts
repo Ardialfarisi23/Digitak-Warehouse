@@ -42,8 +42,9 @@ export const INBOUND_TEST_DATA = {
   plateNumber: "B 1234 QA",
   driverName: "Budi Setiawan",
   picName: "Fajar Hidayat",
+  vendorName: "PT Mitra E2E Testing",
   itemQty: 5,
-  itemCondition: "baik",
+  itemCondition: "Baik",
 };
 
 export function buildUniqueSuratJalanNumber(prefix = "SJ-E2E"): string {

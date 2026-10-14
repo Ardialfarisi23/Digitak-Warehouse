@@ -74,6 +74,18 @@ export class InboundPage {
   }
 
   /**
+   * Memilih Asal Pengiriman = External dengan vendor manual (input teks),
+   * sehingga tidak bergantung pada master supplier.
+   */
+  async chooseExternalManualVendor(vendorName: string) {
+    await this.page.locator('[data-testid="inbound-asal-external"]').click();
+    await this.page.locator('[data-testid="inbound-vendor-manual-toggle"]').check();
+    const nameInput = this.page.locator('[data-testid="inbound-vendor-manual-name"]');
+    await expect(nameInput).toBeVisible({ timeout: 5000 });
+    await nameInput.fill(vendorName);
+  }
+
+  /**
    * Menambahkan satu barang ke daftar draft melalui BarangPicker.
    */
   async addItemToDraft(input: { itemCode: string; qty: number; conditionLabel: string }) {
