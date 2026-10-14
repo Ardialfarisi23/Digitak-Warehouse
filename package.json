@@ -1,0 +1,16 @@
+{
+  "name": "digitak-warehouse-test-suite",
+  "version": "1.0.0",
+  "description": "Comprehensive E2E and Blackbox QA Automation Suite for Digitak Warehouse",
+  "scripts": {
+    "test": "playwright test",
+    "test:e2e": "playwright test tests/e2e",
+    "test:blackbox": "playwright test tests/blackbox",
+    "test:headed": "playwright test --headed",
+    "test:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "@types/node": "^20.0.0"
+  }
+}

@@ -2613,7 +2613,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
             Batal
           </Button>
           <Button
-            onClick={handlePreviewInbound}
+            onClick={handleSubmitInbound}
             disabled={!canSubmitModal || submitting}
             className="bg-[#E8632C] hover:bg-[#D9591F]"
           >

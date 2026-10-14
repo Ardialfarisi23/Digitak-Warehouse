@@ -6,7 +6,10 @@
     "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "npx playwright test --config=../playwright.config.ts",
+    "test:e2e": "npx playwright test tests/e2e --config=../playwright.config.ts",
+    "test:blackbox": "npx playwright test tests/blackbox --config=../playwright.config.ts"
   },
   "overrides": {
     "pdfjs-dist": "3.11.174"
