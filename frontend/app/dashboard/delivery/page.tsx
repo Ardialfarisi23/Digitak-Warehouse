@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import { DetailSuratJalanDocument, DetailSuratJalanData } from "@/components/surat-jalan/DetailSuratJalanDocument";
 import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
+import { getSuratJalanStatusLabel, SURAT_JALAN_STATUS_VALUES } from "@/lib/surat-jalan-status";
 import { Button } from "@/components/ui/button";
 import TablePagination from "@/components/TablePagination";
 
@@ -83,15 +84,17 @@ interface SuratJalanRecord {
   }[];
 }
 
-const STATUS_META: Record<string, { label: string; bg: string; text: string }> = {
-  draft_diajukan: { label: "Draft Diajukan", bg: "bg-slate-100", text: "text-slate-700" },
-  menunggu_verifikasi: { label: "Menunggu Verifikasi", bg: "bg-amber-50", text: "text-amber-700" },
-  disetujui: { label: "Disetujui", bg: "bg-emerald-50", text: "text-emerald-700" },
-  digenerate: { label: "Digenerate", bg: "bg-blue-50", text: "text-blue-700" },
-  tiba_menunggu_konfirmasi: { label: "Menunggu Konfirmasi", bg: "bg-blue-50", text: "text-blue-700" },
-  diterima_didistribusikan: { label: "Diterima / Didistribusikan", bg: "bg-emerald-50", text: "text-emerald-700" },
-  sedang_dikirim: { label: "Sedang Dikirim", bg: "bg-amber-50", text: "text-amber-700" },
-  ditolak: { label: "Ditolak", bg: "bg-rose-50", text: "text-rose-700" },
+// Warna badge per status (tetap per-halaman); label dari helper bersama
+// supaya tidak ada lagi kode mentah seperti "ready_putaway" yang tampil.
+const STATUS_TONE: Record<string, { bg: string; text: string }> = {
+  draft_diajukan: { bg: "bg-slate-100", text: "text-slate-700" },
+  menunggu_verifikasi: { bg: "bg-amber-50", text: "text-amber-700" },
+  disetujui: { bg: "bg-emerald-50", text: "text-emerald-700" },
+  digenerate: { bg: "bg-blue-50", text: "text-blue-700" },
+  tiba_menunggu_konfirmasi: { bg: "bg-blue-50", text: "text-blue-700" },
+  diterima_didistribusikan: { bg: "bg-emerald-50", text: "text-emerald-700" },
+  sedang_dikirim: { bg: "bg-amber-50", text: "text-amber-700" },
+  ditolak: { bg: "bg-rose-50", text: "text-rose-700" },
 };
 
 type TabType = "SEMUA" | "INBOUND" | "OUTBOUND";
@@ -415,9 +418,9 @@ export default function AdminDeliveryPage() {
               className="w-full md:w-auto min-w-0 truncate appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2 pr-9 text-sm font-medium text-slate-700 outline-none focus:border-orange-400"
             >
               <option value="all">Semua Status</option>
-              {Object.entries(STATUS_META).map(([key, meta]) => (
+              {SURAT_JALAN_STATUS_VALUES.map((key) => (
                 <option key={key} value={key}>
-                  {meta.label}
+                  {getSuratJalanStatusLabel(key)}
                 </option>
               ))}
             </select>
@@ -496,7 +499,8 @@ export default function AdminDeliveryPage() {
                   </tr>
                 ) : (
                   pagedRecords.map((record, index) => {
-                    const statusMeta = STATUS_META[record.status] || { label: record.status, bg: "bg-slate-100", text: "text-slate-600" };
+                    const statusTone = STATUS_TONE[String(record.status || "").toLowerCase()] || { bg: "bg-slate-100", text: "text-slate-600" };
+                    const statusLabel = getSuratJalanStatusLabel(record.status);
                     const totalQty = record.items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
                     const isOutbound = (record.tipe || "").toLowerCase() === "outbound";
                     const rowNumber = (safePage - 1) * PAGE_SIZE + index + 1;
@@ -519,8 +523,8 @@ export default function AdminDeliveryPage() {
                               {isOutbound ? <ArrowUpRight size={10} /> : <ArrowDownLeft size={10} />}
                               {isOutbound ? "Outbound" : "Inbound"}
                             </span>
-                            <span className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusMeta.bg} ${statusMeta.text}`}>
-                              {statusMeta.label}
+                            <span className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusTone.bg} ${statusTone.text}`}>
+                              {statusLabel}
                             </span>
                             <span>{record.project?.nama_project || "-"}</span>
                             <span>{record.tanggal ? new Date(record.tanggal).toLocaleDateString("id-ID") : "-"}</span>
@@ -545,7 +549,7 @@ export default function AdminDeliveryPage() {
                         <td className="px-2 py-3 md:px-6 md:py-4 hidden md:table-cell text-slate-500">{record.tanggal ? new Date(record.tanggal).toLocaleDateString("id-ID") : "-"}</td>
 
                         <td className="px-2 py-3 md:px-6 md:py-4 hidden md:table-cell">
-                          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusMeta.bg} ${statusMeta.text}`}>
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusTone.bg} ${statusTone.text}`}>
                             {record.status === "draft_diajukan" && <Clock size={14} />}
                             {record.status === "menunggu_verifikasi" && <Clock size={14} />}
                             {record.status === "disetujui" && <CheckCircle2 size={14} />}
@@ -554,7 +558,7 @@ export default function AdminDeliveryPage() {
                             {record.status === "diterima_didistribusikan" && <CheckCircle2 size={14} />}
                             {record.status === "sedang_dikirim" && <Truck size={14} />}
                             {record.status === "ditolak" && <AlertCircle size={14} />}
-                            {statusMeta.label}
+                            {statusLabel}
                           </span>
                         </td>
 

@@ -1,11 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  AlertCircle,
+  AlertTriangle,
+  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  FileDown,
+  FileText,
+  Loader2,
+  PackagePlus,
+  Upload,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApi, ensureOk } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { summarizeKondisiUnits } from "@/lib/kondisi-barang";
+import { getSuratJalanStatusLabel } from "@/lib/surat-jalan-status";
 import type { InboundSuratJalan as InboundPdfShape } from "@/lib/staff/inbound-pdf";
 
 // ---------------------------------------------------------------------------
@@ -67,12 +83,19 @@ type ApiSuratJalan = {
   kendaraan_label?: string | null;
   driver_label?: string | null;
   project?: { nama_project: string } | null;
+  cluster?: { cluster_id?: string; nama_cluster?: string } | null;
+  cluster_id?: string | null;
   creator?: { nama?: string; name?: string } | null;
+  surat_jalan_url?: string | null;
+  document_url?: string | null;
+  attachment?: string | null;
   boq_id?: number | string | null;
   boq?: {
-    boq_id: number;
+    boq_id: number | string;
     boq_number?: string;
+    cluster_id?: string | null;
     tiket?: { kode_tiket: string };
+    items?: Array<{ cluster_id?: string | null }> | null;
   } | null;
   tujuan_tipe?: string | null;
   titik_lapangan?: { nama_lokasi?: string } | null;
@@ -147,6 +170,112 @@ type ApiUnitRow = {
   catatan?: string | null;
 };
 
+// ---------------------------------------------------------------------------
+// Pratinjau lampiran surat jalan (PDF/gambar). URL bisa absolut maupun relatif
+// ke backend, jadi dinormalkan dulu. Base64 Data URL dikonversi ke Blob URL
+// karena tidak bisa dipakai apa adanya di iframe pada beberapa browser.
+// ---------------------------------------------------------------------------
+const apiBaseUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
+
+type AttachmentKind = "pdf" | "image" | "other";
+
+function resolveAttachmentUrl(url?: string | null): string | null {
+  if (!url) return null;
+  const trimmed = String(url).trim();
+  if (!trimmed || trimmed === "null" || trimmed === "undefined") return null;
+  if (
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("data:") ||
+    trimmed.startsWith("blob:")
+  ) {
+    return trimmed;
+  }
+  return `${apiBaseUrl}${trimmed.startsWith("/") ? "" : "/"}${trimmed}`;
+}
+
+function getAttachmentKind(url?: string | null): AttachmentKind | null {
+  const resolved = resolveAttachmentUrl(url);
+  if (!resolved) return null;
+  const normalized = resolved.split("?")[0].split("#")[0].toLowerCase();
+  if (normalized.startsWith("data:image/")) return "image";
+  if (normalized.startsWith("data:application/pdf") || normalized.includes("application/pdf")) return "pdf";
+  if (normalized.endsWith(".pdf")) return "pdf";
+  if (/\.(jpg|jpeg|png|webp|gif|bmp|svg)$/.test(normalized)) return "image";
+  return "other";
+}
+
+function sanitizeFileNameBase(value: string) {
+  return (
+    value
+      .replace(/[^a-zA-Z0-9-_]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "") || "surat-jalan"
+  );
+}
+
+function getAttachmentFileName(url?: string | null, fallbackBase = "surat-jalan"): string {
+  const resolved = resolveAttachmentUrl(url);
+  if (!resolved) return "dokumen";
+  const base = sanitizeFileNameBase(fallbackBase);
+
+  if (resolved.startsWith("data:")) {
+    const kind = getAttachmentKind(resolved);
+    const ext = kind === "pdf" ? "pdf" : kind === "image" ? "jpg" : "bin";
+    return `${base}.${ext}`;
+  }
+
+  try {
+    const name = new URL(resolved).pathname.split("/").filter(Boolean).pop();
+    return name ? decodeURIComponent(name) : "dokumen";
+  } catch {
+    return "dokumen";
+  }
+}
+
+// Data URL dikonversi sekali menjadi Blob URL supaya PDF/gambar tetap dirender.
+function useAttachmentViewUrl(rawUrl?: string | null): string | null {
+  const raw = rawUrl ?? null;
+  const isInline = Boolean(raw?.startsWith("data:"));
+
+  // Data URL tidak bisa dipakai apa adanya di iframe/tab baru pada beberapa
+  // browser, jadi dikonversi menjadi Blob URL. Hasilnya murni turunan dari
+  // `raw`, jadi dihitung lewat useMemo (bukan state + effect).
+  const blobUrl = useMemo(() => {
+    if (!raw || !isInline) return null;
+    try {
+      const commaIndex = raw.indexOf(",");
+      const meta = raw.slice(0, commaIndex);
+      const payload = raw.slice(commaIndex + 1);
+      const mime = /data:([^;,]+)/i.exec(meta)?.[1] || "application/pdf";
+      const binary = /;base64/i.test(meta) ? atob(payload) : decodeURIComponent(payload);
+      const bytes = new Uint8Array(binary.length);
+      for (let j = 0; j < binary.length; j += 1) bytes[j] = binary.charCodeAt(j);
+      return URL.createObjectURL(new Blob([bytes], { type: mime }));
+    } catch {
+      return null;
+    }
+  }, [raw, isInline]);
+
+  // Lepaskan Blob URL lama supaya tidak menumpuk memori saat lampiran berganti.
+  const previousBlobRef = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = previousBlobRef.current;
+    if (previous && previous !== blobUrl) URL.revokeObjectURL(previous);
+    previousBlobRef.current = blobUrl;
+  }, [blobUrl]);
+
+  if (!raw) return null;
+  if (isInline) return blobUrl;
+  return resolveAttachmentUrl(raw);
+}
+
+function tampilkanNilai(value: unknown, fallback: unknown = "-") {
+  if (value === null || value === undefined) return String(fallback);
+  const s = String(value).trim();
+  return s.length > 0 ? s : String(fallback);
+}
+
 function buildUnitRows(total: number): UnitInput[] {
   const count = Math.max(0, Math.floor(Number(total) || 0));
   return Array.from({ length: count }, (_, i) => ({
@@ -218,6 +347,17 @@ export default function InboundDetailPage() {
   const [unitPanelOpen, setUnitPanelOpen] = useState<Record<number, boolean>>({});
   // Nilai dari tombol "Set semua unit ke ..." per item.
   const [bulkUnitCondition, setBulkUnitCondition] = useState<Record<number, string>>({});
+
+  // Lampiran surat jalan yang di-upload staf (PDF/gambar) — dipanggil SEKARANG,
+  // sebelum early return apa pun, supaya aturan React Hooks tetap terpenuhi.
+  const attachmentRaw = data?.surat_jalan_url || data?.document_url || data?.attachment || null;
+  const attachmentViewUrl = useAttachmentViewUrl(attachmentRaw);
+  const attachmentKind = getAttachmentKind(attachmentRaw);
+  const attachmentIsInline = Boolean(attachmentRaw?.startsWith("data:"));
+  const attachmentNomor = sanitizeFileNameBase(tampilkanNilai(data?.nomor_surat_jalan, "surat-jalan"));
+  const attachmentFileName = getAttachmentFileName(attachmentRaw, attachmentNomor);
+  const attachmentIsPdf = attachmentKind === "pdf";
+  const attachmentIsImage = attachmentKind === "image";
 
   useEffect(() => {
     return () => {
@@ -681,6 +821,28 @@ export default function InboundDetailPage() {
   const noPolisiLabel = data?.no_polisi_teks || data?.kendaraan?.no_polisi || "-";
   const driverLabel = data?.driver_teks || data?.personil_pengantar?.nama || "-";
 
+  // Lima data ringkas untuk halaman detail. Urutan sumber mengikuti relasi
+  // di schema.prisma: surat_jalan.cluster_id (langsung) -> boq.cluster_id,
+  // dan nomor tiket lewat relasi boq -> tiket_material.
+  const clusterIdValue = tampilkanNilai(
+    data?.cluster_id || data?.cluster?.cluster_id || data?.boq?.cluster_id
+  );
+  const clusterNameValue = tampilkanNilai(
+    data?.cluster?.nama_cluster,
+    data?.cluster_id || data?.cluster?.cluster_id || data?.boq?.cluster_id
+  );
+  const projectNameValue = tampilkanNilai(data?.project?.nama_project);
+  const boqIdValue = tampilkanNilai(
+    data?.boq_id !== null && data?.boq_id !== undefined && data?.boq_id !== ""
+      ? String(data.boq_id)
+      : data?.boq?.boq_id !== null &&
+          data?.boq?.boq_id !== undefined &&
+          data?.boq?.boq_id !== ""
+        ? String(data.boq.boq_id)
+        : null
+  );
+  const nomorTiketValue = tampilkanNilai(data?.boq?.tiket?.kode_tiket);
+
   if (!data) {
     return (
       <div className="px-8 py-6 text-gray-500">
@@ -727,33 +889,165 @@ export default function InboundDetailPage() {
                 })
               : "-"}
           </p>
+          <p className="mt-1 flex items-center gap-2 text-sm">
+            <span className="text-gray-500">Status:</span>
+            <span className="rounded-full border border-gray-200 bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
+              {getSuratJalanStatusLabel(data.status)}
+            </span>
+          </p>
         </div>
       </div>
 
-      {/* BOQ / Tiket info */}
-      <div className="mb-6 rounded-2xl border border-[#F3D9C7] bg-white p-4">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Cluster & BOQ</p>
-        {data.boq_id ? (
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <Link
-              href="/dashboard/boq"
-              className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
-            >
-              <ExternalLink size={12} />
-              {data.boq?.boq_number || `BOQ #${data.boq_id}`}
-            </Link>
-            <span className="text-xs text-slate-500">
-              Tiket: {data.boq?.tiket?.kode_tiket || "-"}
-            </span>
+      {/* Layout 2 kolom: dokumen surat jalan (kiri) + informasi & tabel barang (kanan).
+          Di layar sempit tumpuk jadi 1 kolom dengan dokumen di atas. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.15fr_1fr] lg:items-start">
+        {/* KOLOM KIRI: Surat jalan yang di-upload */}
+        <div className="flex flex-col overflow-hidden rounded-2xl border border-[#F3D9C7] bg-white">
+          <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-4">
+            <FileText size={16} className="text-gray-500" />
+            <h2 className="text-xs font-bold uppercase tracking-wider text-gray-600">
+              Surat Jalan Terunggah
+            </h2>
+            {attachmentRaw && (
+              <>
+                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
+                  {attachmentIsPdf ? "PDF" : attachmentIsImage ? "Gambar" : "File"}
+                </span>
+                {attachmentViewUrl && (
+                  <a
+                    href={attachmentViewUrl}
+                    {...(attachmentIsInline ? {} : { target: "_blank", rel: "noopener noreferrer" })}
+                    download={attachmentFileName || undefined}
+                    className="ml-auto inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-600 shadow-sm transition hover:bg-gray-50"
+                  >
+                    <ExternalLink size={12} />
+                    {attachmentIsPdf ? "Buka PDF / Unduh" : attachmentIsImage ? "Buka Gambar" : "Buka File"}
+                  </a>
+                )}
+              </>
+            )}
           </div>
-        ) : (
-          <span className="text-xs text-slate-400">Tidak terhubung ke Cluster & BOQ</span>
-        )}
-      </div>
 
-      {/* Tabel pencocokan barang */}
-      <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
-        <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Cocokkan Barang & Catat Kondisi</p>
+          {!attachmentRaw ? (
+            <div className="p-5">
+              <div className="flex h-[560px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50">
+                <FileText size={30} className="text-gray-300" />
+                <p className="mt-2 text-xs text-gray-400">Tidak ada surat jalan yang di-upload</p>
+              </div>
+            </div>
+          ) : !attachmentViewUrl ? (
+            <div className="p-5">
+              <div className="flex h-[560px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-6 text-center">
+                <FileText size={30} className="text-gray-300" />
+                <div>
+                  <p className="text-sm font-semibold text-gray-600">{attachmentFileName}</p>
+                  <p className="mt-1 text-xs text-gray-400">Lampiran tidak dapat dibuka.</p>
+                </div>
+              </div>
+            </div>
+          ) : attachmentIsPdf ? (
+            <div className="relative h-[580px] w-full bg-gray-100 p-2">
+              <iframe
+                src={attachmentViewUrl}
+                title="Surat Jalan PDF"
+                width="100%"
+                height="100%"
+                className="h-[564px] w-full rounded-lg border-0 bg-white"
+              />
+            </div>
+          ) : attachmentIsImage ? (
+            <div className="h-[580px] w-full overflow-hidden bg-gray-100 p-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={attachmentViewUrl}
+                alt={`Surat jalan ${data.nomor_surat_jalan}`}
+                className="h-full w-full rounded-lg border border-gray-200 bg-white object-contain"
+              />
+            </div>
+          ) : (
+            <div className="p-5">
+              <div className="flex h-[560px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-6 text-center">
+                <FileText size={30} className="text-gray-300" />
+                <div>
+                  <p className="text-sm font-semibold text-gray-600">{attachmentFileName}</p>
+                  <p className="mt-1 text-xs text-gray-400">
+                    Pratinjau tidak tersedia untuk format file ini.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* KOLOM KANAN: informasi transaksi + tabel barang */}
+        <div className="space-y-6">
+          {/* Informasi ringkas — label kecil abu-abu, nilai di bawahnya */}
+          <div className="rounded-2xl border border-[#F3D9C7] bg-white p-5">
+            <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Informasi Surat Jalan
+            </p>
+
+            <div className="grid grid-cols-1 gap-x-6 gap-y-3.5 sm:grid-cols-2">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Cluster ID</p>
+                <p className="mt-0.5 break-all font-mono text-xs text-gray-800">{clusterIdValue}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Cluster Name</p>
+                <p className="mt-0.5 text-sm break-words text-gray-800">{clusterNameValue}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Project Name</p>
+                <p className="mt-0.5 text-sm break-words text-gray-800">{projectNameValue}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">BOQ ID</p>
+                <p className="mt-0.5 font-mono text-xs text-gray-800">{boqIdValue}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Nomor Tiket</p>
+                <p className="mt-0.5 break-all font-mono text-xs text-gray-800">{nomorTiketValue}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Pengirim</p>
+                <p className="mt-0.5 text-sm break-words text-gray-800">{pengirimLabel}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Tujuan</p>
+                <p className="mt-0.5 text-sm break-words text-gray-800">
+                  {tujuanLabel} {tujuanBadge}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Kendaraan</p>
+                <p className="mt-0.5 text-sm break-words text-gray-800">{kendaraanLabel}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">No Polisi</p>
+                <p className="mt-0.5 text-sm break-words text-gray-800">{noPolisiLabel}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Driver</p>
+                <p className="mt-0.5 text-sm break-words text-gray-800">{driverLabel}</p>
+              </div>
+            </div>
+
+            {data.boq_id && (
+              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4 text-sm">
+                <Link
+                  href="/dashboard/boq"
+                  className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
+                >
+                  <ExternalLink size={12} />
+                  {data.boq?.boq_number || `BOQ #${data.boq_id}`}
+                </Link>
+              </div>
+            )}
+          </div>
+
+          {/* Tabel pencocokan barang */}
+          <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
+            <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Cocokkan Barang & Catat Kondisi</p>
 <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
@@ -1032,8 +1326,10 @@ export default function InboundDetailPage() {
           Masih ada {missingAlasanIndexes.length} barang yang ditolak sebagian tanpa alasan penolakan. Isi alasan pada kolom Qty Diterima/Ditolak.
         </p>
       )}
+        </div>
+      </div>
 
-{showFotoSuccessModal && (
+      {showFotoSuccessModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
           onClick={() => setShowFotoSuccessModal(false)}

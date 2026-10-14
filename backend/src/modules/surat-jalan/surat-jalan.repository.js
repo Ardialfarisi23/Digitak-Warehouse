@@ -121,6 +121,14 @@ const findByIdInclude = {
       no_hp: true,
     },
   },
+  // Cluster tujuan pembacaan barang (nama + id) supaya halaman detail bisa
+  // menampilkan Cluster Name tanpa join manual di frontend.
+  cluster: {
+    select: {
+      cluster_id: true,
+      nama_cluster: true,
+    },
+  },
   items: {
     ...baseInclude.items,
     include: {
@@ -153,6 +161,13 @@ const stokKritisConfig = require("../../config/stok-kritis.config");
 
 const outboundInclude = {
   ...baseInclude,
+  // Cluster tujuan pembacaan barang (nama + id) untuk halaman detail outbound.
+  cluster: {
+    select: {
+      cluster_id: true,
+      nama_cluster: true,
+    },
+  },
   items: {
     ...baseInclude.items,
     include: {

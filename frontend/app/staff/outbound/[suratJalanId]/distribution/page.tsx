@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, AlertCircle, MapPin, Truck, CheckCircle2, X, Clock, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApi, ensureOk } from "@/lib/api";
+import { getSuratJalanStatusLabel } from "@/lib/surat-jalan-status";
 
 type ApiSuratJalanItem = {
   item_id: number;
@@ -80,24 +81,27 @@ type ApiSuratJalan = {
 
 type ApiSuratJalanStatus = "draft_diajukan" | "menunggu_verifikasi" | "ready_putaway" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "sedang_dikirim" | "tiba_di_transit" | "tiba_menunggu_konfirmasi" | "ditolak";
 
-const STATUS_META: Record<ApiSuratJalanStatus, { label: string; tone: string }> = {
-  draft_diajukan: { label: "Menunggu Persetujuan", tone: "bg-amber-50 text-amber-700" },
-  menunggu_verifikasi: { label: "Menunggu Verifikasi", tone: "bg-amber-50 text-amber-700" },
-  ready_putaway: { label: "Siap Putaway", tone: "bg-blue-50 text-blue-600" },
-  disetujui: { label: "Disetujui — Siap Picking", tone: "bg-emerald-50 text-emerald-600" },
-  digenerate: { label: "Digenerate", tone: "bg-blue-50 text-blue-600" },
-  tiba_menunggu_konfirmasi: { label: "Menunggu Konfirmasi", tone: "bg-blue-50 text-blue-600" },
-  diterima_didistribusikan: { label: "Terkirim", tone: "bg-gray-100 text-gray-500" },
-  sedang_dikirim: { label: "Sedang Dikirim", tone: "bg-amber-50 text-amber-600" },
-  tiba_di_transit: { label: "Di Gudang Transit", tone: "bg-purple-50 text-purple-700" },
-  ditolak: { label: "Ditolak", tone: "bg-rose-50 text-rose-600" },
+// Warna badge per status (tetap per-halaman); label dari helper bersama.
+const STATUS_TONE: Record<string, string> = {
+  draft_diajukan: "bg-amber-50 text-amber-700",
+  menunggu_verifikasi: "bg-amber-50 text-amber-700",
+  ready_putaway: "bg-blue-50 text-blue-600",
+  disetujui: "bg-emerald-50 text-emerald-600",
+  digenerate: "bg-blue-50 text-blue-600",
+  tiba_menunggu_konfirmasi: "bg-blue-50 text-blue-600",
+  diterima_didistribusikan: "bg-gray-100 text-gray-500",
+  sedang_dikirim: "bg-amber-50 text-amber-600",
+  tiba_di_transit: "bg-purple-50 text-purple-700",
+  ditolak: "bg-rose-50 text-rose-600",
 };
 
 function getStatusMeta(status: ApiSuratJalanStatus, pickingSelesai?: boolean) {
+  const tone = STATUS_TONE[String(status || "").toLowerCase()] || "bg-amber-50 text-amber-700";
+
   if (status === "disetujui" && pickingSelesai) {
     return { label: "Picking Selesai — Siap Distribusi", tone: "bg-blue-50 text-blue-600" };
   }
-  return STATUS_META[status] || STATUS_META.draft_diajukan;
+  return { label: getSuratJalanStatusLabel(status), tone };
 }
 
 const formatDateTime = (iso: string) =>
