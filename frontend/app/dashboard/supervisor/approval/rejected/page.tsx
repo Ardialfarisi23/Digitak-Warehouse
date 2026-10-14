@@ -187,7 +187,7 @@ export default function SupervisorRejectedListPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex justify-between items-start">
           <div>
             <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">
@@ -198,21 +198,6 @@ export default function SupervisorRejectedListPage() {
           </div>
           <div className="p-2 bg-rose-50 rounded-lg text-rose-500">
             <XCircle className="w-5 h-5" />
-          </div>
-        </div>
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex justify-between items-start">
-          <div>
-            <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">
-              Inbound Ditolak
-            </p>
-            <h3 className="text-3xl font-bold text-sky-700 mb-1">
-              {records.filter((r) => r.tipe === "inbound").length}
-              <span className="text-base font-medium text-slate-400"> / {meta.total}</span>
-            </h3>
-            <p className="text-xs text-slate-400">Halaman ini</p>
-          </div>
-          <div className="p-2 bg-sky-50 rounded-lg text-sky-500">
-            <FileText className="w-5 h-5" />
           </div>
         </div>
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex justify-between items-start">

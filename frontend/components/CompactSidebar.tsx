@@ -21,9 +21,11 @@ const SECTION_LABELS: Record<string, string> = {
 
 const SUPERVISOR_ORDER = [
   "/dashboard/supervisor",
+  "/master-data",
+  "/dashboard/supervisor/boq",
   "/dashboard/supervisor/approval",
   "/dashboard/supervisor/operasional",
-  "/master-data",
+  "/dashboard/supervisor/warehousespv",
   "/dashboard/supervisor/reconciliation",
 ];
 
