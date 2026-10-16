@@ -10,6 +10,7 @@ import BarangPicker, {
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { MobileCardList, type MobileCardField, type MobileCardItem } from "@/components/MobileCardList";
+import { safeUrl } from "@/lib/safe-url";
 
 type InboundStatus = "draft_diajukan" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "ditolak" | "menunggu_verifikasi" | "ready_putaway" | "sedang_dikirim" | "tiba_menunggu_konfirmasi";
 
@@ -424,7 +425,7 @@ function PreviewInboundModal({
                 <span className="font-medium text-slate-700">
                   {suratJalanFileName ? (
                     suratJalanUrl && !suratJalanInline ? (
-                      <a href={suratJalanUrl} target="_blank" rel="noreferrer" className="text-[#E8632C] hover:underline">
+                      <a href={safeUrl(suratJalanUrl)} target="_blank" rel="noreferrer" className="text-[#E8632C] hover:underline">
                         {suratJalanFileName}
                       </a>
                     ) : (
@@ -1918,7 +1919,7 @@ pic_pemohon_nama: picPemohon.trim() || null,
                           <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{driverLabel}</td>
                           <td className="px-4 py-4 align-top" rowSpan={rowSpan}>
                             {sj.surat_jalan_url ? (
-                              <a href={sj.surat_jalan_url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#E8632C] hover:underline">
+                              <a href={safeUrl(sj.surat_jalan_url)} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#E8632C] hover:underline">
                                 Lihat PDF
                               </a>
                             ) : (
@@ -2268,8 +2269,8 @@ pic_pemohon_nama: picPemohon.trim() || null,
               <p className="mt-1 text-xs font-medium text-amber-600">{pdfUploadError}</p>
             )}
             {suratJalanPdfUrl && !uploadingPdf && (
-              <a
-                href={suratJalanPdfUrl}
+                <a
+                  href={safeUrl(suratJalanPdfUrl)}
                 target="_blank"
                 rel="noreferrer"
                 className="text-xs font-medium text-[#E8632C] hover:underline"

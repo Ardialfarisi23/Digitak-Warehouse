@@ -586,7 +586,7 @@ export default function AdminDeliveryPage() {
 {/* Detail Modal */}
         {selectedRecord && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-0 sm:p-3 md:p-4" onClick={() => setSelectedRecord(null)}>
-            <div className="w-full h-[100dvh] max-h-[100dvh] sm:w-[min(92vw,720px)] sm:max-h-[calc(100dvh-1.5rem)] sm:rounded-xl md:max-w-3xl lg:max-w-4xl md:h-auto md:max-h-[calc(100dvh-1rem)] md:rounded-2xl overflow-y-auto overscroll-contain bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <div className="w-full h-[100dvh] max-h-[100dvh] w-[calc(100vw-1rem)] sm:w-[min(92vw,720px)] sm:max-h-[calc(100dvh-1.5rem)] sm:rounded-xl md:max-w-3xl lg:max-w-4xl md:h-auto md:max-h-[calc(100dvh-1rem)] md:rounded-2xl overflow-y-auto overscroll-contain bg-white shadow-xl pb-6" onClick={(e) => e.stopPropagation()}>
               {/* Toolbar — hilang saat print, sticky di mobile */}
               <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-100 bg-white print:hidden">
                 <div className="min-w-0">

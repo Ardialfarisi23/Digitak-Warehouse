@@ -95,12 +95,32 @@ const findAll = async ({
     },
   });
 
+  const projectIds = data.map((p) => p.project_id);
+  let activeMap = {};
+  if (projectIds.length > 0) {
+    const activeCounts = await prisma.cluster.groupBy({
+      by: ["project_id"],
+      where: {
+        project_id: { in: projectIds },
+        status_aktif: true,
+      },
+      _count: { _all: true },
+    });
+    activeMap = Object.fromEntries(
+      activeCounts.map((g) => [g.project_id.toString(), g._count._all])
+    );
+  }
+  const result = data.map((p) => ({
+    ...p,
+    cluster_aktif_count: activeMap[p.project_id.toString()] ?? 0,
+  }));
+
   if (all) {
-    return { data, meta: null };
+    return { data: result, meta: null };
   }
 
   return {
-    data,
+    data: result,
     meta: {
       total,
       page: sanitizedPage,

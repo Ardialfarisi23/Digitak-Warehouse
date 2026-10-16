@@ -97,8 +97,8 @@ const roleMap: Record<string, { label: string; variant: BadgeVariant }> = {
 interface AuditLogEntry {
   audit_id: number | string;
   created_at: string;
-  actor_nama: string;
-  actor_role: string;
+  actor_nama: string | null;
+  actor_role: string | null;
   aksi: string;
   entity_type?: string;
   entity_id?: string | number;
@@ -514,6 +514,15 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
   // Mobile card component for Audit Log
   function AuditLogCard({ row, onClick }: { row: AuditLogEntry; onClick: () => void }) {
     const extraRef = getExtraRef(row);
+    const actorNama = row.actor_nama ?? (row.aksi === "login_failed" ? "Tidak dikenal (percobaan login)" : "—");
+    const actorRole = row.actor_role ?? (row.aksi === "login_failed" ? "—" : "—");
+    const roleBadge = roleMap[actorRole] ? (
+      <Badge label={roleMap[actorRole].label} variant={roleMap[actorRole].variant} className="whitespace-nowrap shrink-0" />
+    ) : actorRole !== "—" ? (
+      <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 whitespace-nowrap shrink-0">
+        {actorRole}
+      </span>
+    ) : null;
     return (
       <div
         className="group rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:bg-slate-50 cursor-pointer"
@@ -529,13 +538,7 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
                   {humanizeValue("aksi", row.aksi)}
                 </span>
               )}
-              {roleMap[row.actor_role] ? (
-                <Badge label={roleMap[row.actor_role].label} variant={roleMap[row.actor_role].variant} className="whitespace-nowrap shrink-0" />
-              ) : (
-                <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 whitespace-nowrap shrink-0">
-                  {row.actor_role}
-                </span>
-              )}
+              {roleBadge}
             </div>
             <p className="mt-1 font-mono font-semibold text-orange-500 truncate" title={getEntityLabel(row)}>
               {getEntityLabel(row)}
@@ -550,8 +553,8 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
 
         <div className="mt-2 min-w-0">
           <p className="text-xs font-medium text-slate-400">Pengguna</p>
-          <p className="font-semibold text-slate-900 truncate" title={row.actor_nama}>
-            {row.actor_nama}
+          <p className="font-semibold text-slate-900 truncate" title={actorNama}>
+            {actorNama}
           </p>
         </div>
 
@@ -651,14 +654,18 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
                   <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400 overflow-hidden">
                     {formatDateTime(r.created_at)}
                   </td>
-                  <td className="px-6 py-4 min-w-0 overflow-hidden truncate" title={r.actor_nama}>
-                    <div className="font-semibold text-slate-900 truncate">{r.actor_nama}</div>
+                  <td className="px-6 py-4 min-w-0 overflow-hidden truncate" title={r.actor_nama ?? (r.aksi === "login_failed" ? "Tidak dikenal (percobaan login)" : "—")}>
+                    <div className="font-semibold text-slate-900 truncate">{r.actor_nama ?? (r.aksi === "login_failed" ? "Tidak dikenal (percobaan login)" : "—")}</div>
                   </td>
                   <td className="px-6 py-4 overflow-hidden">
-                    {roleMap[r.actor_role] ? (
-                      <Badge label={roleMap[r.actor_role].label} variant={roleMap[r.actor_role].variant} className="whitespace-nowrap shrink-0" />
+                    {r.actor_role ? (
+                      roleMap[r.actor_role] ? (
+                        <Badge label={roleMap[r.actor_role].label} variant={roleMap[r.actor_role].variant} className="whitespace-nowrap shrink-0" />
+                      ) : (
+                        <span className="text-xs text-slate-500 whitespace-nowrap">{r.actor_role}</span>
+                      )
                     ) : (
-                      <span className="text-xs text-slate-500 whitespace-nowrap">{r.actor_role}</span>
+                      r.aksi === "login_failed" ? "—" : "—"
                     )}
                   </td>
                   <td className="px-6 py-4 overflow-hidden">
@@ -749,12 +756,12 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-400">Pengguna</p>
-                <p className="text-sm font-semibold text-slate-800">{detailRow.actor_nama}</p>
+                <p className="text-sm font-semibold text-slate-800">{detailRow.actor_nama ?? (detailRow.aksi === "login_failed" ? "Tidak dikenal (percobaan login)" : "—")}</p>
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-400">Peran</p>
                 <p className="text-sm text-slate-800">
-                  {roleMap[detailRow.actor_role] ? roleMap[detailRow.actor_role].label : detailRow.actor_role}
+                  {detailRow.actor_role ? (roleMap[detailRow.actor_role] ? roleMap[detailRow.actor_role].label : detailRow.actor_role) : (detailRow.aksi === "login_failed" ? "—" : "—")}
                 </p>
               </div>
               <div>
@@ -838,12 +845,12 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
     if (label && label !== "-") {
       const badgeLabel = ASAL_TIPE_LABEL[row.asal_tipe || ""] || row.asal_tipe || "";
       return (
-        <span className="inline-flex items-center gap-1.5">
-          <span className="truncate block" title={label}>
+        <span className="inline-flex items-center gap-1.5 min-w-0">
+          <span className="truncate block min-w-0" title={label}>
             {label}
           </span>
           {badgeLabel && (
-            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-600 bg-slate-100 whitespace-nowrap">
+            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-600 bg-slate-100 whitespace-nowrap shrink-0">
               {badgeLabel}
             </span>
           )}
@@ -866,17 +873,76 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
     const lapangan = row.lapangan_tujuan || "-";
     if (lapangan && lapangan !== "-") {
       return (
-        <span className="inline-flex items-center gap-1.5">
-          <span className="truncate block max-w-[220px]" title={lapangan}>
+        <span className="inline-flex items-center gap-1.5 min-w-0">
+          <span className="truncate block min-w-0 max-w-[180px]" title={lapangan}>
             {lapangan}
           </span>
-          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-600 bg-slate-100 whitespace-nowrap">
+          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-600 bg-slate-100 whitespace-nowrap shrink-0">
             Lapangan
           </span>
         </span>
       );
     }
     return <span className="text-slate-300">-</span>;
+  };
+
+  // Table cell renderers: 2 lines (name + badge)
+  const renderAsalCell = (row: StockHistoryEntry) => {
+    const label = row.asal_label?.trim();
+    if (label && label !== "-") {
+      const badgeLabel = ASAL_TIPE_LABEL[row.asal_tipe || ""] || row.asal_tipe || "";
+      return (
+        <div className="leading-tight min-w-0">
+          <span className="text-xs font-medium text-slate-900 line-clamp-2 break-words block" title={label}>
+            {label}
+          </span>
+          {badgeLabel && (
+            <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold text-slate-600 bg-slate-100 whitespace-nowrap shrink-0 mt-0.5">
+              {badgeLabel}
+            </span>
+          )}
+        </div>
+      );
+    }
+    const fallback = row.gudang_asal || "-";
+    return (
+      <div className="leading-tight">
+        <span className="text-xs font-medium text-slate-900 line-clamp-2 break-words block" title={fallback}>
+          {fallback}
+        </span>
+      </div>
+    );
+  };
+
+  const renderTujuanCell = (row: StockHistoryEntry) => {
+    const gudang = row.gudang_tujuan || "-";
+    if (gudang && gudang !== "-") {
+      return (
+        <div className="leading-tight">
+          <span className="text-xs font-medium text-slate-900 line-clamp-2 break-words block" title={gudang}>
+            {gudang}
+          </span>
+        </div>
+      );
+    }
+    const lapangan = row.lapangan_tujuan || "-";
+    if (lapangan && lapangan !== "-") {
+      return (
+        <div className="leading-tight">
+          <span className="text-xs font-medium text-slate-900 line-clamp-2 break-words block" title={lapangan}>
+            {lapangan}
+          </span>
+          <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold text-slate-600 bg-slate-100 whitespace-nowrap shrink-0 mt-0.5">
+            Lapangan
+          </span>
+        </div>
+      );
+    }
+    return (
+      <div className="leading-tight">
+        <span className="text-xs text-slate-300">—</span>
+      </div>
+    );
   };
 
   // Formatters shared between table and card
@@ -983,11 +1049,20 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
         {(row.asal_label || row.gudang_asal || row.gudang_tujuan || row.lapangan_tujuan) && (
           <div className="mt-3 pt-3 border-t border-slate-100">
             <p className="text-xs font-medium text-slate-400 mb-1">Alur</p>
-            <p className="text-sm text-slate-700 break-words">
-              {renderAsal(row)}
-              <span className="mx-1.5 text-slate-400">→</span>
-              {renderTujuan(row)}
-            </p>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <p className="text-[10px] font-medium text-slate-400 mb-0.5">Asal</p>
+                <div className="text-slate-700 break-words leading-tight">
+                  {renderAsalCell(row)}
+                </div>
+              </div>
+              <div>
+                <p className="text-[10px] font-medium text-slate-400 mb-0.5">Tujuan</p>
+                <div className="text-slate-700 break-words leading-tight">
+                  {renderTujuanCell(row)}
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1250,9 +1325,9 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
   };
 
   return (
-    <div>
-      <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <div className="sm:col-span-1">
+    <div className="pt-6">
+      <div className="mb-6 grid grid-cols-1 gap-2">
+        <div>
           <div className="flex min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
             <Search size={16} className="shrink-0 text-slate-400" />
             <input
@@ -1264,31 +1339,31 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
           </div>
         </div>
 
-        <div className="sm:col-span-1">
+        <div>
           <button
             type="button"
             onClick={handleExportRiwayatStok}
             disabled={exporting}
             aria-label="Ekspor riwayat stok"
             title="Ekspor riwayat stok"
-            className="w-9 h-9 sm:w-auto sm:h-9 flex items-center justify-center gap-2 self-end sm:self-auto rounded-full bg-orange-500 px-0 sm:px-4 py-2 text-xs font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
+            className="w-full sm:w-auto h-10 sm:h-9 flex items-center justify-center gap-2 rounded-full bg-orange-500 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
           >
             {exporting ? (
               <span className="flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="hidden sm:inline">Mengekspor...</span>
+                <span>Mengekspor...</span>
               </span>
             ) : (
               <span className="flex items-center gap-2">
                 <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Ekspor</span>
+                <span>Ekspor</span>
               </span>
             )}
           </button>
         </div>
       </div>
 
-      <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2">
+      <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
         <div>
           <label className="mb-1 block text-[11px] font-medium text-slate-400">Gudang</label>
           <div className="relative">
@@ -1395,7 +1470,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
       </div>
 
       {advancedOpen && (
-        <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+        <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           <div>
             <label className="mb-1 block text-[11px] font-medium text-slate-400">Zona</label>
             <div className="relative">
@@ -1544,43 +1619,39 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
         </div>
       )}
 
-      {/* Desktop table (md+) */}
+{/* Desktop table (md+) */}
       <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1300px] md:min-w-[1500px] xl:min-w-[1800px] 2xl:min-w-[2040px] table-fixed text-left text-sm border-separate border-spacing-0">
+          <table className="w-full max-w-full table-auto text-left border-separate border-spacing-0">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tanggal</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">No. Surat Jalan</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Jenis Transaksi</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diproses Oleh</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Perangkat</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
-                <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Qty</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Zona</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Asal</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tujuan</th>
-                <th className="px-6 py-4 w-10"></th>
+                <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 whitespace-nowrap">Tanggal / Tiket</th>
+                <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 whitespace-nowrap">No. Surat Jalan</th>
+                <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 whitespace-nowrap">Jenis</th>
+                <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 whitespace-nowrap">Asal</th>
+                <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 whitespace-nowrap hidden lg:table-cell">Tujuan</th>
+                <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 whitespace-nowrap">Status / Diproses</th>
+                <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 whitespace-nowrap">Barang / Kode</th>
+                <th className="px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-slate-400 whitespace-nowrap">Qty</th>
+                <th className="px-3 py-2.5 w-8"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4" colSpan={13}>
+                    <td className="px-3 py-2.5" colSpan={9}>
                       <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                     </td>
                   </tr>
                 ))
               ) : error ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={13}>{error}</td>
+                  <td className="px-3 py-10 text-center text-sm text-rose-500" colSpan={9}>{error}</td>
                 </tr>
               ) : data.length === 0 ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={13}>
+                  <td className="px-3 py-10 text-center text-sm text-slate-400" colSpan={9}>
                     Tidak ada pergerakan stok yang cocok dengan filter ini.
                   </td>
                 </tr>
@@ -1589,20 +1660,26 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                   return (
                     <tr
                       key={r.ledger_id}
-                      className="group cursor-pointer transition-colors hover:bg-slate-50 min-h-16"
+                      className="group cursor-pointer transition-colors hover:bg-slate-50 min-h-20"
                       onClick={() => setDetailTiket(r)}
                     >
-                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400 overflow-hidden">
-                        {formatDateTime(r.waktu_mutasi)}
+                      <td className="px-3 py-2.5 min-w-[140px] max-w-[180px] truncate">
+                        <div className="leading-tight">
+                          <span className="font-mono text-xs text-slate-400 truncate block" title={formatDateTime(r.waktu_mutasi)}>
+                            {formatDateTime(r.waktu_mutasi)}
+                          </span>
+                          <span className="font-mono font-semibold text-orange-500 text-xs truncate block" title={r.kode_tiket || "-"}>
+                            {r.kode_tiket || "-"}
+                          </span>
+                        </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap font-mono font-semibold text-orange-500 overflow-hidden">
-                        {r.kode_tiket || "-"}
+                      <td className="px-3 py-2.5 min-w-[120px] max-w-[160px] truncate">
+                        <span className="font-mono text-xs font-semibold text-slate-700 truncate block" title={r.nomor_surat_jalan && r.nomor_surat_jalan !== "-" ? r.nomor_surat_jalan : r.return_transaction_id ? `Return #${r.return_transaction_id}` : "-"}>
+                          {r.nomor_surat_jalan && r.nomor_surat_jalan !== "-" ? r.nomor_surat_jalan : r.return_transaction_id ? `Return #${r.return_transaction_id}` : "-"}
+                        </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs font-semibold text-slate-700 overflow-hidden">
-                        {r.nomor_surat_jalan && r.nomor_surat_jalan !== "-" ? r.nomor_surat_jalan : r.return_transaction_id ? `Return #${r.return_transaction_id}` : "-"}
-                      </td>
-                      <td className="px-6 py-4 min-w-0 overflow-hidden">
-                        <div className="flex flex-wrap items-center gap-2">
+                      <td className="px-3 py-2.5 whitespace-nowrap min-w-[80px]">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <Badge
                             label={r.tipe_surat_jalan === "inbound" ? "Inbound" : r.tipe_surat_jalan === "outbound" ? "Outbound" : r.tipe_surat_jalan || "-"}
                             variant={r.tipe_surat_jalan === "inbound" ? "green" : r.tipe_surat_jalan === "outbound" ? "orange" : "gray"}
@@ -1610,7 +1687,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                           />
                           {r.is_putaway && (
                             <span
-                              className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 whitespace-nowrap shrink-0"
+                              className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 whitespace-nowrap shrink-0"
                               title={
                                 r.jenis_mutasi === "out"
                                   ? "Putaway · keluar (Generic)"
@@ -1620,31 +1697,62 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                               }
                             >
                               {r.jenis_mutasi === "out"
-                                ? "Putaway · keluar (Generic)"
+                                ? "Putaway Out"
                                 : r.jenis_mutasi === "in"
-                                  ? "Putaway · masuk (Zona)"
-                                  : "Perpindahan Internal (Putaway)"}
+                                  ? "Putaway In"
+                                  : "Putaway"}
                             </span>
                           )}
                         </div>
                       </td>
-                       <td className="px-6 py-4 whitespace-nowrap text-slate-700">
-                         {renderAsal(r)}
-                       </td>
-                       <td className="px-6 py-4 whitespace-nowrap text-slate-700">
-                         {renderTujuan(r)}
-                       </td>
-<td className="px-6 py-4 text-right">
-                          <button
-                            type="button"
-                            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                            onClick={(e) => { e.stopPropagation(); setDetailTiket(r); }}
-                            aria-label="Lihat detail"
+                      <td className="px-3 py-2.5 min-w-[140px] max-w-[180px]">
+                        {renderAsalCell(r)}
+                      </td>
+                      <td className="px-3 py-2.5 min-w-[140px] max-w-[180px] hidden lg:table-cell">
+                        {renderTujuanCell(r)}
+                      </td>
+                      <td className="px-3 py-2.5 min-w-[140px] max-w-[180px] truncate">
+                        <div className="leading-tight">
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap shrink-0"
+                            style={{
+                              color: statusColor[r.status_surat_jalan]?.fg || "#6B7280",
+                              backgroundColor: statusColor[r.status_surat_jalan]?.bg || "#F3F4F6",
+                            }}
                           >
-                            <Eye size={20} />
-                          </button>
-                        </td>
-                      </tr>
+                            {statusLabel[r.status_surat_jalan] || r.status_surat_jalan || "-"}
+                          </span>
+                          <span className="text-xs text-slate-500 truncate block mt-0.5" title={r.diproses_oleh || "-"}>
+                            {r.diproses_oleh || "-"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 min-w-[160px] max-w-[220px] truncate">
+                        <div className="leading-tight">
+                          <span className="font-semibold text-slate-900 text-xs truncate block" title={r.nama_barang || "-"}>
+                            {r.nama_barang || "-"}
+                          </span>
+                          <span className="font-mono text-[10px] text-slate-400 truncate block" title={r.kode_perangkat || "-"}>
+                            {r.kode_perangkat || "-"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap font-mono text-slate-700 min-w-[70px]">
+                        <span className="font-semibold text-xs">{r.qty}</span>
+                        {r.satuan && r.satuan !== "-" && (
+                          <span className="ml-1 text-[10px] text-slate-400">{r.satuan}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <button
+                          type="button"
+                          className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                          onClick={(e) => { e.stopPropagation(); setDetailTiket(r); }}
+                          aria-label="Lihat detail"
+                        >
+                          <Eye size={18} />
+                        </button>
+                      </td>
+                    </tr>
                   );
                 })
               )}
@@ -2314,7 +2422,7 @@ export default function LaporanAuditPage() {
           </p>
         </div>
 
-                        <div className="overflow-x-auto pb-1 whitespace-nowrap border-b border-slate-100">
+                        <div className="overflow-x-auto pb-1 whitespace-nowrap border-b border-slate-100 -mx-4 px-4 sm:mx-0 sm:px-0">
           <div className="flex items-center gap-2 min-w-max" role="tablist" aria-label="Tab laporan">
             {tabs.map((t) => {
               const Icon = t.icon;
@@ -2328,7 +2436,7 @@ export default function LaporanAuditPage() {
                   aria-selected={active}
                   aria-controls={`panel-${t.key}`}
                   id={`tab-${t.key}`}
-                  className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors min-h-[40px] ${
                     active ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:text-slate-700"
                   }`}>
                   <Icon size={16} />

@@ -1,10 +1,10 @@
 const express = require("express");
-
 const router = express.Router();
 
 const reportsController = require("./reports.controller");
 const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
+const { uploadLimiter } = require("../../middlewares/rate-limit");
 
 router.get("/stock-history", authenticate, authorize("ADMIN"), reportsController.getStockHistory);
 router.get("/stock-history/export", authenticate, authorize("ADMIN"), reportsController.exportStockHistoryExcel);
@@ -20,7 +20,19 @@ router.get("/reconciliation/template", authenticate, authorize("ADMIN", "SUPERVI
 
 router.post("/reconciliation/backfill", authenticate, authorize("ADMIN"), reportsController.backfillReconciliation);
 
-router.post("/reconciliation/upload", authenticate, authorize("ADMIN", "SUPERVISOR"), reportsController.uploadReconciliationFile);
-router.post("/reconciliation/confirm", authenticate, authorize("ADMIN", "SUPERVISOR"), reportsController.confirmReconciliationUpload);
+router.post(
+  "/reconciliation/upload",
+  authenticate,
+  authorize("ADMIN", "SUPERVISOR"),
+  uploadLimiter,
+  reportsController.uploadReconciliationFile
+);
+
+router.post(
+  "/reconciliation/confirm",
+  authenticate,
+  authorize("ADMIN", "SUPERVISOR"),
+  reportsController.confirmReconciliationUpload
+);
 
 module.exports = router;

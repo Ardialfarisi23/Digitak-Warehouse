@@ -35,6 +35,7 @@ import {
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
+import { safeUrl } from "@/lib/safe-url";
 import Image from "next/image";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -196,6 +197,7 @@ export default function BoqPage() {
   const isSupervisor = role === "supervisor";
 
   const [activeTab, setActiveTab] = useState<SectionType>("aktif");
+  const [page, setPage] = useState(1);
   const [boqs, setBoqs] = useState<Boq[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -918,7 +920,7 @@ export default function BoqPage() {
                         <td className="px-6 py-4 text-right font-semibold text-slate-800">{rowQty}</td>
                         <td className="px-6 py-4">
                           {boq.referenceFile ? (
-                            <a href={boq.referenceFile} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-100">
+                            <a href={safeUrl(boq.referenceFile)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-100">
                               <FileText size={14} />PDF
                             </a>
                           ) : (<span className="text-xs text-slate-300">-</span>)}
@@ -1060,7 +1062,7 @@ export default function BoqPage() {
                   {uploadingRef && <p className="mt-1 text-xs text-slate-400">Mengunggah file...</p>}
                   {form.referenceFile && (
                     <div className="mt-2 flex items-center gap-2">
-                      <a href={form.referenceFile} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-orange-600 hover:text-orange-700">Lihat file referensi</a>
+                      <a href={safeUrl(form.referenceFile)} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-orange-600 hover:text-orange-700">Lihat file referensi</a>
                       <button type="button" onClick={() => setForm((p) => ({ ...p, referenceFile: "" }))} className="text-xs text-slate-400 hover:text-slate-600">Hapus</button>
                     </div>
                   )}
@@ -1213,7 +1215,7 @@ export default function BoqPage() {
                   <p className="text-xs font-medium text-slate-400">Dokumen Referensi BOQ</p>
                   <div className="mt-2 flex items-center gap-2">
                     <FileText size={14} className="text-slate-400" />
-                    <a href={detailBoq.referenceFile} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-orange-600 hover:text-orange-700">Lihat dokumen referensi</a>
+                    <a href={safeUrl(detailBoq.referenceFile)} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-orange-600 hover:text-orange-700">Lihat dokumen referensi</a>
                   </div>
                 </div>
               )}

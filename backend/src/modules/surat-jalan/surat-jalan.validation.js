@@ -1,5 +1,23 @@
 const { z } = require("zod");
 
+const safeUrlSchema = z
+  .string()
+  .optional()
+  .nullable()
+  .refine(
+    (val) => {
+      if (!val) return true;
+      const trimmed = val.trim();
+      try {
+        const url = new URL(trimmed);
+        return url.protocol === "http:" || url.protocol === "https:";
+      } catch {
+        return trimmed.startsWith("/") && !trimmed.startsWith("//") && !trimmed.includes("\\");
+      }
+    },
+    { message: "URL harus http/https atau path relatif" }
+  );
+
 const createSuratJalanSchema = z
   .object({
     tipe: z.enum(["inbound", "outbound"]),
@@ -20,8 +38,7 @@ const createSuratJalanSchema = z
     pic_pemohon_nama: z.string().optional().nullable(),
     nomor_tiket: z.string().optional().nullable(),
     tanggal: z.string().optional().nullable(),
-    surat_jalan_url: z.string().url("URL surat jalan tidak valid.").optional().nullable(),
-    tujuan_tipe: z.enum(["lapangan", "gudang"]).optional().nullable(),
+    surat_jalan_url: safeUrlSchema,    tujuan_tipe: z.enum(["lapangan", "gudang"]).optional().nullable(),
     titik_lapangan_id: z.string().optional().nullable(),
     alamat_lapangan: z.string().optional().nullable(),
     tipe_pengirim: z.enum(["internal", "external"]).optional().nullable(),
@@ -361,7 +378,7 @@ const deliveryStatusSchema = z.object({
   estimasi_tiba: z.string().optional().nullable(),
   catatan_distribusi: z.string().optional().nullable(),
   catatan_tiba: z.string().optional().nullable(),
-  bukti_tiba_url: z.string().url("URL bukti tidak valid.").optional().nullable(),
+  bukti_tiba_url: safeUrlSchema,
   items: z
     .array(
       z.object({
@@ -375,7 +392,21 @@ const deliveryStatusSchema = z.object({
 });
 
 const itemFotoSchema = z.object({
-  url: z.string().url("URL foto tidak valid."),
+  url: z
+    .string()
+    .refine(
+      (val) => {
+        if (!val) return false;
+        const trimmed = val.trim();
+        try {
+          const url = new URL(trimmed);
+          return url.protocol === "http:" || url.protocol === "https:";
+        } catch {
+          return trimmed.startsWith("/") && !trimmed.startsWith("//") && !trimmed.includes("\\");
+        }
+      },
+      { message: "URL foto harus http/https atau path relatif" }
+    ),
   filename: z.string().optional().nullable(),
   mimetype: z.string().optional().nullable(),
   ukuran_bytes: z.coerce.number().positive().optional().nullable(),
@@ -390,7 +421,7 @@ const itemFotoSchema = z.object({
 const tibaTransitSchema = z.object({
   gudang_id: z.coerce.number().positive("Gudang Transit wajib dipilih."),
   catatan_tiba: z.string().trim().max(500).optional().nullable(),
-  bukti_url: z.string().url("URL bukti tidak valid.").optional().nullable(),
+  bukti_url: safeUrlSchema,
   items: z
     .array(
       z.object({

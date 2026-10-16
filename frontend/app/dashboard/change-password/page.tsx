@@ -9,7 +9,7 @@ export default function ChangePasswordPage() {
   const { updateUser } = useAuth();
 
   return (
-      <div className="min-h-screen w-full bg-[#FAF8F5]">
+      <div className="min-h-screen w-full bg-[#FAF8F5] pt-14">
       <div className="mx-auto flex w-full max-w-7xl flex-col justify-center gap-12 lg:flex-row lg:items-center my-auto">
         <div className="flex-1 space-y-8 max-w-xl">
           <div className="relative h-12 w-52">

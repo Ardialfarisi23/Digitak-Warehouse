@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useApi, ensureOk } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { safeUrl } from "@/lib/safe-url";
 import { summarizeKondisiUnits } from "@/lib/kondisi-barang";
 import type { InboundSuratJalan as InboundPdfShape } from "@/lib/staff/inbound-pdf";
 
@@ -918,7 +919,7 @@ export default function InboundDetailPage() {
                         )}
                         {item.fotos?.map((foto) => (
                           <div key={foto.foto_id} className="relative h-14 w-14 overflow-hidden rounded-lg border border-gray-200">
-                            <img src={foto.url} alt={foto.filename || "Foto barang"} className="h-full w-full object-cover" />
+                            <img src={safeUrl(foto.url) ?? "#"} alt={foto.filename || "Foto barang"} className="h-full w-full object-cover" />
                             <button
                               type="button"
                               onClick={() => handleFotoDelete(index, foto.foto_id)}

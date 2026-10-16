@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, AlertCircle, MapPin, Truck, CheckCircle2, X, Clock, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApi, ensureOk } from "@/lib/api";
+import { safeUrl } from "@/lib/safe-url";
 
 type ApiSuratJalanItem = {
   item_id: number;
@@ -657,7 +658,7 @@ export default function DistributionDetailPage() {
             {data.surat_jalan_url && (
               <p className="text-gray-600">
                 Surat Jalan (PDF):{" "}
-                <a href={data.surat_jalan_url} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#E8632C] hover:underline">
+                <a href={safeUrl(data.surat_jalan_url)} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#E8632C] hover:underline">
                   Buka PDF
                 </a>
               </p>

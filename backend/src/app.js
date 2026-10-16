@@ -52,7 +52,29 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 app.use(morgan("dev"));
+
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+
+// Security headers (dasar, tanpa dependensi baru)
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
+
+// trust proxy setting
+const trustProxy = process.env.TRUST_PROXY;
+if (trustProxy !== undefined) {
+  let parsed = trustProxy;
+  if (/^\d+$/.test(trustProxy)) {
+    parsed = parseInt(trustProxy, 10);
+  } else if (trustProxy.toLowerCase() === 'true') {
+    parsed = true;
+  } else if (trustProxy.toLowerCase() === 'false') {
+    parsed = false;
+  }
+  app.set('trust proxy', parsed);
+}
 
 app.use((req, res, next) => {
   const originalJson = res.json.bind(res);

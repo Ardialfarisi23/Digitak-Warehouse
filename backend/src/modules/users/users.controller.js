@@ -47,6 +47,37 @@ const updateAvatar = async (req, res, next) => {
   }
 };
 
+const resetLink = async (req, res, next) => {
+  try {
+    const { user_id } = req.params;
+    const result = await usersService.generateResetLinkForUser(user_id);
+    // Audit log: actor = admin (req.user.id), entity = user_account, entityId = user_id, aksi = "reset_link_created"
+    const { createAuditLog } = require("../../utils/audit-log");
+    try {
+      await createAuditLog({
+        entityType: "user_account",
+        entityId: BigInt(user_id),
+        aksi: "reset_link_created",
+        actorId: BigInt(req.user.id),
+        dataSebelum: {
+          email: result.email,
+        },
+        dataSesudah: {
+          expires: result.expires,
+        },
+      });
+    } catch (auditErr) {
+      console.error("Gagal membuat audit log untuk reset link:", auditErr.message);
+    }
+    return response.success(res, "Link reset password berhasil dibuat.", {
+      resetUrl: result.resetUrl,
+      expires: result.expires,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 const deleteAvatar = async (req, res, next) => {
   try {
     const result = await usersService.deleteAvatar(req.user.id);
@@ -100,4 +131,5 @@ module.exports = {
   updateAvatar,
   deleteAvatar,
   avatarUpload,
+  resetLink,
 };
