@@ -203,7 +203,6 @@ const getInventory = async (filters = {}, actor = null) => {
                 select: {
                   tiket_id: true,
                   kode_tiket: true,
-                  used: true,
                   project: {
                     select: {
                       project_id: true,
