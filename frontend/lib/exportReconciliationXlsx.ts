@@ -291,7 +291,11 @@ export async function exportReconciliationXlsx(records: ReconciliationRecord[]) 
     const dataStartRow = 10;
     const dataEndRow = dataStartRow + materials.length - 1;
 
-    materials.forEach((mat, idx) => {
+    for (let idx = 0; idx < materials.length; idx++) {
+      if (idx > 0 && idx % 2000 === 0) {
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      const mat = materials[idx];
       const row = dataStartRow + idx;
       ws.getCell(row, 2).value = mat.nama_barang;
       ws.getCell(row, 3).value = String(mat.kode_perangkat ?? "");
@@ -369,9 +373,9 @@ export async function exportReconciliationXlsx(records: ReconciliationRecord[]) 
           } else {
             cell.numFmt = "#,##0";
           }
-        }
+       }
       }
-    });
+    }
 
     const totalRow = dataEndRow + 2;
     ws.getCell(totalRow, 2).value = "Total";
@@ -439,6 +443,8 @@ export async function exportReconciliationXlsx(records: ReconciliationRecord[]) 
       fitToWidth: 1,
       fitToHeight: 0,
     };
+
+    grouped.delete(projectId);
   }
 
   const detailSheet = workbook.addWorksheet("Data Detail");
@@ -501,8 +507,9 @@ export async function exportReconciliationXlsx(records: ReconciliationRecord[]) 
       status: r.status === "sesuai" ? "Sesuai" : r.status === "perhatian" ? "Perhatian" : r.status,
     });
   });
-
   const buffer = await workbook.xlsx.writeBuffer();
+
+
   const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
