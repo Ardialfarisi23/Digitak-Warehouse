@@ -141,6 +141,7 @@ export default function SupervisorReconciliationPage() {
   const [adjustmentRecord, setAdjustmentRecord] = useState<ReconciliationRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const fetchIdRef = useRef(0);
 
 // State Riwayat Input Laporan Mitra
@@ -268,6 +269,7 @@ export default function SupervisorReconciliationPage() {
       });
 
       setRecords(mapped);
+      setLastRefreshed(new Date());
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Terjadi kesalahan saat mengambil data rekonsiliasi.");
       setRecords([]);
@@ -475,8 +477,8 @@ export default function SupervisorReconciliationPage() {
         {/* Header */}
         <header className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Rekonsiliasi Inventory (Supervisor)</h1>
-            <p className="mt-1 text-sm text-slate-500">Pantau kesesuaian BOQ dengan realisasi hardware di gudang yang menjadi tanggung jawab Anda.</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Rekonsiliasi Inventory</h1>
+            <p className="mt-1 text-sm text-slate-500">Pantau kesesuaian BOQ dengan realisasi hardware pada setiap cluster dan tiket.</p>
           </div>
         </header>
 
@@ -510,7 +512,7 @@ export default function SupervisorReconciliationPage() {
             {error && <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
 
             {/* KPI Cards */}
-             <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 lg:grid-cols-6">
+             <div className="mb-6 grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
                <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
                <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
                <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material on Site (termasuk inbound disetujui)" icon={PackageCheck} tone="slate" />
@@ -527,7 +529,7 @@ export default function SupervisorReconciliationPage() {
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   placeholder="Cari project, tiket, kode perangkat..."
-                  className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+                  className="w-full min-h-11 bg-transparent text-base sm:text-sm text-slate-800 outline-none placeholder:text-slate-400"
                 />
               </div>
 
@@ -545,7 +547,7 @@ export default function SupervisorReconciliationPage() {
                 </div>
               )}
 
-              <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} disabled={filterOptionsLoading} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 disabled:opacity-50 disabled:cursor-not-allowed">
+              <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} disabled={filterOptionsLoading} className="w-full min-w-0 min-h-11 text-base sm:text-sm truncate sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-slate-600 shadow-sm outline-none focus:border-orange-400 disabled:opacity-50 disabled:cursor-not-allowed">
                 <option value="all">Semua Project</option>
                 {filterOptionsLoading ? (
                   <option value="" disabled>Memuat...</option>
@@ -582,7 +584,7 @@ export default function SupervisorReconciliationPage() {
                 </select>
               )}
 
-              <select value={warehouseFilter} onChange={(e) => setWarehouseFilter(e.target.value)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400">
+              <select value={warehouseFilter} onChange={(e) => setWarehouseFilter(e.target.value)} className="w-full min-w-0 min-h-11 text-base sm:text-sm truncate sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-slate-600 shadow-sm outline-none focus:border-orange-400">
                 <option value="all">Semua Gudang</option>
                 {warehouseOptions.map((warehouse) => (
                   <option key={warehouse} value={warehouse}>
@@ -591,7 +593,7 @@ export default function SupervisorReconciliationPage() {
                 ))}
               </select>
 
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400">
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full min-w-0 min-h-11 text-base sm:text-sm truncate sm:w-auto rounded-full border border-slate-200 bg-white px-4 py-2.5 text-slate-600 shadow-sm outline-none focus:border-orange-400">
                 <option value="all">Semua Status</option>
                 <option value="sesuai">Sesuai</option>
                 <option value="belum_ada_data">Belum Ada Data</option>
@@ -601,8 +603,8 @@ export default function SupervisorReconciliationPage() {
 
             {/* Table */}
             <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-                <div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 px-6 py-4">
+                <div className="flex flex-wrap gap-x-3 items-baseline">
                   <h2 className="text-base font-semibold text-slate-900">Daftar Rekonsiliasi</h2>
                   <p className="text-xs text-slate-400">
                     {filteredRecords.length} data
@@ -610,16 +612,23 @@ export default function SupervisorReconciliationPage() {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={handleExportCSV}
-                    disabled={filteredRecords.length === 0}
-                    className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
-                  >
-                    <Download size={16} />
-                    Export
-                  </button>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3 w-full">
+                  {lastRefreshed && (
+                    <span className="text-xs text-slate-400 w-full sm:w-auto">
+                      Terakhir diperbarui: {lastRefreshed.toLocaleTimeString("id-ID")}
+                    </span>
+                  )}
+                  <div className="grid grid-cols-2 gap-2 sm:flex w-full">
+                    <button
+                      type="button"
+                      onClick={handleExportCSV}
+                      disabled={filteredRecords.length === 0}
+                      className="w-full sm:w-auto min-h-11 flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60 whitespace-nowrap"
+                    >
+                      <Download size={16} />
+                      Export
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -628,19 +637,18 @@ export default function SupervisorReconciliationPage() {
                 const uniqueKodeTiket = Array.from(new Set(filteredRecords.map((r) => r.kode_tiket).filter(Boolean)));
                 return (
                   <div className="px-6 py-3 bg-slate-50/50 border-b border-slate-100">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-3 text-sm">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-sm">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5">Cluster ID</p>
+                        <p className="font-medium text-slate-900 truncate">{firstRecord.cluster_id || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5">Cluster Name</p>
+                        <p className="font-medium text-slate-900 truncate">{firstRecord.nama_cluster || "-"}</p>
+                      </div>
                       <div>
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5">Project</p>
                         <p className="font-medium text-slate-900 truncate">{firstRecord.project_nama}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5">Cluster</p>
-                        <p className="font-medium text-slate-900 truncate">
-                          {firstRecord.nama_cluster}
-                          {firstRecord.cluster_id && (
-                            <span className="ml-1.5 text-[10px] text-slate-400 font-normal">{firstRecord.cluster_id}</span>
-                          )}
-                        </p>
                       </div>
                       <div>
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5">Kode Tiket</p>
@@ -648,120 +656,154 @@ export default function SupervisorReconciliationPage() {
                           {uniqueKodeTiket.length > 0 ? uniqueKodeTiket.join(", ") : "-"}
                         </p>
                       </div>
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5">BOQ</p>
+                        <p className="font-medium text-slate-900 truncate">
+                          {formatNumber(firstRecord.boq)}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 );
               })()}
-              <div className="overflow-x-auto overscroll-x-contain">
-                 <table className="w-full min-w-[700px] text-left text-sm">
-<thead>
-                      <tr className="border-b border-slate-100 bg-slate-50">
-                        <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
-                        <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barang</th>
-                        <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">BOQ</th>
-                        <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Additional</th>
-                        <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">MOS</th>
-                        <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Used</th>
-                        <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Sisa Lapangan</th>
-                        <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                        <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
-                      </tr>
-                    </thead>
+              <div className="w-full overflow-x-auto overscroll-x-contain rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <table className="w-max min-w-full table-fixed border-separate border-spacing-0 md:w-full md:table-auto md:border-collapse md:min-w-[700px] text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50">
+                      <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
+                      <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 sticky left-0 z-20 bg-slate-50 md:static md:z-auto md:bg-transparent min-w-[150px] md:max-w-none">Barang</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">BOQ</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">ADD</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">MOS</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[56px] min-w-[56px] md:w-auto md:min-w-[44px] md:max-w-none">USED</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[64px] min-w-[64px] md:w-auto md:min-w-[80px] md:max-w-none">REMAINS</th>
+                      <th className="px-3 py-3 text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-[104px] min-w-[104px] md:w-auto md:min-w-[100px] md:max-w-none">Status</th>
+                      <th className="px-3 py-3 text-right text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-[80px] min-w-[80px] sticky right-0 z-10 bg-slate-50 md:bg-slate-50 border-l border-slate-100 md:border-l">Aksi</th>
+                    </tr>
+                  </thead>
 
-<tbody className="divide-y divide-slate-50">
-{isLoading ? (
-                        Array.from({ length: 7 }).map((_, rowIndex) => (
-                          <tr key={rowIndex}>
-                            {Array.from({ length: 9 }).map((_, colIndex) => (
-                              <td key={colIndex} className="px-6 py-4">
-                                <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
-                              </td>
-                            ))}
-                          </tr>
-                        ))
-) : filteredRecords.length === 0 ? (
-                        <tr>
-                          <td colSpan={9} className="px-6 py-16 text-center">
-                           <Package size={28} className="mx-auto text-slate-300" />
-                           <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data rekonsiliasi</p>
-                           <p className="mt-1 text-xs text-slate-400">Coba ubah filter, atau pastikan Anda sudah ditugaskan sebagai PIC gudang.</p>
+                  <tbody className="divide-y divide-slate-50">
+                    {isLoading ? (
+                      Array.from({ length: 7 }).map((_, rowIndex) => (
+                        <tr key={rowIndex}>
+                          <td className="px-2 py-1">
+                            <div className="h-3 animate-pulse rounded-lg bg-slate-100" />
+                          </td>
+                          {Array.from({ length: 7 }).map((_, colIndex) => (
+                            <td key={colIndex} className="px-2 py-1 hidden md:table-cell align-middle">
+                              <div className="h-3 animate-pulse rounded-lg bg-slate-100" />
+                            </td>
+                          ))}
+                          <td key="barang" className="px-2 py-1 sticky left-0 z-10 bg-white md:static md:z-auto md:bg-transparent min-w-[120px] md:max-w-none border-r border-slate-100 md:border-r-0 align-middle">
+                            <div className="h-3 animate-pulse rounded-lg bg-slate-100" />
+                          </td>
+                          <td key="boq" className="px-2 py-1 text-right text-xs md:px-2 md:text-xs font-medium text-slate-700 w-[48px] min-w-[48px] max-w-[48px] md:w-auto md:min-w-0 md:max-w-none align-middle">
+                            <div className="h-3 animate-pulse rounded-lg bg-slate-100 w-[36px]" />
+                          </td>
+                          <td key="additional" className="px-2 py-1 text-right text-xs md:px-2 md:text-xs text-slate-600 w-[48px] min-w-[48px] max-w-[48px] md:w-auto md:min-w-0 md:max-w-none align-middle">
+                            <div className="h-3 animate-pulse rounded-lg bg-slate-100 w-[36px]" />
+                          </td>
+                          <td key="mos" className="px-2 py-1 text-right text-xs md:px-2 md:text-xs font-medium text-slate-700 w-[48px] min-w-[48px] max-w-[48px] md:w-auto md:min-w-0 md:max-w-none align-middle">
+                            <div className="h-3 animate-pulse rounded-lg bg-slate-100 w-[36px]" />
+                          </td>
+                          <td key="used" className="px-2 py-1 text-right text-xs md:px-2 md:text-xs text-slate-600 w-[48px] min-w-[48px] max-w-[48px] md:w-auto md:min-w-0 md:max-w-none align-middle">
+                            <div className="h-3 animate-pulse rounded-lg bg-slate-100 w-[36px]" />
+                          </td>
+                          <td key="remains" className="px-2 py-1 text-right text-xs md:px-2 md:text-xs font-semibold w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-[64px] md:max-w-none align-middle">
+                            <div className="h-3 animate-pulse rounded-lg bg-slate-100 w-[36px]" />
+                          </td>
+                          <td key="status" className="px-2 py-1 whitespace-nowrap w-[96px] min-w-[96px] max-w-[96px] md:w-auto md:min-w-[84px] md:max-w-none align-middle">
+                            <div className="h-3 animate-pulse rounded-lg bg-slate-100 w-[52px]" />
+                          </td>
+                          <td key="aksi" className="px-2 py-1 sticky right-0 z-10 bg-white md:bg-slate-50 group-hover:bg-slate-50 border-l border-slate-100 md:border-l w-[64px] min-w-[64px] max-w-[64px] md:w-auto md:min-w-[56px] md:max-w-none align-middle">
+                            <div className="h-3 animate-pulse rounded-lg bg-slate-100 w-[32px]" />
                           </td>
                         </tr>
-                      ) : (
-filteredRecords.map((record, index) => {
-                          const statusBadge = getStatusBadge(record.status);
-                          return (
-                            <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
-                              <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500">{index + 1}</td>
-                              <td className="px-6 py-4">
-                                <p className={` ${record.status === "perhatian" ? "font-semibold text-amber-600" : "font-medium text-slate-800"}`}>{record.nama_barang}</p>
-                                <p className="text-xs text-slate-400">
-                                  {record.kode_perangkat} • {record.gudang_nama}
-                                </p>
-                              </td>
+                      ))
+                    ) : filteredRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="px-6 py-16 text-center">
+                          <Package size={28} className="mx-auto text-slate-300" />
+                          <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data rekonsiliasi</p>
+                          <p className="mt-1 text-xs text-slate-400">Coba ubah filter, atau pastikan Anda sudah ditugaskan sebagai PIC gudang.</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredRecords.map((record, index) => {
+                        const statusBadge = getStatusBadge(record.status);
+                        return (
+                          <tr key={record.id} className={`group transition-colors hover:bg-slate-50`}>
+                            <td className="px-2 py-1 whitespace-nowrap text-center text-[10px] text-slate-500 tabular-nums w-10">{index + 1}</td>
+                            <td className="px-2 py-1 sticky left-0 z-10 bg-white md:static md:z-auto md:bg-transparent min-w-[120px] md:max-w-none border-r border-slate-100 md:border-r-0 align-middle">
+                              <div className="flex items-center h-full overflow-hidden">
+                                <div className={`truncate ${record.status === "perhatian" ? "font-semibold text-amber-600" : "font-medium text-slate-800"} text-xs leading-4`} title={`${record.nama_barang || "-"}${record.kode_perangkat ? ` (${record.kode_perangkat})` : ""}`}>{record.nama_barang || "-"}</div>
+                                {record.kode_perangkat && <div className="text-[10px] text-slate-400 truncate">{record.kode_perangkat}</div>}
+                              </div>
+                            </td>
+                            <td className="px-2 py-1 text-right text-xs font-medium text-slate-700 tabular-nums w-[48px] min-w-[48px] max-w-[48px] md:w-auto md:min-w-0 md:max-w-none align-middle">{formatNumber(record.boq)}</td>
+                            <td className="px-2 py-1 text-right text-xs text-slate-600 tabular-nums w-[48px] min-w-[48px] max-w-[48px] md:w-auto md:min-w-0 md:max-w-none align-middle">{formatNumber(record.additional)}</td>
+                            <td className="px-2 py-1 text-right text-xs font-medium text-slate-700 tabular-nums w-[48px] min-w-[48px] max-w-[48px] md:w-auto md:min-w-0 md:max-w-none align-middle">{formatNumber(record.mos)}</td>
+                            <td className="px-2 py-1 text-right text-xs text-slate-600 tabular-nums w-[48px] min-w-[48px] max-w-[48px] md:w-auto md:min-w-0 md:max-w-none align-middle">{formatNumber(record.used)}</td>
 
-<td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.boq)}</td>
-                              <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.additional)}</td>
-                               <td className="px-6 py-4 text-right font-medium text-slate-700">{formatNumber(record.mos)}</td>
-                               <td className="px-6 py-4 text-right text-slate-600">{formatNumber(record.used)}</td>
-
-<td className="px-6 py-4 text-right">
-                                <span className="flex items-center justify-end gap-1">
-                                  <span className={record.remains < 0 ? "font-semibold text-rose-600" : "font-semibold text-emerald-700"}>{formatNumber(record.remains)}</span>
-                                  <RemainsNoteBadge note={record.remains_note} />
+                            <td className="px-2 py-1 text-right text-xs font-semibold tabular-nums w-[56px] min-w-[56px] max-w-[56px] md:w-auto md:min-w-[64px] md:max-w-none align-middle">
+                              <span className="flex items-center justify-end gap-1">
+                                <span className={record.remains < 0 ? "text-rose-600" : "text-emerald-700"}>
+                                  {formatNumber(record.remains)}
                                 </span>
-                              </td>
+                                <RemainsNoteBadge note={record.remains_note} />
+                              </span>
+                            </td>
 
-                             <td className="px-6 py-4">
-                                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
-                                  <statusBadge.icon size={12} />
-                                  {statusBadge.label}
-                                </span>
-                              </td>
+                            <td className="px-2 py-1 whitespace-nowrap w-[96px] min-w-[96px] max-w-[96px] md:w-auto md:min-w-[84px] md:max-w-none align-middle">
+                              <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${statusBadge.bg} ${statusBadge.text}`} title={statusBadge.label}>
+                                <statusBadge.icon size={11} />
+                                {statusBadge.label}
+                              </span>
+                            </td>
 
-                              <td className="px-4 py-4">
-                                <div className="flex items-center justify-end gap-1">
-                                  <button type="button" onClick={() => setSelectedRecord(record)} title="Lihat detail" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
-                                    <ClipboardCheck size={15} />
-                                  </button>
-                                  <button type="button" onClick={() => setAdjustmentRecord(record)} title="Sesuaikan additional" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-orange-600">
-                                    <Plus size={15} />
-                                  </button>
-                                </div>
-                              </td>
-                           </tr>
-                          );
-                        })
-                      )}
-                   </tbody>
-                 </table>
+                            <td className="px-2 py-1 sticky right-0 z-10 bg-white md:bg-slate-50 group-hover:bg-slate-50 border-l border-slate-100 md:border-l w-[64px] min-w-[64px] max-w-[64px] md:w-auto md:min-w-[56px] md:max-w-none align-middle">
+                              <div className="flex items-center justify-end gap-0.5">
+                                <button type="button" onClick={() => setSelectedRecord(record)} title="Lihat detail" className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                                  <ClipboardCheck size={16} />
+                                </button>
+                                <button type="button" onClick={() => setAdjustmentRecord(record)} title="Sesuaikan additional" className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-orange-600">
+                                  <Plus size={16} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
 
-            {/* Section Catatan & Rumus Kalkulasi */}
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">CATATAN & RUMUS KALKULASI</h3>
-              <p className="text-xs text-slate-500 mb-4">Penjelasan cara menghitung setiap kolom pada tabel rekonsiliasi.</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
-                  <p className="text-xs font-bold text-slate-900">BOQ Plan</p>
-                  <p className="mt-2 text-xs leading-relaxed text-slate-800/90">Jumlah material yang direncanakan sejak awal untuk project ini.</p>
+            {/* Catatan & Rumus Kalkulasi */}
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Catatan & Rumus Kalkulasi</p>
+              <p className="mt-1 text-xs text-slate-500">Penjelasan cara menghitung setiap kolom pada tabel rekonsiliasi.</p>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold text-slate-800">BOQ Plan</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-600">Jumlah material yang direncanakan sejak awal untuk project ini.</p>
                 </div>
-                <div className="rounded-xl border border-indigo-200/80 bg-indigo-50/50 p-4">
-                  <p className="text-xs font-bold text-indigo-900">Additional</p>
-                   <p className="mt-2 text-xs leading-relaxed text-indigo-800/90">Tambahan material yang diajukan karena kekurangan dari rencana BOQ awal, setelah disetujui dan ditambahkan resmi ke sistem.</p>
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3">
+                  <p className="text-xs font-semibold text-indigo-800">Additional</p>
+                   <p className="mt-1 text-[11px] leading-relaxed text-indigo-700">Tambahan material yang diajukan karena kekurangan dari rencana BOQ awal, setelah disetujui dan ditambahkan resmi ke sistem.</p>
                 </div>
-                <div className="rounded-xl border border-blue-200/80 bg-blue-50/50 p-4">
-                  <p className="text-xs font-bold text-blue-900">MOS</p>
-                   <p className="mt-2 text-xs leading-relaxed text-blue-800/90">Material yang sudah dikirim dan terkonfirmasi diterima di lapangan.</p>
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+                  <p className="text-xs font-semibold text-blue-800">MOS</p>
+                   <p className="mt-1 text-[11px] leading-relaxed text-blue-700">Material yang sudah dikirim dan terkonfirmasi diterima di lapangan.</p>
                 </div>
-                <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3">
-                  <p className="text-xs font-bold text-slate-900">Used</p>
-                   <p className="mt-2 text-xs leading-relaxed text-slate-800/90">Jumlah material yang sudah dipasang/digunakan di lapangan, berdasarkan laporan harian dari mitra.</p>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold text-slate-800">Used</p>
+                   <p className="mt-1 text-[11px] leading-relaxed text-slate-600">Jumlah material yang sudah dipasang/digunakan di lapangan, berdasarkan laporan harian dari mitra.</p>
                 </div>
-                <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-4">
-                  <p className="text-xs font-bold text-emerald-900">Remains</p>
-                   <p className="mt-2 text-xs leading-relaxed text-emerald-800/90">Rumus: MOS − (BOQ Plan + Additional). Menghitung sisi pengiriman, bukan pemakaian di lapangan.</p>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                  <p className="text-xs font-semibold text-emerald-800">Remains</p>
+                   <p className="mt-1 text-[11px] leading-relaxed text-emerald-700">Rumus: MOS − (BOQ Plan + Additional). Menghitung sisi pengiriman, bukan pemakaian di lapangan.</p>
                 </div>
               </div>
             </div>
@@ -798,7 +840,7 @@ filteredRecords.map((record, index) => {
               </div>
 
               {/* Table */}
-              <div className="overflow-x-auto">
+              <div className="w-full overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead>
 <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] uppercase tracking-wider text-slate-400">
@@ -866,7 +908,7 @@ filteredRecords.map((record, index) => {
       {/* Detail Modal Rekonsiliasi */}
       {selectedRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setSelectedRecord(null)}>
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="max-h-[90vh] w-full max-w-lg mx-4 overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h2 className="text-base font-semibold text-slate-900">Detail Rekonsiliasi</h2>
