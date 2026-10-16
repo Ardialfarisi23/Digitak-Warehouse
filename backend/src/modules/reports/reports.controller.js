@@ -3,7 +3,7 @@ const response = require("../../shared/response");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const XLSX = require("xlsx");
+const { parseReconciliationFileExceljs } = require("./upload-parse");
 const ExcelJS = require("exceljs");
 const prisma = require("../../config/prisma");
 const reportsRepository = require("./reports.repository");
@@ -399,10 +399,7 @@ const uploadReconciliationFile = async (req, res, next) => {
     }
 
     try {
-      const workbook = XLSX.readFile(req.file.path);
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+      const { jsonData } = await parseReconciliationFileExceljs(req.file.path);
 
       if (!jsonData.length) {
         fs.unlinkSync(req.file.path);

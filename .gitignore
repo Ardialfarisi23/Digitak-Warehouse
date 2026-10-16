@@ -11,6 +11,9 @@ tmp-*.js
 _tmp_*.js
 temp_*.js
 
+# Output diagnostik/verifikasi B1 (diabaikan dari commit)
+tmp/
+
 # TypeScript build info
 tsbuildinfo
 
