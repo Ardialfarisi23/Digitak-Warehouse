@@ -10,18 +10,21 @@ import { ArrowLeft, Eye, ExternalLink, FileText, Maximize2, Package, X } from "l
 import { KondisiBadge } from "@/components/common/KondisiBadge";
 import { KondisiUnitSummary } from "@/components/common/KondisiUnitSummary";
 import { hasKondisiUnit, type KondisiUnit } from "@/lib/kondisi-barang";
+import { getSuratJalanStatusLabel } from "@/lib/surat-jalan-status";
 import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
 
-const STATUS_META: Record<string, { label: string; className: string }> = {
-  draft_diajukan: { label: "Draft Diajukan", className: "bg-slate-100 text-slate-700 border-slate-200" },
-  menunggu_verifikasi: { label: "Menunggu Verifikasi", className: "bg-amber-50 text-amber-700 border-amber-200" },
-  ready_putaway: { label: "Siap Putaway", className: "bg-blue-50 text-blue-700 border-blue-200" },
-  disetujui: { label: "Disetujui", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  digenerate: { label: "Digenerate", className: "bg-blue-50 text-blue-700 border-blue-200" },
-  tiba_menunggu_konfirmasi: { label: "Menunggu Konfirmasi", className: "bg-blue-50 text-blue-700 border-blue-200" },
-  diterima_didistribusikan: { label: "Diterima & Didistribusikan", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  sedang_dikirim: { label: "Sedang Dikirim", className: "bg-amber-50 text-amber-700 border-amber-200" },
-  ditolak: { label: "Ditolak", className: "bg-rose-50 text-rose-700 border-rose-200" },
+// Warna badge per status (tetap per-halaman); label dari helper bersama
+// supaya tidak ada kode mentah seperti "ready_putaway" yang tampil ke supervisor.
+const STATUS_TONE: Record<string, string> = {
+  draft_diajukan: "bg-slate-100 text-slate-700 border-slate-200",
+  menunggu_verifikasi: "bg-amber-50 text-amber-700 border-amber-200",
+  ready_putaway: "bg-blue-50 text-blue-700 border-blue-200",
+  disetujui: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  digenerate: "bg-blue-50 text-blue-700 border-blue-200",
+  tiba_menunggu_konfirmasi: "bg-blue-50 text-blue-700 border-blue-200",
+  diterima_didistribusikan: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  sedang_dikirim: "bg-amber-50 text-amber-700 border-amber-200",
+  ditolak: "bg-rose-50 text-rose-700 border-rose-200",
 };
 
 interface InboundItemBarang {
@@ -62,8 +65,16 @@ interface InboundDetail {
   supplier?: { kode?: string; nama?: string } | null;
   pic_pemohon_nama?: string | null;
   project?: { nama_project?: string } | null;
+  cluster?: { cluster_id?: string; nama_cluster?: string } | null;
+  cluster_id?: string | null;
   boq_id?: number | string | null;
-  boq?: { boq_number?: string; tiket?: { kode_tiket?: string } } | null;
+  boq?: {
+    boq_id?: number | string;
+    boq_number?: string;
+    cluster_id?: string | null;
+    tiket?: { kode_tiket?: string };
+    items?: Array<{ cluster_id?: string | null }> | null;
+  } | null;
   creator?: { nama?: string } | null;
   surat_jalan_url?: string | null;
   document_url?: string | null;
@@ -176,10 +187,10 @@ function useAttachmentViewUrl(rawUrl?: string | null): string | null {
   return resolveAttachmentUrl(raw);
 }
 
-function tampilkan(value: unknown, fallback = "-") {
-  if (value === null || value === undefined) return fallback;
+function tampilkan(value: unknown, fallback: unknown = "-") {
+  if (value === null || value === undefined) return String(fallback);
   const s = String(value).trim();
-  return s.length > 0 ? s : fallback;
+  return s.length > 0 ? s : String(fallback);
 }
 
 function formatTanggal(value?: string | null) {
@@ -196,17 +207,17 @@ function formatTanggal(value?: string | null) {
 }
 
 function StatusBadge({ status }: { status?: string | null }) {
-  const meta = STATUS_META[String(status || "").toLowerCase()];
-  if (!meta) {
+  const tone = STATUS_TONE[String(status || "").toLowerCase()];
+  if (!tone) {
     return (
       <span className="inline-block rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
-        {tampilkan(status)}
+        {getSuratJalanStatusLabel(status)}
       </span>
     );
   }
   return (
-    <span className={`inline-block rounded-full border px-2.5 py-1 text-[11px] font-semibold ${meta.className}`}>
-      {meta.label}
+    <span className={`inline-block rounded-full border px-2.5 py-1 text-[11px] font-semibold ${tone}`}>
+      {getSuratJalanStatusLabel(status)}
     </span>
   );
 }
@@ -351,6 +362,37 @@ export default function SupervisorInboundDetailPage() {
     ) : null;
 
   const hasBoq = detail.boq_id !== null && detail.boq_id !== undefined && detail.boq_id !== "";
+
+  // Lima data yang diminta halaman detail: Cluster ID, Cluster Name,
+  // Project Name, BOQ ID, Nomor Tiket. Urutan sumber mengikuti relasi
+  // sebenarnya di schema.prisma: surat_jalan.cluster_id ( direktif ) lalu
+  // boq.cluster_id, dan nomor tiket lewat boq -> tiket_material.
+  const clusterIdValue = tampilkan(
+    detail.cluster_id || detail.cluster?.cluster_id || detail.boq?.cluster_id || null
+  );
+
+  const clusterNameValue = tampilkan(
+    detail.cluster?.nama_cluster,
+    // Nama cluster cuma bisa didapat dari relasi cluster; kalau hanya ID yang
+    // ada, tampilkan ID sebagai ganti nama (bukan "-") supaya tetap informatif.
+    detail.cluster_id ||
+      detail.cluster?.cluster_id ||
+      detail.boq?.cluster_id ||
+      null
+  );
+
+  const projectNameValue = tampilkan(detail.project?.nama_project);
+
+  const boqIdValue = tampilkan(
+    detail.boq_id !== null && detail.boq_id !== undefined && detail.boq_id !== ""
+      ? String(detail.boq_id)
+      : detail.boq?.boq_id !== null && detail.boq?.boq_id !== undefined && detail.boq?.boq_id !== ""
+        ? String(detail.boq?.boq_id)
+        : null
+  );
+
+  const nomorTiketValue = tampilkan(detail.boq?.tiket?.kode_tiket);
+
   const boqValue = hasBoq ? (
     <span className="flex flex-wrap items-center gap-2">
       <Link
@@ -504,7 +546,7 @@ export default function SupervisorInboundDetailPage() {
           <FileText className="w-4 h-4 text-slate-500" />
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-600">Informasi Transaksi</h2>
         </div>
-        <div className="grid grid-cols-1 gap-x-8 gap-y-4 p-6 sm:grid-cols-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4 p-6">
           <InfoField
             label="No. Surat Jalan / Penerimaan"
             value={<span className="font-semibold break-all text-slate-900">{tampilkan(detail.nomor_surat_jalan)}</span>}
@@ -532,6 +574,11 @@ export default function SupervisorInboundDetailPage() {
             }
           />
           <InfoField label="Status" value={<StatusBadge status={detail.status} />} />
+          <InfoField label="Cluster ID" value={<span className="font-mono text-xs break-all text-slate-800">{clusterIdValue}</span>} />
+          <InfoField label="Cluster Name" value={<span className="break-words text-slate-800">{clusterNameValue}</span>} />
+          <InfoField label="Project Name" value={<span className="break-words text-slate-800">{projectNameValue}</span>} />
+          <InfoField label="BOQ ID" value={<span className="font-mono text-xs text-slate-800">{boqIdValue}</span>} />
+          <InfoField label="Nomor Tiket" value={<span className="font-mono text-xs break-all text-slate-800">{nomorTiketValue}</span>} />
           <InfoField label="BOQ / Tiket" value={boqValue} />
         </div>
       </div>
@@ -549,7 +596,7 @@ export default function SupervisorInboundDetailPage() {
             Belum ada item barang pada transaksi inbound ini.
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="w-full overflow-x-auto">
             <table className="w-full min-w-[960px] table-fixed border-collapse text-sm">
               <colgroup>
                 <col className="w-[5%]" />
@@ -676,7 +723,7 @@ export default function SupervisorInboundDetailPage() {
       {/* Modal pratinjau lampiran staf (PDF / gambar) */}
       {isPreviewModalOpen && attachmentViewUrl && (attachmentKind === "pdf" || attachmentKind === "image") && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="flex max-h-[90vh] w-full max-w-lg mx-4 flex-col overflow-y-auto rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">
@@ -737,7 +784,7 @@ export default function SupervisorInboundDetailPage() {
             onClick={closeDetailModal}
           >
             <div
-              className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+              className="relative flex max-h-[90vh] w-full max-w-lg mx-4 flex-col overflow-y-auto rounded-2xl bg-white shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-4 border-b border-slate-100 py-4 pl-6 pr-16">

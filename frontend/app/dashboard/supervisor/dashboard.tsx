@@ -316,7 +316,7 @@ export default function SupervisorDashboard() {
                   </h3>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+                <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                   {approvalCards.map((card) => (
                     <div
                       key={card.title}
@@ -488,7 +488,7 @@ export default function SupervisorDashboard() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
                   {projectSummary.length === 0 ? (
                     <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">
                       Belum ada data project.
@@ -650,7 +650,7 @@ export default function SupervisorDashboard() {
                     </button>
                   </div>
 
-                  <div className="overflow-x-auto">
+                  <div className="w-full overflow-x-auto">
                     <table className="w-full text-left text-xs">
                       <thead>
                         <tr className="border-b border-stone-100 text-slate-400 font-bold">
