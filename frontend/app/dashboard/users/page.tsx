@@ -68,6 +68,7 @@ export default function UsersPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "aktif" | "nonaktif">("all");
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -155,7 +156,7 @@ export default function UsersPage() {
 
     try {
       const response = await get(
-        `${API_BASE}/api/users?page=1&limit=100`
+        `${API_BASE}/api/users?page=1&limit=100&include_inactive=true`
       );
 
       const json = await response.json();
@@ -234,13 +235,21 @@ export default function UsersPage() {
   }, [searchInput]);
 
   const filteredUsers = useMemo(() => {
+    let result = users;
+
+    if (statusFilter === "aktif") {
+      result = result.filter((record) => record.is_aktif);
+    } else if (statusFilter === "nonaktif") {
+      result = result.filter((record) => !record.is_aktif);
+    }
+
     if (!search.trim()) {
-      return users;
+      return result;
     }
 
     const query = search.toLowerCase();
 
-    return users.filter((record) =>
+    return result.filter((record) =>
       [
         record.nama,
         record.email,
@@ -253,7 +262,7 @@ export default function UsersPage() {
         .toLowerCase()
         .includes(query)
     );
-  }, [search, users]);
+  }, [search, users, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / itemsPerPage));
 
@@ -721,6 +730,18 @@ export default function UsersPage() {
               />
             </div>
 
+            <select
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(event.target.value as "all" | "aktif" | "nonaktif")
+              }
+              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100 sm:w-48"
+            >
+              <option value="all">Semua Status</option>
+              <option value="aktif">Aktif</option>
+              <option value="nonaktif">Nonaktif</option>
+            </select>
+
             <Button
               type="button"
               onClick={handleAdd}
@@ -829,7 +850,7 @@ export default function UsersPage() {
                     return (
                       <tr
                         key={userId}
-                        className="group transition-colors hover:bg-slate-50"
+                        className={`group transition-colors hover:bg-slate-50 ${!record.is_aktif ? "opacity-70" : ""}`}
                       >
                         <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500">{rowNumber}</td>
                         <td className="px-6 py-4">

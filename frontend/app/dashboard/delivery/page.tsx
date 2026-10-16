@@ -1,17 +1,34 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, Eye, X, ArrowUpRight, ArrowDownLeft, CheckCircle2, Clock, FileText, Loader2, AlertCircle, PackageCheck, Truck, ChevronDown } from "lucide-react";
+import { Suspense } from "react";
 
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
-import { DetailSuratJalanDocument, DetailSuratJalanData } from "@/components/surat-jalan/DetailSuratJalanDocument";
+import { SuratJalanInboundDetailView } from "@/components/surat-jalan/SuratJalanInboundDetailView";
 import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
 import { Button } from "@/components/ui/button";
 import TablePagination from "@/components/TablePagination";
+import {
+  FileText,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Search,
+  ChevronDown,
+  AlertCircle,
+  Clock,
+  CheckCircle2,
+  Truck,
+  Eye,
+  X,
+  Loader2,
+} from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const PAGE_SIZE = 10;
 
 type TipeSuratJalan = "INBOUND" | "OUTBOUND";
 
@@ -96,16 +113,23 @@ const STATUS_META: Record<string, { label: string; bg: string; text: string }> =
 
 type TabType = "SEMUA" | "INBOUND" | "OUTBOUND";
 
-export default function AdminDeliveryPage() {
+export function AdminDeliveryPageContent() {
   const { user } = useAuth();
   const { get, put } = useApi();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const validTabs: TabType[] = ["SEMUA", "INBOUND", "OUTBOUND"];
+  const initialTab = validTabs.includes(searchParams.get("tab") as TabType) ? (searchParams.get("tab") as TabType) : "SEMUA";
 
-  const [activeTab, setActiveTab] = useState<TabType>("SEMUA");
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [searchQuery, setSearchQuery] = useState("");
   const [allRecords, setAllRecords] = useState<SuratJalanRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<SuratJalanRecord | null>(null);
+  const [detailData, setDetailData] = useState<Record<string, unknown> | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [gudangFilter, setGudangFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -119,7 +143,11 @@ export default function AdminDeliveryPage() {
   const [page, setPage] = useState(1);
   const tableRef = useRef<HTMLDivElement>(null);
 
-  const PAGE_SIZE = 25;
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", activeTab);
+    router.replace(`/dashboard/delivery?${params.toString()}`, { scroll: false });
+  }, [activeTab]);
 
   useEffect(() => {
     if (!user) return;
@@ -338,6 +366,25 @@ export default function AdminDeliveryPage() {
       setTimeout(() => setToast(null), 4000);
     } finally {
       setConfirming(false);
+    }
+  };
+
+  const handleOpenDetail = async (record: SuratJalanRecord) => {
+    setSelectedRecord(record);
+    setDetailData(null);
+    setDetailLoading(true);
+    setDetailError(null);
+    try {
+      const resp = await get(`${API_BASE}/api/surat-jalan/${record.surat_jalan_id}`);
+      const json = await resp.json();
+      if (!resp.ok) {
+        throw new Error(json?.message || "Gagal memuat detail surat jalan.");
+      }
+      setDetailData(json?.data || null);
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : "Gagal memuat detail surat jalan.");
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -560,9 +607,15 @@ export default function AdminDeliveryPage() {
 
                         <td className="px-1 py-3 md:px-6 md:py-4 w-12 md:w-auto">
                           <div className="flex items-center justify-end gap-1">
-                            <button type="button" onClick={() => setSelectedRecord(record)} title="Lihat detail" className="min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700">
-                              <Eye size={15} />
-                            </button>
+{(record.tipe || "").toLowerCase() === "inbound" ? (
+  <Link href={`/dashboard/delivery/inbound/${record.surat_jalan_id}`} title="Lihat detail" className="min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+    <Eye size={15} />
+  </Link>
+) : (
+  <button type="button" onClick={() => handleOpenDetail(record)} title="Lihat detail" className="min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+    <Eye size={15} />
+  </button>
+)}
                           </div>
                         </td>
                       </tr>
@@ -586,7 +639,7 @@ export default function AdminDeliveryPage() {
 {/* Detail Modal */}
         {selectedRecord && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-0 sm:p-3 md:p-4" onClick={() => setSelectedRecord(null)}>
-              <div className="w-full h-[100dvh] max-h-[100dvh] w-[calc(100vw-1rem)] sm:w-[min(92vw,720px)] sm:max-h-[calc(100dvh-1.5rem)] sm:rounded-xl md:max-w-3xl lg:max-w-4xl md:h-auto md:max-h-[calc(100dvh-1rem)] md:rounded-2xl overflow-y-auto overscroll-contain bg-white shadow-xl pb-6" onClick={(e) => e.stopPropagation()}>
+              <div className="w-full h-[100dvh] max-h-[100dvh] w-[calc(100vw-1rem)] sm:w-[min(92vw,720px)] sm:max-h-[calc(100dvh-1.5rem)] sm:rounded-xl md:max-w-6xl lg:max-w-6xl md:h-auto md:max-h-[calc(100dvh-1rem)] md:rounded-2xl overflow-y-auto overscroll-contain bg-white shadow-xl pb-6" onClick={(e) => e.stopPropagation()}>
               {/* Toolbar — hilang saat print, sticky di mobile */}
               <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-100 bg-white print:hidden">
                 <div className="min-w-0">
@@ -600,20 +653,26 @@ export default function AdminDeliveryPage() {
 
               {/* Dokumen Surat Jalan — untuk tampilan di layar */}
               <div className="p-3 sm:p-4 md:p-8 pb-[env(safe-area-inset-bottom)]">
-                <DetailSuratJalanDocument
-                  data={selectedRecord as DetailSuratJalanData | null | undefined}
-                  variant="full"
-                  renderItemAction={(item) => (
+                {detailLoading ? (
+                  <div className="p-8 flex flex-col items-center justify-center gap-2 text-slate-500">
+                    <Loader2 size={20} className="animate-spin" />
+                    <p className="text-sm">Memuat detail surat jalan...</p>
+                  </div>
+                ) : detailError ? (
+                  <div className="p-8 flex flex-col items-center justify-center gap-2 text-rose-500">
+                    <AlertCircle size={20} />
+                    <p className="text-sm">{detailError}</p>
                     <button
                       type="button"
-                      onClick={() => setSelectedItem(item)}
-                      title="Lihat dokumentasi barang"
-                      className="min-h-[40px] min-w-[40px] rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      onClick={() => setDetailError(null)}
+                      className="text-xs text-[#E8632C] hover:underline"
                     >
-                      <Eye size={15} />
+                      Coba lagi
                     </button>
-                  )}
-                />
+                  </div>
+                ) : detailData ? (
+                  <SuratJalanInboundDetailView data={detailData} />
+                ) : null}
               </div>
 
               {selectedRecord?.status === "tiba_menunggu_konfirmasi" && (
@@ -809,4 +868,12 @@ export default function AdminDeliveryPage() {
     )}
   </div>
 );
+}
+
+export default function AdminDeliveryPage() {
+  return (
+    <Suspense fallback={<div className="p-6" />}>
+      <AdminDeliveryPageContent />
+    </Suspense>
+  );
 }

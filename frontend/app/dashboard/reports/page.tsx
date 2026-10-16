@@ -709,7 +709,47 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
     </div>
   );
   return (
-    <div>
+    <div className="space-y-4">
+      {/* Toolbar */}
+      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end">
+        <div className="flex-1 min-w-[180px]">
+          <label className="mb-1 block text-xs font-medium text-slate-400">Pencarian</label>
+          <input
+            type="text"
+            value={q}
+            onChange={(e) => { setQ(e.target.value); setPage(1); }}
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          />
+        </div>
+        <div className="min-w-[150px]">
+          <label className="mb-1 block text-xs font-medium text-slate-400">Rentang Tanggal Dari</label>
+          <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(1); }} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+        </div>
+        <div className="min-w-[150px]">
+          <label className="mb-1 block text-xs font-medium text-slate-400">Sampai</label>
+          <input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(1); }} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+        </div>
+        <div className="min-w-[150px]">
+          <label className="mb-1 block text-xs font-medium text-slate-400">Role</label>
+          <select value={actorRole} onChange={(e) => { setActorRole(e.target.value); setPage(1); }} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+            <option value="">Semua Role</option>
+            {Object.entries(roleMap).map(([k, v]) => (
+              <option key={k} value={k}>{v.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="min-w-[120px]">
+          <label className="mb-1 block text-xs font-medium text-slate-400">Aksi</label>
+          <select value={aksi} onChange={(e) => { setAksi(e.target.value); setPage(1); }} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+            <option value="">Semua</option>
+            {aksiList.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+        <button type="button" onClick={() => { setQ(""); setActorRole(""); setAksi(""); setStartDate(""); setEndDate(""); setPage(1); }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">Reset</button>
+        <button type="button" onClick={handleExportAuditLog} disabled={exporting} className="rounded-lg bg-[#E8632C] text-white px-4 py-2 text-sm disabled:opacity-50">
+          {exporting ? "Mengekspor..." : "Ekspor"}
+        </button>
+      </div>
       {mobileCards}
       {desktopTable}
 

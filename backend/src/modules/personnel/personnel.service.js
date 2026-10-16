@@ -165,10 +165,23 @@ const update = async (personil_id, data, userId) => {
     updated_by: Number(userId),
   };
 
-  return await personnelRepository.update(
-    personil_id,
-    updateData
-  );
+  const isAktifDikirim = data.is_aktif !== undefined;
+
+  return await prisma.$transaction(async (tx) => {
+    const personil = await tx.personil.update({
+      where: { personil_id: Number(personil_id) },
+      data: updateData,
+    });
+
+    if (isAktifDikirim && personil.user_id) {
+      await tx.user_account.update({
+        where: { user_id: BigInt(personil.user_id) },
+        data: { is_aktif: data.is_aktif },
+      });
+    }
+
+    return personil;
+  });
 };
 
 const remove = async (personil_id, userId) => {
