@@ -1,5 +1,3 @@
-import ExcelJS from "exceljs";
-
 export interface ReconciliationRecord {
   project_id: string;
   project_nama: string;
@@ -58,6 +56,8 @@ export async function exportReconciliationXlsx(records: ReconciliationRecord[]) 
   if (!records.length) {
     throw new Error("Tidak ada data rekonsiliasi untuk diekspor.");
   }
+
+  const ExcelJS = (await import("exceljs")).default;
 
   const workbook = new ExcelJS.Workbook();
   workbook.calcProperties.fullCalcOnLoad = true;
