@@ -68,7 +68,7 @@ const normalizeTicketKey = (value) =>
     .trim()
     .toUpperCase();
 
-// Parsi berkas XLSX dengan paket lama (xlsx). Hasil: jsonData (array baris,
+// Pasi berkas XLSX dengan paket lama (xlsx). Hasil: jsonData (array baris,
 // baris pertama = header, nilai mentah) tanpa transformasi tambahan.
 const parseReconciliationFile = (filePath) => {
   const workbook = XLSX.readFile(filePath);
@@ -78,7 +78,24 @@ const parseReconciliationFile = (filePath) => {
   return { jsonData, sheetName };
 };
 
-// Parsi berkas XLSX dengan exceljs (async). Output bentuk jsonData identik
+// Pasi buffer XLS/XLSX dengan paket lama (xlsx), membaca dari buffer (bukan
+// file path) agar bisa dipakai pada alur multer tanpa simpan dulu. Output
+// bentuk identik parseReconciliationFile: { jsonData, sheetName }.
+const parseReconciliationFileXls = (buffer) => {
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const sheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  const jsonData = XLSX.utils.sheet_to_json(worksheet);
+  return { jsonData, sheetName };
+};
+
+const getExtension = (filePath) => {
+  const idx = filePath.lastIndexOf(".");
+  if (idx < 0 || idx === filePath.length - 1) return "";
+  return filePath.slice(idx).toLowerCase();
+};
+
+// Pasi berkas XLSX dengan exceljs (async). Output bentuk jsonData identik
 // dengan implementasi lama: array objek, kunci = header baris pertama, nilai
 // mentah per sel, sel kosong = undefined.
 const cellValue = (cell) => {
@@ -97,8 +114,7 @@ const cellValue = (cell) => {
   return v;
 };
 
-const parseReconciliationFileExceljs = async (filePath) => {
-  const buffer = fs.readFileSync(filePath);
+const parseReconciliationFileXlsx = async (buffer) => {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
   const worksheet = workbook.worksheets[0];
@@ -133,6 +149,15 @@ const parseReconciliationFileExceljs = async (filePath) => {
   return { jsonData, sheetName };
 };
 
+// Dispatcher parsing: ekstensi .xls fallback ke paket xlsx (exceljs tidak
+// mendukung format biner OLE2), .xlsx gunakan exceljs.
+const parseReconciliationFileExceljs = async (filePath) => {
+  const ext = getExtension(filePath);
+  const buffer = fs.readFileSync(filePath);
+  if (ext === ".xls") return parseReconciliationFileXls(buffer);
+  return parseReconciliationFileXlsx(buffer);
+};
+
 module.exports = {
   XLSX,
   ExcelJS,
@@ -145,6 +170,9 @@ module.exports = {
   readReconciliationRow,
   normalizeTicketKey,
   parseReconciliationFile,
+  parseReconciliationFileXls,
+  parseReconciliationFileXlsx,
   parseReconciliationFileExceljs,
   cellValue,
+  getExtension,
 };
