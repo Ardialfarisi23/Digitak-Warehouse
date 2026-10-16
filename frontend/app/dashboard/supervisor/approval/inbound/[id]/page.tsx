@@ -545,7 +545,7 @@ export default function SupervisorInboundDetailPage() {
           <FileText className="w-4 h-4 text-slate-500" />
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-600">Informasi Transaksi</h2>
         </div>
-        <div className="grid grid-cols-1 gap-x-8 gap-y-4 p-6 sm:grid-cols-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4 p-6">
           <InfoField
             label="No. Surat Jalan / Penerimaan"
             value={<span className="font-semibold break-all text-slate-900">{tampilkan(detail.nomor_surat_jalan)}</span>}
@@ -595,7 +595,7 @@ export default function SupervisorInboundDetailPage() {
             Belum ada item barang pada transaksi inbound ini.
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="w-full overflow-x-auto">
             <table className="w-full min-w-[960px] table-fixed border-collapse text-sm">
               <colgroup>
                 <col className="w-[5%]" />
@@ -722,7 +722,7 @@ export default function SupervisorInboundDetailPage() {
       {/* Modal pratinjau lampiran staf (PDF / gambar) */}
       {isPreviewModalOpen && attachmentViewUrl && (attachmentKind === "pdf" || attachmentKind === "image") && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="flex max-h-[90vh] w-full max-w-lg mx-4 flex-col overflow-y-auto rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">
@@ -783,7 +783,7 @@ export default function SupervisorInboundDetailPage() {
             onClick={closeDetailModal}
           >
             <div
-              className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+              className="relative flex max-h-[90vh] w-full max-w-lg mx-4 flex-col overflow-y-auto rounded-2xl bg-white shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-4 border-b border-slate-100 py-4 pl-6 pr-16">

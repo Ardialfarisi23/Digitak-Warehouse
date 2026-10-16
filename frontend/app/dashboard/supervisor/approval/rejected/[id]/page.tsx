@@ -86,7 +86,7 @@ export default function SupervisorRejectedDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center px-8 py-6">
+      <div className="flex min-h-screen items-center justify-center px-4 py-6 sm:px-6 lg:px-8">
         <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-rose-500" />
       </div>
     );
@@ -94,7 +94,7 @@ export default function SupervisorRejectedDetailPage() {
 
   if (!detail) {
     return (
-      <div className="px-8 py-6">
+      <div className="px-4 py-6 sm:px-6 lg:px-8">
         <p className="text-slate-500">Detail surat jalan tidak ditemukan.</p>
         <button
           onClick={() => router.push("/dashboard/supervisor/approval/rejected")}
@@ -141,8 +141,8 @@ export default function SupervisorRejectedDetailPage() {
     ) : null;
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-6 bg-[#FAFAFA] min-h-screen text-slate-800">
-      <div className="flex items-center gap-4">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-5 sm:space-y-6 bg-[#FAFAFA] min-h-screen text-slate-800">
+      <div className="flex items-start gap-3 sm:gap-4">
         <button
           onClick={() => router.push("/dashboard/supervisor/approval/rejected")}
           className="p-2.5 bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-colors shadow-sm text-slate-600"
@@ -217,7 +217,7 @@ export default function SupervisorRejectedDetailPage() {
             Informasi Surat Jalan
           </h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 p-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4 p-6">
           <Field label="Tanggal" value={formatDateShort(detail.tanggal)} />
           <Field label="Tipe" value={tipeLabel(detail.tipe)} />
           <Field label="Project" value={detail.project?.nama_project ?? detail.project_id ?? "-"} />
@@ -256,7 +256,7 @@ export default function SupervisorRejectedDetailPage() {
         {items.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-400">Tidak ada item.</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="w-full overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-xs uppercase text-slate-500">
