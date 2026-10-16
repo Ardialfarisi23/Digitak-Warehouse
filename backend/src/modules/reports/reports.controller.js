@@ -4,6 +4,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const { parseReconciliationFileExceljs } = require("./upload-parse");
+const { validateUploadFile } = require("./upload-validate");
 const ExcelJS = require("exceljs");
 const prisma = require("../../config/prisma");
 const reportsRepository = require("./reports.repository");
@@ -398,6 +399,23 @@ const uploadReconciliationFile = async (req, res, next) => {
       return response.error(res, "No file uploaded.", 400);
     }
 
+    const validation = validateUploadFile({
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      buffer: fs.readFileSync(req.file.path),
+    });
+    if (!validation.ok) {
+      fs.unlinkSync(req.file.path);
+      console.error(
+        `[upload-validate] ditolak: ${req.file.originalname} | mimetype=${req.file.mimetype} | reason=${validation.reason}`,
+      );
+      return response.error(
+        res,
+        `File tidak valid: ${validation.reason}`,
+        400,
+      );
+    }
+
     try {
       const { jsonData } = await parseReconciliationFileExceljs(req.file.path);
 
@@ -744,17 +762,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
 
     const jenisLaporan = filename === "manual-input" ? "manual" : "excel";
 
-    const uploadLog = await prisma.reconciliation_upload_log.create({
-      data: {
-        filename,
-        file_url: `/uploads/reconciliation/${filename}`,
-        uploaded_by: BigInt(actorId),
-        total_rows: preview.length + failed.length,
-        success_rows: 0,
-        failed_rows: 0,
-      },
-    });
-
+    let uploadLog;
     let successCount = 0;
     let failedCount = 0;
     let updatedTikets = [];
@@ -762,6 +770,16 @@ const confirmReconciliationUpload = async (req, res, next) => {
     const failedItems = [];
 
     await prisma.$transaction(async (tx) => {
+      uploadLog = await tx.reconciliation_upload_log.create({
+        data: {
+          filename,
+          file_url: `/uploads/reconciliation/${filename}`,
+          uploaded_by: BigInt(actorId),
+          total_rows: preview.length + failed.length,
+          success_rows: 0,
+          failed_rows: 0,
+        },
+      });
       for (const item of preview) {
         let tiketId = item.tiket_id;
         let kodeTiket = item.kode_tiket;
@@ -1049,14 +1067,14 @@ const confirmReconciliationUpload = async (req, res, next) => {
       for (const tiketId of affectedTiketIds) {
         await reconciliationService.refreshTiketMosUsed(tiketId, tx);
       }
-    });
 
-    await prisma.reconciliation_upload_log.update({
-      where: { upload_id: uploadLog.upload_id },
-      data: {
-        success_rows: successCount,
-        failed_rows: failedCount,
-      },
+      await tx.reconciliation_upload_log.update({
+        where: { upload_id: uploadLog.upload_id },
+        data: {
+          success_rows: successCount,
+          failed_rows: failedCount,
+        },
+      });
     });
 
     return response.success(res, "Rekonsiliasi berhasil disimpan.", {
