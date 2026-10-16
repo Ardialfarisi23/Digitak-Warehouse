@@ -1,5 +1,4 @@
 const express = require("express");
-
 const router = express.Router();
 
 const boqController = require("./boq.controller");
@@ -13,6 +12,7 @@ const {
 const validate = require("../../middlewares/validation.middleware");
 const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
+const { deleteLimiter } = require("../../middlewares/rate-limit");
 
 router.post(
   "/",
@@ -74,6 +74,7 @@ router.delete(
   "/:id",
   authenticate,
   authorize("ADMIN"),
+  deleteLimiter,
   boqController.softDelete
 );
 

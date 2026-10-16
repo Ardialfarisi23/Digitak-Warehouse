@@ -2,60 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
-import Link from "next/link";
-import {
-  AlertTriangle,
-  ArrowDownLeft,
-  ArrowUpRight,
-  BarChart2,
-  Bell,
-  Box,
-  CheckCircle2,
-  ChevronDown,
-  Clock,
-  FileText,
-  HelpCircle,
-  Home,
-  LayoutDashboard,
-  LogOut,
-  Package,
-  Radio,
-  Settings,
-  ShieldAlert,
-  SlidersHorizontal,
-  Truck,
-  User,
-  Users,
-  Warehouse,
-} from "lucide-react";
-import { useAuth } from "@/lib/auth-context";
-import { mapRole, formatRole } from "@/lib/navigation";
-import { useSupervisorDashboard } from "@/hooks/use-supervisor-dashboard";
-import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity } from "@/lib/capacity";
-import { ConfirmModal } from "@/components/ConfirmModal";
-
-const summaryCards = [
-  {
-    label: "Total Perangkat",
-    value: "1,420",
-    icon: Warehouse,
-    iconBg: "bg-amber-100 text-amber-700",
-  },
-  {
-    label: "Project Aktif",
-    value: "12",
-    icon: FileText,
-    iconBg: "bg-slate-100 text-slate-600",
-  },
-  {
-    label: "Transaksi Hari Ini",
-    value: "48",
-    icon: ArrowUpRight,
-    iconBg: "bg-emerald-100 text-emerald-700",
-  },
-  {
-    label: "Staf Aktif",
+import Image from 'next/image';
     value: "8",
     icon: Users,
     iconBg: "bg-orange-100 text-orange-600",
@@ -268,66 +215,11 @@ export default function SupervisorDashboard() {
 
   return (
     <div className={`flex min-h-screen bg-[#F8F6F0] text-slate-800`}>
-      {/* SIDEBAR */}
-      <aside className="fixed inset-y-0 left-0 z-30 flex w-20 flex-col items-center justify-between border-r border-stone-200/60 bg-[#FAF8F3] py-6 shadow-sm">
-        <div className="flex flex-col items-center gap-8 w-full">
-          <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden p-0.5">
-            <Image
-              src="/logo-digitak-gradasi.png"
-              alt="Logo Digitak Studio"
-              width={56}
-              height={56}
-              className="h-full w-full object-contain"
-              priority
-            />
-          </div>
-
-          <nav className="flex flex-col items-center gap-3 w-full px-3">
-            <button className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-500 text-white shadow-lg shadow-orange-500/20 transition">
-              <LayoutDashboard size={22} />
-            </button>
-            <button className="flex h-12 w-12 items-center justify-center rounded-2xl text-stone-500 opacity-80 hover:opacity-100 hover:bg-stone-200/60 hover:text-[#FF5500] transition">
-              <FileText size={22} />
-            </button>
-            <button className="flex h-12 w-12 items-center justify-center rounded-2xl text-stone-500 opacity-80 hover:opacity-100 hover:bg-stone-200/60 hover:text-[#FF5500] transition">
-              <Home size={22} />
-            </button>
-            <button className="flex h-12 w-12 items-center justify-center rounded-2xl text-stone-500 opacity-80 hover:opacity-100 hover:bg-stone-200/60 hover:text-[#FF5500] transition">
-              <Box size={22} />
-            </button>
-            <button className="flex h-12 w-12 items-center justify-center rounded-2xl text-stone-500 opacity-80 hover:opacity-100 hover:bg-stone-200/60 hover:text-[#FF5500] transition">
-              <Users size={22} />
-            </button>
-            <button className="flex h-12 w-12 items-center justify-center rounded-2xl text-stone-500 opacity-80 hover:opacity-100 hover:bg-stone-200/60 hover:text-[#FF5500] transition">
-              <BarChart2 size={22} />
-            </button>
-            <button className="flex h-12 w-12 items-center justify-center rounded-2xl text-stone-500 opacity-80 hover:opacity-100 hover:bg-stone-200/60 hover:text-[#FF5500] transition">
-              <Package size={22} />
-            </button>
-          </nav>
-        </div>
-
-        <div className="flex flex-col items-center gap-4 w-full px-3">
-          <button className="flex h-10 w-10 items-center justify-center rounded-xl text-stone-500 opacity-80 hover:opacity-100 hover:bg-stone-200/60 hover:text-[#FF5500] transition">
-            <User size={20} />
-          </button>
-          <button
-            onClick={() => {
-              logout();
-              router.push("/");
-            }}
-            title="Log Out"
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-rose-500 opacity-80 hover:opacity-100 hover:bg-rose-100 transition"
-          >
-            <LogOut size={20} />
-          </button>
-        </div>
-      </aside>
 
       {/* MAIN CONTENT AREA */}
-      <div className="pl-20 w-full min-h-screen flex flex-col">
+      <div className="w-full min-h-screen flex flex-col">
         {/* HEADER TOP BAR */}
-        <header className="sticky top-0 z-20 flex h-20 items-center justify-between bg-[#F8F6F0]/90 px-8 backdrop-blur-md">
+        <header className="sticky top-14 z-20 flex h-20 items-center justify-between bg-[#F8F6F0]/90 px-8 backdrop-blur-md">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
               Digitak Studio WMS
@@ -386,10 +278,7 @@ export default function SupervisorDashboard() {
                 <select className="appearance-none rounded-full border border-stone-300/80 bg-white px-5 py-2.5 pr-10 text-sm font-semibold text-slate-700 shadow-sm focus:outline-none cursor-pointer">
                   <option>Semua Gudang Saya</option>
                 </select>
-                <ChevronDown
-                  size={16}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                />
+                  <ChevronDown size={16} className='absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none' />
               </div>
 
               <div className="relative">
@@ -397,21 +286,7 @@ export default function SupervisorDashboard() {
                   <option>Semua Project</option>
                 </select>
                 <ChevronDown
-                  size={16}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* 4 SUMMARY CARDS */}
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-            {summaryCards.map((item) => (
-              <div
-                key={item.label}
-                className="flex items-center gap-4 rounded-2xl bg-white p-5 shadow-sm border border-stone-100"
-              >
-                <div
+                  <ChevronDown size={16} className='absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none' />
                   className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${item.iconBg}`}
                 >
                   <item.icon size={22} />

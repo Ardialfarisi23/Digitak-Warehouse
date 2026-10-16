@@ -4,8 +4,9 @@ const response = require("../../shared/response");
 const listByProject = async (req, res, next) => {
   try {
     const projectId = req.query.project_id;
-    const result = await clusterService.findByProjectId(projectId);
-    return response.success(res, "Daftar cluster berhasil diambil.", result);
+    const status = req.query.status || "aktif";
+    const result = await clusterService.findByProjectId(projectId, status);
+    return response.success(res, "Daftar clusterhasil diambil.", result);
   } catch (err) {
     next(err);
   }
@@ -13,7 +14,7 @@ const listByProject = async (req, res, next) => {
 
 const listAll = async (req, res, next) => {
   try {
-    const result = await clusterService.findAll();
+    const result = await clusterService.findAll(req.query);
     return response.success(res, "Daftar semua cluster berhasil diambil.", result);
   } catch (err) {
     next(err);

@@ -112,7 +112,7 @@ function KpiCard({
   href?: string;
 }) {
   const content = (
-    <div className="rounded-2xl border border-slate-100 bg-white p-4 transition-colors hover:border-slate-200">
+    <div className="rounded-2xl border border-slate-100 bg-white p-3 transition-colors hover:border-slate-200">
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-medium tracking-wide text-slate-400">
           {label.toUpperCase()}
@@ -124,7 +124,7 @@ function KpiCard({
         </span>
       </div>
       <div className="mt-2 text-2xl font-bold text-slate-900">{value}</div>
-      <div className={`mt-1 text-xs font-medium ${noteColor}`}>{note}</div>
+      <div className={`mt-1 text-xs font-medium ${noteColor} line-clamp-2`}>{note}</div>
       {href && (
         <div className="mt-3 text-xs font-semibold text-orange-500 hover:text-orange-600">
           Review BOQ &rarr;
@@ -325,14 +325,14 @@ const fetchDashboardData = useCallback(async () => {
       <div className="flex-1 space-y-6 min-w-0 w-full">
         <header>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900">{greeting}</h1>
-          <p className="mt-1 text-sm text-slate-400">
+          <p className="mt-1 text-sm text-slate-400 truncate">
             Pantau kondisi gudang, status BOQ, dan persetujuan outbound dalam satu
             tampilan.
           </p>
         </header>
 
         {/* 1. KPI ROW */}
-        <div className="grid grid-cols-1 min-[400px]:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4 lg:gap-4">
           {kpiCards.map((k) => (
             <KpiCard key={k.label} {...k} />
           ))}

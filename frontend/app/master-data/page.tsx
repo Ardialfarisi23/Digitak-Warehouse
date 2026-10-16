@@ -8,6 +8,7 @@ import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import { PERSONNEL_PERMISSIONS, canPerformPersonnelAction } from "@/lib/permissions";
+import { safeUrl } from "@/lib/safe-url";
 import Image from "next/image";
 import { MobileCardList } from "@/components/MobileCardList";
 
@@ -216,11 +217,11 @@ const TAB_PERMISSIONS: Record<MasterDataType, { create: string[]; edit: string[]
     edit: [ROLE.ADMIN],
     delete: [ROLE.ADMIN],
   },
-  clusters: {
-    create: [ROLE.ADMIN, ROLE.SUPERVISOR],
-    edit: [ROLE.ADMIN, ROLE.SUPERVISOR],
-    delete: [ROLE.ADMIN, ROLE.SUPERVISOR],
-  },
+   clusters: {
+     create: [],
+     edit: [ROLE.ADMIN, ROLE.SUPERVISOR],
+     delete: [ROLE.ADMIN, ROLE.SUPERVISOR],
+   },
 };
 
 // Field form Tambah/Edit per tab. Diambil dari kolom yang sudah ada di
@@ -541,7 +542,7 @@ function DetailModal({ open, onClose, tab, tabLabel, record }: { open: boolean; 
     <Modal open={open} onClose={onClose} title={`Detail ${tabLabel}`} subtitle={getRecordTitle(tab, record)}>
       {primaryPhoto && (
         <div className="mb-5 flex justify-center">
-          <img src={primaryPhoto} alt={tabLabel} className="max-h-56 max-w-full rounded-2xl border border-slate-100 object-contain" />
+          <img src={safeUrl(primaryPhoto) ?? "#"} alt={tabLabel} className="max-h-56 max-w-full rounded-2xl border border-slate-100 object-contain" />
         </div>
       )}
 
@@ -588,7 +589,7 @@ function DetailModal({ open, onClose, tab, tabLabel, record }: { open: boolean; 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {additionalPhotos.slice(1).map((photo, idx) => (
               <div key={idx} className="overflow-hidden rounded-xl border border-slate-100">
-                <img src={photo.url} alt={photo.label} className="h-32 w-full object-cover" />
+                <img src={safeUrl(photo.url) ?? "#"} alt={photo.label} className="h-32 w-full object-cover" />
               </div>
             ))}
           </div>
@@ -1090,7 +1091,7 @@ function FormModal({
                   <div className="space-y-3">
                     <div className="flex items-center gap-4">
                       <div className="relative h-16 w-16 overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
-                        <img src={String(form[field.key])} alt="Preview" className="h-full w-full object-contain" />
+                        <img src={safeUrl(String(form[field.key])) ?? "#"} alt="Preview" className="h-full w-full object-contain" />
                       </div>
                       <div className="text-xs text-slate-500">
                         <p className="font-medium text-slate-700">Foto saat ini</p>
@@ -1970,6 +1971,7 @@ function MasterDataPageContent() {
   const [kendaraanGudangFilter, setKendaraanGudangFilter] = useState("");
   const [projectStatusFilter, setProjectStatusFilter] = useState("");
   const [clusterProjectFilter, setClusterProjectFilter] = useState("");
+  const [clusterStatusFilter, setClusterStatusFilter] = useState("");
   const [supplierStatusFilter, setSupplierStatusFilter] = useState("");
   const [warehouseOptions, setWarehouseOptions] = useState<Array<{ value: number; label: string }>>([]);
   const [categoryOptions, setCategoryOptions] = useState<Array<{ value: number; label: string }>>([]);
@@ -2231,6 +2233,7 @@ function getColumnLabel(column: string, activeTab?: MasterDataType) {
 
       if (activeTab === "clusters") {
         if (clusterProjectFilter) url.searchParams.set("project_id", clusterProjectFilter);
+        if (clusterStatusFilter) url.searchParams.set("status", clusterStatusFilter);
       }
 
       if (activeTab === "suppliers") {
@@ -2291,7 +2294,7 @@ function getColumnLabel(column: string, activeTab?: MasterDataType) {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, page, search, posisiFilter, gudangFilter, statusFilter, tipeFilter, gudangStatusFilter, kategoriFilter, satuanFilter, jenisKendaraanFilter, kendaraanGudangFilter, projectStatusFilter, clusterProjectFilter, supplierStatusFilter]);
+  }, [activeTab, page, search, posisiFilter, gudangFilter, statusFilter, tipeFilter, gudangStatusFilter, kategoriFilter, satuanFilter, jenisKendaraanFilter, kendaraanGudangFilter, projectStatusFilter, clusterProjectFilter, clusterStatusFilter, supplierStatusFilter]);
 
   useEffect(() => {
     fetchMasterData();
@@ -2546,6 +2549,15 @@ function getColumnLabel(column: string, activeTab?: MasterDataType) {
                 <option key={p.value} value={String(p.value)}>{p.label}</option>
               ))}
             </select>
+            <select
+              value={clusterStatusFilter}
+              onChange={(e) => { setClusterStatusFilter(e.target.value); setPage(1); }}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            >
+              <option value="all">Semua Status</option>
+              <option value="aktif">Aktif</option>
+              <option value="nonaktif">Nonaktif</option>
+            </select>
           </div>
         )}
 
@@ -2604,7 +2616,9 @@ function getColumnLabel(column: string, activeTab?: MasterDataType) {
                 ) : data.length === 0 ? (
                   <tr>
                     <td colSpan={columns.length + 2} className="px-3 py-16 text-center text-sm text-slate-400">
-                      Tidak ada data {activeConfig?.label.toLowerCase()}.
+                       {activeTab === "clusters"
+                         ? "Tidak ada data Cluster. Tambah cluster melalui halaman Cluster & BOQ."
+                         : `Tidak ada data ${activeConfig?.label.toLowerCase()}`}
                     </td>
                   </tr>
                 ) : (
@@ -2623,14 +2637,15 @@ return (
                           {columns.map((column) => {
                            let value = record[column];
 
-                           if (column === "cluster_count") {
-                             const count = (record as any)?._count?.clusters;
-                             return (
-                               <td key={column} className="px-3 py-3 text-sm font-semibold text-slate-800">
-                                 {count !== undefined ? count : "-"}
-                               </td>
-                             );
-                           }
+if (column === "cluster_count") {
+                              const total = (record as any)?._count?.clusters;
+                              const aktif = (record as any)?.cluster_aktif_count ?? 0;
+                              return (
+                                <td key={column} className="px-3 py-3 text-sm font-semibold text-slate-800">
+                                  {total !== undefined ? `${aktif} aktif / ${total} total` : "-"}
+                                </td>
+                              );
+                            }
 
                            if (column === "status_aktif" || column === "is_aktif") {
                             const active = Boolean(value);
@@ -2649,8 +2664,8 @@ return (
                                <td key={column} className="px-3 py-3">
                                  {photoUrl ? (
                                    <div className="relative h-10 w-10 overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
-                                     <img
-                                       src={photoUrl}
+                                      <img
+                                        src={safeUrl(photoUrl) ?? "#"}
                                        alt="Foto"
                                        className="h-full w-full object-contain"
                                        onError={(e) => {

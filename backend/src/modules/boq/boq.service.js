@@ -2,6 +2,7 @@ const boqRepository = require("./boq.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
 const notificationService = require("../../modules/notifications/notifications.service");
+const { normalizeClusterId } = require("../../utils/clusterResolver");
 
 const normalizeStatus = (status) => {
   if (!status) return status;

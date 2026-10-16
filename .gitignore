@@ -14,4 +14,7 @@ temp_*.js
 # TypeScript build info
 tsbuildinfo
 
+# Kilo
+.kilo/
+
 # Uploads (already ignored in backend/.gitignore)

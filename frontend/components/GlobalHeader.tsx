@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { formatRole } from "@/lib/navigation";
+import { safeUrl } from "@/lib/safe-url";
 import { useSidebar } from "@/components/sidebar-context";
 import {
   Bell,
@@ -105,7 +106,7 @@ export function GlobalHeader() {
     <>
       <header
         style={{ "--sidebar-w": `${width}px` } as React.CSSProperties}
-        className="fixed top-0 right-0 z-40 flex h-16 items-center justify-between bg-[#FAF8F5] px-4 lg:px-6 transition-all duration-300 left-0 md:left-[var(--sidebar-w)]"
+        className="fixed top-0 right-0 z-40 flex h-14 items-center justify-between bg-[#FAF8F5] px-4 lg:px-6 transition-all duration-300 left-0 md:left-[var(--sidebar-w)]"
       >
         {isMobile && (
           <button
@@ -137,7 +138,7 @@ export function GlobalHeader() {
             </button>
 
             {notifOpen && (
-              <div className="fixed inset-x-3 top-16 md:absolute md:right-0 md:top-full md:mt-2 w-auto md:w-80 md:max-w-80 rounded-2xl border border-stone-200 bg-white shadow-xl shadow-stone-200/40 z-50">
+              <div className="fixed inset-x-3 top-14 md:absolute md:right-0 md:top-full md:mt-2 w-auto md:w-80 md:max-w-80 rounded-2xl border border-stone-200 bg-white shadow-xl shadow-stone-200/40 z-50">
                 <div className="flex items-center justify-between border-b border-stone-100 px-4 py-3">
                   <h3 className="text-sm font-bold text-slate-900">Notifikasi</h3>
                   <div className="flex items-center gap-1">
@@ -267,7 +268,7 @@ export function GlobalHeader() {
             </button>
 
             {settingsOpen && (
-              <div className="fixed inset-x-3 top-16 md:absolute md:inset-x-auto md:right-0 md:top-full md:mt-2 md:w-56 rounded-2xl border border-stone-200 bg-white shadow-xl shadow-stone-200/40 z-50 py-1.5">
+              <div className="fixed inset-x-3 top-14 md:absolute md:inset-x-auto md:right-0 md:top-full md:mt-2 md:w-56 rounded-2xl border border-stone-200 bg-white shadow-xl shadow-stone-200/40 z-50 py-1.5">
                 <Link
                   href="/dashboard"
                   className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
@@ -301,13 +302,13 @@ export function GlobalHeader() {
                 setNotifOpen(false);
                 setSettingsOpen(false);
               }}
-              className="flex items-center gap-3 pl-1"
+              className="flex min-h-10 items-center gap-3 pl-1"
             >
               <div className="hidden text-right md:block">
                 <p className="text-sm font-bold text-slate-900 leading-tight">{displayName}</p>
                 <p className="text-[11px] text-slate-500 font-medium capitalize">{formatRole(user.role)}</p>
               </div>
-              <UserAvatar src={user.avatar_url} name={displayName} size={36} />
+              <UserAvatar src={safeUrl(user.avatar_url) ?? "#"} name={displayName} size={36} />
             </button>
 
             {accountOpen && (

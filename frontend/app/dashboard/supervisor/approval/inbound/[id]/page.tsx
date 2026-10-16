@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
+import { safeUrl } from "@/lib/safe-url";
 import { ArrowLeft, Eye, ExternalLink, FileText, Maximize2, Package, X } from "lucide-react";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
 import { KondisiUnitSummary } from "@/components/common/KondisiUnitSummary";
@@ -450,7 +451,7 @@ export default function SupervisorInboundDetailPage() {
                 </span>
                 {attachmentViewUrl && (
                   <a
-                    href={attachmentViewUrl}
+                    href={safeUrl(attachmentViewUrl)}
                     {...(attachmentIsInline ? {} : { target: "_blank", rel: "noopener noreferrer" })}
                     download={attachmentFileName || undefined}
                     className="ml-auto inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
@@ -490,7 +491,7 @@ export default function SupervisorInboundDetailPage() {
           ) : attachmentKind === "pdf" ? (
             <div className="relative h-[780px] w-full bg-slate-100 p-2">
               <iframe
-                src={attachmentViewUrl}
+                src={safeUrl(attachmentViewUrl)}
                 title="PDF Document"
                 width="100%"
                 height="100%"
@@ -732,7 +733,7 @@ export default function SupervisorInboundDetailPage() {
               </div>
               <div className="flex items-center gap-2">
                 <a
-                  href={attachmentViewUrl}
+                  href={safeUrl(attachmentViewUrl)}
                   {...(attachmentIsInline ? {} : { target: "_blank", rel: "noopener noreferrer" })}
                   download={attachmentFileName || undefined}
                   className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
@@ -752,7 +753,7 @@ export default function SupervisorInboundDetailPage() {
             <div className="h-[70vh] overflow-auto bg-slate-100 p-4">
               {attachmentKind === "pdf" ? (
                 <iframe
-                  src={attachmentViewUrl}
+                  src={safeUrl(attachmentViewUrl)}
                   title="PDF Document"
                   width="100%"
                   height="100%"
@@ -762,7 +763,7 @@ export default function SupervisorInboundDetailPage() {
                 <div className="flex h-full items-center justify-center">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={attachmentViewUrl}
+                    src={safeUrl(attachmentViewUrl)}
                     alt={`Pratinjau gambar lampiran ${attachmentLabel}`}
                     className="max-h-full max-w-full object-contain"
                   />
