@@ -1737,7 +1737,7 @@ const getHardwareReconciliation = async (filters = {}) => {
     include: {
       tiket: {
         select: {
-          project_id: true,
+          tiket_id: true,
         },
       },
       cluster: {
@@ -1748,14 +1748,7 @@ const getHardwareReconciliation = async (filters = {}) => {
       },
       items: {
         select: {
-          barang_id: true,
           qty_rencana: true,
-          barang: {
-            select: {
-              nama_barang: true,
-              kode_perangkat: true,
-            },
-          },
         },
       },
     },
@@ -1782,7 +1775,6 @@ const getHardwareReconciliation = async (filters = {}) => {
       items: {
         select: {
           qty: true,
-          barang_id: true,
         },
       },
     },
