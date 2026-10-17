@@ -7,6 +7,8 @@ import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity, getStatusSourceLabel } from "@/lib/capacity";
+import { ClusterReconciliationSection } from "@/components/ClusterReconciliationSection";
+import { buildClusterReconciliation, type ClusterReconciliation } from "@/lib/cluster-reconciliation";
 
 import {
   Boxes,
@@ -172,8 +174,9 @@ function MetricBox({
 
 function DashboardPageContent() {
   const { get } = useApi();
-  const [projectFilter, setProjectFilter] = useState("");
   const [projectSummary, setProjectSummary] = useState<ProjectSummaryRow[]>([]);
+  const [clusterReconciliation, setClusterReconciliation] = useState<ClusterReconciliation[]>([]);
+  const [isLoadingRecon, setIsLoadingRecon] = useState(true);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats>(defaultDashboardStats);
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
@@ -237,19 +240,49 @@ const fetchDashboardData = useCallback(async () => {
     }
   }, [get]);
 
+  const fetchClusterReconciliation = useCallback(async () => {
+    setIsLoadingRecon(true);
+    try {
+      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
+      const qs = new URLSearchParams();
+      qs.set("status", "all");
+      qs.set("groupBy", "cluster");
+      const res = await get(`${apiBase}/api/reconciliation/inventory?${qs.toString()}`);
+      if (!res.ok) return;
+      const ct = res.headers.get("content-type");
+      if (!ct || !ct.includes("application/json")) return;
+      const json = await res.json();
+      const raw: unknown = json?.data;
+      const data = Array.isArray(raw)
+        ? raw
+        : Array.isArray((raw as { data?: unknown[] })?.data)
+          ? (raw as { data: unknown[] }).data
+          : [];
+      setClusterReconciliation(buildClusterReconciliation(data as never));
+    } catch (error) {
+      console.error("Error fetching cluster reconciliation:", error);
+      setClusterReconciliation([]);
+    } finally {
+      setIsLoadingRecon(false);
+    }
+  }, [get]);
+
   useEffect(() => {
     fetchDashboardData();
-  }, [get, fetchDashboardData]);
+    fetchClusterReconciliation();
+  }, [get, fetchDashboardData, fetchClusterReconciliation]);
 
   // Refetch project summary when window gains focus (e.g., after creating project in another tab)
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === "visible") {
         fetchDashboardData();
+        fetchClusterReconciliation();
       }
     };
     const onFocus = () => {
       fetchDashboardData();
+      fetchClusterReconciliation();
     };
     window.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onFocus);
@@ -257,7 +290,7 @@ const fetchDashboardData = useCallback(async () => {
       window.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onFocus);
     };
-  }, [get, fetchDashboardData]);
+    }, [get, fetchDashboardData, fetchClusterReconciliation]);
 
   const greeting = `Selamat Pagi, Selamat Beraktivitas! `;
 
@@ -312,13 +345,6 @@ const fetchDashboardData = useCallback(async () => {
   // "Aktif" (ada BOQ aktif), "Draft" (hanya BOQ draft/selesai), "Belum Ada" (tanpa BOQ).
   // Oleh karena itu, tampilkan semua projectRows tanpa filter tambahan.
   const activeProjectRows = projectRows;
-
-  const filteredProjects = activeProjectRows.filter((p) =>
-    `${p.projectName} ${p.area} ${p.clusterLabel}`
-      .toLowerCase()
-      .includes(projectFilter.toLowerCase())
-  );
-
   return (
     <div className={`flex flex-col gap-4 sm:gap-6 lg:flex-row text-slate-800`}>
       {/* KONTEN UTAMA (KIRI) */}
@@ -417,121 +443,7 @@ const fetchDashboardData = useCallback(async () => {
         </section>
 
         {/* 3. RINGKASAN PER PROJECT/CLUSTER */}
-        <section className="rounded-3xl border border-slate-100 bg-white p-6 shadow-xs">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">
-                Ringkasan per Project/Cluster
-              </h2>
-              <p className="text-xs text-slate-400">
-                Status BOQ dan realisasi hardware tiap proyek.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 rounded-full bg-slate-50 px-3 py-2 text-sm text-slate-400 border border-slate-100">
-              <Search size={14} />
-              <input
-                type="text"
-                value={projectFilter}
-                onChange={(e) => setProjectFilter(e.target.value)}
-                placeholder="Cari project atau area..."
-                className="w-48 bg-transparent outline-none placeholder:text-slate-300"
-              />
-            </div>
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-            {isLoadingProjects ? (
-              <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">
-                Memuat data project...
-              </div>
-            ) : activeProjectRows.length === 0 ? (
-              <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">
-                Belum ada project dengan status BOQ aktif.
-              </div>
-            ) : filteredProjects.length === 0 ? (
-              <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">
-                Tidak ada data project/cluster yang sesuai pencarian.
-              </div>
-            ) : (
-              filteredProjects.map((p) => {
-                const statusMeta = STATUS_META[p.status];
-                const StatusIcon = statusMeta.icon;
-                const maxVal = Math.max(1, p.boq + p.additional);
-                const remWidth = Math.max(0, p.remains);
-                return (
-                  <div
-                    key={p.projectId}
-                    className="rounded-2xl border border-slate-100 bg-white p-3 transition-colors hover:border-slate-200"
-                  >
-                    {/* Header baris */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-xs font-bold leading-snug text-slate-900">
-                            {p.projectName}
-                          </span>
-                          <span
-                            className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusMeta.badge}`}
-                          >
-                            <StatusIcon size={11} strokeWidth={2.5} />
-                            {statusMeta.label}
-                          </span>
-                        </div>
-                        <div className="mt-0.5 text-[11px] text-slate-400">
-                          {p.area}
-                          {p.clusterId ? ` • ${p.clusterLabel}` : ""}
-                          {p.statusBoq ? ` • BOQ ${p.statusBoq}` : ""}
-                        </div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <div className="text-[10px] uppercase tracking-wide text-slate-400">
-                          Total Item
-                        </div>
-                        <div className="text-sm font-bold text-slate-900">
-                          {formatNumber(p.mos)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Stacked progress bar */}
-                    <div className="mt-2 flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                      <div
-                        style={{ width: `${(p.hardwareOnSite / maxVal) * 100}%` }}
-                        className="bg-emerald-500"
-                        title={`MOS: ${p.hardwareOnSite}`}
-                      />
-                      <div
-                        style={{ width: `${(p.used / maxVal) * 100}%` }}
-                        className="bg-orange-500"
-                        title={`Used: ${p.used}`}
-                      />
-                      <div
-                        style={{ width: `${(remWidth / maxVal) * 100}%` }}
-                        className={p.remains < 0 ? "bg-rose-400" : "bg-slate-300"}
-                        title={`Remains: ${p.remains}`}
-                      />
-                    </div>
-
-                    {/* Grid 5 metric */}
-                    <div className="mt-2 grid grid-cols-5 gap-1.5 text-center">
-                      <MetricBox label="BOQ Plan" value={p.boq} tone="slate" />
-                      <MetricBox label="Additional" value={p.additional} tone="slate" />
-                      <MetricBox label="MOS" value={p.hardwareOnSite} tone="emerald" />
-                      <MetricBox label="Used" value={p.used} tone="orange" />
-                      <MetricBox
-                        label="Remains"
-                        value={p.remains}
-                        tone={p.remains < 0 ? "rose" : "slate"}
-                        highlight={p.remains < 0}
-                      />
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </section>
+        <ClusterReconciliationSection clusters={clusterReconciliation} isLoading={isLoadingRecon} />
       </div>
 
     </div>
