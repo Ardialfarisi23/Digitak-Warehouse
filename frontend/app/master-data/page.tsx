@@ -602,11 +602,11 @@ function DetailModal({ open, onClose, tab, tabLabel, record }: { open: boolean; 
           <div className="space-y-1 text-xs text-slate-500">
             <p>
               Dibuat: {formatDateTime((record as any)?.created_at ?? record.createdAt)}
-              {(record as any)?.created_by ? ` oleh ${(record as any).created_by}` : ""}
+              oleh ${(record as any)?.creator?.nama || "-"}
             </p>
             <p>
               Diubah terakhir: {formatDateTime((record as any)?.updated_at ?? record.updatedAt)}
-              {(record as any)?.updated_by ? ` oleh ${(record as any).updated_by}` : ""}
+              oleh ${(record as any)?.updater?.nama || "-"}
             </p>
           </div>
         </div>

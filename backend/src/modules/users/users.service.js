@@ -70,7 +70,7 @@ const findByEmail = async (email) => {
   return user;
 };
 
-const update = async (user_id, data) => {
+const update = async (user_id, data, actorId) => {
   const existingUser = await usersRepository.findById(user_id, { includeInactive: true });
 
   if (!existingUser) {
@@ -99,7 +99,11 @@ const update = async (user_id, data) => {
     }
   }
 
-  const result = await usersRepository.update(user_id, data);
+  if (data.is_aktif === false && Number(user_id) === Number(actorId)) {
+    throw new AppError("Tidak dapat menonaktifkan akun Anda sendiri.", 400);
+  }
+
+  const result = await usersRepository.update(user_id, data, actorId);
 
   // If password was changed by admin, revoke ALL refresh tokens for the target user
   if (data.password_hash) {

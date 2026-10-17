@@ -36,12 +36,20 @@ const findByKode = async (kode_perangkat, options = {}) => {
   if (options.includeInactive) {
     return await prisma.barang.findUnique({
       where: { kode_perangkat },
+      include: {
+        creator: { select: { nama: true } },
+        updater: { select: { nama: true } },
+      },
     });
   }
 
   return await prisma.barang.findFirst({
     where: {
       kode_perangkat,
+    },
+    include: {
+      creator: { select: { nama: true } },
+      updater: { select: { nama: true } },
     },
   });
 };

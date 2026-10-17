@@ -489,7 +489,7 @@ const fetchDashboardData = useCallback(async () => {
                           Total Item
                         </div>
                         <div className="text-sm font-bold text-slate-900">
-                          {formatNumber(p.itemCount)}
+                          {formatNumber(p.mos)}
                         </div>
                       </div>
                     </div>

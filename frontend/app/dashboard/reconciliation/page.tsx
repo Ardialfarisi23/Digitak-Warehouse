@@ -207,6 +207,7 @@ export default function ReconciliationInventoryPage() {
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [mitraError, setMitraError] = useState<string | null>(null);
   const [mitraConfirming, setMitraConfirming] = useState(false);
+  const [showSimpanConfirm, setShowSimpanConfirm] = useState(false);
   const [manualRows, setManualRows] = useState<Array<{
     id: string;
     barang_id: string;
@@ -1427,7 +1428,6 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
 
               <RemainsNoteForm
                 record={selectedRecord}
-                onClose={() => {}}
                 onSuccess={fetchReconciliation}
                 isClusterMode={true}
               />
@@ -1994,7 +1994,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
               {(mitraPreview || manualRows.length > 0) && mitraFlow !== "select" && (
                 <button
                   type="button"
-                  onClick={handleMitraConfirm}
+                  onClick={() => setShowSimpanConfirm(true)}
                   disabled={mitraConfirming}
                   className="flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-600 disabled:opacity-60"
                 >
@@ -2294,6 +2294,22 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
           <span className="text-[13px] font-semibold">{toast.message}</span>
         </div>
       )}
+
+      <ConfirmModal
+        open={showSimpanConfirm}
+        title="Simpan Laporan?"
+        description="Konfirmasi simpan laporan rekonsiliasi ke sistem."
+        confirmText={mitraConfirming ? "Menyimpan…" : "Simpan"}
+        cancelText="Batal"
+        isLoading={mitraConfirming}
+        onConfirm={async () => {
+          setShowSimpanConfirm(false);
+          await handleMitraConfirm();
+        }}
+        onClose={() => {
+          if (!mitraConfirming) setShowSimpanConfirm(false);
+        }}
+      />
 
       <ConfirmModal
         open={showDeactivatedModal}

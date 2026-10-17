@@ -993,7 +993,6 @@ export default function SupervisorReconciliationPage() {
 
               <RemainsNoteForm
                 record={selectedRecord}
-                onClose={() => {}}
                 onSuccess={fetchReconciliation}
                 isClusterMode={false}
               />

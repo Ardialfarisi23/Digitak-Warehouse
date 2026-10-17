@@ -116,7 +116,7 @@ const findById = async (req, res, next) => {
 
 const update = async (req, res, next) => {
   try {
-    const result = await usersService.update(req.params.user_id, req.body);
+    const result = await usersService.update(req.params.user_id, req.body, req.user.id);
     return response.success(res, "Akun berhasil diperbarui.", result);
   } catch (err) {
     next(err);

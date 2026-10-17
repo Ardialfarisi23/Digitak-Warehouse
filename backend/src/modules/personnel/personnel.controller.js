@@ -30,7 +30,7 @@ const findByPersonilId = async (req, res, next) => {
 
 const update = async (req, res, next) => {
   try {
-    const result = await personnelService.update(req.params.personil_id, req.body, req.user.id);
+    const result = await personnelService.update(req.params.personil_id, req.body, { id: req.user.id, role: req.user.role });
     return response.success(res, "Personnel berhasil diperbarui.", result);
   } catch (err) {
     next(err);
