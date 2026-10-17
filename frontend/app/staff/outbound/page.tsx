@@ -24,6 +24,29 @@ const STATUS_META: Record<SuratJalanStatus, { label: string; tone: string }> = {
 
 const PICKING_SELESAI_STATUS: SuratJalanStatus = "disetujui";
 
+// Status yang BENAR-BENAR masih terjadi pada alur outbound saat ini:
+//   POST /api/surat-jalan -> "draft_diajukan" (lihat create() repository:
+//   default outbound = draft_diajukan)
+//   approveOutbound -> "disetujui"
+//   updateDeliveryStatus validTransitions: disetujui -> sedang_dikirim ->
+//   tiba_menunggu_konfirmasi / diterima_didistribusikan
+//   tibaDiTransit -> "tiba_di_transit" (titipan transit), lanjut lagi ke
+//   "sedang_dikirim"
+//   rejectOutbound -> "ditolak"
+// "menunggu_verifikasi" / "ready_putaway" / "digenerate" tidak pernah di-set
+// pada tipe outbound (digenerate bahkan tidak pernah di-set di service
+// mana pun — hanya nyangkut di filter list repository). STATUS_META tetap
+// lengkap hanya untuk me-render badge record legacy.
+const ACTIVE_OUTBOUND_STATUSES: SuratJalanStatus[] = [
+  "draft_diajukan",
+  "disetujui",
+  "sedang_dikirim",
+  "tiba_di_transit",
+  "tiba_menunggu_konfirmasi",
+  "diterima_didistribusikan",
+  "ditolak",
+];
+
 function getStatusMeta(status: SuratJalanStatus, pickingSelesai?: boolean) {
   if (status === PICKING_SELESAI_STATUS && pickingSelesai) {
     return { label: "Picking Selesai — Siap Distribusi", tone: "bg-blue-50 text-blue-600" };
@@ -81,12 +104,12 @@ export default function SuratJalanListPage() {
   const [error, setError] = useState<string | null>(null);
   // Pencarian teks (nomor SJ / project) — klien-side.
   const [searchQuery, setSearchQuery] = useState("");
-  // Filter lanjutan di dalam panel "Filter": status multi-select, rentang
-  // tanggal, dan gudang (tujuan/asal) — semuanya klien-side, dikombinasikan.
+  // Filter lanjutan di dalam panel "Filter": status multi-select dan rentang
+  // tanggal — klien-side, dikombinasikan. (Filter gudang dihapus: staf hanya
+  // mengakses 1 gudang.)
   const [statusFilter, setStatusFilter] = useState<SuratJalanStatus[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [gudangFilter, setGudangFilter] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   // Row detail inline: surat jalan yang sedang dibuka daftar itemnya.
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -141,25 +164,13 @@ export default function SuratJalanListPage() {
     window.scrollTo({ top: 0 });
   }, []);
 
-  // Opsi gudang diambil dari data yang sudah dimuat (tujuan & asal).
-  const gudangOptions = useMemo(() => {
-    const names = new Set<string>();
-    for (const sj of list) {
-      if (sj.gudang_tujuan?.nama_gudang) names.add(sj.gudang_tujuan.nama_gudang);
-      if (sj.gudang_asal?.nama_gudang) names.add(sj.gudang_asal.nama_gudang);
-    }
-    return Array.from(names).sort((a, b) => a.localeCompare(b, "id-ID"));
-  }, [list]);
-
-  const activeFilterCount =
-    (statusFilter.length > 0 ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) + (gudangFilter ? 1 : 0);
+  const activeFilterCount = (statusFilter.length > 0 ? 1 : 0) + (dateFrom || dateTo ? 1 : 0);
   const hasAnyFilter = activeFilterCount > 0 || searchQuery.trim().length > 0;
 
   const clearFilters = () => {
     setStatusFilter([]);
     setDateFrom("");
     setDateTo("");
-    setGudangFilter("");
     setSearchQuery("");
   };
 
@@ -182,13 +193,9 @@ export default function SuratJalanListPage() {
       const waktu = new Date(sj.tanggal || sj.created_at).getTime();
       const matchesFrom = fromTime === null || waktu >= fromTime;
       const matchesTo = toTime === null || waktu <= toTime;
-      const matchesGudang =
-        !gudangFilter ||
-        sj.gudang_tujuan?.nama_gudang === gudangFilter ||
-        sj.gudang_asal?.nama_gudang === gudangFilter;
-      return matchesStatus && matchesSearch && matchesFrom && matchesTo && matchesGudang;
+      return matchesStatus && matchesSearch && matchesFrom && matchesTo;
     });
-  }, [list, statusFilter, searchQuery, dateFrom, dateTo, gudangFilter]);
+  }, [list, statusFilter, searchQuery, dateFrom, dateTo]);
 
   return (
     <div className="px-8 py-6">
@@ -234,7 +241,7 @@ export default function SuratJalanListPage() {
                 <div className="absolute right-0 z-30 mt-2 w-[19rem] rounded-2xl border border-[#F3D9C7] bg-white p-4 shadow-xl">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Status</p>
                   <div className="mb-4 max-h-40 space-y-1.5 overflow-y-auto pr-1">
-                    {(Object.keys(STATUS_META) as SuratJalanStatus[]).map((status) => (
+                    {ACTIVE_OUTBOUND_STATUSES.map((status) => (
                       <label
                         key={status}
                         className="flex cursor-pointer items-center gap-2 text-sm text-gray-700"
@@ -272,20 +279,6 @@ export default function SuratJalanListPage() {
                     </label>
                   </div>
 
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Gudang</p>
-                  <select
-                    value={gudangFilter}
-                    onChange={(e) => setGudangFilter(e.target.value)}
-                    className="mb-4 w-full rounded-lg border border-[#F3D9C7] bg-white px-2 py-2 text-sm text-gray-700 focus:border-[#E8632C] focus:outline-none"
-                  >
-                    <option value="">Semua gudang</option>
-                    {gudangOptions.map((nama) => (
-                      <option key={nama} value={nama}>
-                        {nama}
-                      </option>
-                    ))}
-                  </select>
-
                   <div className="flex items-center justify-between gap-2 border-t border-stone-100 pt-3">
                     <button
                       type="button"
@@ -293,7 +286,6 @@ export default function SuratJalanListPage() {
                         setStatusFilter([]);
                         setDateFrom("");
                         setDateTo("");
-                        setGudangFilter("");
                       }}
                       className="text-xs font-medium text-gray-500 hover:text-gray-700"
                     >
