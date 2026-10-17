@@ -102,7 +102,7 @@ const findByPersonilId = async (personil_id) => {
   return record;
 };
 
-const update = async (personil_id, data, userId) => {
+const update = async (personil_id, data, actor) => {
   const record = await personnelRepository.findByPersonilId(
     personil_id,
     {
@@ -162,7 +162,7 @@ const update = async (personil_id, data, userId) => {
 
   const updateData = {
     ...data,
-    updated_by: Number(userId),
+    updated_by: Number(actor.id),
   };
 
   const isAktifDikirim = data.is_aktif !== undefined;
@@ -173,7 +173,11 @@ const update = async (personil_id, data, userId) => {
       data: updateData,
     });
 
-    if (isAktifDikirim && personil.user_id) {
+    if (isAktifDikirim && data.is_aktif === false && personil.user_id && Number(personil.user_id) === Number(actor.id)) {
+      throw new AppError("Tidak dapat menonaktifkan akun Anda sendiri.", 400);
+    }
+
+    if (isAktifDikirim && personil.user_id && actor.role === "admin_general") {
       await tx.user_account.update({
         where: { user_id: BigInt(personil.user_id) },
         data: { is_aktif: data.is_aktif },

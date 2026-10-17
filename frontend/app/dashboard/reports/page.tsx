@@ -234,6 +234,7 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
   const [aksi, setAksi] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [dateError, setDateError] = useState("");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -248,10 +249,26 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  const validasiRentangTanggal = useCallback(() => {
+    if (startDate && endDate && endDate < startDate) {
+      setDateError("Tanggal akhir tidak boleh lebih awal dari tanggal mulai.");
+      return false;
+    }
+    setDateError("");
+    return true;
+  }, [startDate, endDate]);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     setDetailRow(null);
+    if (!validasiRentangTanggal()) {
+      setLoading(false);
+      setData([]);
+      setTotal(0);
+      setTotalPages(1);
+      return;
+    }
     try {
       const params = new URLSearchParams();
       if (q.trim()) params.set("search", q.trim());
@@ -279,13 +296,14 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
     } finally {
       setLoading(false);
     }
-  }, [get, q, actorRole, aksi, startDate, endDate, page]);
+  }, [get, q, actorRole, aksi, startDate, endDate, page, validasiRentangTanggal]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
   const handleExportAuditLog = async () => {
+    if (!validasiRentangTanggal()) return;
     setExporting(true);
     setToast(null);
     try {
@@ -723,11 +741,11 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
         </div>
         <div className="min-w-[150px]">
           <label className="mb-1 block text-xs font-medium text-slate-400">Rentang Tanggal Dari</label>
-          <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(1); }} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+          <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(1); }} max={endDate || undefined} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
         </div>
         <div className="min-w-[150px]">
           <label className="mb-1 block text-xs font-medium text-slate-400">Sampai</label>
-          <input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(1); }} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+          <input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(1); }} min={startDate || undefined} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
         </div>
         <div className="min-w-[150px]">
           <label className="mb-1 block text-xs font-medium text-slate-400">Role</label>
@@ -745,11 +763,16 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
             {aksiList.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>
-        <button type="button" onClick={() => { setQ(""); setActorRole(""); setAksi(""); setStartDate(""); setEndDate(""); setPage(1); }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">Reset</button>
+        <button type="button" onClick={() => { setQ(""); setActorRole(""); setAksi(""); setStartDate(""); setEndDate(""); setDateError(""); setPage(1); }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">Reset</button>
         <button type="button" onClick={handleExportAuditLog} disabled={exporting} className="rounded-lg bg-[#E8632C] text-white px-4 py-2 text-sm disabled:opacity-50">
           {exporting ? "Mengekspor..." : "Ekspor"}
         </button>
       </div>
+      {dateError && (
+        <div className="mb-2 p-2 rounded bg-red-50 border border-red-100 text-red-700 text-xs">
+          {dateError}
+        </div>
+      )}
       {mobileCards}
       {desktopTable}
 

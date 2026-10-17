@@ -951,7 +951,6 @@ filteredRecords.map((record, index) => {
 
               <RemainsNoteForm
                 record={selectedRecord}
-                onClose={() => {}}
                 onSuccess={fetchReconciliation}
                 isClusterMode={false}
               />

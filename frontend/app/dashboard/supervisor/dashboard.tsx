@@ -2,7 +2,60 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Image from 'next/image';
+import Image from "next/image";
+import Link from "next/link";
+import {
+  AlertTriangle,
+  ArrowDownLeft,
+  ArrowUpRight,
+  BarChart2,
+  Bell,
+  Box,
+  CheckCircle2,
+  ChevronDown,
+  Clock,
+  FileText,
+  HelpCircle,
+  Home,
+  LayoutDashboard,
+  LogOut,
+  Package,
+  Radio,
+  Settings,
+  ShieldAlert,
+  SlidersHorizontal,
+  Truck,
+  User,
+  Users,
+  Warehouse,
+} from "lucide-react";
+import { ConfirmModal } from "@/components/ConfirmModal";
+import { useAuth } from "@/lib/auth-context";
+import { mapRole, formatRole } from "@/lib/navigation";
+import { useSupervisorDashboard } from "@/hooks/use-supervisor-dashboard";
+import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity } from "@/lib/capacity";
+
+const summaryCards = [
+  {
+    label: "Total Perangkat",
+    value: "1,420",
+    icon: Warehouse,
+    iconBg: "bg-amber-100 text-amber-700",
+  },
+  {
+    label: "Project Aktif",
+    value: "12",
+    icon: FileText,
+    iconBg: "bg-slate-100 text-slate-600",
+  },
+  {
+    label: "Transaksi Hari Ini",
+    value: "48",
+    icon: ArrowUpRight,
+    iconBg: "bg-emerald-100 text-emerald-700",
+  },
+  {
+    label: "Staf Aktif",
     value: "8",
     icon: Users,
     iconBg: "bg-orange-100 text-orange-600",
@@ -187,8 +240,6 @@ export default function SupervisorDashboard() {
   const router = useRouter();
   const { user, logout, isLoading, isAuthenticated } = useAuth();
 
-  const { kapasitasPerGudang, projectSummary, showDeactivatedModal, handleReturnToLogin } = useSupervisorDashboard();
-
   useEffect(() => {
     if (!isLoading) {
       if (!isAuthenticated) {
@@ -213,13 +264,70 @@ export default function SupervisorDashboard() {
     );
   }
 
+  const { kapasitasPerGudang, projectSummary, showDeactivatedModal, handleReturnToLogin } = useSupervisorDashboard();
+
   return (
     <div className={`flex min-h-screen bg-[#F8F6F0] text-slate-800`}>
+      {/* SIDEBAR */}
+      <aside className="fixed inset-y-0 left-0 z-30 flex w-20 flex-col items-center justify-between border-r border-stone-200/60 bg-[#FAF8F3] py-6 shadow-sm">
+        <div className="flex flex-col items-center gap-8 w-full">
+          <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden p-0.5">
+            <Image
+              src="/logo-digitak-gradasi.png"
+              alt="Logo Digitak Studio"
+              width={56}
+              height={56}
+              className="h-full w-full object-contain"
+              priority
+            />
+          </div>
+
+          <nav className="flex flex-col items-center gap-3 w-full px-3">
+            <button className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-500 text-white shadow-lg shadow-orange-500/20 transition">
+              <LayoutDashboard size={22} />
+            </button>
+            <button className="flex h-12 w-12 items-center justify-center rounded-2xl text-stone-500 opacity-80 hover:opacity-100 hover:bg-stone-200/60 hover:text-[#FF5500] transition">
+              <FileText size={22} />
+            </button>
+            <button className="flex h-12 w-12 items-center justify-center rounded-2xl text-stone-500 opacity-80 hover:opacity-100 hover:bg-stone-200/60 hover:text-[#FF5500] transition">
+              <Home size={22} />
+            </button>
+            <button className="flex h-12 w-12 items-center justify-center rounded-2xl text-stone-500 opacity-80 hover:opacity-100 hover:bg-stone-200/60 hover:text-[#FF5500] transition">
+              <Box size={22} />
+            </button>
+            <button className="flex h-12 w-12 items-center justify-center rounded-2xl text-stone-500 opacity-80 hover:opacity-100 hover:bg-stone-200/60 hover:text-[#FF5500] transition">
+              <Users size={22} />
+            </button>
+            <button className="flex h-12 w-12 items-center justify-center rounded-2xl text-stone-500 opacity-80 hover:opacity-100 hover:bg-stone-200/60 hover:text-[#FF5500] transition">
+              <BarChart2 size={22} />
+            </button>
+            <button className="flex h-12 w-12 items-center justify-center rounded-2xl text-stone-500 opacity-80 hover:opacity-100 hover:bg-stone-200/60 hover:text-[#FF5500] transition">
+              <Package size={22} />
+            </button>
+          </nav>
+        </div>
+
+        <div className="flex flex-col items-center gap-4 w-full px-3">
+          <button className="flex h-10 w-10 items-center justify-center rounded-xl text-stone-500 opacity-80 hover:opacity-100 hover:bg-stone-200/60 hover:text-[#FF5500] transition">
+            <User size={20} />
+          </button>
+          <button
+            onClick={() => {
+              logout();
+              router.push("/");
+            }}
+            title="Log Out"
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-rose-500 opacity-80 hover:opacity-100 hover:bg-rose-100 transition"
+          >
+            <LogOut size={20} />
+          </button>
+        </div>
+      </aside>
 
       {/* MAIN CONTENT AREA */}
-      <div className="w-full min-h-screen flex flex-col">
+      <div className="pl-20 w-full min-h-screen flex flex-col">
         {/* HEADER TOP BAR */}
-        <header className="sticky top-14 z-20 flex h-20 items-center justify-between bg-[#F8F6F0]/90 px-8 backdrop-blur-md">
+        <header className="sticky top-0 z-20 flex h-20 items-center justify-between bg-[#F8F6F0]/90 px-8 backdrop-blur-md">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
               Digitak Studio WMS
@@ -278,7 +386,10 @@ export default function SupervisorDashboard() {
                 <select className="appearance-none rounded-full border border-stone-300/80 bg-white px-5 py-2.5 pr-10 text-sm font-semibold text-slate-700 shadow-sm focus:outline-none cursor-pointer">
                   <option>Semua Gudang Saya</option>
                 </select>
-                  <ChevronDown size={16} className='absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none' />
+                <ChevronDown
+                  size={16}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                />
               </div>
 
               <div className="relative">
@@ -286,7 +397,21 @@ export default function SupervisorDashboard() {
                   <option>Semua Project</option>
                 </select>
                 <ChevronDown
-                  <ChevronDown size={16} className='absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none' />
+                  size={16}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* 4 SUMMARY CARDS */}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {summaryCards.map((item) => (
+              <div
+                key={item.label}
+                className="flex items-center gap-4 rounded-2xl bg-white p-5 shadow-sm border border-stone-100"
+              >
+                <div
                   className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${item.iconBg}`}
                 >
                   <item.icon size={22} />
@@ -499,71 +624,48 @@ export default function SupervisorDashboard() {
                       const StatusIcon = statusMeta.icon;
                       const maxVal = Math.max(1, p.boq + p.additional);
                       const remWidth = Math.max(0, p.remains);
+
                       return (
                         <div
                           key={p.projectId}
                           className="rounded-2xl border border-stone-100 bg-white p-3 transition-colors hover:border-stone-200"
                         >
                           {/* Header baris */}
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <span className="text-xs font-bold leading-snug text-slate-900">
-                                  {p.projectName}
-                                </span>
-                                <span
-                                  className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusMeta.badge}`}
-                                >
-                                  <StatusIcon size={11} strokeWidth={2.5} />
-                                  {statusMeta.label}
-                                </span>
-                              </div>
-                              <div className="mt-0.5 text-[11px] text-slate-400">
-                                {p.area}
-                                {p.clusterId ? ` • ${p.clusterLabel}` : ""}
-                                {p.statusBoq ? ` • BOQ ${p.statusBoq}` : ""}
-                              </div>
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <h4 className="text-sm font-bold text-slate-900">
+                                {p.projectName}
+                              </h4>
+                              <p className="text-[10px] text-slate-500">
+                                {p.clusterLabel || "-"}
+                              </p>
                             </div>
-                            <div className="shrink-0 text-right">
-                              <div className="text-[10px] uppercase tracking-wide text-slate-400">
-                                Total Unit
-                              </div>
-                              <div className="text-sm font-bold text-slate-900">
-                                {formatNumber(p.hardwareOnSite)}
-                              </div>
+                            <StatusIcon size={14} className={statusMeta.badge} />
+                          </div>
+
+                          <div className="space-y-1 text-[10px]">
+                            <div className="flex justify-between text-slate-600">
+                              <span>BOQ Plan</span>
+                              <span>{formatNumber(p.boq)}</span>
+                            </div>
+                            <div className="flex justify-between text-slate-600">
+                              <span>Additional</span>
+                              <span>{formatNumber(p.additional)}</span>
+                            </div>
+                            <div className="flex justify-between text-slate-600">
+                              <span>Used</span>
+                              <span>{formatNumber(p.hardwareOnSite)}</span>
+                            </div>
+                            <div className="flex justify-between text-slate-600">
+                              <span>Remains</span>
+                              <span>{formatNumber(p.remains)}</span>
                             </div>
                           </div>
 
-                          {/* Stacked progress bar */}
-                          <div className="mt-2 flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                          <div className="mt-2 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                             <div
-                              style={{ width: `${(p.hardwareOnSite / maxVal) * 100}%` }}
-                              className="bg-emerald-500"
-                              title={`MOS: ${p.hardwareOnSite}`}
-                            />
-                            <div
-                              style={{ width: `${(p.used / maxVal) * 100}%` }}
-                              className="bg-orange-500"
-                              title={`Used: ${p.used}`}
-                            />
-                            <div
-                              style={{ width: `${(remWidth / maxVal) * 100}%` }}
-                              className={p.remains < 0 ? "bg-rose-400" : "bg-slate-300"}
-                              title={`Remains: ${p.remains}`}
-                            />
-                          </div>
-
-                          {/* Grid 5 metric */}
-                          <div className="mt-2 grid grid-cols-5 gap-1.5 text-center">
-                            <MetricBox label="BOQ Plan" value={p.boq} tone="slate" />
-                            <MetricBox label="Additional" value={p.additional} tone="slate" />
-                            <MetricBox label="MOS" value={p.hardwareOnSite} tone="emerald" />
-                            <MetricBox label="Used" value={p.used} tone="orange" />
-                            <MetricBox
-                              label="Remains"
-                              value={p.remains}
-                              tone={p.remains < 0 ? "rose" : "slate"}
-                              highlight={p.remains < 0}
+                              className="h-full bg-emerald-600"
+                              style={{ width: `${Math.min(100, (p.hardwareOnSite / maxVal) * 100)}%` }}
                             />
                           </div>
                         </div>

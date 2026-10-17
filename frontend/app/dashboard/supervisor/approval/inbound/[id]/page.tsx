@@ -9,7 +9,7 @@ import { ArrowLeft, ExternalLink, X } from "lucide-react";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
 import { KondisiUnitSummary } from "@/components/common/KondisiUnitSummary";
 import { hasKondisiUnit, type KondisiUnit } from "@/lib/kondisi-barang";
-import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
+import { getItemFotoUrls, type SuratJalanItemForFoto } from "@/lib/surat-jalan-item-foto";
 import { SuratJalanInboundDetailView } from "@/components/surat-jalan/SuratJalanInboundDetailView";
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
@@ -391,7 +391,7 @@ export default function SupervisorInboundDetailPage() {
 
       {/* Modal detail barang + foto bukti fisik */}
       {isDetailModalOpen && detailModalItem && (() => {
-        const detailFotoUrls = getItemFotoUrls(detailModalItem);
+        const detailFotoUrls = getItemFotoUrls(detailModalItem as SuratJalanItemForFoto);
         const activeFotoIndex = Math.min(detailFotoIndex, Math.max(detailFotoUrls.length - 1, 0));
         return (
           <div

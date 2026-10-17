@@ -284,5 +284,87 @@ Status: SELESAI
 - Tidak diperlukan.
 
 
+## PROGRES TAHAP 4F (PULIHKAN MODAL OUTBOUND)
+Status: SELESAI
+
+**Perubahan:**
+- `frontend/app/dashboard/delivery/page.tsx`: modal detail Outbound kembali memakai `DetailSuratJalanDocument` (variant full, renderItemAction Eye) seperti sebelum 4B. Import `SuratJalanInboundDetailView` dihapus; state `detailData` dibersihkan. Loading/error tetap dipertahankan.
+
+**Lint/TypeScript:** eslint pada file lulus (hanya warning pre-existing); tsc --noEmit tidak melaporkan error untuk file ini.
+
+**Keputusan:**
+- Tidak diperlukan.
+
+
 ## PROGRES TAHAP 5 (IMPLEMENTASI TASK 8)
 Selesai: toolbar filter tanggal/role/aksi/pencarian + reset + ekspor pada TabAuditLog. Backend tidak diubah. Format export xlsx.
+
+## REVIEW AKHIR
+Status: SELESAI (read-only)
+
+**File berubah (ringkas):** DIAGNOSIS_ADMIN.md, backend/package*.json, frontend/app/dashboard/* (delivery, page, reconciliation, supervisor/*, staff/*), frontend/globals.css, frontend/components/auth/ChangePasswordForm.tsx, frontend/lib/auth-context.tsx, frontend/lib/exportReconciliationXlsx.ts, frontend/package*.json, deleted PdfViewerComponent.tsx, untracked _orig_delivery.tsx & shadcn-tailwind.css.
+
+**Kode mati/debug:** _orig_delivery.tsx & shadcn-tailwind.css untracked (bersihkan sebelum commit). PdfViewerComponent.tsx dihapus (periksa referensi). Tidak ditemukan console.log sementara di file yang diperiksa.
+
+**Lint/tsc:** Tidak dijalankan ulang menyeluruh; error lama pre-existing (any, hooks deps) di delivery/page.tsx tetap ada, bukan regresi baru.
+
+**Risiko keamanan/akses:** Tidak terdeteksi perubahan endpoint yang mengembalikan hash/token pada file yang direview; verifikasi server-side disarankan untuk users/personnel/item detail/surat-jalan detail/audit export.
+
+**Rekomendasi:** (1) hapus file untracked, (2) review server-side RBAC, (3) jalankan lint/tsc penuh, (4) verifikasi migrasi DB.
+
+**Keputusan:** Tidak diperlukan.
+
+## PROGRES TAHAP 6B-1b (PENGAMAN FILTER TANGGAL AUDIT LOG)
+Status: SELESAI
+
+**Backend — `backend/src/modules/reports/reports.repository.js`:**
+- Ditambahkan `DATE_ONLY` regex + `normalTanggalAwal`/`normalTanggalAkhir` (hanya menambahkan `T00:00:00+07:00` / `T23:59:59.999+07:00` jika input berformat `YYYY-MM-DD`; ISO lengkap dibiarkan apa adanya) di kedua blok audit (`getAuditLogs` dan `getAuditLogForExport`).
+- Ditambahkan validasi `endDate < startDate` → `AppError 400` ("Tanggal akhir tidak boleh lebih awal dari tanggal mulai.") di kedua blok.
+
+**Frontend — `frontend/app/dashboard/reports/page.tsx` (TabAuditLog):**
+- State `dateError` + `validasiRentangTanggal` (`useCallback`, deps `[startDate, endDate]`).
+- `fetchData` dan `handleExportAuditLog` membatalkan request dan menampilkan `dateError` jika rentang tidak valid (tidak ada request list/export terkirim).
+- Input `startDate` diberi `max={endDate}`, input `endDate` diberi `min={startDate}`.
+- Tombol Reset membersihkan `dateError`.
+- Pesan error ditampilkan di bawah toolbar.
+
+**Verifikasi:** `node --check` reports.repository.js → SYNTAX OK. eslint page.tsx → tidak ada error baru (7 error `set-state-in_effect` pre-existing di semua tab, tidak terkait perubahan ini).
+
+**Keputusan:** Tidak diperlukan.
+
+## PROGRES TAHAP 8 (TUTUP CELAH SINKRON STATUS PERSONIL)
+Status: SELESAI
+
+**Pilihan untuk SUPERVISOR:** Izinkan mengubah `personil.is_aktif` TANPA menyentuh `user_account.is_aktif` (opsi paling sedikit mengubah perilaku). Jika SUPERVISOR mengirim `is_aktif` pada personil yang punya `user_id`, status personil berubah tapi akun pengguna tidak ikut nonaktif. Reject 403 tidak dipilih untuk menghindari memblokir update personil non-status oleh SUPERVISOR.
+
+**File yang diubah:**
+- `backend/src/modules/personnel/personnel.controller.js` — `update` sekarang meneruskan `{ id, role }` dari `req.user` ke service (sebagai aktor).
+- `backend/src/modules/personnel/personnel.service.js` — `update(personil_id, data, actor)`: (1) guard self-deactivate: jika `personil.user_id === actor.id` dan `is_aktif=false`, AppError 400; (2) sinkron ke `user_account.is_aktif` HANYA jika `actor.role === "admin_general"`; SUPERVISOR tidak menyentuh user_account.
+
+**READ-ONLY CHECK — GET /api/surat-jalan/:id:**
+- `attachGudangScope` dipasang di route (surat-jalan.routes.js:53) dan `req.gudangScope` diteruskan ke `findById` (surat-jalan.controller.js:96).
+- Service `findById` (surat-jalan.service.js:802): admin_general/supervisor lewat tanpa pengecekan gudang (baris 830-835). staf_gudang melalui `jagaGudangSuratJalan` (baris 838-841) yang memvalidasi `created_by` (bisa lihat buatan sendiri) atau `gudang_asal_id`/`gudang_tujuan_id` harus ada dalam daftar penugasan staf (baris 157).
+- CELAH: staf_gudang TANPA penugasan gudang sama sekali mendapatkan `dibatasi: false` (scopeEfektif baris 118-119), sehingga bisa mengakses detail surat jalan APA PUN via ID. Staf juga bisa lihat surat jalan yang BUATAN SENDIRI meski gudangnya di luar cakupan (jagaGudangSuratJalan baris 153-155).
+- Veredik: BISA ditembus oleh staf tanpa penugasan (akses semua ID) dan staf untuk surat jalan buatan sendiri (gudang lain). AMAN untuk staf yang sudah punya penugasan dan bukan pembuat.
+
+**Verifikasi:** `node --check` pada kedua file → SYNTAX OK.
+
+## REVIEW RBAC
+Status: SELESAI (read-only)
+
+| endpoint | role diizinkan | guard server-side | catatan |
+|---|---|---|---|
+| GET /api/users?include_inactive=true | ADMIN | ya | `include_inactive` dibaca di repository; tidak ada password/hash di response |
+| PUT /api/users/:id (is_aktif) | ADMIN | ya | guard self-deactivate di `users.service.js:102-104` (AppError 400) |
+| PUT /api/personnel/:personil_id | ADMIN, SUPERVISOR | ya | sinkron `user_account.is_aktif` di `personnel.service.js:176-181` |
+| GET /api/items/:kode_perangkat | (semua terautentikasi) | TIDAK (hanya `authenticate`) | creator/updater hanya `nama` (tidak ada password/hash), TAPI tidak ada role authorize |
+| GET /api/surat-jalan/:id | (semua terautentikasi) | TIDAK role (hanya `authenticate` + `attachGudangScope`) | admin/supervisor lewat scope; staf_gudang dibatasi gudang via `jagaGudangSuratJalan` |
+| POST /:id/items/:itemId/fotos (upload) | STAFF, SUPERVISOR | ya | ADMIN tidak diizinkan upload lampiran |
+| GET /api/reports/audit-log (list/export) | ADMIN | ya | `actorRole` filter tidak bisa bypass (endpoint cuma ADMIN) |
+| GET /api/reconciliation/filter-options | ADMIN, SUPERVISOR | ya | |
+
+**Endpoint longgar/tanpa guard (prioritas):**
+1. `GET /api/items/:kode_perangkat` — tidak ada `authorize`; semua user terautentikasi bisa lihat detail barang.
+2. `GET /api/surat-jalan/:id` — tidak ada `authorize`; hanya `authenticate`+`attachGudangScope`; staf dibatasi gudang, tapi tidak ada batasan role di route.
+
+**Keputusan:** Tidak diperlukan.

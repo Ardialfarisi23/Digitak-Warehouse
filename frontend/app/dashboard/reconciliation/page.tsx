@@ -1428,7 +1428,6 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
 
               <RemainsNoteForm
                 record={selectedRecord}
-                onClose={() => {}}
                 onSuccess={fetchReconciliation}
                 isClusterMode={true}
               />

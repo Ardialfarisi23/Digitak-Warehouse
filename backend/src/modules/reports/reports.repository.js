@@ -1461,6 +1461,10 @@ const getStockHistoryForExport = async (filters = {}) => {
   };
 };
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const normalTanggalAwal = (val) => (DATE_ONLY.test(val) ? `${val}T00:00:00+07:00` : val);
+const normalTanggalAkhir = (val) => (DATE_ONLY.test(val) ? `${val}T23:59:59.999+07:00` : val);
+
 const getAuditLogs = async (filters = {}) => {
   const {
     search = "",
@@ -1525,10 +1529,14 @@ const getAuditLogs = async (filters = {}) => {
     where.entity_id = BigInt(tiketId);
   }
 
+  if (startDate && endDate && new Date(endDate) < new Date(startDate)) {
+    throw new AppError("Tanggal akhir tidak boleh lebih awal dari tanggal mulai.", 400);
+  }
+
   if (startDate || endDate) {
     where.created_at = {};
-    if (startDate) where.created_at.gte = new Date(startDate);
-    if (endDate) where.created_at.lte = new Date(endDate + "T23:59:59");
+    if (startDate) where.created_at.gte = new Date(normalTanggalAwal(startDate));
+    if (endDate) where.created_at.lte = new Date(normalTanggalAkhir(endDate));
   }
 
   const skip = (Number(page) - 1) * Number(limit);
@@ -1649,10 +1657,14 @@ const getAuditLogForExport = async (filters = {}) => {
     where.entity_id = BigInt(tiketId);
   }
 
+  if (startDate && endDate && new Date(endDate) < new Date(startDate)) {
+    throw new AppError("Tanggal akhir tidak boleh lebih awal dari tanggal mulai.", 400);
+  }
+
   if (startDate || endDate) {
     where.created_at = {};
-    if (startDate) where.created_at.gte = new Date(startDate);
-    if (endDate) where.created_at.lte = new Date(endDate + "T23:59:59");
+    if (startDate) where.created_at.gte = new Date(normalTanggalAwal(startDate));
+    if (endDate) where.created_at.lte = new Date(normalTanggalAkhir(endDate));
   }
 
   const EXPORT_LIMIT = 10000;

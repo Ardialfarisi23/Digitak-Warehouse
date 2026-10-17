@@ -32,6 +32,10 @@ export default function ChangePasswordForm({
   const minLength = newPassword.length >= 8;
   const hasLetter = /[A-Za-z]/.test(newPassword);
   const hasNumber = /[0-9]/.test(newPassword);
+  const hasMinLen = newPassword.length >= 8;
+  const hasUpper = /[A-Z]/.test(newPassword);
+  const hasLower = /[a-z]/.test(newPassword);
+  const hasSpecial = /[^A-Za-z0-9]/.test(newPassword);
 
   const meetsMinimumRequirement =
     minLength && hasLetter && hasNumber;

@@ -24,7 +24,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   isLoggingOut: boolean;
-  login: (user: User, token: string) => void;
+  login: (user: User, token: string, refreshToken?: string | null) => void;
   logout: () => void;
   updateUser: (data: Partial<User>) => void;
 }

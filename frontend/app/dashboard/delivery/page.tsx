@@ -8,7 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
-import { SuratJalanInboundDetailView } from "@/components/surat-jalan/SuratJalanInboundDetailView";
+import { DetailSuratJalanDocument, DetailSuratJalanData } from "@/components/surat-jalan/DetailSuratJalanDocument";
 import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
 import { Button } from "@/components/ui/button";
 import TablePagination from "@/components/TablePagination";
@@ -113,7 +113,7 @@ const STATUS_META: Record<string, { label: string; bg: string; text: string }> =
 
 type TabType = "SEMUA" | "INBOUND" | "OUTBOUND";
 
-export function AdminDeliveryPageContent() {
+function AdminDeliveryPageContent() {
   const { user } = useAuth();
   const { get, put } = useApi();
   const router = useRouter();
@@ -127,7 +127,6 @@ export function AdminDeliveryPageContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<SuratJalanRecord | null>(null);
-  const [detailData, setDetailData] = useState<Record<string, unknown> | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
@@ -371,7 +370,6 @@ export function AdminDeliveryPageContent() {
 
   const handleOpenDetail = async (record: SuratJalanRecord) => {
     setSelectedRecord(record);
-    setDetailData(null);
     setDetailLoading(true);
     setDetailError(null);
     try {
@@ -380,7 +378,6 @@ export function AdminDeliveryPageContent() {
       if (!resp.ok) {
         throw new Error(json?.message || "Gagal memuat detail surat jalan.");
       }
-      setDetailData(json?.data || null);
     } catch (err) {
       setDetailError(err instanceof Error ? err.message : "Gagal memuat detail surat jalan.");
     } finally {
@@ -670,8 +667,21 @@ export function AdminDeliveryPageContent() {
                       Coba lagi
                     </button>
                   </div>
-                ) : detailData ? (
-                  <SuratJalanInboundDetailView data={detailData} />
+                ) : selectedRecord ? (
+                  <DetailSuratJalanDocument
+                    data={selectedRecord as DetailSuratJalanData | null | undefined}
+                    variant="full"
+                    renderItemAction={(item) => (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedItem(item)}
+                        title="Lihat dokumentasi barang"
+                        className="min-h-[40px] min-w-[40px] rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      >
+                        <Eye size={15} />
+                      </button>
+                    )}
+                  />
                 ) : null}
               </div>
 
@@ -877,3 +887,4 @@ export default function AdminDeliveryPage() {
     </Suspense>
   );
 }
+
