@@ -4,7 +4,9 @@ const response = require("../../shared/response");
 const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    const result = await authService.login(email, password);
+    const ip = req.ip || req.connection.remoteAddress || null;
+    const userAgent = req.headers['user-agent'] || null;
+    const result = await authService.login(email, password, ip, userAgent);
     return response.success(res, "Login berhasil", result);
   } catch (err) {
     next(err);
@@ -13,14 +15,14 @@ const login = async (req, res, next) => {
 
 const changePassword = async (req, res, next) => {
   try {
-    const { currentPassword, newPassword } = req.body;
+    const { currentPassword, newPassword, refreshToken } = req.body;
     const userId = req.user?.id;
 
     if (!userId) {
       return response.error(res, "Tidak dapat mengidentifikasi pengguna.", 401);
     }
 
-    const result = await authService.changePassword(userId, currentPassword, newPassword);
+    const result = await authService.changePassword(userId, currentPassword, newPassword, refreshToken);
     return response.success(res, result.message, result);
   } catch (err) {
     next(err);
@@ -42,7 +44,9 @@ const refresh = async (req, res, next) => {
 
 const logout = async (req, res, next) => {
   try {
-    const result = await authService.logout();
+    const { refreshToken } = req.body;
+    const userId = req.user?.id;
+    const result = await authService.logout({ refreshToken, userId });
     return response.success(res, result.message);
   } catch (err) {
     next(err);

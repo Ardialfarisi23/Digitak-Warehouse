@@ -1,5 +1,4 @@
 const express = require("express");
-
 const router = express.Router();
 
 const usersController = require("./users.controller");
@@ -8,6 +7,7 @@ const { createUserSchema, updateUserSchema } = require("./users.validation");
 const validate = require("../../middlewares/validation.middleware");
 const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
+const { passwordResetLimiter } = require("../../middlewares/rate-limit");
 
 router.patch(
   "/me/avatar",
@@ -34,6 +34,14 @@ router.put(
   authorize("ADMIN"),
   validate(updateUserSchema),
   usersController.update
+);
+
+router.post(
+  "/:user_id/reset-link",
+  authenticate,
+  authorize("ADMIN"),
+  passwordResetLimiter,
+  usersController.resetLink
 );
 
 module.exports = router;

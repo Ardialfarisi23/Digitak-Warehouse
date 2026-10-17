@@ -21,11 +21,13 @@ export default function AddUserPage() {
   const [password, setPassword] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     setError(null);
+    setPasswordError("");
 
     if (!token || !user) {
       setError("Anda harus login sebagai Admin sebelum membuat pengguna.");
@@ -35,6 +37,23 @@ export default function AddUserPage() {
 
     if (mapRole(user.role) !== "admin") {
       setError("Hanya Admin General yang dapat membuat pengguna.");
+      setIsSaving(false);
+      return;
+    }
+
+    // Password validation
+    if (password.length < 8) {
+      setPasswordError("Password harus minimal 8 karakter.");
+      setIsSaving(false);
+      return;
+    }
+    if (!/[A-Za-z]/.test(password)) {
+      setPasswordError("Password harus mengandung minimal 1 huruf.");
+      setIsSaving(false);
+      return;
+    }
+    if (!/[0-9]/.test(password)) {
+      setPasswordError("Password harus mengandung minimal 1 angka.");
       setIsSaving(false);
       return;
     }
@@ -100,16 +119,23 @@ export default function AddUserPage() {
             </select>
           </label>
 
-          <label className="flex flex-col">
-            <span className="text-sm text-slate-600">Password</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 rounded-md border border-slate-200 px-3 py-2"
-              required
-            />
-          </label>
+           <label className="flex flex-col">
+             <span className="text-sm text-slate-600">Password</span>
+             <input
+               type="password"
+               value={password}
+               onChange={(e) => setPassword(e.target.value)}
+               className="mt-1 rounded-md border border-slate-200 px-3 py-2"
+               required
+             />
+             {passwordError ? (
+               <p className="mt-1 text-xs text-rose-500">{passwordError}</p>
+             ) : (
+               <p className="mt-1 text-xs text-slate-500">
+                 Minimal 8 karakter, mengandung huruf dan angka
+               </p>
+             )}
+           </label>
         </div>
 
         {error ? (

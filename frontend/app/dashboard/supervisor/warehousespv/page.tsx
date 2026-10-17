@@ -687,7 +687,7 @@ export default function SpvWarehouseLayoutPage() {
       {/* MODAL DETAIL ZONA (PERSIS ADMIN) */}
       {panelOpen && selectedZone && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={closePanel}>
-          <div className="w-full max-w-[620px] overflow-hidden rounded-2xl bg-white shadow-2xl transition-all" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl transition-all" onClick={(e) => e.stopPropagation()}>
             {/* Header Modal Detail */}
             <div className="flex items-start justify-between px-6 pt-6 pb-4">
               <div>
@@ -836,7 +836,7 @@ export default function SpvWarehouseLayoutPage() {
       {/* MODAL INPUT/UPDATE STATUS UTILISASI (PERSIS ADMIN) */}
       {statusModalOpen && statusModalZone && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4" onClick={closeStatusModal}>
-          <div className="w-full max-w-[450px] rounded-2xl bg-white p-6 shadow-2xl transition-all" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl transition-all" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-[18px] font-bold text-[#111827]">Input Status Zona {getCleanZoneCode(statusModalZone)}</h3>
             <p className="mt-1 text-[12.5px] text-[#6b7280]">Pilih status kecukupan dan/atau kapasitas maksimum zona ini.</p>
 

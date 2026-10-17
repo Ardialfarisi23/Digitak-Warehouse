@@ -263,11 +263,11 @@ const TAB_PERMISSIONS: Record<
     edit: [ROLE.ADMIN],
     delete: [ROLE.ADMIN],
   },
-  clusters: {
-    create: [ROLE.ADMIN, ROLE.SUPERVISOR],
-    edit: [ROLE.ADMIN, ROLE.SUPERVISOR],
-    delete: [ROLE.ADMIN, ROLE.SUPERVISOR],
-  },
+   clusters: {
+     create: [],
+     edit: [ROLE.ADMIN, ROLE.SUPERVISOR],
+     delete: [ROLE.ADMIN, ROLE.SUPERVISOR],
+   },
 };
 
 // Field form Tambah/Edit per tab. Diambil dari kolom yang sudah ada di
@@ -2757,6 +2757,7 @@ function MasterDataPageContent() {
   const [kendaraanGudangFilter, setKendaraanGudangFilter] = useState("");
   const [projectStatusFilter, setProjectStatusFilter] = useState("");
   const [clusterProjectFilter, setClusterProjectFilter] = useState("");
+  const [clusterStatusFilter, setClusterStatusFilter] = useState("");
   const [supplierStatusFilter, setSupplierStatusFilter] = useState("");
   const [warehouseOptions, setWarehouseOptions] = useState<
     Array<{ value: number; label: string }>
@@ -3544,6 +3545,15 @@ function MasterDataPageContent() {
                   {p.label}
                 </option>
               ))}
+            </select>
+            <select
+              value={clusterStatusFilter}
+              onChange={(e) => { setClusterStatusFilter(e.target.value); setPage(1); }}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400"
+            >
+              <option value="all">Semua Status</option>
+              <option value="aktif">Aktif</option>
+              <option value="nonaktif">Nonaktif</option>
             </select>
           </div>
         )}

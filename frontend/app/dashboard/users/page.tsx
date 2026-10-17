@@ -1,10 +1,11 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Search, Plus, UserCheck, UserX, X, Clock3, Eye, Pencil, ShieldAlert, AlertCircle } from "lucide-react";
+import { Search, Plus, UserCheck, UserX, X, Clock3, Eye, Pencil, ShieldAlert, AlertCircle, Key } from "lucide-react";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole, formatRole } from "@/lib/navigation";
+import { safeUrl } from "@/lib/safe-url";
 import { Button } from "@/components/ui/button";
 import TablePagination from "@/components/TablePagination";
 import { MobileCardList, type MobileCardField, type MobileCardItem } from "@/components/MobileCardList";
@@ -67,6 +68,7 @@ export default function UsersPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "aktif" | "nonaktif">("all");
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -110,6 +112,14 @@ export default function UsersPage() {
   const [showTempPasswordModal, setShowTempPasswordModal] = useState(false);
   const [tempPassword, setTempPassword] = useState("");
 
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetUrl, setResetUrl] = useState<string | null>(null);
+  const [resetExpiresAt, setResetExpiresAt] = useState<string | null>(null);
+  const [confirmReset, setConfirmReset] = useState<{
+    open: boolean;
+    record: any | null;
+  }>({ open: false, record: null });
+
    /* =========================================================
       CEK ROLE ADMIN
    ========================================================= */
@@ -146,7 +156,7 @@ export default function UsersPage() {
 
     try {
       const response = await get(
-        `${API_BASE}/api/users?page=1&limit=100`
+        `${API_BASE}/api/users?page=1&limit=100&include_inactive=true`
       );
 
       const json = await response.json();
@@ -225,13 +235,21 @@ export default function UsersPage() {
   }, [searchInput]);
 
   const filteredUsers = useMemo(() => {
+    let result = users;
+
+    if (statusFilter === "aktif") {
+      result = result.filter((record) => record.is_aktif);
+    } else if (statusFilter === "nonaktif") {
+      result = result.filter((record) => !record.is_aktif);
+    }
+
     if (!search.trim()) {
-      return users;
+      return result;
     }
 
     const query = search.toLowerCase();
 
-    return users.filter((record) =>
+    return result.filter((record) =>
       [
         record.nama,
         record.email,
@@ -244,7 +262,7 @@ export default function UsersPage() {
         .toLowerCase()
         .includes(query)
     );
-  }, [search, users]);
+  }, [search, users, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / itemsPerPage));
 
@@ -264,7 +282,7 @@ export default function UsersPage() {
         : "bg-slate-100 text-slate-500";
 
       const actions = (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-4 gap-2">
           <button
             type="button"
             aria-label="Lihat detail pengguna"
@@ -296,6 +314,22 @@ export default function UsersPage() {
           >
             {record.is_aktif ? <UserX size={16} /> : <UserCheck size={16} />}
           </button>
+          {mapRole(user?.role) === "admin" && record.is_aktif && (
+            <button
+              type="button"
+              disabled={isSaving}
+              aria-label="Buat link reset password"
+              onClick={() =>
+                setConfirmReset({
+                  open: true,
+                  record,
+                })
+              }
+              className="flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Key size={16} />
+            </button>
+          )}
         </div>
       );
 
@@ -311,8 +345,8 @@ export default function UsersPage() {
         title: (
           <span className="flex items-center gap-2">
             {getPhotoUrl(record.foto) ? (
-              <img
-                src={getPhotoUrl(record.foto)!}
+                <img
+                  src={safeUrl(getPhotoUrl(record.foto)) ?? "#"}
                 alt={record.nama}
                 className="h-8 w-8 shrink-0 rounded-full border border-slate-200 object-cover"
               />
@@ -398,6 +432,42 @@ export default function UsersPage() {
         caughtError instanceof Error
           ? caughtError.message
           : "Terjadi kesalahan saat memperbarui status."
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  /* =========================================================
+     BUAT LINK RESET PASSWORD
+  ========================================================= */
+
+  const handleCreateResetLink = async (record: any) => {
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const response = await post(
+        `${API_BASE}/api/users/${record.user_id ?? record.id}/reset-link`
+      );
+
+      const json = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          json?.message || "Gagal membuat link reset password."
+        );
+      }
+
+      setConfirmReset({ open: false, record: null });
+      setShowResetModal(true);
+      setResetUrl(json?.data?.resetUrl ?? null);
+      setResetExpiresAt(json?.data?.expiresAt ?? null);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Terjadi kesalahan saat membuat link reset."
       );
     } finally {
       setIsSaving(false);
@@ -660,6 +730,18 @@ export default function UsersPage() {
               />
             </div>
 
+            <select
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(event.target.value as "all" | "aktif" | "nonaktif")
+              }
+              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100 sm:w-48"
+            >
+              <option value="all">Semua Status</option>
+              <option value="aktif">Aktif</option>
+              <option value="nonaktif">Nonaktif</option>
+            </select>
+
             <Button
               type="button"
               onClick={handleAdd}
@@ -768,14 +850,14 @@ export default function UsersPage() {
                     return (
                       <tr
                         key={userId}
-                        className="group transition-colors hover:bg-slate-50"
+                        className={`group transition-colors hover:bg-slate-50 ${!record.is_aktif ? "opacity-70" : ""}`}
                       >
                         <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500">{rowNumber}</td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             {photoUrl ? (
-                              <img
-                                src={photoUrl}
+                                <img
+                                  src={safeUrl(photoUrl) ?? "#"}
                                 alt={record.nama}
                                 className="h-10 w-10 shrink-0 rounded-full border border-slate-200 object-cover"
                                 onError={(event) => {
@@ -870,10 +952,28 @@ export default function UsersPage() {
                              >
                               {record.is_aktif ? (
                                 <UserX size={14} />
-                              ) : (
+                              )                               : (
                                 <UserCheck size={14} />
                               )}
                             </button>
+
+                              {mapRole(user?.role) === "admin" && record.is_aktif && (
+                                <button
+                                  type="button"
+                                  disabled={isSaving}
+                                  onClick={() =>
+                                    setConfirmReset({
+                                      open: true,
+                                      record,
+                                    })
+                                  }
+                                  title="Buat link reset password"
+                                  aria-label="Buat link reset password"
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  <Key size={14} />
+                                </button>
+                              )}
                           </div>
                         </td>
                       </tr>
@@ -948,7 +1048,7 @@ export default function UsersPage() {
                 <div className="flex flex-col items-center">
                   {getPhotoUrl(selectedUser.foto) ? (
                     <img
-                      src={getPhotoUrl(selectedUser.foto)!}
+                      src={safeUrl(getPhotoUrl(selectedUser.foto)) ?? "#"}
                       alt={selectedUser.nama}
                       className="h-24 w-24 rounded-full border-4 border-slate-100 object-cover shadow-sm"
                     />
@@ -1468,8 +1568,172 @@ export default function UsersPage() {
               </div>
             </div>
           </div>
-         </div>
-       )}
+        </div>
+      )}
+
+      {/* =====================================================
+          MODAL KONFIRMASI BUAT LINK RESET
+      ===================================================== */}
+
+      {confirmReset.open && confirmReset.record && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/40 p-4"
+          onClick={() => {
+            if (!isSaving) {
+              setConfirmReset({ open: false, record: null });
+            }
+          }}
+        >
+          <div
+            className="w-[calc(100vw-1.5rem)] max-w-sm max-h-[calc(100dvh-2rem)] overflow-hidden rounded-2xl bg-white shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="border-b border-slate-100 px-6 py-4">
+              <h2 className="text-base font-semibold text-slate-900">
+                Konfirmasi Buat Link Reset
+              </h2>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Link lama untuk user ini akan tidak berlaku. Lanjutkan?
+              </p>
+            </div>
+
+            <div className="px-6 py-5">
+              <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-700">
+                  {confirmReset.record.nama?.charAt(0).toUpperCase()}
+                </div>
+
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-900">
+                    {confirmReset.record.nama}
+                  </p>
+
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {getRoleLabel(confirmReset.record.role)}
+                  </p>
+                </div>
+              </div>
+
+              {error && (
+                <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-[10px] leading-relaxed text-rose-600">
+                  {error}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={() =>
+                  setConfirmReset({ open: false, record: null })
+                }
+                className="h-8 rounded-lg border border-slate-200 bg-white px-3.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-40"
+              >
+                Batal
+              </button>
+
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={() => {
+                  if (confirmReset.record) {
+                    handleCreateResetLink(confirmReset.record);
+                    setConfirmReset({ open: false, record: null });
+                  }
+                }}
+                className="h-8 rounded-lg bg-slate-900 px-3.5 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSaving ? "Membuat..." : "Ya, Buat Link"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================
+          MODAL HASIL LINK RESET
+      ===================================================== */}
+
+      {showResetModal && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/40 p-4"
+          onClick={() => setShowResetModal(false)}
+        >
+          <div
+            className="w-[calc(100vw-1.5rem)] max-w-sm max-h-[calc(100dvh-2rem)] overflow-hidden rounded-2xl bg-white shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="border-b border-slate-100 px-6 py-4">
+              <h2 className="text-base font-semibold text-slate-900">
+                Link Reset Password
+              </h2>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Salin link ini dan kirimkan kepada user melalui jalur aman.
+              </p>
+            </div>
+
+            <div className="px-6 py-5">
+              <div className="mt-4 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5 text-[10px] leading-relaxed text-amber-700">
+                <Key size={14} className="shrink-0 text-amber-500" />
+                <span className="ml-1.5">
+                  Link hanya berlaku sekali dan tidak akan ditampilkan kembali
+                  setelah modal ditutup.
+                </span>
+              </div>
+
+              {resetExpiresAt && (
+                <div className="mt-3 flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5 text-xs text-slate-600">
+                  <Clock3 size={14} className="shrink-0" />
+                  <span className="font-semibold">Berlaku hingga:</span>
+                  <span className="ml-1">{resetExpiresAt}</span>
+                </div>
+              )}
+
+              <div className="mt-4">
+                <label className="mb-1.5 block text-[11px] font-medium text-slate-700">
+                  Link Reset
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={resetUrl ?? ""}
+                    className="h-9 flex-1 rounded-lg border border-slate-200 bg-[#FAF8F5] px-3 text-xs text-slate-700 outline-none break-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (resetUrl) {
+                        navigator.clipboard.writeText(resetUrl);
+                      }
+                    }}
+                    className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-medium text-slate-600 transition hover:bg-slate-50"
+                  >
+                    Salin
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-0 flex justify-end gap-2 border-t border-slate-200 px-6 py-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowResetModal(false);
+                  setResetUrl(null);
+                  setResetExpiresAt(null);
+                }}
+                className="h-8 rounded-lg bg-slate-900 px-3.5 text-[10px] font-semibold text-white transition hover:bg-slate-800"
+              >
+                Saya sudah menyimpan link
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
        {/* =====================================================
            MODAL EDIT PENGGUNA

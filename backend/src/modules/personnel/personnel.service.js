@@ -102,7 +102,7 @@ const findByPersonilId = async (personil_id) => {
   return record;
 };
 
-const update = async (personil_id, data, userId) => {
+const update = async (personil_id, data, actor) => {
   const record = await personnelRepository.findByPersonilId(
     personil_id,
     {
@@ -162,13 +162,30 @@ const update = async (personil_id, data, userId) => {
 
   const updateData = {
     ...data,
-    updated_by: Number(userId),
+    updated_by: Number(actor.id),
   };
 
-  return await personnelRepository.update(
-    personil_id,
-    updateData
-  );
+  const isAktifDikirim = data.is_aktif !== undefined;
+
+  return await prisma.$transaction(async (tx) => {
+    const personil = await tx.personil.update({
+      where: { personil_id: Number(personil_id) },
+      data: updateData,
+    });
+
+    if (isAktifDikirim && data.is_aktif === false && personil.user_id && Number(personil.user_id) === Number(actor.id)) {
+      throw new AppError("Tidak dapat menonaktifkan akun Anda sendiri.", 400);
+    }
+
+    if (isAktifDikirim && personil.user_id && actor.role === "admin_general") {
+      await tx.user_account.update({
+        where: { user_id: BigInt(personil.user_id) },
+        data: { is_aktif: data.is_aktif },
+      });
+    }
+
+    return personil;
+  });
 };
 
 const remove = async (personil_id, userId) => {

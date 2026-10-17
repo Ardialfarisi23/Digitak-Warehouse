@@ -633,7 +633,8 @@ const findAll = async ({
  */
 const update = async (
   user_id,
-  data
+  data,
+  actorId
 ) => {
   const {
     no_telepon,
@@ -699,6 +700,10 @@ const update = async (
       if (userData.role && userData.role !== user.role) {
         updateData.posisi = roleToPosisi(userData.role);
         updateData.jenis = roleToJenis(userData.role);
+      }
+
+      if (userData.is_aktif !== undefined) {
+        updateData.is_aktif = userData.is_aktif;
       }
 
       personil = await tx.personil.update({

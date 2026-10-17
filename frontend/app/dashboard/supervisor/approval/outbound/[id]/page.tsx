@@ -482,7 +482,7 @@ export default function SupervisorApprovalOutboundDetailPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start w-full">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start w-full">
         {/* PANEL KIRI: DETAIL & ITEM SURAT JALAN OUTBOUND */}
         <div className="w-full max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <DetailSuratJalanDocument
@@ -676,7 +676,7 @@ export default function SupervisorApprovalOutboundDetailPage() {
 
       {isDocModalOpen && selectedDocItem && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+          <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Dokumentasi Barang</h3>

@@ -234,18 +234,17 @@ export default function StaffDashboardPage() {
   }, [get]);
 
   useEffect(() => {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    if (profilePollRef.current) {
+      clearInterval(profilePollRef.current);
+      profilePollRef.current = null;
+    }
 
     profilePollRef.current = window.setInterval(async () => {
       if (document.visibilityState !== "visible") return;
 
       try {
-        const token = localStorage.getItem("token");
-        if (!token) return;
-
-        const response = await fetch(`${baseUrl}/api/profile`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+        const response = await get(`${baseUrl}/api/profile`);
 
         if (response.status === 401) {
           const err = await response.json().catch(() => null);
@@ -266,7 +265,7 @@ export default function StaffDashboardPage() {
         profilePollRef.current = null;
       }
     };
-  }, []);
+  }, [get]);
 
   useEffect(() => {
     async function loadWarehouseNames() {

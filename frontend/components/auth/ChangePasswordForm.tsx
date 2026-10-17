@@ -29,14 +29,16 @@ export default function ChangePasswordForm({
   const [success, setSuccess] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const minLength = newPassword.length >= 8;
+  const hasLetter = /[A-Za-z]/.test(newPassword);
+  const hasNumber = /[0-9]/.test(newPassword);
   const hasMinLen = newPassword.length >= 8;
   const hasUpper = /[A-Z]/.test(newPassword);
   const hasLower = /[a-z]/.test(newPassword);
-  const hasNumber = /[0-9]/.test(newPassword);
   const hasSpecial = /[^A-Za-z0-9]/.test(newPassword);
 
   const meetsMinimumRequirement =
-    newPassword.length >= 8 && /[A-Za-z]/.test(newPassword) && /[0-9]/.test(newPassword);
+    minLength && hasLetter && hasNumber;
 
   const isPasswordStrong = hasMinLen && hasUpper && hasLower && hasNumber && hasSpecial;
 
@@ -50,20 +52,22 @@ export default function ChangePasswordForm({
     setError("");
     setSuccess("");
 
-    if (!isFormValid) {
-      setError("Pastikan semua field terisi dan password baru memenuhi kriteria keamanan.");
-      return;
-    }
+     if (!isFormValid) {
+       setError("Pastikan semua field terisi dan password baru minimal 8 karakter, mengandung huruf dan angka.");
+       return;
+     }
 
     setIsSubmitting(true);
 
     try {
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const refreshToken = typeof window !== "undefined" ? localStorage.getItem("refreshToken") : null;
       const res = await request(`${API_BASE}/api/auth/change-password`, {
         method: "PUT",
         body: JSON.stringify({
           currentPassword,
           newPassword,
+          ...(refreshToken ? { refreshToken } : {}),
         }),
       });
       const data = await res.json();

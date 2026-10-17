@@ -6,6 +6,7 @@ const prisma = require("../config/prisma");
 const PESAN_GUDANG_DIARANG = "Anda tidak memiliki akses ke gudang ini.";
 
 const STAF_GUDANG = "staf_gudang";
+const KNOWN_ROLES = ["admin_general", "supervisor", "staf_gudang"];
 
 const keNomor = (value) => {
   if (value === null || value === undefined || value === "") return null;
@@ -85,6 +86,10 @@ const attachGudangScope = async (req, res, next) => {
   try {
     if (!req.user) {
       throw new AppError("Unauthorized.", 401);
+    }
+
+    if (!KNOWN_ROLES.includes(req.user.role)) {
+      throw new AppError(PESAN_GUDANG_DIARANG, 403);
     }
 
     if (req.user.role !== STAF_GUDANG) {

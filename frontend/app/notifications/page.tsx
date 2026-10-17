@@ -8,6 +8,7 @@ import { ProtectedRoute } from "@/lib/protected-route";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import { CompactSidebar } from "@/components/CompactSidebar";
+import { safeUrl } from "@/lib/safe-url";
 import { useSidebar } from "@/components/sidebar-context";
 import { useNotifications } from "@/hooks/use-notifications";
 import { ConfirmModal } from "@/components/ConfirmModal";
@@ -152,7 +153,8 @@ function NotificationsPageContent() {
   const handleNotificationClick = async (notif: { id: number; link: string | null }) => {
     await handleMarkAsRead(notif.id);
     if (notif.link) {
-      router.push(notif.link);
+      const safe = safeUrl(notif.link);
+      if (safe) router.push(safe);
     }
   };
 

@@ -13,6 +13,7 @@ module.exports = {
   DATABASE_URL: getEnv("DATABASE_URL"),
   JWT_SECRET: getEnv("JWT_SECRET"),
   JWT_REFRESH_SECRET: getEnv("JWT_REFRESH_SECRET"),
-  JWT_REFRESH_EXPIRES: process.env.JWT_REFRESH_EXPIRES || "7d",
+  JWT_REFRESH_EXPIRES: process.env.JWT_REFRESH_EXPIRES || "3d",
+  JWT_ACCESS_EXPIRES: process.env.JWT_ACCESS_EXPIRES || "60m",
   NODE_ENV: process.env.NODE_ENV || "development",
 };

@@ -16,6 +16,10 @@ function toBigInt(value) {
   if (typeof value === "bigint") return value;
   if (value === null || value === undefined) return BigInt(0);
   if (typeof value === "string") {
+    // If the string represents a number, convert directly to avoid hashing
+    if (/^\d+$/.test(value)) {
+      return BigInt(value);
+    }
     // Hash string IDs (e.g., cluster_id) to a numeric value for audit log
     let hash = 0;
     for (let i = 0; i < value.length; i++) {
@@ -72,6 +76,9 @@ const VALID_AUDIT_AKSI = new Set([
   "restore",
   "cancel_draft",
   "report_arrival",
+  "login_success",
+  "login_failed",
+  "reset_link_created",
 ]);
 
 async function createAuditLog(
@@ -82,16 +89,28 @@ async function createAuditLog(
     throw new Error(`Invalid audit action: ${aksi}`);
   }
 
-  await client.audit_log.create({
-    data: {
-      entity_type: String(entityType),
-      entity_id: toBigInt(entityId),
-      aksi: aksi,
-      actor_id: toBigInt(actorId),
-      data_sebelum: dataSebelum === null ? null : serializeObject(dataSebelum),
-      data_sesudah: dataSesudah === null ? null : serializeObject(dataSesudah),
-    },
-  });
+  // Only login_failed is allowed to have null actor_id (e.g., email not registered)
+  if (actorId === null || actorId === undefined) {
+    if (aksi !== "login_failed") {
+      throw new Error(`actor_id is required for action: ${aksi}`);
+    }
+  }
+
+  try {
+    await client.audit_log.create({
+      data: {
+        entity_type: String(entityType),
+        entity_id: toBigInt(entityId),
+        aksi: aksi,
+        actor_id: actorId === null || actorId === undefined ? null : toBigInt(actorId),
+        data_sebelum: dataSebelum === null ? null : serializeObject(dataSebelum),
+        data_sesudah: dataSesudah === null ? null : serializeObject(dataSesudah),
+      },
+    });
+  } catch (err) {
+    console.error(`[audit-log] Gagal mencatat aksi ${aksi}:`, err.message);
+    throw err;
+  }
 }
 
-module.exports = { createAuditLog };
+module.exports = { createAuditLog, toBigInt };
