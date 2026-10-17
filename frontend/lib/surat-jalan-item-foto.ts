@@ -5,7 +5,7 @@ export type SuratJalanItemFoto = {
   url: string;
   filename?: string;
   mimetype?: string;
-  ukuran_bytes?: number;
+  ukuran_bytes?: number | string;
 };
 
 export type SuratJalanItemForFoto = {

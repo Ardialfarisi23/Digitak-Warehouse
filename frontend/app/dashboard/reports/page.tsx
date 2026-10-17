@@ -23,7 +23,8 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useApi } from "@/lib/api";
-import { humanizeKey, humanizeValue, VALUE_LABELS } from "@/lib/audit-labels";
+import { humanizeKey, humanizeValue, VALUE_LABELS, getEntityTypeLabel } from "@/lib/audit-labels";
+import { getSuratJalanStatusLabel, SURAT_JALAN_STATUS_LABEL, SURAT_JALAN_STATUS_VALUES } from "@/lib/surat-jalan-status";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -361,22 +362,8 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
     const kode = row.data_sesudah?.kode_tiket || row.data_sebelum?.kode_tiket;
     if (kode) return String(kode);
 
-    const entityTypeLabels: Record<string, string> = {
-      boq: "BOQ",
-      surat_jalan: "Surat Jalan",
-      project: "Project",
-      titik_lapangan: "Titik Lapangan",
-      user_account: "User",
-      item: "Barang",
-      personil: "Personil",
-      vehicle: "Kendaraan",
-      supplier: "Supplier",
-      warehouse: "Gudang",
-      cluster: "Cluster",
-    };
-
     if (row.entity_name) {
-      const label = entityTypeLabels[row.entity_type || ""] || row.entity_type || "Entitas";
+      const label = getEntityTypeLabel(row.entity_type);
       return `${label}: ${row.entity_name}`;
     }
 
@@ -396,15 +383,15 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
       null;
 
     if (fallbackName) {
-      const label = entityTypeLabels[row.entity_type || ""] || row.entity_type || "Entitas";
+      const label = getEntityTypeLabel(row.entity_type);
       return `${label}: ${fallbackName}`;
     }
 
-    if (row.entity_type && row.entity_id && row.entity_id !== "0") {
-      return `${row.entity_type} #${row.entity_id} (data mungkin telah dihapus)`;
-    }
-
-    return row.entity_type || "-";
+    // Entitas tidak ditemukan / sudah dihapus: tampilkan hanya label jenis
+    // entitas (bahasa Indonesia). Tidak pernah menampilkan
+    // "<entity_type> #<id> (data mungkin telah dihapus)".
+    const label = getEntityTypeLabel(row.entity_type);
+    return label !== "-" ? label : "-";
   };
 
   const getExtraRef = (row: AuditLogEntry) => {
@@ -920,20 +907,20 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
         </span>
       );
     }
-    const fallback = row.gudang_asal || "-";
+    const fallback = row.gudang_asal?.trim() || "-";
     return (
-      <span className={fallback === "-" ? "text-slate-300" : ""}>
+      <span className={fallback === "-" ? "text-slate-300" : ""} title={fallback}>
         {fallback}
       </span>
     );
   };
 
   const renderTujuan = (row: StockHistoryEntry) => {
-    const gudang = row.gudang_tujuan || "-";
+    const gudang = row.gudang_tujuan?.trim();
     if (gudang && gudang !== "-") {
-      return <span className="truncate block" title={gudang}>{gudang}</span>;
+      return <span className="block truncate max-w-[160px]" title={gudang}>{gudang}</span>;
     }
-    const lapangan = row.lapangan_tujuan || "-";
+    const lapangan = row.lapangan_tujuan?.trim();
     if (lapangan && lapangan !== "-") {
       return (
         <span className="inline-flex items-center gap-1.5 min-w-0">
@@ -1033,7 +1020,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
         backgroundColor: statusColor[r.status_surat_jalan]?.bg || "#F3F4F6",
       }}
     >
-      {statusLabel[r.status_surat_jalan] || r.status_surat_jalan || "-"}
+      {getSuratJalanStatusLabel(r.status_surat_jalan)}
     </span>
   );
 
@@ -1153,7 +1140,6 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
   }, []);
 
   const jenisList = ["inbound", "outbound"];
-  const statusList = ["draft_diajukan", "menunggu_verifikasi", "ready_putaway", "disetujui", "digenerate", "diterima_didistribusikan", "sedang_dikirim", "tiba_menunggu_konfirmasi", "ditolak"];
 
   // Semua dropdown filter diisi dari master data supaya value-nya berupa ID
   // numerik (backend memfilter pakai ID, bukan nama). Limit dikirim eksplisit
@@ -1375,17 +1361,11 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
     outbound: "Outbound",
   };
 
-  const statusLabel: Record<string, string> = {
-    draft_diajukan: "Draft",
-    menunggu_verifikasi: "Menunggu Verifikasi",
-    ready_putaway: "Siap Putaway",
-    disetujui: "Disetujui",
-    digenerate: "Digenerate",
-    tiba_menunggu_konfirmasi: "Menunggu Konfirmasi",
-    diterima_didistribusikan: "Diterima/Didistribusikan",
-    sedang_dikirim: "Sedang Dikirim",
-    ditolak: "Ditolak",
-  };
+  // Label status surat jalan dipakai dari helper bersama (@/lib/surat-jalan-status)
+  // supaya tidak ada lagi kode mentah seperti "ready_putaway" yang tampil.
+  // Daftar status untuk dropdown filter juga ikut dari helper yang sama.
+  const statusLabel: Record<string, string> = SURAT_JALAN_STATUS_LABEL as Record<string, string>;
+  const statusOptions = SURAT_JALAN_STATUS_VALUES;
 
   return (
     <div className="pt-6">
@@ -1470,8 +1450,8 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
               className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
             >
               <option value="">Semua status</option>
-              {statusList.map((o) => (
-                <option key={o} value={o}>{statusLabel[o] || o}</option>
+              {statusOptions.map((o) => (
+                <option key={o} value={o}>{statusLabel[o] || getSuratJalanStatusLabel(o)}</option>
               ))}
             </select>
             <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1699,7 +1679,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                 <th className="px-3 py-2.5 w-8"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody>
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
@@ -1719,7 +1699,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                   </td>
                 </tr>
               ) : (
-                data.map((r) => {
+                data.map((r, rowIndex) => {
                   return (
                     <tr
                       key={r.ledger_id}
@@ -1986,7 +1966,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                 </div>
                 <div>
                   <p className="text-xs font-medium text-slate-400">Status</p>
-                  <p className="text-sm text-slate-800">{statusLabel[detailTiket.status_surat_jalan] || detailTiket.status_surat_jalan}</p>
+                  <p className="text-sm text-slate-800">{getSuratJalanStatusLabel(detailTiket.status_surat_jalan)}</p>
                 </div>
                 <div>
                   <p className="text-xs font-medium text-slate-400">Diproses Oleh</p>
