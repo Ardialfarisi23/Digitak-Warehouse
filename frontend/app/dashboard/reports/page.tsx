@@ -23,7 +23,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useApi } from "@/lib/api";
-import { humanizeKey, humanizeValue, VALUE_LABELS } from "@/lib/audit-labels";
+import { humanizeKey, humanizeValue, VALUE_LABELS, getAksiLabel, getRoleLabel, ENTITY_TYPE_LABELS, formatIp, formatUserAgent } from "@/lib/audit-labels";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -65,34 +65,6 @@ function Badge({ label, icon: Icon, variant = "gray", className }: { label: stri
     </span>
   );
 }
-
-const aksiMap: Record<string, { label: string; icon: React.ComponentType<{ size?: number; className?: string }>; variant: BadgeVariant }> = {
-  create: { label: "Dibuat", icon: Plus, variant: "green" },
-  update: { label: "Diperbarui", icon: Pencil, variant: "blue" },
-  delete: { label: "Dihapus", icon: Trash2, variant: "red" },
-  approve: { label: "Disetujui", icon: CheckCircle, variant: "green" },
-  receive_inbound: { label: "Terima Inbound", icon: ArrowDownToLine, variant: "purple" },
-  approve_inbound: { label: "Setujui Inbound", icon: CheckCircle, variant: "green" },
-  approve_outbound: { label: "Setujui Outbound", icon: CheckCircle, variant: "green" },
-  confirm_distributed: { label: "Dikonfirmasi", icon: PackageCheck, variant: "purple" },
-  reject_inbound: { label: "Tolak Inbound", icon: XCircle, variant: "red" },
-  reject_outbound: { label: "Tolak Outbound", icon: XCircle, variant: "red" },
-  putaway: { label: "Penyimpanan", icon: PackageCheck, variant: "purple" },
-  retrieve: { label: "Pengambilan Stok", icon: PackageSearch, variant: "blue" },
-  create_inbound: { label: "Buat Inbound", icon: Plus, variant: "green" },
-  create_outbound: { label: "Buat Outbound", icon: Plus, variant: "green" },
-  nonaktifkan_project: { label: "Project Dinonaktifkan", icon: XCircle, variant: "red" },
-  aktifkan_project: { label: "Project Diaktifkan", icon: CheckCircle, variant: "green" },
-  soft_delete: { label: "Dihapus (Soft)", icon: Trash2, variant: "red" },
-  restore: { label: "Dipulihkan", icon: RotateCcw, variant: "green" },
-  start_delivery: { label: "Mulai Pengiriman", icon: ArrowDownToLine, variant: "purple" },
-};
-
-const roleMap: Record<string, { label: string; variant: BadgeVariant }> = {
-  admin_general: { label: "Admin General", variant: "outline-orange" },
-  supervisor: { label: "Supervisor", variant: "outline-blue" },
-  staf_gudang: { label: "Staf Gudang", variant: "outline-gray" },
-};
 
 interface AuditLogEntry {
   audit_id: number | string;
@@ -345,7 +317,7 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
     }
   };
 
-  const aksiList = ["create", "update", "delete", "approve", "receive_inbound", "approve_inbound", "approve_outbound", "confirm_distributed", "reject_inbound", "reject_outbound", "putaway", "retrieve", "create_inbound", "create_outbound", "nonaktifkan_project", "aktifkan_project", "soft_delete", "restore", "start_delivery", "input_rekonsiliasi"];
+  const aksiList = ["create", "update", "delete", "approve", "receive_inbound", "approve_inbound", "approve_outbound", "confirm_distributed", "reject_inbound", "reject_outbound", "putaway", "retrieve", "create_inbound", "create_outbound", "nonaktifkan_project", "aktifkan_project", "soft_delete", "restore", "start_delivery", "input_rekonsiliasi", "login_success", "login_failed", "reset_link_created", "report_arrival", "tiba_di_transit", "lanjut_dari_transit", "cancel_draft"];
 
   const formatDateTime = (iso: string) => {
     const d = new Date(iso);
@@ -357,31 +329,31 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
     return `${day} ${mon}, ${hh}:${mm}`;
   };
 
+  const LOGIN_ACTIONS = new Set(["login_success", "login_failed", "reset_link_created"]);
+
+  function getDetailSectionTitle(aksi: string, kind: "sebelum" | "sesudah"): string {
+    if (LOGIN_ACTIONS.has(aksi)) {
+      if (aksi === "reset_link_created") return "Detail Reset Link";
+      return "Detail Login";
+    }
+    return kind === "sebelum" ? "Data Sebelum" : "Data Sesudah";
+  }
+
   const getEntityLabel = (row: AuditLogEntry): string => {
     const kode = row.data_sesudah?.kode_tiket || row.data_sebelum?.kode_tiket;
     if (kode) return String(kode);
 
-    const entityTypeLabels: Record<string, string> = {
-      boq: "BOQ",
-      surat_jalan: "Surat Jalan",
-      project: "Project",
-      titik_lapangan: "Titik Lapangan",
-      user_account: "User",
-      item: "Barang",
-      personil: "Personil",
-      vehicle: "Kendaraan",
-      supplier: "Supplier",
-      warehouse: "Gudang",
-      cluster: "Cluster",
-    };
-
     if (row.entity_name) {
-      const label = entityTypeLabels[row.entity_type || ""] || row.entity_type || "Entitas";
+      const label = ENTITY_TYPE_LABELS[row.entity_type || ""] || row.entity_type || "Entitas";
       return `${label}: ${row.entity_name}`;
     }
 
+    if (row.entity_type === "user_account" && (!row.entity_id || String(row.entity_id) === "0")) {
+      return "Akun tidak dikenal";
+    }
+
     if (row.entity_type === "reconciliation") {
-      return "Reconciliation";
+      return "Rekonsiliasi";
     }
 
     const snapshot = row.data_sesudah || row.data_sebelum || {};
@@ -396,15 +368,16 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
       null;
 
     if (fallbackName) {
-      const label = entityTypeLabels[row.entity_type || ""] || row.entity_type || "Entitas";
+      const label = ENTITY_TYPE_LABELS[row.entity_type || ""] || row.entity_type || "Entitas";
       return `${label}: ${fallbackName}`;
     }
 
-    if (row.entity_type && row.entity_id && row.entity_id !== "0") {
-      return `${row.entity_type} #${row.entity_id} (data mungkin telah dihapus)`;
+    if (row.entity_type && row.entity_id && String(row.entity_id) !== "0") {
+      const label = ENTITY_TYPE_LABELS[row.entity_type || ""] || row.entity_type;
+      return `${label} #${row.entity_id} (data mungkin telah dihapus)`;
     }
 
-    return row.entity_type || "-";
+    return ENTITY_TYPE_LABELS[row.entity_type || ""] || row.entity_type || "-";
   };
 
   const getExtraRef = (row: AuditLogEntry) => {
@@ -434,7 +407,12 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
     "wajib_sn",
   ]);
 
-  const renderStructuredData = (label: string, data: Record<string, unknown>, resolvedRefs: Record<string, string | null> = {}) => {
+  const renderStructuredData = (
+    label: string,
+    data: Record<string, unknown>,
+    resolvedRefs: Record<string, string | null> = {},
+    aksi?: string
+  ) => {
     if (!data || typeof data !== "object") {
       return <p className="text-sm text-slate-500">-</p>;
     }
@@ -444,6 +422,19 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
       if (HIDDEN_AUDIT_FIELDS.has(k)) return false;
       return true;
     });
+
+    const isLoginAction = aksi && LOGIN_ACTIONS.has(aksi);
+
+    const loginOrder: Record<string, number> = { email: 1, reason: 2, ip: 3, userAgent: 4, user_agent: 4 };
+    entries.sort((a, b) => {
+      const oa = isLoginAction ? loginOrder[a[0]] : 0;
+      const ob = isLoginAction ? loginOrder[b[0]] : 0;
+      if (oa && ob) return oa - ob;
+      if (oa) return -1;
+      if (ob) return 1;
+      return 0;
+    });
+
     if (entries.length === 0) {
       return <p className="text-sm text-slate-500">-</p>;
     }
@@ -477,6 +468,19 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
           return "-";
         }
         return resolved;
+      }
+
+      if (key === "ip" || key === "ipAddress") {
+        return <span className="text-xs font-semibold text-slate-800 text-right break-all">{formatIp(value as string)}</span>;
+      }
+
+      if (key === "userAgent" || key === "user_agent") {
+        const ua = formatUserAgent(value as string);
+        return (
+          <span className="text-xs font-semibold text-slate-800 text-right break-all" title={ua.title}>
+            {ua.text}
+          </span>
+        );
       }
 
       if (Array.isArray(value)) {
@@ -532,14 +536,11 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
   // Mobile card component for Audit Log
   function AuditLogCard({ row, onClick }: { row: AuditLogEntry; onClick: () => void }) {
     const extraRef = getExtraRef(row);
-    const actorNama = row.actor_nama ?? (row.aksi === "login_failed" ? "Tidak dikenal (percobaan login)" : "—");
-    const actorRole = row.actor_role ?? (row.aksi === "login_failed" ? "—" : "—");
-    const roleBadge = roleMap[actorRole] ? (
-      <Badge label={roleMap[actorRole].label} variant={roleMap[actorRole].variant} className="whitespace-nowrap shrink-0" />
-    ) : actorRole !== "—" ? (
-      <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 whitespace-nowrap shrink-0">
-        {actorRole}
-      </span>
+    const actorNama = row.actor_nama ?? (row.aksi === "login_failed" ? "Tidak dikenal" : "—");
+    const actorRole = row.actor_role ?? (row.aksi === "login_failed" ? "Tidak dikenal" : "—");
+    const roleLabel = getRoleLabel(actorRole);
+    const roleBadge = actorRole ? (
+      <Badge label={roleLabel} variant="outline-gray" className="whitespace-nowrap shrink-0" />
     ) : null;
     return (
       <div
@@ -549,13 +550,7 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              {aksiMap[row.aksi] ? (
-                <Badge label={aksiMap[row.aksi].label} icon={aksiMap[row.aksi].icon} variant={aksiMap[row.aksi].variant} className="whitespace-nowrap shrink-0" />
-              ) : (
-                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 whitespace-nowrap shrink-0">
-                  {humanizeValue("aksi", row.aksi)}
-                </span>
-              )}
+              <Badge label={getAksiLabel(row.aksi)} variant="gray" className="whitespace-nowrap shrink-0" />
               {roleBadge}
             </div>
             <p className="mt-1 font-mono font-semibold text-orange-500 truncate" title={getEntityLabel(row)}>
@@ -672,28 +667,18 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
                   <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400 overflow-hidden">
                     {formatDateTime(r.created_at)}
                   </td>
-                  <td className="px-6 py-4 min-w-0 overflow-hidden truncate" title={r.actor_nama ?? (r.aksi === "login_failed" ? "Tidak dikenal (percobaan login)" : "—")}>
-                    <div className="font-semibold text-slate-900 truncate">{r.actor_nama ?? (r.aksi === "login_failed" ? "Tidak dikenal (percobaan login)" : "—")}</div>
+                  <td className="px-6 py-4 min-w-0 overflow-hidden truncate" title={r.actor_nama ?? (r.aksi === "login_failed" ? "Tidak dikenal" : "—")}>
+                    <div className="font-semibold text-slate-900 truncate">{r.actor_nama ?? (r.aksi === "login_failed" ? "Tidak dikenal" : "—")}</div>
                   </td>
                   <td className="px-6 py-4 overflow-hidden">
                     {r.actor_role ? (
-                      roleMap[r.actor_role] ? (
-                        <Badge label={roleMap[r.actor_role].label} variant={roleMap[r.actor_role].variant} className="whitespace-nowrap shrink-0" />
-                      ) : (
-                        <span className="text-xs text-slate-500 whitespace-nowrap">{r.actor_role}</span>
-                      )
+                      <Badge label={getRoleLabel(r.actor_role)} variant="outline-gray" className="whitespace-nowrap shrink-0" />
                     ) : (
-                      r.aksi === "login_failed" ? "—" : "—"
+                      <span className="text-xs text-slate-500 whitespace-nowrap">Tidak dikenal</span>
                     )}
                   </td>
                   <td className="px-6 py-4 overflow-hidden">
-                    {aksiMap[r.aksi] ? (
-                      <Badge label={aksiMap[r.aksi].label} icon={aksiMap[r.aksi].icon} variant={aksiMap[r.aksi].variant} className="whitespace-nowrap shrink-0" />
-                    ) : (
-                      <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 whitespace-nowrap shrink-0">
-                        {humanizeValue("aksi", r.aksi)}
-                      </span>
-                    )}
+                    <Badge label={getAksiLabel(r.aksi)} variant="gray" className="whitespace-nowrap shrink-0" />
                   </td>
                   <td className="px-6 py-4 min-w-0 overflow-hidden">
                     <Badge label={getEntityLabel(r)} variant="gray" className="whitespace-nowrap shrink-0" />
@@ -751,8 +736,8 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
           <label className="mb-1 block text-xs font-medium text-slate-400">Role</label>
           <select value={actorRole} onChange={(e) => { setActorRole(e.target.value); setPage(1); }} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
             <option value="">Semua Role</option>
-            {Object.entries(roleMap).map(([k, v]) => (
-              <option key={k} value={k}>{v.label}</option>
+            {Object.keys(VALUE_LABELS.user_role).map((k) => (
+              <option key={k} value={k}>{getRoleLabel(k)}</option>
             ))}
           </select>
         </div>
@@ -760,7 +745,7 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
           <label className="mb-1 block text-xs font-medium text-slate-400">Aksi</label>
           <select value={aksi} onChange={(e) => { setAksi(e.target.value); setPage(1); }} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
             <option value="">Semua</option>
-            {aksiList.map((a) => <option key={a} value={a}>{a}</option>)}
+            {aksiList.map((a) => <option key={a} value={a}>{getAksiLabel(a)}</option>)}
           </select>
         </div>
         <button type="button" onClick={() => { setQ(""); setActorRole(""); setAksi(""); setStartDate(""); setEndDate(""); setDateError(""); setPage(1); }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">Reset</button>
@@ -819,18 +804,18 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-400">Pengguna</p>
-                <p className="text-sm font-semibold text-slate-800">{detailRow.actor_nama ?? (detailRow.aksi === "login_failed" ? "Tidak dikenal (percobaan login)" : "—")}</p>
+                <p className="text-sm font-semibold text-slate-800">{detailRow.actor_nama ?? (detailRow.aksi === "login_failed" ? "Tidak dikenal" : "—")}</p>
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-400">Peran</p>
                 <p className="text-sm text-slate-800">
-                  {detailRow.actor_role ? (roleMap[detailRow.actor_role] ? roleMap[detailRow.actor_role].label : detailRow.actor_role) : (detailRow.aksi === "login_failed" ? "—" : "—")}
+                  {detailRow.actor_role ? getRoleLabel(detailRow.actor_role) : (detailRow.aksi === "login_failed" ? "Tidak dikenal" : "—")}
                 </p>
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-400">Aksi</p>
                 <p className="text-sm text-slate-800">
-                  {aksiMap[detailRow.aksi] ? aksiMap[detailRow.aksi].label : humanizeValue("aksi", detailRow.aksi)}
+                  {getAksiLabel(detailRow.aksi)}
                 </p>
               </div>
               <div>
@@ -848,14 +833,18 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
                 <div className="space-y-4">
                   {detailRow.data_sebelum && (
                     <div>
-                      <p className="text-xs font-medium text-slate-400 mb-2">Data Sebelum</p>
-                      {renderStructuredData("Sebelum", detailRow.data_sebelum, detailRow.entity_refs_resolved)}
+                      <p className="text-xs font-medium text-slate-400 mb-2">
+                        {getDetailSectionTitle(detailRow.aksi, "sebelum")}
+                      </p>
+                      {renderStructuredData("Sebelum", detailRow.data_sebelum, detailRow.entity_refs_resolved, detailRow.aksi)}
                     </div>
                   )}
                   {detailRow.data_sesudah && (
                     <div>
-                      <p className="text-xs font-medium text-slate-400 mb-2">Data Sesudah</p>
-                      {renderStructuredData("Sesudah", detailRow.data_sesudah, detailRow.entity_refs_resolved)}
+                      <p className="text-xs font-medium text-slate-400 mb-2">
+                        {getDetailSectionTitle(detailRow.aksi, "sesudah")}
+                      </p>
+                      {renderStructuredData("Sesudah", detailRow.data_sesudah, detailRow.entity_refs_resolved, detailRow.aksi)}
                     </div>
                   )}
                 </div>

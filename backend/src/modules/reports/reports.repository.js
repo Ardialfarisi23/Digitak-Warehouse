@@ -1,4 +1,5 @@
 const prisma = require("../../config/prisma");
+const { getAksiLabel, getEntityTypeLabel, getRoleLabel, formatAuditMetadata } = require("../../utils/audit-labels");
 const AppError = require("../../shared/errors");
 const reconciliationService = require("../reconciliation/reconciliation.service");
 const returnRepository = require("../return/return.repository");
@@ -1695,21 +1696,52 @@ const getAuditLogForExport = async (filters = {}) => {
 
   const enrichedData = await enrichAuditEntityNames(data);
 
-  const rows = enrichedData.map((log) => ({
-    audit_id: String(log.audit_id),
-    created_at: log.created_at,
-    aksi: log.aksi,
-    entity_type: log.entity_type,
-    entity_id: String(log.entity_id),
-    actor_id: String(log.actor_id),
-    actor_nama: log.actor?.personils?.[0]?.nama || log.actor?.nama || "-",
-    actor_email: log.actor?.email || "-",
-    actor_role: log.actor?.role || "-",
-    data_sebelum: log.data_sebelum,
-    data_sesudah: log.data_sesudah,
-    entity_name: log.entity_name ?? null,
-    entity_refs_resolved: log.entity_refs_resolved ?? {},
-  }));
+  const rows = enrichedData.map((log) => {
+    const isLogin = ["login_success", "login_failed", "reset_link_created"].includes(log.aksi);
+    const hasActor = log.actor_id && String(log.actor_id) !== "0" && log.actor_id !== "null";
+    const entityLabel = (() => {
+      const kode = log.data_sesudah?.kode_tiket || log.data_sebelum?.kode_tiket;
+      if (kode) return String(kode);
+      if (log.entity_type === "user_account" && (!log.entity_id || String(log.entity_id) === "0")) {
+        return "Akun tidak dikenal";
+      }
+      if (log.entity_type && log.entity_id && String(log.entity_id) !== "0") {
+        return `${getEntityTypeLabel(log.entity_type)} #${log.entity_id}`;
+      }
+      return getEntityTypeLabel(log.entity_type || "-");
+    })();
+
+    return {
+      audit_id: String(log.audit_id),
+      created_at: log.created_at,
+      aksi: getAksiLabel(log.aksi || "-"),
+      entity_type: getEntityTypeLabel(log.entity_type || "-"),
+      entity_id: String(log.entity_id),
+      actor_id: String(log.actor_id),
+      actor_nama: hasActor ? (log.actor?.personils?.[0]?.nama || log.actor?.nama || "Tidak dikenal") : "Tidak dikenal",
+      actor_email: log.actor?.email || "-",
+      actor_role: hasActor ? getRoleLabel(log.actor?.role || "-") : "Tidak dikenal",
+      detail: formatAuditMetadata(log.aksi, log.data_sebelum, log.data_sesudah),
+      entity_name: entityLabel,
+      extra_ref: (() => {
+        const ds = log.data_sesudah || {};
+        const parts = [];
+        if (ds.source_file || ds.filename || ds.nama_file) {
+          parts.push(ds.source_file || ds.filename || ds.nama_file);
+        }
+        if (ds.username_target || ds.target_user || ds.user_target) {
+          parts.push(`user: ${ds.username_target || ds.target_user || ds.user_target}`);
+        }
+        if (ds.catatan) {
+          parts.push(ds.catatan);
+        }
+        return parts.length > 0 ? parts.join(" | ") : "—";
+      })(),
+      data_sebelum: log.data_sebelum,
+      data_sesudah: log.data_sesudah,
+      entity_refs_resolved: log.entity_refs_resolved ?? {},
+    };
+  });
 
   return {
     data: rows,

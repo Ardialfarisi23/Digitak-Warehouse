@@ -146,7 +146,7 @@ const exportAuditLogExcel = async (req, res, next) => {
       right: { style: "thin" },
     };
 
-    const headers = ["Waktu", "Pengguna", "Peran", "Aksi", "Entitas Terkait", "Referensi Tambahan"];
+    const headers = ["Waktu", "Pengguna", "Peran", "Aksi", "Entitas Terkait", "Referensi Tambahan", "Detail"];
     headers.forEach((header, index) => {
       const cell = worksheet.getCell(1, index + 1);
       cell.value = header;
@@ -158,36 +158,15 @@ const exportAuditLogExcel = async (req, res, next) => {
 
     rows.forEach((row, rowIndex) => {
       const excelRow = rowIndex + 2;
-      const ds = row.data_sesudah || {};
-      const entityLabel = (() => {
-        const kode = ds.kode_tiket || row.data_sebelum?.kode_tiket;
-        if (kode) return kode;
-        if (row.entity_type && row.entity_id && row.entity_id !== "0") {
-          return `${row.entity_type} #${row.entity_id}`;
-        }
-        return row.entity_type || "-";
-      })();
-      const extraRef = (() => {
-        const parts = [];
-        if (ds.source_file || ds.filename || ds.nama_file) {
-          parts.push(ds.source_file || ds.filename || ds.nama_file);
-        }
-        if (ds.username_target || ds.target_user || ds.user_target) {
-          parts.push(`user: ${ds.username_target || ds.target_user || ds.user_target}`);
-        }
-        if (ds.catatan) {
-          parts.push(ds.catatan);
-        }
-        return parts.length > 0 ? parts.join(" | ") : "—";
-      })();
 
       const values = [
         row.created_at ? new Date(row.created_at).toLocaleString("id-ID") : "-",
-        row.actor_nama || "-",
-        row.actor_role || "-",
+        row.actor_nama || "Tidak dikenal",
+        row.actor_role || "Tidak dikenal",
         row.aksi || "-",
-        entityLabel,
-        extraRef,
+        row.entity_name || "-",
+        row.extra_ref || "—",
+        row.detail || "-",
       ];
 
       values.forEach((value, colIndex) => {
