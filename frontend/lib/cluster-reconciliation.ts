@@ -24,6 +24,8 @@ type RawReconciliationRow = {
   nama_cluster?: string | null;
   projectnama?: string;
   projectNama?: string;
+  project_name?: string;
+  project_nama?: string;
   boq?: number;
   additional?: number;
   mos?: number;
@@ -57,7 +59,7 @@ export function buildClusterReconciliation(
   }>();
 
   for (const row of data) {
-    const projectName = row.projectnama || row.projectNama || "-";
+    const projectName = row.projectnama || row.projectNama || row.project_name || row.project_nama || "-";
     const clusterId = row.cluster_id ? String(row.cluster_id) : "";
     const clusterName = (row.nama_cluster || "").trim() || (clusterId || "Belum ditentukan");
     const key = clusterId || `${projectName}::tanpa-cluster`;

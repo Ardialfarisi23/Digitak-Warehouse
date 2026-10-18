@@ -443,7 +443,7 @@ const fetchDashboardData = useCallback(async () => {
         </section>
 
         {/* 3. RINGKASAN PER PROJECT/CLUSTER */}
-        <ClusterReconciliationSection clusters={clusterReconciliation} isLoading={isLoadingRecon} />
+        <ClusterReconciliationSection clusters={clusterReconciliation} isLoading={isLoadingRecon} sortByPriority enableFilters initialVisibleCount={8} loadMoreStep={8} />
       </div>
 
     </div>
