@@ -293,11 +293,7 @@ const create = async (data, actorId) => {
     kendaraan_id: data.kendaraan_id || null,
     kendaraan_nama_teks: data.kendaraan_id ? null : data.kendaraan_nama_teks ? String(data.kendaraan_nama_teks).trim() : null,
     kendaraan_jenis_teks: data.kendaraan_id ? null : data.kendaraan_jenis_teks ? String(data.kendaraan_jenis_teks).trim() : null,
-    kendaraan_no_polisi_teks: data.kendaraan_id
-      ? null
-      : data.kendaraan_no_polisi_teks
-        ? String(data.kendaraan_no_polisi_teks).trim().replace(/\s+/g, " ").toUpperCase()
-        : null,
+    kendaraan_no_polisi_teks: data.kendaraan_id ? null : data.kendaraan_no_polisi_teks ? String(data.kendaraan_no_polisi_teks).trim().replace(/\s+/g, " ").toUpperCase() : null,
     personil_pengantar_id: data.personil_pengantar_id || null,
     driver_nama_teks: data.personil_pengantar_id ? null : data.driver_nama_teks ? String(data.driver_nama_teks).trim() : null,
   };

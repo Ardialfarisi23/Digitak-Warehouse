@@ -1,12 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { PackageCheck, Plus, X, ChevronDown, Trash2, Upload, Loader2, Search } from "lucide-react";
+import { PackageCheck, Plus, X, ChevronDown, ChevronRight, Filter, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import BarangPicker, {
-  type BarangPickerItem,
-} from "@/components/BarangPicker";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { MobileCardList, type MobileCardField, type MobileCardItem } from "@/components/MobileCardList";
@@ -25,6 +22,19 @@ const STATUS_META: Record<InboundStatus, { label: string; tone: string }> = {
   sedang_dikirim: { label: "Sedang Dikirim", tone: "bg-amber-50 text-amber-600" },
   ditolak: { label: "Ditolak", tone: "bg-rose-50 text-rose-600" },
 };
+
+// Status yang BENAR-BENAR masih terjadi pada alur inbound staf saat ini:
+//   submit (POST /api/surat-jalan/inbound/staf, lihat createStaffInbound di
+//   backend surat-jalan.service.js) -> langsung "ready_putaway" tanpa ACC
+//   supervisor, lalu putaway menutup ke "diterima_didistribusikan".
+// Karena alur inbound tidak lagi melewati ACC, filter status di halaman ini
+// HANYA menawarkan dua status tersebut. "draft_diajukan" (ACC SPV),
+// "menunggu_verifikasi", status outbound (disetujui/sedang_dikirim/...) dan
+// "digenerate" tidak pernah di-set untuk tipe inbound — STATUS_META tetap
+// dipertahankan lengkap hanya untuk me-render badge record legacy yang masih
+// ada di data, bukan sebagai pilihan filter.
+const ACTIVE_INBOUND_STATUSES: InboundStatus[] = ["ready_putaway", "diterima_didistribusikan"];
+const FILTERABLE_STATUSES = ACTIVE_INBOUND_STATUSES;
 
 interface InboundItem {
   item_id: number;
@@ -72,506 +82,189 @@ cluster_id?: string | null;
   } | null;
 }
 
-interface BarangOption {
-  barang_id: string | number;
-  kode_perangkat?: string;
-  nama_barang?: string;
-  satuan_default_id?: string | number;
-  satuan_default?: { kode_satuan?: string };
-}
 
-interface WarehouseOption {
-  gudang_id: string | number;
-  nama_gudang: string;
-  tipe?: string;
-  project_id?: string | number | null;
-}
 
-interface SupplierOption {
-  supplier_id: string | number;
-  nama: string;
-  kode: string;
-}
 
-interface UnitOption {
-  satuan_id: string | number;
-  kode_satuan?: string;
-}
 
-interface CategoryOption {
-  kategori_id: string | number;
-  nama_kategori?: string;
-}
 
-interface ProjectOption {
-  project_id: string | number;
-  nama_project?: string;
-}
 
-interface ClusterOption {
-  cluster_id: string | number;
-  nama_cluster?: string;
-}
 
-// Bentuk row BOQ dari GET /api/boqs (transformBoq menambahkan alias camelCase).
-interface ApiBoqRow {
-  boq_id?: number | string;
-  id?: string | number;
-  cluster_id?: string | null;
-  clusterId?: string | null;
-  cluster?: { cluster_id?: string | null; clusterId?: string | null } | null;
-}
-
-const KONDISI_OPTIONS: { value: string; label: string }[] = [
-  { value: "baik", label: "Baik" },
-  { value: "rusak_ringan", label: "Rusak Ringan" },
-  { value: "rusak_berat", label: "Rusak Berat" },
-  { value: "tidak_sesuai_spek", label: "Tidak Sesuai Spek" },
-  { value: "doa", label: "DOA" },
-];
-
-const KONDISI_TONE: Record<string, string> = {
-  baik: "bg-emerald-100 text-emerald-700",
-  rusak_ringan: "bg-amber-100 text-amber-700",
-  rusak_berat: "bg-rose-100 text-rose-700",
-  tidak_sesuai_spek: "bg-orange-100 text-[#E8632C]",
-  doa: "bg-gray-100 text-gray-600",
-};
-
-// Batas ukuran file yang boleh dikirim sebagai lampiran inline (Base64) di dalam
-// payload JSON kalau upload ke endpoint /api/upload gagal.
-const MAX_INLINE_PDF_BYTES = 8 * 1024 * 1024;
-
-function formatBytes(bytes: number) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 KB";
-  const kb = bytes / 1024;
-  return kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(kb))} KB`;
-}
-
-interface ModalItemRow {
-  id: string;
-  barang_id: string;
-  kode_perangkat: string;
-  nama_barang: string;
-  qtySuratJalan: number;
-  qtyAktual: number;
-  kondisi: string;
-  serialNumber: string;
-  satuan_id: string;
-  satuan_label: string;
-  kategori_id: string;
-  catatan: string;
-  is_di_luar_boq: boolean;
-  is_non_master: boolean;
-  fotos: Array<{ foto_id: number | string; url: string; filename?: string }>;
-  fotoPreview: string | null;
-  uploadingFoto: boolean;
-  fotoError: string | null;
-}
-
-function Modal({
-  open,
-  onClose,
-  title,
-  subtitle,
-  widthClass = "max-w-2xl",
-  children,
-}: {
-  open: boolean;
-  onClose: () => void;
-  title: string;
-  subtitle?: string;
-  widthClass?: string;
-  children: React.ReactNode;
-}) {
-  useEffect(() => {
-    if (!open) return;
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-      onClick={onClose}
-    >
-      <div
-        className={`w-[calc(100vw-1.5rem)] ${widthClass} max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
-          <div>
-            <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-            {subtitle && <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>}
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-          >
-            <X size={16} />
-          </button>
-        </div>
-        <div className="px-6 py-5">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-interface InboundPreviewRow {
-  kode: string;
-  nama: string;
-  qty: number;
-  satuan: string;
-  kondisi: string;
-  catatan: string;
-  fotoUrl: string | null;
-}
-
-function PreviewInboundModal({
-  open,
-  onClose,
-  onConfirm,
-  submitting,
-  nomorSuratJalan,
-  vendorLabel,
-  gudangTujuan,
-  tanggalLabel,
-  projectName,
-  boqNumber,
-  kodeTiket,
-  picPemohon,
-  kendaraan,
-  noPolisi,
-  driver,
-  items,
-  suratJalanFileName,
-  suratJalanUrl,
-  suratJalanSize,
-  suratJalanInline,
-  onImageClick,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  submitting: boolean;
-  nomorSuratJalan: string;
-  vendorLabel: string;
-  gudangTujuan: string;
-  tanggalLabel: string;
-  projectName: string;
-  boqNumber: string;
-  kodeTiket: string;
-  picPemohon: string;
-  kendaraan: string;
-  noPolisi: string;
-  driver: string;
-  items: InboundPreviewRow[];
-  suratJalanFileName: string | null;
-  suratJalanUrl: string | null;
-  suratJalanSize: number | null;
-  suratJalanInline: boolean;
-  onImageClick: (url: string) => void;
-}) {
-  useEffect(() => {
-    if (!open) return;
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
-  const fotoCount = items.filter((item) => item.fotoUrl).length;
-
-  return (
-    <div
-      className="fixed inset-0 z-[65] flex items-center justify-center bg-slate-900/40 p-4"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Preview Ringkasan Penerimaan Inbound"
-    >
-      <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
-          <div>
-            <h3 className="text-base font-semibold text-slate-900">Preview Ringkasan Penerimaan Inbound</h3>
-            <p className="mt-0.5 text-xs text-slate-400">Periksa kembali seluruh data penerimaan inbound sebelum disimpan.</p>
-          </div>
-          <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="px-6 py-5 space-y-4">
-          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Informasi Transaksi</p>
-            <div className="space-y-1 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">No. Surat Jalan</span>
-                <span className="font-medium text-slate-700">{nomorSuratJalan || "-"}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Vendor</span>
-                <span className="font-medium text-slate-700">{vendorLabel || "-"}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Gudang Tujuan</span>
-                <span className="font-medium text-slate-700">{gudangTujuan || "-"}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Tanggal</span>
-                <span className="font-medium text-slate-700">{tanggalLabel || "-"}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Project</span>
-                <span className="font-medium text-slate-700">{projectName || "-"}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">BOQ / Tiket</span>
-                <span className="font-medium text-slate-700">
-                  {[boqNumber, kodeTiket ? `Tiket: ${kodeTiket}` : ""].filter(Boolean).join(" · ") || "-"}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Detail Pengiriman</p>
-            <div className="space-y-1 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">PIC / Penerima</span>
-                <span className="font-medium text-slate-700">{picPemohon || "-"}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Kendaraan</span>
-                <span className="font-medium text-slate-700">{kendaraan || "-"}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">No. Polisi</span>
-                <span className="font-medium text-slate-700">{noPolisi || "-"}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Nama Driver</span>
-                <span className="font-medium text-slate-700">{driver || "-"}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Rincian Barang yang Diterima</p>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[400px] text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 text-left text-[10px] uppercase leading-tight tracking-wide text-gray-400">
-                    <th className="pb-2 pr-3 font-semibold">Kode Barang</th>
-                    <th className="pb-2 pr-3 font-semibold">Nama Barang</th>
-                    <th className="pb-2 pr-3 text-right font-semibold">Qty</th>
-                    <th className="pb-2 pr-3 font-semibold">Satuan</th>
-                    <th className="pb-2 pr-3 font-semibold">Kondisi</th>
-                    <th className="pb-2 pr-3 font-semibold">Catatan</th>
-                    <th className="pb-2 font-semibold">Foto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item, idx) => (
-                    <tr key={idx} className="border-b border-gray-50 last:border-0 odd:bg-white even:bg-slate-50">
-                      <td className="py-2 pr-3 font-medium text-gray-800">{item.kode || "-"}</td>
-                      <td className="py-2 pr-3 text-gray-600">{item.nama || "-"}</td>
-                      <td className="py-2 pr-3 text-right text-gray-700">{item.qty}</td>
-                      <td className="py-2 pr-3 text-gray-500">{item.satuan || "-"}</td>
-                      <td className="py-2 pr-3">
-                        <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ${KONDISI_TONE[item.kondisi] || "bg-gray-100 text-gray-600"}`}>
-                          {KONDISI_OPTIONS.find((k) => k.value === item.kondisi)?.label || item.kondisi || "-"}
-                        </span>
-                      </td>
-                      <td className="py-2 pr-3 text-gray-600">{item.catatan || "-"}</td>
-                      <td className="py-2">
-                        {item.fotoUrl ? (
-                          <button
-                            type="button"
-                            onClick={() => onImageClick(item.fotoUrl as string)}
-                            className="h-10 w-10 overflow-hidden rounded-md border border-gray-200"
-                          >
-                            <img src={item.fotoUrl} alt="Preview" className="h-full w-full object-cover" />
-                          </button>
-                        ) : (
-                          <span className="text-xs text-gray-400">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                  {items.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="py-4 text-center text-gray-400">Belum ada barang yang ditambahkan.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Lampiran Dokumen</p>
-            <div className="space-y-1 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Surat Jalan (PDF)</span>
-                <span className="font-medium text-slate-700">
-                  {suratJalanFileName ? (
-                    suratJalanUrl && !suratJalanInline ? (
-                      <a href={safeUrl(suratJalanUrl)} target="_blank" rel="noreferrer" className="text-[#E8632C] hover:underline">
-                        {suratJalanFileName}
-                      </a>
-                    ) : (
-                      suratJalanFileName
-                    )
-                  ) : (
-                    <span className="text-gray-400">Belum ada lampiran</span>
-                  )}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Foto Barang</span>
-                <span className="font-medium text-slate-700">
-                  {fotoCount > 0 ? `${fotoCount} dari ${items.length} item memiliki foto` : "Belum ada foto barang"}
-                </span>
-              </div>
-            </div>
-            {suratJalanFileName ? (
-              <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-                PDF Terlampir: {suratJalanFileName}
-                {suratJalanSize ? ` (${formatBytes(suratJalanSize)})` : ""}
-              </p>
-            ) : (
-              <p className="mt-2 text-xs text-gray-400">
-                Surat jalan PDF belum dilampirkan. Supervisor tidak dapat melihat dokumen lampiran.
-              </p>
-            )}
-            {suratJalanInline && (
-              <p className="mt-2 text-xs text-amber-600">
-                PDF dikirim sebagai lampiran langsung pada pengajuan ini dan bisa langsung dilihat supervisor.
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-4 flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-          >
-            Kembali / Edit
-          </button>
-          <button
-            type="button"
-            data-testid="inbound-confirm-save"
-            onClick={onConfirm}
-            disabled={submitting}
-            className="rounded-xl bg-[#E8632C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
-          >
-            {submitting ? "Menyimpan..." : "Konfirmasi & Simpan"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function InboundListPage() {
-  const { get, post, put } = useApi();
+  const { get, put } = useApi();
   const { user } = useAuth();
   const [list, setList] = useState<InboundSuratJalan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Pencarian teks (nomor SJ / project) — klien-side.
+  const [searchQuery, setSearchQuery] = useState("");
+  // Filter lanjutan di dalam panel "Filter": status multi-select, rentang
+  // tanggal, serta dropdown multi Pengirim & Project — klien-side, semua
+  // di-AND-kan. Struktur panel mengikuti Outbound (STATUS -> TANGGAL),
+  // lalu dua dropdown tambahan ini. Pencarian nomor SJ / project tetap lewat
+  // search bar di atas. Filter Gudang Tujuan sengaja TIDAK ada: satu staf
+  // hanya memegang satu gudang, jadi seluruh data di halaman ini sudah
+  // pasti milik gudangnya sendiri.
+  const [statusFilter, setStatusFilter] = useState<InboundStatus[]>([]);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [pengirimFilter, setPengirimFilter] = useState<string[]>([]);
+  const [projectFilter, setProjectFilter] = useState<string[]>([]);
+  // Sub-panel dropdown multi yang sedang dibuka (null = tertutup).
+  const [openMultiFilter, setOpenMultiFilter] = useState<"pengirim" | "project" | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  // Row info+item yang sedang dibuka di tabel desktop.
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const filterRef = useRef<HTMLDivElement | null>(null);
+
+  // Tutup panel filter + sub-dropdown di dalamnya (klik luar / Escape).
+  const closeFilterPanel = () => {
+    setFilterOpen(false);
+    setOpenMultiFilter(null);
+  };
+
+  useEffect(() => {
+    if (!filterOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        closeFilterPanel();
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeFilterPanel();
+    };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [filterOpen]);
+
+  // Halaman ini bisa dibuka dari halaman lain (mis. setelah simpan) — selalu
+  // mulai dari atas supaya judul + tombol aksi tidak tertinggal ter-scroll.
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, []);
+
+  const activeFilterCount =
+    (statusFilter.length > 0 ? 1 : 0) +
+    (dateFrom || dateTo ? 1 : 0) +
+    (pengirimFilter.length > 0 ? 1 : 0) +
+    (projectFilter.length > 0 ? 1 : 0);
+  const hasAnyFilter = activeFilterCount > 0 || searchQuery.trim().length > 0;
+
+  const clearFilters = () => {
+    setStatusFilter([]);
+    setDateFrom("");
+    setDateTo("");
+    setPengirimFilter([]);
+    setProjectFilter([]);
+    setOpenMultiFilter(null);
+    setSearchQuery("");
+  };
+
+  // Reset di dalam panel: hanya mereset filter panel, search bar dibiarkan
+  // (sama perilakunya dengan halaman Outbound).
+  const resetPanelFilters = () => {
+    setStatusFilter([]);
+    setDateFrom("");
+    setDateTo("");
+    setPengirimFilter([]);
+    setProjectFilter([]);
+    setOpenMultiFilter(null);
+  };
+
+  const toggleStatusFilter = (status: InboundStatus) => {
+    setStatusFilter((prev) =>
+      prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]
+    );
+  };
+
+  const makeMultiToggle =
+    (setter: React.Dispatch<React.SetStateAction<string[]>>) => (value: string) => {
+      setter((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
+    };
+  const togglePengirimFilter = makeMultiToggle(setPengirimFilter);
+  const toggleProjectFilter = makeMultiToggle(setProjectFilter);
+
+  // Label per kolom tabel, dipakai untuk render maupun membangun opsi dropdown
+  // filter supaya isinya persis sama dengan yang tampil di tabel.
+  const getPengirimText = (sj: InboundSuratJalan) =>
+    sj.tipe_pengirim === "external"
+      ? sj.supplier?.nama
+        ? `${sj.supplier.kode} - ${sj.supplier.nama}`
+        : sj.pengirim_eksternal_nama || "-"
+      : sj.tipe_pengirim === "internal"
+      ? sj.gudang_asal?.nama_gudang || "-"
+      : "-";
+  const getGudangTujuanText = (sj: InboundSuratJalan) => sj.gudang_tujuan?.nama_gudang || "-";
+  const getProjectText = (sj: InboundSuratJalan) => sj.project?.nama_project || "-";
+  const getClusterText = (sj: InboundSuratJalan) =>
+    sj.boq?.cluster?.nama_cluster || sj.boq?.cluster?.cluster_id || sj.cluster_id || "-";
+  const getTanggalText = (sj: InboundSuratJalan) =>
+    new Date(sj.tanggal || sj.created_at).toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+
+  // Opsi dropdown dibangun dari `list` (data source yang sama dengan tabel
+  // dan mobile card) memakai helper label kolom di atas, sehingga teks opsi
+  // dijamin persis sama dengan yang tampil di kolom Pengirim / Project.
+  // Tidak ada yang di-hardcode; opsi ikut berubah bila data berubah.
+  // Nilai "-" (baris tanpa pengirim/project) tidak dijadikan opsi filter.
+  const uniqSorted = (values: string[]) =>
+    Array.from(new Set(values.filter((v) => v && v !== "-"))).sort((a, b) =>
+      a.localeCompare(b, "id-ID")
+    );
+  const pengirimOptions = useMemo(() => uniqSorted(list.map(getPengirimText)), [list]);
+  const projectOptions = useMemo(() => uniqSorted(list.map(getProjectText)), [list]);
+
+  const filtered = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase("id-ID");
+    const fromTime = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
+    const toTime = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
+    return list.filter((sj) => {
+      const matchesStatus = statusFilter.length === 0 || statusFilter.includes(sj.status);
+      const matchesSearch =
+        !query ||
+        sj.nomor_surat_jalan.toLocaleLowerCase("id-ID").includes(query) ||
+        (sj.project?.nama_project || "").toLocaleLowerCase("id-ID").includes(query);
+      const waktu = new Date(sj.tanggal || sj.created_at).getTime();
+      const matchesFrom = fromTime === null || waktu >= fromTime;
+      const matchesTo = toTime === null || waktu <= toTime;
+      // Multi-select: kosong = tanpa batasan, terisi = baris harus cocok
+      // dengan salah satu opsi yang dipilih.
+      const matchesPengirim =
+        pengirimFilter.length === 0 || pengirimFilter.includes(getPengirimText(sj));
+      const matchesProject =
+        projectFilter.length === 0 || projectFilter.includes(getProjectText(sj));
+      return (
+        matchesStatus &&
+        matchesSearch &&
+        matchesFrom &&
+        matchesTo &&
+        matchesPengirim &&
+        matchesProject
+      );
+    });
+  }, [
+    list,
+    statusFilter,
+    searchQuery,
+    dateFrom,
+    dateTo,
+    pengirimFilter,
+    projectFilter,
+  ]);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [gudangTujuanFilter, setGudangTujuanFilter] = useState("");
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [barangOptions, setBarangOptions] = useState<BarangOption[]>([]);
-  const [unitOptions, setUnitOptions] = useState<UnitOption[]>([]);
-  const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
-  const [warehouseOptions, setWarehouseOptions] = useState<WarehouseOption[]>([]);
-  const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
-  const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
-  const [clusterOptions, setClusterOptions] = useState<ClusterOption[]>([]);
-  const [loadingClusters, setLoadingClusters] = useState(false);
-  const [loadingOptions, setLoadingOptions] = useState(false);
 
-  // Pilihan utama form: Project -> Cluster; BOQ ikut terpilih dari cluster
-  // karena backend membatasi 1 cluster = maksimal 1 BOQ aktif.
-  const [selectedProjectId, setSelectedProjectId] = useState("");
-  const [selectedClusterId, setSelectedClusterId] = useState("");
-  const [selectedBoqId, setSelectedBoqId] = useState("");
-  const [boqItemsDetail, setBoqItemsDetail] = useState<Array<{ barang_id: string | number; itemCode?: string; itemName?: string }>>([]);
-  const [nomorSuratJalan, setNomorSuratJalan] = useState("");
-  const [selectedGudangTujuanId, setSelectedGudangTujuanId] = useState("");
-  const [tanggalMasuk, setTanggalMasuk] = useState("");
-  const [kendaraanNamaTeks, setKendaraanNamaTeks] = useState("");
-  const [kendaraanNoPolisTeks, setKendaraanNoPolisTeks] = useState("");
-  const [driverNamaTeks, setDriverNamaTeks] = useState("");
-  const [selectedAsalTipe, setSelectedAsalTipe] = useState<"internal" | "external" | "">("");
-  const [selectedSupplierId, setSelectedSupplierId] = useState("");
-  const [selectedGudangAsalId, setSelectedGudangAsalId] = useState("");
-  const [isVendorManual, setIsVendorManual] = useState(false);
-  const [pengirimEksternalNama, setPengirimEksternalNama] = useState("");
-  const [picPemohon, setPicPemohon] = useState("");
-  const [modalItems, setModalItems] = useState<ModalItemRow[]>([]);
-  const [draftItem, setDraftItem] = useState<ModalItemRow>({
-    id: "draft",
-    barang_id: "",
-    kode_perangkat: "",
-    nama_barang: "",
-    qtySuratJalan: 1,
-    qtyAktual: 1,
-    kondisi: "",
-    serialNumber: "",
-    satuan_id: "",
-    satuan_label: "",
-    kategori_id: "",
-    catatan: "",
-    is_di_luar_boq: true,
-    is_non_master: false,
-    fotos: [],
-    fotoPreview: null,
-    uploadingFoto: false,
-    fotoError: null,
-  });
-  const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editDraftItem, setEditDraftItem] = useState<ModalItemRow | null>(null);
-  const [previewFotoUrl, setPreviewFotoUrl] = useState<string | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [kondisiError, setKondisiError] = useState<string | null>(null);
-  const [editKondisiError, setEditKondisiError] = useState<string | null>(null);
-  const [suratJalanPdf, setSuratJalanPdf] = useState<File | null>(null);
-  const [suratJalanPdfUrl, setSuratJalanPdfUrl] = useState("");
-  const [suratJalanPdfDataUrl, setSuratJalanPdfDataUrl] = useState("");
-  const [suratJalanPdfInline, setSuratJalanPdfInline] = useState(false);
-  const [uploadingPdf, setUploadingPdf] = useState(false);
-  const [pdfUploadError, setPdfUploadError] = useState<string | null>(null);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [showPreviewModal, setShowPreviewModal] = useState(false);
-  const [selectedBoqMeta, setSelectedBoqMeta] = useState({
-    boq_number: "",
-    kode_tiket: "",
-    project_name: "",
-  });
-  const fotoPreviewRef = useRef<Record<string, string>>({});
 
   const fetchList = async () => {
     setIsLoading(true);
@@ -623,1009 +316,40 @@ export default function InboundListPage() {
     fetchList();
   }, [get]);
 
-  const loadOptions = async () => {
-    setLoadingOptions(true);
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-const [itemRes, warehouseRes, supplierRes, unitRes, categoryRes, projectRes] = await Promise.all([
-        get(`${baseUrl}/api/items?limit=200`),
-        get(`${baseUrl}/api/warehouses?limit=1000`),
-        get(`${baseUrl}/api/suppliers`),
-        get(`${baseUrl}/api/units`),
-        get(`${baseUrl}/api/categories`),
-        get(`${baseUrl}/api/projects`),
-      ]);
-      if (!itemRes.ok) throw new Error("Gagal mengambil daftar barang.");
-      if (!warehouseRes.ok) throw new Error("Gagal mengambil daftar gudang.");
-      if (!supplierRes.ok) throw new Error("Gagal mengambil daftar supplier.");
-      if (!unitRes.ok) throw new Error("Gagal mengambil daftar satuan.");
-      if (!categoryRes.ok) throw new Error("Gagal mengambil daftar kategori.");
-      if (!projectRes.ok) throw new Error("Gagal mengambil daftar project.");
 
-      const [itemJson, warehouseJson, supplierJson, unitJson, categoryJson, projectJson] = await Promise.all([
-        itemRes.json(),
-        warehouseRes.json(),
-        supplierRes.json(),
-        unitRes.json(),
-        categoryRes.json(),
-        projectRes.json(),
-      ]);
 
-      const unwrap = (json: any) => Array.isArray(json?.data) ? json.data : json?.data?.data || [];
-      setBarangOptions(unwrap(itemJson));
-      setWarehouseOptions(unwrap(warehouseJson));
-      setSupplierOptions(unwrap(supplierJson));
-      setUnitOptions(unwrap(unitJson));
-      setCategoryOptions(unwrap(categoryJson));
-      setProjectOptions(unwrap(projectJson));
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Gagal memuat data master.");
-    } finally {
-      setLoadingOptions(false);
-    }
-  };
 
-  const openModal = async () => {
-    setSelectedBoqId("");
-    setSelectedProjectId("");
-    setSelectedClusterId("");
-    setClusterOptions([]);
-    setNomorSuratJalan("");
-    setSelectedGudangTujuanId("");
-    setTanggalMasuk("");
-    setKendaraanNamaTeks("");
-    setKendaraanNoPolisTeks("");
-    setDriverNamaTeks("");
-    setSelectedAsalTipe("");
-    setSelectedSupplierId("");
-    setSelectedGudangAsalId("");
-    setIsVendorManual(false);
-    setPengirimEksternalNama("");
-    setPicPemohon("");
-    setModalItems([]);
-    resetDraftItem();
-    setEditModalOpen(false);
-    setEditingId(null);
-    setEditDraftItem(null);
-    setFormError(null);
-    setKondisiError(null);
-    setEditKondisiError(null);
-    setSuratJalanPdf(null);
-    setSuratJalanPdfUrl("");
-    setSuratJalanPdfDataUrl("");
-    setSuratJalanPdfInline(false);
-    setPdfUploadError(null);
-    setShowPreviewModal(false);
-    setSelectedBoqMeta({ boq_number: "", kode_tiket: "", project_name: "" });
-    setBoqItemsDetail([]);
-    setModalOpen(true);
-    await loadOptions();
-  };
 
-  useEffect(() => {
-    let cancelled = false;
-    setSelectedClusterId("");
-    setClusterOptions([]);
-    setSelectedBoqId("");
-    setBoqItemsDetail([]);
 
-    if (!selectedProjectId) {
-      setLoadingClusters(false);
-      return () => { cancelled = true; };
-    }
 
-    const loadClusters = async () => {
-      setLoadingClusters(true);
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-        const res = await get(`${baseUrl}/api/clusters?project_id=${encodeURIComponent(selectedProjectId)}`);
-        if (!res.ok) throw new Error("Gagal mengambil daftar cluster.");
-        const json = await res.json();
-        const rows = Array.isArray(json?.data) ? json.data : [];
-        if (!cancelled) setClusterOptions(rows);
-      } catch (err) {
-        if (!cancelled) {
-          setClusterOptions([]);
-          setFormError(err instanceof Error ? err.message : "Gagal mengambil daftar cluster.");
-        }
-      } finally {
-        if (!cancelled) setLoadingClusters(false);
-      }
-    };
 
-    loadClusters();
-    return () => { cancelled = true; };
-  }, [selectedProjectId, get]);
 
-  useEffect(() => {
-    let cancelled = false;
-    setSelectedBoqId("");
-    setBoqItemsDetail([]);
-    if (!selectedProjectId || !selectedClusterId) return () => { cancelled = true; };
 
-    const loadActiveBoq = async () => {
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-        const params = new URLSearchParams({
-          projectId: selectedProjectId,
-          clusterId: selectedClusterId,
-          status: "aktif",
-          limit: "100",
-        });
-        const res = await get(`${baseUrl}/api/boqs?${params.toString()}`);
-        if (!res.ok) throw new Error("Gagal mengambil BOQ aktif untuk cluster ini.");
-        const json = await res.json();
-        const rows = Array.isArray(json?.data) ? json.data : Array.isArray(json?.data?.data) ? json.data.data : [];
-        const scopedRows = rows.filter((row: ApiBoqRow) =>
-          String(row.cluster_id ?? row.clusterId ?? row.cluster?.clusterId ?? row.cluster?.cluster_id ?? "") === String(selectedClusterId)
-        );
-        if (cancelled) return;
-        if (scopedRows.length === 0) {
-          setFormError("Tidak ada BOQ aktif untuk cluster yang dipilih.");
-          return;
-        }
-        if (scopedRows.length > 1) {
-          setFormError("Ditemukan lebih dari satu BOQ aktif untuk cluster ini. Hubungi administrator.");
-          return;
-        }
-        setSelectedBoqId(String(scopedRows[0].boq_id ?? scopedRows[0].id ?? ""));
-      } catch (err) {
-        if (!cancelled) setFormError(err instanceof Error ? err.message : "Gagal mengambil BOQ aktif.");
-      }
-    };
 
-    loadActiveBoq();
-    return () => { cancelled = true; };
-  }, [selectedProjectId, selectedClusterId, get]);
 
-  useEffect(() => {
-    if (!selectedBoqId) {
-      setBoqItemsDetail([]);
-      return;
-    }
-    let cancelled = false;
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-    const fetchBoqDetail = async () => {
-      try {
-        const res = await get(`${baseUrl}/api/boqs/${selectedBoqId}`);
-        if (!res.ok) return;
-        const json = await res.json();
-        const boq = json?.data;
-        if (!boq || !Array.isArray(boq.items)) return;
-        if (cancelled) return;
-        setBoqItemsDetail(
-          boq.items.map((item: any) => ({
-            barang_id: String(item.barang_id || item.id || ""),
-            itemCode: item.itemCode || item.barang?.kode_perangkat || "",
-            itemName: item.itemName || item.barang?.nama_barang || "",
-          }))
-        );
-      } catch {
-        // ignore BOQ detail fetch error
-      }
-    };
-    fetchBoqDetail();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedBoqId, get]);
 
-  const handlePdfChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    // Direset supaya file yang sama bisa dipilih ulang kalau staf ganti file.
-    e.target.value = "";
-    if (!file) return;
 
-    if (file.type !== "application/pdf") {
-      setFormError("File surat jalan harus berformat PDF.");
-      return;
-    }
 
-    setFormError(null);
-    setPdfUploadError(null);
-    setSuratJalanPdf(file);
-    setSuratJalanPdfUrl("");
-    setSuratJalanPdfInline(false);
 
-    // PDF dibaca menjadi Data URL (Base64) agar tetap bisa dilampirkan lewat
-    // payload walau endpoint upload sedang bermasalah.
-    let dataUrl = "";
-    try {
-      dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-        reader.onerror = () => reject(reader.error || new Error("Gagal membaca file PDF."));
-        reader.readAsDataURL(file);
-      });
-    } catch {
-      dataUrl = "";
-    }
-    setSuratJalanPdfDataUrl(dataUrl);
 
-    setUploadingPdf(true);
 
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const formData = new FormData();
-      formData.append("file", file);
 
-      // Endpoint upload wajib token, jadi request dikirim lewat useApi()
-      // supaya header Authorization ikut terbawa.
-      const response = await post(`${baseUrl}/api/upload`, formData);
 
-      if (!response.ok) {
-        const err = await response.json().catch(() => null);
-        throw new Error(err?.message || "Gagal upload PDF surat jalan.");
-      }
 
-      const result = await response.json();
-      const url = result?.data?.url || result?.url;
-      if (!url) throw new Error("URL file tidak ditemukan dari respons upload.");
-
-      setSuratJalanPdfUrl(url);
-      setSuratJalanPdfInline(false);
-    } catch (err) {
-      setSuratJalanPdfUrl("");
-
-      if (!dataUrl) {
-        setSuratJalanPdf(null);
-        setSuratJalanPdfDataUrl("");
-        setSuratJalanPdfInline(false);
-        setPdfUploadError(
-          err instanceof Error ? err.message : "Gagal upload PDF surat jalan."
-        );
-      } else if (file.size > MAX_INLINE_PDF_BYTES) {
-        setSuratJalanPdf(null);
-        setSuratJalanPdfDataUrl("");
-        setSuratJalanPdfInline(false);
-        setPdfUploadError(
-          "Gagal upload PDF dan ukuran file terlalu besar untuk dikirim sebagai lampiran langsung. Silakan pilih ulang file PDF-nya."
-        );
-      } else {
-        // Fallback: PDF tetap terpasang dan akan dikirim sebagai Base64 di payload.
-        setSuratJalanPdfInline(true);
-        setPdfUploadError(
-          "Server upload tidak dapat dihubungi. PDF akan tetap dilampirkan langsung pada pengajuan inbound ini."
-        );
-      }
-    } finally {
-      setUploadingPdf(false);
-    }
-  };
-
-  const removeModalItem = (id: string) => {
-    setModalItems((prev) => prev.filter((row) => row.id !== id));
-  };
-
-  const resetDraftItem = () => {
-    setDraftItem({
-      id: "draft",
-      barang_id: "",
-      kode_perangkat: "",
-      nama_barang: "",
-      qtySuratJalan: 1,
-      qtyAktual: 1,
-      kondisi: "",
-      serialNumber: "",
-      satuan_id: "",
-      satuan_label: "",
-      kategori_id: "",
-      catatan: "",
-      is_di_luar_boq: true,
-      is_non_master: false,
-      fotos: [],
-      fotoPreview: null,
-      uploadingFoto: false,
-      fotoError: null,
-    });
-    setKondisiError(null);
-  };
-
-  const handleCheckDraftItem = () => {
-    const row = draftItem;
-    if (row.qtySuratJalan <= 0 || !row.satuan_id) {
-      setFormError("Lengkapi Qty Surat Jalan dan Satuan pada form draft barang.");
-      return;
-    }
-    if (row.is_non_master) {
-      if (!row.nama_barang.trim() || !row.kategori_id) {
-        setFormError("Lengkapi Nama Barang dan Kategori untuk barang non-master.");
-        return;
-      }
-    } else {
-      if (!row.barang_id) {
-        setFormError("Pilih Barang / SKU pada form draft barang.");
-        return;
-      }
-    }
-    if (!row.kondisi) {
-      setKondisiError("Kondisi barang wajib dipilih.");
-      return;
-    }
-
-    setFormError(null);
-    setKondisiError(null);
-    setModalItems((prev) => [
-      ...prev,
-      {
-        ...row,
-        id: `${Date.now()}-${prev.length}`,
-      },
-    ]);
-    resetDraftItem();
-  };
-
-  const handleEditModalItem = (id: string) => {
-    const row = modalItems.find((r) => r.id === id);
-    if (!row) return;
-    setEditingId(id);
-    setEditDraftItem({
-      ...row,
-      fotoPreview: null,
-      uploadingFoto: false,
-      fotoError: null,
-    });
-    setEditModalOpen(true);
-    setFormError(null);
-    setEditKondisiError(null);
-  };
-
-  const handleSaveEditItem = () => {
-    if (!editingId || !editDraftItem) return;
-    const row = editDraftItem;
-    if (row.qtySuratJalan <= 0 || !row.satuan_id) {
-      setFormError("Lengkapi Qty Surat Jalan dan Satuan pada item yang diedit.");
-      return;
-    }
-    if (row.is_non_master) {
-      if (!row.nama_barang.trim() || !row.kategori_id) {
-        setFormError("Lengkapi Nama Barang dan Kategori untuk barang non-master.");
-        return;
-      }
-    } else {
-      if (!row.barang_id) {
-        setFormError("Pilih Barang / SKU pada item yang diedit.");
-        return;
-      }
-    }
-    if (!row.kondisi) {
-      setEditKondisiError("Kondisi barang wajib dipilih.");
-      return;
-    }
-
-    setFormError(null);
-    setEditKondisiError(null);
-    setModalItems((prev) => prev.map((r) => (r.id === editingId ? { ...row, id: editingId } : r)));
-    setEditModalOpen(false);
-    setEditingId(null);
-    setEditDraftItem(null);
-  };
-
-  const handleCancelEditItem = () => {
-    setEditModalOpen(false);
-    setEditingId(null);
-    setEditDraftItem(null);
-    setFormError(null);
-  };
-
-  const setEditDraftItemNama = (value: string) => {
-    setEditDraftItem((prev) => (prev ? { ...prev, nama_barang: value } : prev));
-  };
-
-  const setEditDraftItemKategori = (value: string) => {
-    setEditDraftItem((prev) => (prev ? { ...prev, kategori_id: value } : prev));
-  };
-
-  const setEditDraftItemSatuan = (value: string) => {
-    const selected = unitOptions.find((u) => String(u.satuan_id) === String(value));
-    setEditDraftItem((prev) =>
-      prev
-        ? {
-            ...prev,
-            satuan_id: value,
-            satuan_label: selected?.kode_satuan || "",
-          }
-        : prev
-    );
-  };
-
-  const pickEditDraftItem = (picked: BarangPickerItem) => {
-    setEditDraftItem((prev) => {
-      if (!prev) return prev;
-      if (!picked.id) {
-        return {
-          ...prev,
-          barang_id: "",
-          kode_perangkat: picked.kode_perangkat,
-          nama_barang: "",
-          satuan_id: "",
-          satuan_label: "",
-          is_di_luar_boq: true,
-        };
-      }
-      const satuanId = picked.satuan_default_id ? String(picked.satuan_default_id) : "";
-      const isInBoq = boqItemsDetail.some(
-        (boqItem) => String(boqItem.barang_id) === String(picked.id)
-      );
-      return {
-        ...prev,
-        barang_id: picked.id,
-        kode_perangkat: picked.kode_perangkat,
-        nama_barang: picked.nama_barang,
-        satuan_id: satuanId,
-        satuan_label: picked.satuan_default_kode || "",
-        is_di_luar_boq: !isInBoq,
-      };
-    });
-  };
-
-  const setEditDraftItemQty = (value: number) => {
-    setEditDraftItem((prev) => (prev ? { ...prev, qtySuratJalan: Math.max(0, value) } : prev));
-  };
-
-  const setEditDraftItemQtyAktual = (value: number) => {
-    setEditDraftItem((prev) => (prev ? { ...prev, qtyAktual: Math.max(0, value) } : prev));
-  };
-
-  const setEditDraftItemKondisi = (value: string) => {
-    setEditDraftItem((prev) => (prev ? { ...prev, kondisi: value } : prev));
-  };
-
-  const setEditDraftItemSerialNumber = (value: string) => {
-    setEditDraftItem((prev) => (prev ? { ...prev, serialNumber: value } : prev));
-  };
-
-  const setEditDraftItemCatatan = (value: string) => {
-    setEditDraftItem((prev) => (prev ? { ...prev, catatan: value } : prev));
-  };
-
-  const toggleEditDraftItemNonMaster = () => {
-    setEditDraftItem((prev) => {
-      if (!prev) return prev;
-      const nextNonMaster = !prev.is_non_master;
-      if (nextNonMaster) {
-        return {
-          ...prev,
-          is_non_master: true,
-          barang_id: "",
-          kode_perangkat: "",
-          nama_barang: "",
-          satuan_id: "",
-          satuan_label: "",
-          kategori_id: "",
-          is_di_luar_boq: true,
-        };
-      }
-      return {
-        ...prev,
-        is_non_master: false,
-        nama_barang: "",
-        kategori_id: "",
-      };
-    });
-  };
-
-  async function handleEditDraftFotoUpload(file: File) {
-    if (!editDraftItem) return;
-    setEditDraftItem((prev) => (prev ? { ...prev, fotoError: null } : prev));
-
-    const previewUrl = URL.createObjectURL(file);
-    setEditDraftItem((prev) => {
-      if (!prev) return prev;
-      const previous = prev.fotoPreview;
-      if (previous) URL.revokeObjectURL(previous);
-      return { ...prev, fotos: [], fotoPreview: previewUrl, uploadingFoto: true };
-    });
-
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const uploadRes = await post(`${baseUrl}/api/upload`, formData);
-      if (!uploadRes.ok) {
-        const err = await uploadRes.json().catch(() => null);
-        throw new Error(err?.message || "Gagal upload foto.");
-      }
-
-      const uploadData = await uploadRes.json();
-      const fotoUrl = uploadData?.data?.url || uploadData?.url;
-      if (!fotoUrl) throw new Error("URL foto tidak ditemukan.");
-
-      setEditDraftItem((prev) => {
-        if (!prev) return prev;
-        const previous = prev.fotoPreview;
-        if (previous) URL.revokeObjectURL(previous);
-        return {
-          ...prev,
-          fotos: [{ foto_id: `${Date.now()}`, url: fotoUrl, filename: file.name }],
-          fotoPreview: null,
-          uploadingFoto: false,
-        };
-      });
-    } catch (err) {
-      setEditDraftItem((prev) =>
-        prev
-          ? {
-              ...prev,
-              fotoError: err instanceof Error ? err.message : "Gagal upload foto.",
-              uploadingFoto: false,
-            }
-          : prev
-      );
-    }
-  }
-
-  function handleEditDraftFotoDelete(fotoId: string | number) {
-    setEditDraftItem((prev) => {
-      if (!prev) return prev;
-      const nextFotos = prev.fotos.filter((f) => String(f.foto_id) !== String(fotoId));
-      const nextPreview = prev.fotoPreview && prev.fotos.find((f) => String(f.foto_id) === String(fotoId))
-        ? null
-        : prev.fotoPreview;
-      if (nextPreview) URL.revokeObjectURL(nextPreview);
-      return { ...prev, fotos: nextFotos, fotoPreview: nextPreview };
-    });
-  }
-
-  const setDraftItemNama = (value: string) => {
-    setDraftItem((prev) => ({ ...prev, nama_barang: value }));
-  };
-
-  const setDraftItemKategori = (value: string) => {
-    setDraftItem((prev) => ({ ...prev, kategori_id: value }));
-  };
-
-  const setDraftItemSatuan = (value: string) => {
-    const selected = unitOptions.find((u) => String(u.satuan_id) === String(value));
-    setDraftItem((prev) => ({
-      ...prev,
-      satuan_id: value,
-      satuan_label: selected?.kode_satuan || "",
-    }));
-  };
-
-  const pickDraftItem = (picked: BarangPickerItem) => {
-    setDraftItem((prev) => {
-      if (!picked.id) {
-        return {
-          ...prev,
-          barang_id: "",
-          kode_perangkat: picked.kode_perangkat,
-          nama_barang: "",
-          satuan_id: "",
-          satuan_label: "",
-          is_di_luar_boq: true,
-        };
-      }
-      const satuanId = picked.satuan_default_id ? String(picked.satuan_default_id) : "";
-      const isInBoq = boqItemsDetail.some(
-        (boqItem) => String(boqItem.barang_id) === String(picked.id)
-      );
-      return {
-        ...prev,
-        barang_id: picked.id,
-        kode_perangkat: picked.kode_perangkat,
-        nama_barang: picked.nama_barang,
-        satuan_id: satuanId,
-        satuan_label: picked.satuan_default_kode || "",
-        is_di_luar_boq: !isInBoq,
-      };
-    });
-  };
-
-  const setDraftItemQty = (value: number) => {
-    setDraftItem((prev) => ({ ...prev, qtySuratJalan: Math.max(0, value) }));
-  };
-
-  const setDraftItemQtyAktual = (value: number) => {
-    setDraftItem((prev) => ({ ...prev, qtyAktual: Math.max(0, value) }));
-  };
-
-  const setDraftItemKondisi = (value: string) => {
-    setDraftItem((prev) => ({ ...prev, kondisi: value }));
-  };
-
-  const setDraftItemSerialNumber = (value: string) => {
-    setDraftItem((prev) => ({ ...prev, serialNumber: value }));
-  };
-
-  const setDraftItemCatatan = (value: string) => {
-    setDraftItem((prev) => ({ ...prev, catatan: value }));
-  };
-
-  const toggleDraftItemNonMaster = () => {
-    setDraftItem((prev) => {
-      const nextNonMaster = !prev.is_non_master;
-      if (nextNonMaster) {
-        return {
-          ...prev,
-          is_non_master: true,
-          barang_id: "",
-          kode_perangkat: "",
-          nama_barang: "",
-          satuan_id: "",
-          satuan_label: "",
-          kategori_id: "",
-          is_di_luar_boq: true,
-        };
-      }
-      return {
-        ...prev,
-        is_non_master: false,
-        nama_barang: "",
-        kategori_id: "",
-      };
-    });
-  };
-
-  async function handleDraftFotoUpload(file: File) {
-    setDraftItem((prev) => ({ ...prev, fotoError: null }));
-
-    const previewUrl = URL.createObjectURL(file);
-    setDraftItem((prev) => {
-      const previous = prev.fotoPreview;
-      if (previous) URL.revokeObjectURL(previous);
-      return { ...prev, fotos: [], fotoPreview: previewUrl, uploadingFoto: true };
-    });
-
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const uploadRes = await post(`${baseUrl}/api/upload`, formData);
-      if (!uploadRes.ok) {
-        const err = await uploadRes.json().catch(() => null);
-        throw new Error(err?.message || "Gagal upload foto.");
-      }
-
-      const uploadData = await uploadRes.json();
-      const fotoUrl = uploadData?.data?.url || uploadData?.url;
-      if (!fotoUrl) throw new Error("URL foto tidak ditemukan.");
-
-      setDraftItem((prev) => {
-        const previous = prev.fotoPreview;
-        if (previous) URL.revokeObjectURL(previous);
-        return {
-          ...prev,
-          fotos: [{ foto_id: `${Date.now()}`, url: fotoUrl, filename: file.name }],
-          fotoPreview: null,
-          uploadingFoto: false,
-        };
-      });
-    } catch (err) {
-      setDraftItem((prev) => ({
-        ...prev,
-        fotoError: err instanceof Error ? err.message : "Gagal upload foto.",
-        uploadingFoto: false,
-      }));
-    }
-  }
-
-  function handleDraftFotoDelete(fotoId: string | number) {
-    setDraftItem((prev) => {
-      const nextFotos = prev.fotos.filter((f) => String(f.foto_id) !== String(fotoId));
-      const nextPreview = prev.fotoPreview && prev.fotos.find((f) => String(f.foto_id) === String(fotoId))
-        ? null
-        : prev.fotoPreview;
-      if (nextPreview) URL.revokeObjectURL(nextPreview);
-      return { ...prev, fotos: nextFotos, fotoPreview: nextPreview };
-    });
-  }
-
-  useEffect(() => {
-    if (!boqItemsDetail.length) {
-      setModalItems((prev) =>
-        prev.map((row) => ({
-          ...row,
-          is_di_luar_boq: row.barang_id ? true : row.is_di_luar_boq,
-        }))
-      );
-      return;
-    }
-    setModalItems((prev) =>
-      prev.map((row) => {
-        if (!row.barang_id) return row;
-        const isInBoq = boqItemsDetail.some(
-          (boqItem) => String(boqItem.barang_id) === String(row.barang_id)
-        );
-        return {
-          ...row,
-          is_di_luar_boq: !isInBoq,
-        };
-      })
-    );
-  }, [boqItemsDetail]);
-
-  const selectedGudangTujuan = warehouseOptions.find((w) => String(w.gudang_id) === selectedGudangTujuanId);
-
-  // Gudang tidak dibatasi per project, tapi gudang dadakan (transit) yang ter-link ke
-  // project terpilih diberi label tambahan supaya staff mudah mengenali.
-  const gudangTujuanOptions = warehouseOptions.map((w) => {
-    const isTransit = w.tipe === "dadakan";
-    const transitProjectIni =
-      isTransit && w.project_id != null && String(w.project_id) === String(selectedProjectId);
-
-    let label = w.nama_gudang;
-    if (transitProjectIni) {
-      label += " (Transit - Project Ini)";
-    } else if (isTransit) {
-      label += " (Transit)";
-    }
-
-    return { gudang_id: w.gudang_id, label };
-  });
-
-  const kendaraanValid = kendaraanNamaTeks.trim().length > 0;
-  const noPolisiValid = kendaraanNoPolisTeks.trim().length > 0;
-  const driverValid = driverNamaTeks.trim().length > 0;
-
-  const isRowValid = (row: ModalItemRow) => {
-    if (row.qtySuratJalan <= 0 || !row.satuan_id) return false;
-    if (row.is_non_master) {
-      return row.nama_barang.trim().length > 0 && !!row.kategori_id;
-    }
-    return !!row.barang_id;
-  };
-
-  const canSubmitModal =
-    nomorSuratJalan.trim().length > 0 &&
-    selectedGudangTujuanId &&
-    tanggalMasuk &&
-    selectedProjectId &&
-    selectedClusterId &&
-    selectedBoqId &&
-    selectedAsalTipe &&
-    (selectedAsalTipe === "internal"
-      ? selectedGudangAsalId
-      : selectedSupplierId || pengirimEksternalNama.trim()) &&
-    kendaraanValid &&
-    noPolisiValid &&
-    driverValid &&
-    modalItems.length > 0 &&
-    modalItems.every(isRowValid) &&
-    modalItems.every((row) => !!row.kondisi);
-
-  const validModalItems = useMemo(
-    () => modalItems.filter(isRowValid),
-    [modalItems],
-  );
-
-  const totalModalQty = useMemo(
-    () => validModalItems.reduce((sum, row) => sum + row.qtySuratJalan, 0),
-    [validModalItems],
-  );
-
-  const handleSubmitInbound = async () => {
-    if (!selectedProjectId) {
-      setFormError("Pilih project terlebih dahulu.");
-      return;
-    }
-
-    if (!selectedClusterId) {
-      setFormError("Pilih cluster terlebih dahulu.");
-      return;
-    }
-
-    if (!selectedBoqId) {
-      setFormError("Tidak ada BOQ aktif untuk cluster yang dipilih.");
-      return;
-    }
-
-    if (!selectedGudangTujuanId) {
-      setFormError("Pilih gudang tujuan terlebih dahulu.");
-      return;
-    }
-
-    // Pesan eksplisit supaya staff tahu apa yang kurang, bukan hanya tombol yang
-    // tiba-tiba tidak bisa diklik.
-    const kurangKendaraan = [
-      !kendaraanValid && "nama kendaraan",
-      !noPolisiValid && "nomor polisi",
-      !driverValid && "nama driver",
-    ].filter(Boolean);
-
-    if (kurangKendaraan.length > 0) {
-      setFormError(`Lengkapi dulu: ${kurangKendaraan.join(", ")}.`);
-      return;
-    }
-
-    if (!canSubmitModal) {
-      setFormError("Lengkapi seluruh data inbound, termasuk minimal satu barang beserta kondisinya.");
-      return;
-    }
-
-    setFormError(null);
-    setShowPreviewModal(true);
-  };
-
-  const handleConfirmSaveInbound = async () => {
-    if (!canSubmitModal) {
-      setShowPreviewModal(false);
-      setFormError("Lengkapi seluruh data inbound, termasuk minimal satu barang beserta kondisinya.");
-      return;
-    }
-    setFormError(null);
-    setSubmitting(true);
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const payload = {
-        tipe: "inbound",
-        nomor_surat_jalan: nomorSuratJalan.trim(),
-        gudang_tujuan_id: selectedGudangTujuanId,
-        tanggal: tanggalMasuk,
-        project_id: selectedProjectId || null,
-        cluster_id: selectedClusterId || null,
-        tujuan_tipe: "gudang",
-        tipe_pengirim: selectedAsalTipe || null,
-        supplier_id: selectedAsalTipe === "external" && !isVendorManual ? selectedSupplierId || null : null,
-        gudang_asal_id: selectedAsalTipe === "internal" ? selectedGudangAsalId || null : null,
-        pengirim_eksternal_nama: selectedAsalTipe === "external" && isVendorManual ? pengirimEksternalNama.trim() || null : null,
-        kendaraan_nama_teks: kendaraanNamaTeks.trim() || null,
-        kendaraan_no_polisi_teks: kendaraanNoPolisTeks.trim() || null,
-        driver_nama_teks: driverNamaTeks.trim() || null,
-pic_pemohon_nama: picPemohon.trim() || null,
-        boq_id: selectedBoqId ? String(selectedBoqId) : null,
-        notes: null,
-        kategori_approval: "manual_override",
-        surat_jalan_url: suratJalanPdfUrl || suratJalanPdfDataUrl || null,
-        items: modalItems.map((row) => ({
-          barang_id: row.is_non_master ? "" : row.barang_id,
-          is_non_master: row.is_non_master,
-          nama_barang_teks: row.is_non_master ? row.nama_barang.trim() : null,
-          kategori_id: row.is_non_master ? row.kategori_id : null,
-          qty: row.qtySuratJalan,
-          qty_diterima: row.qtyAktual != null ? row.qtyAktual : null,
-          satuan_id: row.satuan_id,
-          kondisi: row.kondisi || "baik",
-          kondisi_diterima: row.kondisi || null,
-          serial_number: row.serialNumber || null,
-          foto_url: row.fotos.length > 0 ? row.fotos[0].url : null,
-          is_kelebihan: false,
-          is_di_luar_boq: row.is_non_master ? true : row.is_di_luar_boq,
-          catatan: row.catatan?.trim() || null,
-          catatan_penerimaan: row.catatan?.trim() || null,
-        })),
-      };
-
-      const response = await post(`${baseUrl}/api/surat-jalan/inbound/staff`, payload);
-      if (!response.ok) {
-        let result: unknown = null;
-        let rawText: string | null = null;
-
-        try {
-          result = await response.json();
-        } catch {
-          try {
-            rawText = await response.text();
-          } catch {
-            rawText = null;
-          }
-          result = null;
-        }
-
-        const resultObj = result && typeof result === "object" ? result : null;
-        const message =
-          (resultObj as any)?.message ||
-          rawText ||
-          "Gagal membuat pengajuan inbound.";
-
-        const validationDetails =
-          (resultObj as any)?.errors || (resultObj as any)?.details || null;
-
-        const fullMessage = validationDetails
-          ? `${message} Detail: ${JSON.stringify(validationDetails)}`
-          : message;
-
-        throw new Error(fullMessage);
-      }
-
-      setShowPreviewModal(false);
-      setShowSuccessModal(true);
-      setModalOpen(false);
-      setToast({ message: "Surat Jalan Inbound Berhasil Disimpan", type: "success" });
-      await fetchList();
-    } catch (err) {
-      setShowPreviewModal(false);
-      setFormError(err instanceof Error ? err.message : "Terjadi kesalahan saat membuat pengajuan inbound.");
-      setToast({ message: err instanceof Error ? err.message : "Gagal membuat pengajuan inbound.", type: "error" });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  function handleSuccessModalClose() {
-    setShowSuccessModal(false);
-  }
-
-  useEffect(() => {
-    return () => {
-      Object.values(fotoPreviewRef.current).forEach((url) => {
-        if (url) URL.revokeObjectURL(url);
-      });
-      fotoPreviewRef.current = {};
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 4000);
-    return () => clearTimeout(timer);
-  }, [toast]);
-
-  const statusFilterOptions = useMemo(() => {
-    const seen = new Set<string>();
-    const options: { value: string; label: string }[] = [];
-    list.forEach((sj) => {
-      if (seen.has(sj.status)) return;
-      seen.add(sj.status);
-      options.push({ value: sj.status, label: STATUS_META[sj.status]?.label || sj.status });
-    });
-    return options;
-  }, [list]);
-
-  const gudangTujuanFilterOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          list
-            .map((sj) => sj.gudang_tujuan?.nama_gudang)
-            .filter((nama): nama is string => Boolean(nama))
-        )
-      ).sort((a, b) => a.localeCompare(b)),
-    [list]
-  );
-
-  const isFilterActive =
-    searchQuery.trim() !== "" || statusFilter !== "" || gudangTujuanFilter !== "";
-
-  const filteredList = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    return list.filter((sj) => {
-      if (query) {
-        const nomorMatch = (sj.nomor_surat_jalan || "").toLowerCase().includes(query);
-        const asalMatch = [sj.gudang_asal?.nama_gudang, sj.supplier?.nama, sj.pengirim_eksternal_nama]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-          .includes(query);
-        if (!nomorMatch && !asalMatch) return false;
-      }
-      if (statusFilter && sj.status !== statusFilter) return false;
-      if (gudangTujuanFilter && sj.gudang_tujuan?.nama_gudang !== gudangTujuanFilter) return false;
-      return true;
-    });
-  }, [list, searchQuery, statusFilter, gudangTujuanFilter]);
-
-  const mobileItemsInbound1: MobileCardItem[] = filteredList.map((sj) => {
+  const mobileItemsInbound1: MobileCardItem[] = filtered.map((sj) => {
     const meta = STATUS_META[sj.status] || STATUS_META.draft_diajukan;
     const totalUnit = sj.items.reduce((sum, i) => sum + Number(i.qty || 0), 0);
-    const tujuanText = sj.gudang_tujuan?.nama_gudang || "-";
-    const tanggal = new Date(sj.created_at).toLocaleDateString("id-ID", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-    });
-    const clusterLabel =
-      sj.boq?.cluster?.nama_cluster ||
-      sj.boq?.cluster?.cluster_id ||
-      sj.cluster_id ||
-      "-";
+    const tujuanText = getGudangTujuanText(sj);
+    const tanggal = getTanggalText(sj);
+    const clusterLabel = getClusterText(sj);
 
     const tipePengirimLabel = sj.tipe_pengirim === "internal" ? "Internal" : sj.tipe_pengirim === "external" ? "External" : "-";
-    const kendaraanLabel =
-      sj.kendaraan_teks ||
-      (sj.kendaraan
-        ? sj.kendaraan.merk && sj.kendaraan.merk.trim()
-          ? `${sj.kendaraan.merk} - ${sj.kendaraan.jenis_kendaraan}`
-          : sj.kendaraan.jenis_kendaraan
-        : null) ||
-      "-";
+    const pengirimText = getPengirimText(sj);
     const fields: MobileCardField[] = [
       { label: "Tanggal", value: tanggal },
+      { label: "Pengirim", value: `${pengirimText} (${tipePengirimLabel})` },
       { label: "Tujuan", value: tujuanText },
-      { label: "Project", value: sj.project?.nama_project || "-" },
+      { label: "Project", value: getProjectText(sj) },
       { label: "Cluster", value: clusterLabel },
       { label: "Item", value: `${totalUnit} unit` },
     ];
@@ -1655,87 +379,229 @@ pic_pemohon_nama: picPemohon.trim() || null,
     };
   });
 
-  const mobileItemsInbound2: MobileCardItem[] = modalItems.map((row) => {
-    const kondisiLabel = KONDISI_OPTIONS.find((k) => k.value === row.kondisi)?.label || row.kondisi || "-";
-    const namaBarang = row.is_non_master ? row.nama_barang : `${row.kode_perangkat} - ${row.nama_barang}`;
 
-    const fields: MobileCardField[] = [
-      { label: "Qty SJ", value: String(row.qtySuratJalan) },
-      { label: "Qty Aktual", value: String(row.qtyAktual) },
-      { label: "Serial", value: row.serialNumber || "-" },
-      { label: "Catatan", value: row.catatan || "-" },
-    ];
 
-    const actions = (
-      <div className="grid grid-cols-2 gap-2">
-        <button type="button" onClick={() => handleEditModalItem(row.id)} className="flex min-h-11 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-sm font-semibold text-blue-700 hover:bg-blue-100">Edit</button>
-        <button type="button" onClick={() => removeModalItem(row.id)} className="flex min-h-11 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-sm font-semibold text-rose-700 hover:bg-rose-100">Hapus</button>
-      </div>
-    );
 
-    return {
-      key: String(row.id),
-      title: namaBarang,
-      badge: <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ${KONDISI_TONE[row.kondisi] || "bg-gray-100 text-gray-600"}`}>{kondisiLabel}</span>,
-      fields,
-      actions,
-    };
-  });
-
-  const previewVendorLabel = (() => {
-    if (selectedAsalTipe === "internal") {
-      const asal = warehouseOptions.find((w) => String(w.gudang_id) === selectedGudangAsalId);
-      return asal ? `Internal — ${asal.nama_gudang}` : "Internal";
-    }
-    if (selectedAsalTipe === "external") {
-      if (isVendorManual) return pengirimEksternalNama.trim();
-      const supplier = supplierOptions.find((s) => String(s.supplier_id) === selectedSupplierId);
-      return supplier ? `${supplier.kode} - ${supplier.nama}` : "";
-    }
-    return "";
-  })();
-
-  const previewGudangTujuanLabel =
-    gudangTujuanOptions.find((w) => String(w.gudang_id) === selectedGudangTujuanId)?.label || "";
-
-  const previewTanggalLabel = (() => {
-    if (!tanggalMasuk) return "";
-    const [year, month, day] = tanggalMasuk.split("-").map(Number);
-    if (!year || !month || !day) return tanggalMasuk;
-    return new Date(year, month - 1, day).toLocaleDateString("id-ID", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-    });
-  })();
-
-  const previewItems: InboundPreviewRow[] = modalItems.map((row) => ({
-    kode: row.is_non_master ? "Non-master" : row.kode_perangkat,
-    nama: row.nama_barang,
-    qty: row.qtySuratJalan,
-    satuan: row.satuan_label,
-    kondisi: row.kondisi,
-    catatan: row.catatan,
-    fotoUrl: row.fotos.length > 0 ? row.fotos[0].url : null,
-  }));
 
   return (
     <div className="px-8 py-6">
-      <div className="mb-6 flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Penerimaan (Inbound)</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Daftar Surat Jalan barang masuk yang perlu dicocokkan & dicatat kondisinya
-          </p>
-        </div>
-        <Button
-          data-testid="inbound-open-modal"
-          onClick={openModal}
-          className="h-auto rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F]"
-        >
-          <Plus size={16} className="mr-2" />
-          Input Inbound
-        </Button>
+      {/* Toolbar: judul + aksi di kiri, kontrol di kanan (tumpuk di layar kecil) */}
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-3xl font-bold text-gray-900">Penerimaan (Inbound)</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Daftar Surat Jalan barang masuk yang perlu dicocokkan & dicatat kondisinya
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Cari nomor SJ / project..."
+                className="w-full rounded-lg border border-[#F3D9C7] bg-white py-2 pl-9 pr-3 text-sm text-gray-700 placeholder:text-gray-400 focus:border-[#E8632C] focus:outline-none sm:w-64"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative" ref={filterRef}>
+                <button
+                  type="button"
+                  onClick={() => (filterOpen ? closeFilterPanel() : setFilterOpen(true))}
+                  aria-expanded={filterOpen}
+                  className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                    activeFilterCount > 0
+                      ? "border-[#E8632C] bg-[#FDECE1] text-[#E8632C]"
+                      : "border-[#F3D9C7] bg-white text-gray-700 hover:border-[#E8632C] hover:text-[#E8632C]"
+                  }`}
+                >
+                  <Filter size={15} />
+                  Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+                  <ChevronDown size={14} className={filterOpen ? "rotate-180 transition-transform" : "transition-transform"} />
+                </button>
+
+                {filterOpen && (
+                  <div className="absolute right-0 z-30 mt-2 flex max-h-[26rem] w-[19rem] flex-col rounded-2xl border border-[#F3D9C7] bg-white p-4 shadow-xl">
+                    {/* Isi panel: satu-satunya bagian yang di-scroll bila
+                        kontennya melebihi tinggi panel; tombol di bawah
+                        tidak ikut ter-scroll. Daftar opsi sengaja dirender
+                        inline (bukan absolute) supaya tidak terpotong
+                        overflow container ini. */}
+                    <div className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Status</p>
+                      <div className="mb-4 max-h-40 space-y-1.5 overflow-y-auto pr-1">
+                        {FILTERABLE_STATUSES.map((status) => (
+                          <label key={status} className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={statusFilter.includes(status)}
+                              onChange={() => toggleStatusFilter(status)}
+                              className="h-4 w-4 rounded border-gray-300 accent-[#E8632C]"
+                            />
+                            <span className="truncate">{STATUS_META[status].label}</span>
+                          </label>
+                        ))}
+                      </div>
+
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Tanggal</p>
+                      <div className="mb-4 grid grid-cols-2 gap-2">
+                        <label className="block text-xs text-gray-500">
+                          Dari
+                          <input
+                            type="date"
+                            value={dateFrom}
+                            onChange={(e) => setDateFrom(e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-[#F3D9C7] px-2 py-1.5 text-xs text-gray-700 focus:border-[#E8632C] focus:outline-none"
+                          />
+                        </label>
+                        <label className="block text-xs text-gray-500">
+                          Sampai
+                          <input
+                            type="date"
+                            value={dateTo}
+                            onChange={(e) => setDateTo(e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-[#F3D9C7] px-2 py-1.5 text-xs text-gray-700 focus:border-[#E8632C] focus:outline-none"
+                          />
+                        </label>
+                      </div>
+
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Pengirim</p>
+                      <div className="mb-4">
+                        <button
+                          type="button"
+                          onClick={() => setOpenMultiFilter((v) => (v === "pengirim" ? null : "pengirim"))}
+                          aria-expanded={openMultiFilter === "pengirim"}
+                          className={`flex w-full items-center justify-between gap-2 rounded-lg border px-2 py-1.5 text-left text-xs transition-colors ${
+                            pengirimFilter.length > 0
+                              ? "border-[#E8632C] bg-[#FDECE1] text-[#E8632C]"
+                              : "border-[#F3D9C7] text-gray-700 hover:border-[#E8632C]"
+                          }`}
+                        >
+                          <span className="truncate">
+                            {pengirimFilter.length === 0
+                              ? "Semua pengirim"
+                              : pengirimFilter.length === 1
+                              ? pengirimFilter[0]
+                              : `${pengirimFilter.length} pengirim dipilih`}
+                          </span>
+                          <ChevronDown
+                            size={13}
+                            className={openMultiFilter === "pengirim" ? "shrink-0 rotate-180 transition-transform" : "shrink-0 transition-transform"}
+                          />
+                        </button>
+
+                        {openMultiFilter === "pengirim" && (
+                          <div className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-[#F3D9C7] bg-white p-2">
+                            {pengirimOptions.length === 0 ? (
+                              <p className="text-xs text-gray-400">Tidak ada pengirim.</p>
+                            ) : (
+                              pengirimOptions.map((opt) => (
+                                <label key={opt} className="flex cursor-pointer items-center gap-2 py-1 text-xs text-gray-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={pengirimFilter.includes(opt)}
+                                    onChange={() => togglePengirimFilter(opt)}
+                                    className="h-3.5 w-3.5 rounded border-gray-300 accent-[#E8632C]"
+                                  />
+                                  <span className="truncate">{opt}</span>
+                                </label>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Project</p>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setOpenMultiFilter((v) => (v === "project" ? null : "project"))}
+                          aria-expanded={openMultiFilter === "project"}
+                          className={`flex w-full items-center justify-between gap-2 rounded-lg border px-2 py-1.5 text-left text-xs transition-colors ${
+                            projectFilter.length > 0
+                              ? "border-[#E8632C] bg-[#FDECE1] text-[#E8632C]"
+                              : "border-[#F3D9C7] text-gray-700 hover:border-[#E8632C]"
+                          }`}
+                        >
+                          <span className="truncate">
+                            {projectFilter.length === 0
+                              ? "Semua project"
+                              : projectFilter.length === 1
+                              ? projectFilter[0]
+                              : `${projectFilter.length} project dipilih`}
+                          </span>
+                          <ChevronDown
+                            size={13}
+                            className={openMultiFilter === "project" ? "shrink-0 rotate-180 transition-transform" : "shrink-0 transition-transform"}
+                          />
+                        </button>
+
+                        {openMultiFilter === "project" && (
+                          <div className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-[#F3D9C7] bg-white p-2">
+                            {projectOptions.length === 0 ? (
+                              <p className="text-xs text-gray-400">Tidak ada project.</p>
+                            ) : (
+                              projectOptions.map((opt) => (
+                                <label key={opt} className="flex cursor-pointer items-center gap-2 py-1 text-xs text-gray-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={projectFilter.includes(opt)}
+                                    onChange={() => toggleProjectFilter(opt)}
+                                    className="h-3.5 w-3.5 rounded border-gray-300 accent-[#E8632C]"
+                                  />
+                                  <span className="truncate">{opt}</span>
+                                </label>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Footer: tidak ikut ter-scroll (sticky di bawah panel). */}
+                    <div className="mt-3 flex shrink-0 items-center justify-between gap-2 border-t border-stone-100 pt-3">
+                      <button
+                        type="button"
+                        onClick={resetPanelFilters}
+                        className="text-xs font-medium text-gray-500 hover:text-gray-700"
+                      >
+                        Reset
+                      </button>
+                      <button
+                        type="button"
+                        onClick={closeFilterPanel}
+                        className="rounded-lg bg-[#E8632C] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#D9591F]"
+                      >
+                        Terapkan
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {hasAnyFilter && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-500 hover:border-rose-200 hover:text-rose-600"
+                >
+                  <X size={14} />
+                  Bersihkan filter
+                </button>
+              )}
+
+              <Link href="/staff/inbound/new">
+                <Button
+                  className="h-auto w-full rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F] sm:w-auto sm:ml-auto lg:ml-0"
+                >
+                  <Plus size={16} className="mr-2" />
+                  Input Inbound
+                </Button>
+              </Link>
+            </div>
+          </div>
       </div>
 
       {error && (
@@ -1796,31 +662,18 @@ pic_pemohon_nama: picPemohon.trim() || null,
       <MobileCardList items={mobileItemsInbound1} />
       <div className="rounded-2xl border border-[#F3D9C7] bg-white hidden md:block">
         <div className="overflow-x-auto">
-        <table className="w-full min-w-[1700px] text-sm">
+        <table className="w-full min-w-[1100px] text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+              <th className="w-10 px-2 py-4 font-semibold"></th>
               <th className="px-4 py-4 font-semibold">No</th>
               <th className="px-4 py-4 font-semibold">Tanggal Masuk</th>
               <th className="px-4 py-4 font-semibold">Nomor Surat Jalan</th>
-              <th className="px-4 py-4 font-semibold">Tipe Pengirim</th>
-              <th className="px-4 py-4 font-semibold">Gudang Asal</th>
-              <th className="px-4 py-4 font-semibold">Supplier</th>
-              <th className="px-4 py-4 font-semibold">Nama Vendor Eksternal</th>
+              <th className="px-4 py-4 font-semibold">Pengirim</th>
               <th className="px-4 py-4 font-semibold">Gudang Tujuan</th>
-              <th className="px-4 py-4 font-semibold">PIC Pemohon</th>
-              <th className="px-4 py-4 font-semibold">BOQ / Tiket (otomatis)</th>
               <th className="px-4 py-4 font-semibold">Project</th>
               <th className="px-4 py-4 font-semibold">Cluster</th>
-              <th className="px-4 py-4 font-semibold">Kendaraan</th>
-              <th className="px-4 py-4 font-semibold">No. Polisi</th>
-              <th className="px-4 py-4 font-semibold">Nama Driver</th>
-              <th className="px-4 py-4 font-semibold">Surat Jalan (PDF)</th>
-              <th className="px-4 py-4 font-semibold">Kode Barang</th>
-              <th className="px-4 py-4 font-semibold">Nama Barang</th>
-              <th className="px-4 py-4 font-semibold text-right">Qty</th>
-              <th className="px-4 py-4 font-semibold">Satuan</th>
-              <th className="px-4 py-4 font-semibold">Catatan Item</th>
-              <th className="px-4 py-4 font-semibold">Di Luar BOQ</th>
+              <th className="px-4 py-4 font-semibold text-right">Jumlah Item</th>
               <th className="px-4 py-4 font-semibold">Status</th>
               <th className="px-4 py-4 font-semibold text-right">Aksi</th>
             </tr>
@@ -1828,28 +681,25 @@ pic_pemohon_nama: picPemohon.trim() || null,
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={24} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={11} className="px-6 py-12 text-center text-gray-400">
                   Memuat data...
                 </td>
               </tr>
-            ) : filteredList.length === 0 ? (
+            ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={23} className="px-6 py-12 text-center text-gray-400">
-                  {isFilterActive ? "Tidak ada data yang sesuai filter." : "Tidak ada Surat Jalan Inbound yang perlu diproses."}
+                <td colSpan={11} className="px-6 py-12 text-center text-gray-400">
+                  Tidak ada Surat Jalan Inbound pada filter ini.
                 </td>
               </tr>
             ) : (
-              filteredList.map((sj, sjIndex) => {
+              filtered.map((sj, sjIndex) => {
                 const meta = STATUS_META[sj.status] || STATUS_META.draft_diajukan;
-                const itemRows = sj.items && sj.items.length > 0 ? sj.items : [null];
-                const rowSpan = itemRows.length;
-                const tujuanText = sj.gudang_tujuan?.nama_gudang || "-";
-                const tanggalRaw = sj.tanggal || sj.created_at;
-                const tanggal = new Date(tanggalRaw).toLocaleDateString("id-ID", {
-                  day: "2-digit",
-                  month: "long",
-                  year: "numeric",
-                });
+                const itemRows = sj.items || [];
+                const totalQty = itemRows.reduce((sum, i) => sum + Number(i.qty || 0), 0);
+                const isExpanded = expandedId === sj.surat_jalan_id;
+                const tujuanText = getGudangTujuanText(sj);
+                const tanggal = getTanggalText(sj);
+                const pengirimText = getPengirimText(sj);
                 const tipePengirimLabel =
                   sj.tipe_pengirim === "internal" ? "Internal" : sj.tipe_pengirim === "external" ? "External" : "-";
                 const kendaraanLabel =
@@ -1866,116 +716,138 @@ pic_pemohon_nama: picPemohon.trim() || null,
                 const tiketLabel = sj.boq?.tiket?.kode_tiket || "-";
                 // Cluster: relasi sudah di-include backend (boq.cluster). Fallback
                 // ke cluster_id mentah untuk record lama / non-BOQ.
-                const clusterLabel =
-                  sj.boq?.cluster?.nama_cluster ||
-                  sj.boq?.cluster?.cluster_id ||
-                  sj.cluster_id ||
-                  "-";
-                const allReceived = (sj.items || []).every(
+                const clusterLabel = getClusterText(sj);
+                const allReceived = itemRows.every(
                   (i) => i.qty_diterima !== null && i.qty_diterima !== undefined
                 );
 
-                return itemRows.map((item, itemIdx) => {
-                  const isFirst = itemIdx === 0;
-                  return (
-                    <tr
-                      key={`${sj.surat_jalan_id}-${item ? item.item_id : "empty"}-${itemIdx}`}
-                      className={`border-b border-gray-50 last:border-0 transition-colors hover:bg-orange-50/50 ${sjIndex % 2 === 1 ? "bg-slate-50/70" : "bg-white"}`}
-                    >
-                      {isFirst && (
-                        <>
-                          <td className="px-4 py-4 align-top font-medium text-gray-700" rowSpan={rowSpan}>{sjIndex + 1}</td>
-                          <td className="px-4 py-4 align-top text-gray-500" rowSpan={rowSpan}>{tanggal}</td>
-                          <td className="px-4 py-4 align-top font-medium text-gray-800" rowSpan={rowSpan}>
-                            <span className="flex items-center gap-2">
-                              <PackageCheck size={16} className="text-[#E8632C]" />
-                              {sj.nomor_surat_jalan}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{tipePengirimLabel}</td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>
-                            {sj.tipe_pengirim === "internal" ? sj.gudang_asal?.nama_gudang || "-" : "-"}
-                          </td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>
-                            {sj.tipe_pengirim === "external" && sj.supplier?.nama
-                              ? `${sj.supplier.kode} - ${sj.supplier.nama}`
-                              : "-"}
-                          </td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>
-                            {sj.tipe_pengirim === "external" && !sj.supplier?.nama
-                              ? sj.pengirim_eksternal_nama || "-"
-                              : "-"}
-                          </td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{tujuanText}</td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{sj.pic_pemohon_nama || "-"}</td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>
-                            <span className="block">{boqLabel}</span>
-                            <span className="block text-xs text-gray-400">Tiket: {tiketLabel}</span>
-                          </td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{sj.project?.nama_project || "-"}</td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{clusterLabel}</td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{kendaraanLabel}</td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{noPolisiLabel}</td>
-                          <td className="px-4 py-4 align-top text-gray-600" rowSpan={rowSpan}>{driverLabel}</td>
-                          <td className="px-4 py-4 align-top" rowSpan={rowSpan}>
-                            {sj.surat_jalan_url ? (
-                              <a href={safeUrl(sj.surat_jalan_url)} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#E8632C] hover:underline">
-                                Lihat PDF
-                              </a>
-                            ) : (
-                              <span className="text-xs text-gray-400">-</span>
-                            )}
-                          </td>
-                        </>
-                      )}
-                      <td className="px-4 py-3 align-top font-medium text-gray-800">{item?.barang?.kode_perangkat || "-"}</td>
-                      <td className="px-4 py-3 align-top text-gray-600">{item?.barang?.nama_barang || item?.nama_barang || "-"}</td>
-                      <td className="px-4 py-3 align-top text-right text-gray-600">{item ? Number(item.qty || 0) : "-"}</td>
-                      <td className="px-4 py-3 align-top text-gray-600">
-                        {item?.satuan?.kode_satuan || item?.barang?.satuan_default?.kode_satuan || "-"}
+                return (
+                  <Fragment key={sj.surat_jalan_id}>
+                    <tr className="border-b border-gray-100 hover:bg-[#FDECE1]/30">
+                      <td className="px-2 py-4 align-top">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedId(isExpanded ? null : sj.surat_jalan_id)}
+                          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                          aria-label={isExpanded ? "Tutup detail" : "Buka detail"}
+                        >
+                          {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        </button>
                       </td>
-                      <td className="px-4 py-3 align-top text-gray-600">{item?.catatan || "-"}</td>
-                      <td className="px-4 py-3 align-top">
-                        {item?.is_di_luar_boq ? (
-                          <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">Ya</span>
+                      <td className="px-4 py-4 align-top font-medium text-gray-700">{sjIndex + 1}</td>
+                      <td className="px-4 py-4 align-top text-gray-500">{tanggal}</td>
+                      <td className="px-4 py-4 align-top font-medium text-gray-800">
+                        <span className="flex items-center gap-2">
+                          <PackageCheck size={16} className="text-[#E8632C]" />
+                          {sj.nomor_surat_jalan}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 align-top text-gray-600">
+                        {pengirimText}
+                        <span className="ml-1 text-xs text-gray-400">({tipePengirimLabel})</span>
+                      </td>
+                      <td className="px-4 py-4 align-top text-gray-600">{tujuanText}</td>
+                      <td className="px-4 py-4 align-top text-gray-600">{getProjectText(sj)}</td>
+                      <td className="px-4 py-4 align-top text-gray-600">{clusterLabel}</td>
+                      <td className="px-4 py-4 align-top text-right text-gray-600">
+                        {itemRows.length} barang · {totalQty} unit
+                      </td>
+                      <td className="px-4 py-4 align-top">
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${meta.tone}`}>{meta.label}</span>
+                      </td>
+                      <td className="px-4 py-4 align-top text-right">
+                        {sj.status === "diterima_didistribusikan" ? (
+                          <span className="text-sm font-semibold text-gray-400">Selesai</span>
+                        ) : sj.status === "ready_putaway" ? (
+                          allReceived ? (
+                            <Link href={`/staff/putaway/${sj.surat_jalan_id}`} className="text-sm font-semibold text-[#E8632C] hover:underline">Putaway</Link>
+                          ) : (
+                            <Link href={`/staff/inbound/${sj.surat_jalan_id}`} className="text-sm font-semibold text-[#E8632C] hover:underline">Penerimaan</Link>
+                          )
+                        ) : sj.status === "draft_diajukan" &&
+                          (String(user?.id) === String(sj.created_by || sj.creator?.user_id) ||
+                            user?.role === "supervisor" ||
+                            user?.role === "admin_general") ? (
+                          <button
+                            onClick={() => handleCancelDraft(sj.surat_jalan_id)}
+                            disabled={cancellingId === sj.surat_jalan_id}
+                            className="text-sm font-semibold text-rose-600 hover:underline disabled:opacity-60"
+                          >
+                            {cancellingId === sj.surat_jalan_id ? "Membatalkan..." : "Batalkan"}
+                          </button>
                         ) : (
-                          <span className="text-xs text-gray-400">Tidak</span>
+                          <Link href={`/staff/inbound/${sj.surat_jalan_id}`} className="text-sm font-semibold text-[#E8632C] hover:underline">Buka</Link>
                         )}
                       </td>
-                      {isFirst && (
-                        <>
-                          <td className="px-4 py-4 align-top" rowSpan={rowSpan}>
-                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${meta.tone}`}>{meta.label}</span>
-                          </td>
-                          <td className="px-4 py-4 align-top text-right" rowSpan={rowSpan}>
-                            {sj.status === "diterima_didistribusikan" ? (
-                              <span className="text-sm font-semibold text-gray-400">Selesai</span>
-                            ) : sj.status === "ready_putaway" ? (
-                              allReceived ? (
-                                <Link href={`/staff/putaway/${sj.surat_jalan_id}`} className="text-sm font-semibold text-[#E8632C] hover:underline">Putaway</Link>
-                              ) : (
-                                <Link href={`/staff/inbound/${sj.surat_jalan_id}`} className="text-sm font-semibold text-[#E8632C] hover:underline">Penerimaan</Link>
-                              )
-                            ) : sj.status === "draft_diajukan" &&
-                              (String(user?.id) === String(sj.created_by || sj.creator?.user_id) ||
-                                user?.role === "supervisor" ||
-                                user?.role === "admin_general") ? (
-                              <button
-                                onClick={() => handleCancelDraft(sj.surat_jalan_id)}
-                                disabled={cancellingId === sj.surat_jalan_id}
-                                className="text-sm font-semibold text-rose-600 hover:underline disabled:opacity-60"
-                              >
-                                {cancellingId === sj.surat_jalan_id ? "Membatalkan..." : "Batalkan"}
-                              </button>
-                            ) : (
-                              <Link href={`/staff/inbound/${sj.surat_jalan_id}`} className="text-sm font-semibold text-[#E8632C] hover:underline">Buka</Link>
-                            )}
-                          </td>
-                        </>
-                      )}
                     </tr>
-                  );
-                });
+                    {isExpanded && (
+                      <tr className="border-b border-gray-100 bg-gray-50/60">
+                        <td colSpan={11} className="px-6 py-4">
+                          <div className="rounded-xl border border-slate-100 bg-white p-4">
+                            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                              Info Pengiriman
+                            </p>
+                            <div className="mb-4 grid grid-cols-2 gap-x-8 gap-y-1.5 text-sm md:grid-cols-3">
+                              <div className="flex gap-1.5"><span className="text-gray-500">PIC Pemohon:</span><span className="font-medium text-gray-800">{sj.pic_pemohon_nama || "-"}</span></div>
+                              <div className="flex gap-1.5"><span className="text-gray-500">BOQ:</span><span className="font-medium text-gray-800">{boqLabel}</span></div>
+                              <div className="flex gap-1.5"><span className="text-gray-500">Tiket:</span><span className="font-medium text-gray-800">{tiketLabel}</span></div>
+                              <div className="flex gap-1.5"><span className="text-gray-500">Kendaraan:</span><span className="font-medium text-gray-800">{kendaraanLabel}</span></div>
+                              <div className="flex gap-1.5"><span className="text-gray-500">No. Polisi:</span><span className="font-medium text-gray-800">{noPolisiLabel}</span></div>
+                              <div className="flex gap-1.5"><span className="text-gray-500">Driver:</span><span className="font-medium text-gray-800">{driverLabel}</span></div>
+                              <div className="flex gap-1.5">
+                                <span className="text-gray-500">Surat Jalan:</span>
+                                {sj.surat_jalan_url ? (
+                                  <a href={sj.surat_jalan_url} target="_blank" rel="noreferrer" className="font-semibold text-[#E8632C] hover:underline">Lihat PDF</a>
+                                ) : (
+                                  <span className="font-medium text-gray-800">-</span>
+                                )}
+                              </div>
+                            </div>
+                            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Daftar Barang</p>
+                            {itemRows.length === 0 ? (
+                              <p className="text-sm text-gray-400">Belum ada barang.</p>
+                            ) : (
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+                                      <th className="py-2 pr-3 font-semibold">Kode Barang</th>
+                                      <th className="py-2 pr-3 font-semibold">Nama Barang</th>
+                                      <th className="py-2 pr-3 text-right font-semibold">Qty</th>
+                                      <th className="py-2 pr-3 font-semibold">Satuan</th>
+                                      <th className="py-2 pr-3 font-semibold">Catatan</th>
+                                      <th className="py-2 font-semibold">Di Luar BOQ</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {itemRows.map((item) => (
+                                      <tr key={item.item_id} className="border-b border-gray-50 last:border-0">
+                                        <td className="py-2 pr-3 font-medium text-gray-800">{item?.barang?.kode_perangkat || "-"}</td>
+                                        <td className="py-2 pr-3 text-gray-600">{item?.barang?.nama_barang || item?.nama_barang || "-"}</td>
+                                        <td className="py-2 pr-3 text-right text-gray-600">{Number(item?.qty || 0)}</td>
+                                        <td className="py-2 pr-3 text-gray-600">
+                                          {item?.satuan?.kode_satuan || item?.barang?.satuan_default?.kode_satuan || "-"}
+                                        </td>
+                                        <td className="py-2 pr-3 text-gray-600">{item?.catatan || "-"}</td>
+                                        <td className="py-2">
+                                          {item?.is_di_luar_boq ? (
+                                            <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">Ya</span>
+                                          ) : (
+                                            <span className="text-xs text-gray-400">Tidak</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
               })
             )}
           </tbody>
@@ -1983,965 +855,13 @@ pic_pemohon_nama: picPemohon.trim() || null,
         </div>
       </div>
 
-      <Modal
-        open={modalOpen}
-        onClose={() => {
-          setShowPreviewModal(false);
-          setModalOpen(false);
-        }}
-        title="Input Inbound"
-        subtitle="Isi detail barang masuk — stok masuk tercatat saat disimpan"
-        widthClass="max-w-4xl"
-      >
-        {formError && (
-          <div className="mb-4 flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">
-            {formError}
-          </div>
-        )}
-        <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Project <span className="text-rose-500">*</span></label>
-            <select
-              data-testid="inbound-project-select"
-              value={selectedProjectId}
-              onChange={(e) => {
-                setSelectedProjectId(e.target.value);
-                setSelectedClusterId("");
-                setSelectedBoqId("");
-                setBoqItemsDetail([]);
-                setFormError(null);
-              }}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
-            >
-              <option value="">Pilih Project...</option>
-              {projectOptions.map((project) => (
-                <option key={project.project_id} value={String(project.project_id)}>
-                  {project.nama_project || `Project #${project.project_id}`}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Cluster <span className="text-rose-500">*</span></label>
-            <select
-              data-testid="inbound-cluster-select"
-              value={selectedClusterId}
-              disabled={!selectedProjectId || loadingClusters}
-              onChange={(e) => {
-                setSelectedClusterId(e.target.value);
-                setSelectedBoqId("");
-                setBoqItemsDetail([]);
-                setFormError(null);
-              }}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
-            >
-              <option value="">
-                {!selectedProjectId
-                  ? "Pilih project terlebih dahulu"
-                  : loadingClusters
-                    ? "Memuat cluster..."
-                    : "Pilih Cluster..."}
-              </option>
-              {clusterOptions.map((cluster) => (
-                <option key={cluster.cluster_id} value={String(cluster.cluster_id)}>
-                  {cluster.cluster_id} — {cluster.nama_cluster || cluster.cluster_id}
-                </option>
-              ))}
-            </select>
-            {selectedProjectId && !loadingClusters && clusterOptions.length === 0 && (
-              <p className="mt-1 text-xs text-amber-600">Project ini belum memiliki cluster.</p>
-            )}
-            {selectedProjectId && selectedClusterId && !selectedBoqId && (
-              <p className="mt-1 text-xs text-gray-500">Memuat BOQ aktif untuk cluster yang dipilih...</p>
-            )}
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Nomor Surat Jalan <span className="text-rose-500">*</span></label>
-            <input
-              type="text"
-              data-testid="inbound-nomor-sj"
-              value={nomorSuratJalan}
-              onChange={(e) => setNomorSuratJalan(e.target.value)}
-              placeholder="Nomor surat jalan dari vendor/pihak luar"
-              required
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Tanggal Masuk <span className="text-rose-500">*</span></label>
-            <input
-              type="date"
-              data-testid="inbound-tanggal"
-              value={tanggalMasuk}
-              onChange={(e) => setTanggalMasuk(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
-            />
-          </div>
 
-          <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-gray-600">Gudang Asal <span className="text-rose-500">*</span></label>
-            <div className="relative">
-              <select
-                value={selectedGudangAsalId}
-                onChange={(e) => setSelectedGudangAsalId(e.target.value)}
-                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
-              >
-                <option value="">Pilih Gudang Asal...</option>
-                {warehouseOptions.map((w) => (
-                  <option key={w.gudang_id} value={String(w.gudang_id)}>{w.nama_gudang}</option>
-                ))}
-              </select>
-              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            </div>
-          </div>
-          <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-gray-600">Asal Pengiriman</label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setSelectedAsalTipe("internal")}
-                className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-                  selectedAsalTipe === "internal"
-                    ? "border-[#E8632C] bg-[#E8632C] text-white"
-                    : "border-gray-200 bg-white text-gray-700 hover:border-[#E8632C]"
-                }`}
-              >
-                Internal
-              </button>
-              <button
-                type="button"
-                data-testid="inbound-asal-external"
-                onClick={() => setSelectedAsalTipe("external")}
-                className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-                  selectedAsalTipe === "external"
-                    ? "border-[#E8632C] bg-[#E8632C] text-white"
-                    : "border-gray-200 bg-white text-gray-700 hover:border-[#E8632C]"
-                }`}
-              >
-                External
-              </button>
-            </div>
-{selectedAsalTipe === "external" && (
-              <>
-                {!isVendorManual ? (
-                  <select
-                    value={selectedSupplierId}
-                    onChange={(e) => setSelectedSupplierId(e.target.value)}
-                    className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
-                  >
-                    <option value="">Pilih supplier</option>
-                    {supplierOptions.map((s) => (
-                      <option key={s.supplier_id} value={s.supplier_id}>
-                        {s.kode} - {s.nama}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    data-testid="inbound-vendor-manual-name"
-                    value={pengirimEksternalNama}
-                    onChange={(e) => setPengirimEksternalNama(e.target.value)}
-                    placeholder="Nama vendor / pengirim eksternal"
-                    className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
-                  />
-                )}
-                <label className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-                  <input
-                    type="checkbox"
-                    data-testid="inbound-vendor-manual-toggle"
-                    checked={isVendorManual}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setIsVendorManual(checked);
-                      if (checked) {
-                        setSelectedSupplierId("");
-                      } else {
-                        setPengirimEksternalNama("");
-                      }
-                    }}
-                  />
-                  Vendor belum terdaftar? Ketik manual
-                </label>
-              </>
-            )}
-          </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Gudang Tujuan <span className="text-rose-500">*</span></label>
-            <div className="relative">
-              <select
-                data-testid="inbound-gudang-tujuan"
-                value={selectedGudangTujuanId}
-                onChange={(e) => setSelectedGudangTujuanId(e.target.value)}
-                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-800 focus:border-[#E8632C] focus:outline-none"
-              >
-                  <option value="" disabled>Pilih Gudang Tujuan...</option>
-                  {gudangTujuanOptions.map((w) => (
-                    <option key={w.gudang_id} value={String(w.gudang_id)}>
-                      {w.label}
-                    </option>
-                  ))}
-              </select>
-              <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            </div>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">PIC / Penerima</label>
-            <input
-              type="text"
-              data-testid="inbound-pic"
-              value={picPemohon}
-              onChange={(e) => setPicPemohon(e.target.value)}
-              placeholder="Nama pemohon barang"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
-            />
-          </div>
 
-          <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-gray-600">
-              Kendaraan <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              data-testid="inbound-kendaraan"
-              value={kendaraanNamaTeks}
-              onChange={(e) => setKendaraanNamaTeks(e.target.value)}
-              placeholder="Contoh: Truk Box Mitsubishi Canter"
-              className={`w-full rounded-lg border px-3 py-2.5 text-sm text-gray-800 focus:outline-none ${
-                kendaraanValid ? "border-gray-200 focus:border-[#E8632C]" : "border-red-300 focus:border-red-400"
-              }`}
-            />
-            {!kendaraanValid && (
-              <p className="mt-1 text-xs text-red-600">Nama kendaraan wajib diisi.</p>
-            )}
-          </div>
 
-          <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-gray-600">
-              No. Polisi <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              data-testid="inbound-no-polisi"
-              value={kendaraanNoPolisTeks}
-              onChange={(e) => setKendaraanNoPolisTeks(e.target.value)}
-              placeholder="Contoh: B 9123 CD"
-              className={`w-full rounded-lg border px-3 py-2.5 text-sm text-gray-800 focus:outline-none ${
-                noPolisiValid ? "border-gray-200 focus:border-[#E8632C]" : "border-red-300 focus:border-red-400"
-              }`}
-            />
-            {!noPolisiValid && (
-              <p className="mt-1 text-xs text-red-600">Nomor polisi wajib diisi.</p>
-            )}
-          </div>
 
-          <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-gray-600">
-              Nama Driver <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              data-testid="inbound-driver"
-              value={driverNamaTeks}
-              onChange={(e) => setDriverNamaTeks(e.target.value)}
-              placeholder="Contoh: Budi Santoso"
-              className={`w-full rounded-lg border px-3 py-2.5 text-sm text-gray-800 focus:outline-none ${
-                driverValid ? "border-gray-200 focus:border-[#E8632C]" : "border-red-300 focus:border-red-400"
-              }`}
-            />
-            {!driverValid && (
-              <p className="mt-1 text-xs text-red-600">Nama driver wajib diisi.</p>
-            )}
-          </div>
 
-          <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-gray-600">Upload Surat Jalan Inbound (PDF)</label>
-            <input
-              type="file"
-              accept="application/pdf"
-              onChange={handlePdfChange}
-              disabled={uploadingPdf}
-              className="mb-2 block w-full text-sm text-gray-600 file:mr-4 file:rounded-lg file:border-0 file:bg-[#E8632C] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-[#D9591F]"
-            />
-            {uploadingPdf && <p className="text-xs text-gray-500">Mengupload PDF...</p>}
-            {pdfUploadError && !uploadingPdf && (
-              <p className="mt-1 text-xs font-medium text-amber-600">{pdfUploadError}</p>
-            )}
-            {suratJalanPdfUrl && !uploadingPdf && (
-                <a
-                  href={safeUrl(suratJalanPdfUrl)}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-medium text-[#E8632C] hover:underline"
-              >
-                Lihat PDF yang diupload
-              </a>
-            )}
-            {suratJalanPdf && !uploadingPdf && (
-              <p className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-                PDF Terlampir: {suratJalanPdf.name} ({formatBytes(suratJalanPdf.size)})
-                {suratJalanPdfInline && (
-                  <span className="rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-emerald-700">
-                    Lampiran langsung
-                  </span>
-                )}
-              </p>
-            )}
-          </div>
-        </div>
 
-        <div className="mt-6">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Daftar Barang <span className="text-rose-500">*</span></p>
-
-          {/* FORM DRAFT */}
-          <div className="mt-3 rounded-xl border border-slate-100 p-3">
-            <div className="mb-1.5 flex items-center justify-between">
-              <label className="flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-slate-500 hover:text-orange-600">
-                <input
-                  type="checkbox"
-                  checked={draftItem.is_non_master}
-                  onChange={toggleDraftItemNonMaster}
-                  className="h-3.5 w-3.5 accent-orange-500"
-                />
-                Barang non-master (di luar master data)
-              </label>
-              {draftItem.is_non_master && (
-                <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-600">
-                  Non-master
-                </span>
-              )}
-            </div>
-            <div className="grid grid-cols-12 gap-1.5">
-              <div className="col-span-3">
-                {draftItem.is_non_master ? (
-                  <input
-                    type="text"
-                    value={draftItem.nama_barang}
-                    onChange={(e) => setDraftItemNama(e.target.value)}
-                    placeholder="Nama barang (input manual)"
-                    className="w-full rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
-                  />
-                ) : (
-                  <BarangPicker
-                    value={draftItem.kode_perangkat}
-                    onSelect={(picked) => pickDraftItem(picked)}
-                    placeholder="Kode perangkat"
-                  />
-                )}
-              </div>
-              <div className="col-span-2">
-                <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Qty Surat Jalan</label>
-                <input
-                  type="number"
-                  data-testid="inbound-item-qty"
-                  min={1}
-                  value={draftItem.qtySuratJalan}
-                  onChange={(e) => setDraftItemQty(Number(e.target.value))}
-                  className="w-full rounded-md border border-slate-200 py-1 text-center text-xs text-slate-800 outline-none focus:border-orange-400"
-                />
-              </div>
-              <div className="col-span-1">
-                <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Qty Aktual</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={draftItem.qtyAktual}
-                  onChange={(e) => setDraftItemQtyAktual(Number(e.target.value))}
-                  className="w-full rounded-md border border-slate-200 py-1 text-center text-xs text-slate-800 outline-none focus:border-orange-400"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Kondisi</label>
-                <select
-                  data-testid="inbound-item-kondisi"
-                  value={draftItem.kondisi}
-                  onChange={(e) => {
-                    setDraftItemKondisi(e.target.value);
-                    if (kondisiError) setKondisiError(null);
-                  }}
-                  className={`w-full rounded-md px-1.5 py-1 text-[11px] text-slate-700 outline-none ${kondisiError ? "border border-red-500 focus:border-red-500" : "border border-slate-200 focus:border-orange-400"}`}
-                >
-                  <option value="">Pilih...</option>
-                  {KONDISI_OPTIONS.map((k) => (
-                    <option key={k.value} value={k.value}>
-                      {k.label}
-                    </option>
-                  ))}
-                </select>
-                {kondisiError && <p className="mt-1 text-[11px] text-red-600">Kondisi barang wajib dipilih.</p>}
-              </div>
-              <div className="col-span-2">
-                <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Serial Number</label>
-                <input
-                  type="text"
-                  value={draftItem.serialNumber}
-                  onChange={(e) => setDraftItemSerialNumber(e.target.value)}
-                  placeholder="Opsional"
-                  className="w-full rounded-md border border-slate-200 px-1.5 py-1 text-[11px] text-slate-700 outline-none focus:border-orange-400"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Upload Foto</label>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <label
-                    htmlFor="draft-foto"
-                    className={`inline-flex h-9 cursor-pointer items-center gap-1 rounded-md border border-dashed border-gray-300 px-1.5 text-[10px] font-medium text-gray-500 hover:border-[#E8632C] hover:text-[#E8632C] ${draftItem.uploadingFoto ? "pointer-events-none opacity-50" : ""}`}
-                  >
-                    {draftItem.uploadingFoto ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                    Pilih Foto
-                  </label>
-                  <input
-                    id="draft-foto"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={draftItem.uploadingFoto}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        handleDraftFotoUpload(file);
-                      }
-                      e.target.value = "";
-                    }}
-                  />
-                  {draftItem.fotoPreview ? (
-                    <div className="relative h-10 w-10 overflow-hidden rounded-md border border-[#E8632C]">
-                      <img src={draftItem.fotoPreview} alt="Pratinjau foto" className="h-full w-full object-cover" />
-                      <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-[9px] font-medium text-white">
-                        Mengunggah
-                      </span>
-                    </div>
-                  ) : draftItem.fotos.length > 0 ? (
-                    <div className="relative h-10 w-10 overflow-visible rounded-md border border-gray-200">
-                      <img
-                        src={draftItem.fotos[0].url}
-                        alt={draftItem.fotos[0].filename || "Preview"}
-                        className="h-10 w-10 cursor-pointer rounded-md border border-gray-200 object-cover"
-                        onClick={() => setPreviewFotoUrl(draftItem.fotos[0].url)}
-                      />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDraftFotoDelete(draftItem.fotos[0].foto_id);
-                        }}
-                        className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-white hover:bg-rose-600"
-                        title="Hapus foto"
-                      >
-                        <X size={10} />
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-                {draftItem.fotoError && <p className="mt-1 text-[10px] text-rose-600">{draftItem.fotoError}</p>}
-              </div>
-            </div>
-            <div className="mt-1.5 grid grid-cols-12 gap-1.5">
-              <div className="col-span-3">
-                {draftItem.is_non_master ? (
-                  <select
-                    value={draftItem.satuan_id}
-                    onChange={(e) => setDraftItemSatuan(e.target.value)}
-                    className="w-full rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
-                  >
-                    <option value="">Pilih satuan...</option>
-                    {unitOptions.map((u) => (
-                      <option key={u.satuan_id} value={String(u.satuan_id)}>
-                        {u.kode_satuan}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    value={draftItem.nama_barang}
-                    readOnly
-                    placeholder="Nama barang"
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-700 outline-none"
-                  />
-                )}
-              </div>
-              <div className="col-span-9">
-                <input
-                  type="text"
-                  value={draftItem.catatan}
-                  onChange={(e) => setDraftItemCatatan(e.target.value)}
-                  placeholder="Catatan (opsional)"
-                  className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
-                />
-              </div>
-            </div>
-            <div className="mt-1.5 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {draftItem.is_non_master && (
-                  <div>
-                    <label className="mb-0.5 block text-[11px] font-medium text-slate-500">
-                      Kategori barang <span className="text-rose-500">*</span>
-                    </label>
-                    <select
-                      value={draftItem.kategori_id}
-                      onChange={(e) => setDraftItemKategori(e.target.value)}
-                      className="rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400 sm:w-48"
-                    >
-                      <option value="">Pilih kategori...</option>
-                      {categoryOptions.map((c) => (
-                        <option key={c.kategori_id} value={String(c.kategori_id)}>
-                          {c.nama_kategori}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                {draftItem.is_di_luar_boq && !draftItem.is_non_master && (
-                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
-                    Di luar BOQ
-                  </span>
-                )}
-              </div>
-              <button
-                type="button"
-                data-testid="inbound-add-item"
-                onClick={handleCheckDraftItem}
-                className="flex items-center gap-1 rounded-lg bg-[#E8632C] px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-[#D9591F]"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                Tambah ke Daftar
-              </button>
-            </div>
-          </div>
-
-          {/* TABEL RINGKASAN */}
-          <>
-            <MobileCardList items={mobileItemsInbound2} />
-            {modalItems.length > 0 && (
-              <div className="mt-4 overflow-hidden rounded-xl border border-slate-100 hidden md:block">
-                <table className="w-full text-sm">
-<thead>
-                  <tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                    <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
-                    <th className="px-3 py-2 font-semibold">Nama Barang</th>
-                    <th className="px-3 py-2 font-semibold text-center">Qty Surat Jalan</th>
-                    <th className="px-3 py-2 font-semibold text-center">Qty Aktual</th>
-                    <th className="px-3 py-2 font-semibold">Kondisi</th>
-                    <th className="px-3 py-2 font-semibold">SERIAL NUMBER</th>
-                    <th className="px-3 py-2 font-semibold">Foto</th>
-                    <th className="px-3 py-2 font-semibold">Catatan</th>
-                    <th className="px-3 py-2 font-semibold text-right">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {modalItems.map((row, idx) => (
-                    <tr key={row.id} className={`border-t border-slate-50 ${idx % 2 === 0 ? "bg-white" : "bg-slate-50"}`}>
-                      <td className="px-3 py-2.5 whitespace-nowrap text-center text-xs text-slate-500">{idx + 1}</td>
-                      <td className="px-3 py-2.5 font-medium text-gray-800">
-                        {row.is_non_master ? row.nama_barang : `${row.kode_perangkat} - ${row.nama_barang}`}
-                      </td>
-                      <td className="px-3 py-2.5 text-center">{row.qtySuratJalan}</td>
-                      <td className="px-3 py-2.5 text-center">{row.qtyAktual}</td>
-                      <td className="px-3 py-2.5">
-                        <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ${KONDISI_TONE[row.kondisi] || "bg-gray-100 text-gray-600"}`}>
-                          {KONDISI_OPTIONS.find((k) => k.value === row.kondisi)?.label || row.kondisi || "-"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-600">{row.serialNumber || "-"}</td>
-                      <td className="px-3 py-2.5 text-gray-600">
-                        {row.fotos.length > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => setPreviewFotoUrl(row.fotos[0].url)}
-                            className="block"
-                          >
-                            <img
-                              src={row.fotos[0].url}
-                              alt={row.fotos[0].filename || "Foto barang"}
-                              className="h-10 w-10 rounded-md border border-gray-200 object-cover transition hover:scale-105 hover:border-[#E8632C]"
-                            />
-                          </button>
-                        ) : (
-                          <span className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-dashed border-gray-200 text-gray-300">-</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-600">{row.catatan || "-"}</td>
-                      <td className="px-3 py-2.5 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleEditModalItem(row.id)}
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
-                            title="Edit"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2-2h14a2 2 0 0 0 2-2v-7" />
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeModalItem(row.id)}
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                            title="Hapus"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-               </table>
-             </div>
-           )}
-         </>
-
-          {modalItems.length > 0 && (
-            <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5 text-xs text-slate-600">
-              <span>
-                Total Item:{" "}
-                <span className="font-semibold text-slate-800">{validModalItems.length}</span>
-              </span>
-              <span>
-                Total Qty:{" "}
-                <span className="font-semibold text-slate-800">{totalModalQty}</span>
-              </span>
-            </div>
-          )}
-
-          {modalItems.length === 0 && (
-            <div className="mt-3 rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-xs text-slate-400">
-              Belum ada barang. Isi form draft di atas lalu klik Tambah ke Daftar untuk menambah.
-            </div>
-          )}
-        </div>
-
-        <div className="mt-6 flex items-center justify-end gap-3">
-          <Button
-            variant="outline"
-            onClick={() => {
-              setShowPreviewModal(false);
-              setModalOpen(false);
-            }}
-            disabled={submitting}
-          >
-            Batal
-          </Button>
-          <Button
-            data-testid="inbound-submit"
-            onClick={handleSubmitInbound}
-            disabled={!canSubmitModal || submitting}
-            className="bg-[#E8632C] hover:bg-[#D9591F]"
-          >
-            {submitting ? "Mengirim..." : "Simpan & Proses Putaway"}
-          </Button>
-        </div>
-      </Modal>
-
-      {editModalOpen && editDraftItem && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4"
-          onClick={handleCancelEditItem}
-        >
-          <div
-            className="w-[calc(100vw-1.5rem)] max-w-3xl max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">Edit Item Barang</h3>
-                <p className="mt-0.5 text-xs text-slate-400">Ubah detail item lalu klik Simpan Perubahan</p>
-              </div>
-              <button
-                onClick={handleCancelEditItem}
-                className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div className="px-6 py-5">
-              {formError && (
-                <div className="mb-4 flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">
-                  {formError}
-                </div>
-              )}
-              <div className="rounded-xl border border-slate-100 p-3">
-                <div className="mb-1.5 flex items-center justify-between">
-                  <label className="flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-slate-500 hover:text-orange-600">
-                    <input
-                      type="checkbox"
-                      checked={editDraftItem.is_non_master}
-                      onChange={toggleEditDraftItemNonMaster}
-                      className="h-3.5 w-3.5 accent-orange-500"
-                    />
-                    Barang non-master (di luar master data)
-                  </label>
-                  {editDraftItem.is_non_master && (
-                    <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-600">
-                      Non-master
-                    </span>
-                  )}
-                </div>
-                <div className="grid grid-cols-12 gap-1.5">
-                  <div className="col-span-3">
-                    {editDraftItem.is_non_master ? (
-                      <input
-                        type="text"
-                        value={editDraftItem.nama_barang}
-                        onChange={(e) => setEditDraftItemNama(e.target.value)}
-                        placeholder="Nama barang (input manual)"
-                        className="w-full rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
-                      />
-                    ) : (
-                      <BarangPicker
-                        value={editDraftItem.kode_perangkat}
-                        onSelect={(picked) => pickEditDraftItem(picked)}
-                        placeholder="Kode perangkat"
-                      />
-                    )}
-                  </div>
-                  <div className="col-span-2">
-                    <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Qty Surat Jalan</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={editDraftItem.qtySuratJalan}
-                      onChange={(e) => setEditDraftItemQty(Number(e.target.value))}
-                      className="w-full rounded-md border border-slate-200 py-1 text-center text-xs text-slate-800 outline-none focus:border-orange-400"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Qty Aktual</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={editDraftItem.qtyAktual}
-                      onChange={(e) => setEditDraftItemQtyAktual(Number(e.target.value))}
-                      className="w-full rounded-md border border-slate-200 py-1 text-center text-xs text-slate-800 outline-none focus:border-orange-400"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Kondisi</label>
-                    <select
-                      value={editDraftItem.kondisi}
-                      onChange={(e) => {
-                        setEditDraftItemKondisi(e.target.value);
-                        if (editKondisiError) setEditKondisiError(null);
-                      }}
-                      className={`w-full rounded-md px-1.5 py-1 text-[11px] text-slate-700 outline-none ${editKondisiError ? "border border-red-500 focus:border-red-500" : "border border-slate-200 focus:border-orange-400"}`}
-                    >
-                      <option value="">Pilih...</option>
-                      {KONDISI_OPTIONS.map((k) => (
-                        <option key={k.value} value={k.value}>
-                          {k.label}
-                        </option>
-                      ))}
-                    </select>
-                    {editKondisiError && <p className="mt-1 text-[11px] text-red-600">Kondisi barang wajib dipilih.</p>}
-                  </div>
-                  <div className="col-span-1">
-                    <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Serial Number</label>
-                    <input
-                      type="text"
-                      value={editDraftItem.serialNumber}
-                      onChange={(e) => setEditDraftItemSerialNumber(e.target.value)}
-                      placeholder="Opsional"
-                      className="w-full rounded-md border border-slate-200 px-1.5 py-1 text-[11px] text-slate-700 outline-none focus:border-orange-400"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="mb-0.5 block text-[10px] font-medium text-slate-500">Upload Foto</label>
-                    <div className="flex flex-row items-center gap-2">
-                      <label
-                        htmlFor="edit-foto"
-                        className={`inline-flex h-9 cursor-pointer items-center gap-1 rounded-md border border-dashed border-gray-300 px-1.5 text-[10px] font-medium text-gray-500 hover:border-[#E8632C] hover:text-[#E8632C] ${editDraftItem.uploadingFoto ? "pointer-events-none opacity-50" : ""}`}
-                      >
-                        {editDraftItem.uploadingFoto ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                        Pilih Foto
-                      </label>
-                      <input
-                        id="edit-foto"
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        disabled={editDraftItem.uploadingFoto}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            handleEditDraftFotoUpload(file);
-                          }
-                          e.target.value = "";
-                        }}
-                      />
-                      {editDraftItem.fotoPreview ? (
-                        <div className="relative h-10 w-10 overflow-hidden rounded-md border border-[#E8632C]">
-                          <img src={editDraftItem.fotoPreview} alt="Pratinjau foto" className="h-full w-full object-cover" />
-                          <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-[9px] font-medium text-white">
-                            Mengunggah
-                          </span>
-                        </div>
-                      ) : editDraftItem.fotos.length > 0 ? (
-                        <div className="relative h-10 w-10 overflow-visible rounded-md border border-gray-200">
-                          <img
-                            src={editDraftItem.fotos[0].url}
-                            alt={editDraftItem.fotos[0].filename || "Preview"}
-                            className="h-10 w-10 cursor-pointer rounded-md border border-gray-200 object-cover"
-                            onClick={() => setPreviewFotoUrl(editDraftItem.fotos[0].url)}
-                          />
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEditDraftFotoDelete(editDraftItem.fotos[0].foto_id);
-                            }}
-                            className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-white hover:bg-rose-600"
-                            title="Hapus foto"
-                          >
-                            <X size={10} />
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                    {editDraftItem.fotoError && <p className="mt-1 text-[10px] text-rose-600">{editDraftItem.fotoError}</p>}
-                  </div>
-                </div>
-                <div className="mt-1.5 grid grid-cols-12 gap-1.5">
-                  <div className="col-span-3">
-                    {editDraftItem.is_non_master ? (
-                      <select
-                        value={editDraftItem.satuan_id}
-                        onChange={(e) => setEditDraftItemSatuan(e.target.value)}
-                        className="w-full rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
-                      >
-                        <option value="">Pilih satuan...</option>
-                        {unitOptions.map((u) => (
-                          <option key={u.satuan_id} value={String(u.satuan_id)}>
-                            {u.kode_satuan}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="text"
-                        value={editDraftItem.nama_barang}
-                        readOnly
-                        placeholder="Nama barang"
-                        className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-700 outline-none"
-                      />
-                    )}
-                  </div>
-                  <div className="col-span-9">
-                    <input
-                      type="text"
-                      value={editDraftItem.catatan}
-                      onChange={(e) => setEditDraftItemCatatan(e.target.value)}
-                      placeholder="Catatan (opsional)"
-                      className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
-                    />
-                  </div>
-                </div>
-                <div className="mt-1.5 flex items-center gap-2">
-                  {editDraftItem.is_non_master && (
-                    <div>
-                      <label className="mb-0.5 block text-[11px] font-medium text-slate-500">
-                        Kategori barang <span className="text-rose-500">*</span>
-                      </label>
-                      <select
-                        value={editDraftItem.kategori_id}
-                        onChange={(e) => setEditDraftItemKategori(e.target.value)}
-                        className="rounded-lg border border-orange-200 bg-orange-50/40 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400 sm:w-48"
-                      >
-                        <option value="">Pilih kategori...</option>
-                        {categoryOptions.map((c) => (
-                          <option key={c.kategori_id} value={String(c.kategori_id)}>
-                            {c.nama_kategori}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  {editDraftItem.is_di_luar_boq && !editDraftItem.is_non_master && (
-                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
-                      Di luar BOQ
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="mt-4 flex items-center justify-end gap-2">
-                <Button variant="outline" onClick={handleCancelEditItem} disabled={submitting}>
-                  Batal
-                </Button>
-                <Button
-                  onClick={handleSaveEditItem}
-                  disabled={submitting}
-                  className="bg-[#E8632C] hover:bg-[#D9591F]"
-                >
-                  Simpan Perubahan
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <PreviewInboundModal
-        open={showPreviewModal}
-        onClose={() => setShowPreviewModal(false)}
-        onConfirm={handleConfirmSaveInbound}
-        submitting={submitting}
-        nomorSuratJalan={nomorSuratJalan.trim()}
-        vendorLabel={previewVendorLabel}
-        gudangTujuan={previewGudangTujuanLabel}
-        tanggalLabel={previewTanggalLabel}
-        projectName={selectedBoqMeta.project_name}
-        boqNumber={selectedBoqMeta.boq_number}
-        kodeTiket={selectedBoqMeta.kode_tiket}
-        picPemohon={picPemohon.trim()}
-        kendaraan={kendaraanNamaTeks.trim()}
-        noPolisi={kendaraanNoPolisTeks.trim()}
-        driver={driverNamaTeks.trim()}
-        items={previewItems}
-        suratJalanFileName={suratJalanPdf?.name || null}
-        suratJalanUrl={suratJalanPdfUrl || suratJalanPdfDataUrl || null}
-        suratJalanSize={suratJalanPdf?.size ?? null}
-        suratJalanInline={suratJalanPdfInline && !suratJalanPdfUrl}
-        onImageClick={setPreviewFotoUrl}
-      />
-
-      {showSuccessModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-          onClick={handleSuccessModalClose}
-        >
-          <div
-            className="w-[calc(100vw-1.5rem)] max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex flex-col items-center px-6 py-8 text-center">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-                <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900">Surat Jalan Inbound Berhasil Disimpan</h3>
-                <p className="mt-2 text-sm text-gray-500">
-                  Stok masuk sudah tercatat saat disimpan. Lanjutkan penerimaan &amp; putaway dari daftar.
-                </p>
-              <button
-                type="button"
-                data-testid="inbound-success-ok"
-                onClick={handleSuccessModalClose}
-                className="mt-6 w-full rounded-xl bg-[#E8632C] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#D9591F]"
-              >
-                OK
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {toast && (
         <div
@@ -2954,40 +874,6 @@ pic_pemohon_nama: picPemohon.trim() || null,
           <div className="flex items-center gap-2 text-sm font-medium">
             {toast.type === "success" ? "✓" : "✕"}
             {toast.message}
-          </div>
-        </div>
-      )}
-
-      {previewFotoUrl && (
-        <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 p-4"
-          onClick={() => setPreviewFotoUrl(null)}
-        >
-          <div
-            className="w-[calc(100vw-1.5rem)] max-w-3xl max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <p className="text-xs font-medium text-slate-500">Preview Foto</p>
-              <button
-                onClick={() => setPreviewFotoUrl(null)}
-                className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div className="p-4">
-              <img
-                src={previewFotoUrl}
-                alt="Preview"
-                className="max-h-[70vh] w-full rounded-xl object-contain"
-              />
-            </div>
-            <div className="flex items-center justify-end border-t border-slate-100 px-6 py-4">
-              <Button variant="outline" onClick={() => setPreviewFotoUrl(null)}>
-                Tutup
-              </Button>
-            </div>
           </div>
         </div>
       )}

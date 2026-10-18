@@ -59,7 +59,7 @@ function getCleanZoneCode(zone: Zona) {
   return zone.kode_zona || "";
 }
 
-function StatusInputModal({ open, onClose, zone, value, onChange, onSave, saving, kapasitasMaksimum, onKapasitasChange }: { open: boolean; onClose: () => void; zone: Zona | null; value: string; onChange: (v: string) => void; onSave: () => void; saving: boolean; kapasitasMaksimum: string; onKapasitasChange: (v: string) => void }) {
+function StatusInputModal({ open, onClose, zone, value, onChange, onSave, saving }: { open: boolean; onClose: () => void; zone: Zona | null; value: string; onChange: (v: string) => void; onSave: () => void; saving: boolean }) {
   useEffect(() => {
     if (!open) return;
     function handleKey(e: KeyboardEvent) {
@@ -90,23 +90,6 @@ function StatusInputModal({ open, onClose, zone, value, onChange, onSave, saving
         </div>
 
         <div className="px-6 py-5">
-          <div className="mb-4">
-            <label className="mb-1 block text-[12px] font-semibold text-[#344054]">
-              Kapasitas Maksimum (unit)
-            </label>
-            <input
-              type="number"
-              min={1}
-              placeholder="Contoh: 1000"
-              value={kapasitasMaksimum}
-              onChange={(e) => onKapasitasChange(e.target.value)}
-              className="h-[38px] w-full rounded-xl border border-[#d0d5dd] bg-white px-3 text-[13px] text-[#111827] outline-none transition focus:border-[#111827]"
-            />
-            <p className="mt-1 text-[10px] text-[#9ca3af]">
-              Kosongkan jika tidak diubah. Hanya angka bulat lebih dari 0.
-            </p>
-          </div>
-
           <div className="flex flex-col gap-2">
             {options.map((opt) => (
               <label
@@ -200,7 +183,6 @@ export default function WarehouseLayoutPage() {
   const [statusModalZone, setStatusModalZone] = useState<Zona | null>(null);
   const [statusFormValue, setStatusFormValue] = useState<string>("CUKUP");
   const [statusSaving, setStatusSaving] = useState(false);
-  const [kapasitasMaksimumInput, setKapasitasMaksimumInput] = useState<string>("");
 
   const [zoneFormOpen, setZoneFormOpen] = useState(false);
   const [zoneFormMode, setZoneFormMode] = useState<"create" | "edit">("create");
@@ -208,7 +190,6 @@ export default function WarehouseLayoutPage() {
   const [zoneFormCode, setZoneFormCode] = useState("");
   const [zoneFormName, setZoneFormName] = useState("");
   const [zoneFormTipe, setZoneFormTipe] = useState("");
-  const [zoneFormKapasitas, setZoneFormKapasitas] = useState("");
   const [zoneFormSaving, setZoneFormSaving] = useState(false);
   const [zoneFormError, setZoneFormError] = useState<string | null>(null);
 
@@ -441,7 +422,6 @@ export default function WarehouseLayoutPage() {
   function openStatusModal(zone: Zona) {
     setStatusModalZone(zone);
     setStatusFormValue(zone.status_kecukupan || "CUKUP");
-    setKapasitasMaksimumInput(zone.kapasitas_maksimum != null ? String(zone.kapasitas_maksimum) : "");
     setStatusModalOpen(true);
   }
 
@@ -449,7 +429,6 @@ export default function WarehouseLayoutPage() {
     setStatusModalOpen(false);
     setStatusModalZone(null);
     setStatusFormValue("CUKUP");
-    setKapasitasMaksimumInput("");
   }
 
   async function saveStatus() {
@@ -461,9 +440,6 @@ export default function WarehouseLayoutPage() {
       const body: Record<string, unknown> = {};
       if (statusFormValue) {
         body.status_kecukupan = statusFormValue;
-      }
-      if (kapasitasMaksimumInput.trim() !== "") {
-        body.kapasitas_maksimum = Number(kapasitasMaksimumInput);
       }
 
       const res = await request(
@@ -496,7 +472,6 @@ export default function WarehouseLayoutPage() {
     setZoneFormCode("");
     setZoneFormName("");
     setZoneFormTipe("");
-    setZoneFormKapasitas("");
     setZoneFormError(null);
     setZoneFormOpen(true);
   }
@@ -507,9 +482,6 @@ export default function WarehouseLayoutPage() {
     setZoneFormCode(zone.kode_zona);
     setZoneFormName(zone.nama_zona || "");
     setZoneFormTipe(zone.tipe_zona || "");
-    setZoneFormKapasitas(
-      zone.kapasitas_maksimum != null ? String(zone.kapasitas_maksimum) : ""
-    );
     setZoneFormError(null);
     setZoneFormOpen(true);
   }
@@ -533,10 +505,6 @@ export default function WarehouseLayoutPage() {
         name: zoneFormName.trim() || undefined,
         tipe_zona: zoneFormTipe || undefined,
       };
-
-      if (zoneFormKapasitas.trim() !== "") {
-        body.kapasitas_maksimum = Number(zoneFormKapasitas);
-      }
 
       const isEdit = zoneFormMode === "edit" && zoneFormZone;
       const url = isEdit
@@ -1295,7 +1263,7 @@ export default function WarehouseLayoutPage() {
                 </thead>
                 <tbody className="divide-y divide-[#f2f4f7]">
                   {filteredPanelStock.map((item, idx) => (
-                    <tr key={item.snapshot_id} className="transition hover:bg-[#fafbfc]">
+                    <tr key={item.snapshot_id} className="border-b border-gray-50 last:border-0 odd:bg-white even:bg-slate-50 transition hover:bg-[#fafbfc]">
                       <td className="px-4 py-3 text-center text-xs text-slate-500">{idx + 1}</td>
                       <td className="px-4 py-3">
                         <p className="text-[13px] font-semibold text-[#111827]">{item.nama_barang}</p>
@@ -1322,8 +1290,6 @@ export default function WarehouseLayoutPage() {
         onChange={setStatusFormValue}
         onSave={saveStatus}
         saving={statusSaving}
-        kapasitasMaksimum={kapasitasMaksimumInput}
-        onKapasitasChange={setKapasitasMaksimumInput}
       />
 
       {/* =====================================================
@@ -1393,25 +1359,6 @@ export default function WarehouseLayoutPage() {
               <option value="Indoor">Indoor</option>
               <option value="Outdoor">Outdoor</option>
             </select>
-          </div>
-
-          <div className="mb-2">
-            <label className="mb-1 block text-[12px] font-semibold text-[#344054]">
-              Kapasitas Maksimum (unit)
-            </label>
-
-            <input
-              type="number"
-              min={1}
-              value={zoneFormKapasitas}
-              onChange={(e) => setZoneFormKapasitas(e.target.value)}
-              placeholder="Kosongkan jika tidak diatur"
-              className="h-[38px] w-full rounded-xl border border-[#d0d5dd] bg-white px-3 text-[13px] text-[#111827] outline-none transition focus:border-[#111827]"
-            />
-
-            <p className="mt-1 text-[10px] text-[#9ca3af]">
-              Hanya angka bulat lebih dari 0. Kosongkan jika belum diatur.
-            </p>
           </div>
         </div>
 

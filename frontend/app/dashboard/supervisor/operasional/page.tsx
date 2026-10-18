@@ -639,7 +639,7 @@ export default function SupervisorOperasionalPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
@@ -726,8 +726,7 @@ export default function SupervisorOperasionalPage() {
 
         {/* Tab 1: Personil */}
         {!loading && activeTab === "Personil" && (
-          <div className="w-full">
-             <div className="overflow-x-auto overscroll-x-contain">
+          <div className="w-full overflow-x-auto">
               <table className="min-w-[640px] w-full text-left border-collapse table-auto text-sm text-slate-700">
                 <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
                    <tr>
@@ -832,16 +831,14 @@ export default function SupervisorOperasionalPage() {
                       </td>
                     </tr>
                    )}
-                 </tbody>
+</tbody>
               </table>
             </div>
-          </div>
         )}
 
         {/* Tab 2: Kendaraan */}
         {!loading && activeTab === "Kendaraan" && (
-          <div className="w-full">
-             <div className="overflow-x-auto overscroll-x-contain">
+          <div className="w-full overflow-x-auto">
               <table className="min-w-[640px] w-full text-left border-collapse table-auto text-sm text-slate-700">
                <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
                  <tr>
@@ -893,21 +890,19 @@ export default function SupervisorOperasionalPage() {
                     </td>
                   </tr>
                    )}
-                 </tbody>
-              </table>
+</tbody>
+               </table>
             </div>
-          </div>
         )}
 
         {/* Tab 3: Inventori Perangkat */}
         {!loading && activeTab === "Inventori Perangkat" && (
-          <div className="w-full">
-             {warehouseFilter && (
-               <p className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
-                 Inventori perangkat bersifat global (tidak terikat gudang), sehingga tabel berikut tetap menampilkan seluruh perangkat dari semua gudang.
-               </p>
-             )}
-             <div className="overflow-x-auto overscroll-x-contain">
+          <div className="w-full overflow-x-auto">
+              {warehouseFilter && (
+                <p className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+                  Inventori perangkat bersifat global (tidak terikat gudang), sehingga tabel berikut tetap menampilkan seluruh perangkat dari semua gudang.
+                </p>
+              )}
               <table className="w-full text-left border-collapse table-auto text-sm text-slate-700">
                <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
                  <tr>
@@ -951,7 +946,7 @@ export default function SupervisorOperasionalPage() {
       {/* Modal Tambah Personil */}
       {personilModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => { setPersonilModalOpen(false); resetPersonilForm(); }}>
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Tambah Personil</h3>
@@ -1046,7 +1041,7 @@ export default function SupervisorOperasionalPage() {
       {/* Modal Detail Personil */}
       {isViewModalOpen && selectedPersonil && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setIsViewModalOpen(false)}>
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-slate-900">Detail Personil</h3>
               <button type="button" onClick={() => setIsViewModalOpen(false)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
@@ -1097,7 +1092,7 @@ export default function SupervisorOperasionalPage() {
       {/* Modal Edit Personil */}
       {isEditModalOpen && selectedPersonil && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => { setIsEditModalOpen(false); resetPersonilForm(); }}>
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Edit Personil</h3>
@@ -1192,7 +1187,7 @@ export default function SupervisorOperasionalPage() {
       {/* Modal Tambah Kendaraan */}
       {kendaraanModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => { setKendaraanModalOpen(false); resetKendaraanForm(); }}>
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Tambah Kendaraan</h3>
@@ -1264,7 +1259,7 @@ export default function SupervisorOperasionalPage() {
       {/* Modal Konfirmasi Ubah Status Personil */}
       {isToggleModalOpen && personilToToggle && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={closeToggleModal}>
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-slate-900">
                 {(() => {

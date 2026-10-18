@@ -200,10 +200,31 @@ const enrichAuditEntityNames = async (logs) => {
         }
         break;
       }
-      case "reconciliation": {
-        // Tidak ada tabel reconciliation tersendiri; entity_id di sini
-        // adalah tiket_id yang merujuk ke tiket_material. Dikecualikan
-        // sesuai permintaan investigasi.
+      case "reconciliation":
+      case "reconciliation_remains_note": {
+        // `reconciliation` tidak punya tabel tersendiri (entity_id = tiket_id).
+        // `reconciliation_remains_note` punya tabel sendiri tapi hanya berisi
+        // keterangan bebas, jadi tetap ditampilkan sebagai judul catatan.
+        if (entityType === "reconciliation") break;
+
+        const rows = await prisma.reconciliation_remains_note.findMany({
+          where: { id: { in: ids } },
+          select: {
+            id: true,
+            keterangan: true,
+            project: { select: { nama_project: true } },
+            barang: { select: { nama_barang: true } },
+          },
+        });
+        for (const row of rows) {
+          const projectName = row.project?.nama_project || "-";
+          const barangName = row.barang?.nama_barang || "-";
+          const note = row.keterangan ? String(row.keterangan).trim() : "";
+          nameMap.set(
+            `reconciliation_remains_note:${row.id}`,
+            note ? `${barangName} - ${projectName}: ${note}` : `${barangName} - ${projectName}`
+          );
+        }
         break;
       }
       default:

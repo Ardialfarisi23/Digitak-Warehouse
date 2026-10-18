@@ -9,17 +9,18 @@ import { ExternalLink, Loader2, Search, AlertCircle, Eye, X } from "lucide-react
 import { DetailSuratJalanDocument, type DetailSuratJalanData } from "@/components/surat-jalan/DetailSuratJalanDocument";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
 import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
+import { getSuratJalanStatusLabel } from "@/lib/surat-jalan-status";
 
-const STATUS_META: Record<string, { label: string; tone: string }> = {
-  draft_diajukan: { label: "Draft Diajukan", tone: "bg-slate-100 text-slate-700" },
-  menunggu_verifikasi: { label: "Menunggu Verifikasi", tone: "bg-amber-100 text-amber-700" },
-  ready_putaway: { label: "Siap Putaway", tone: "bg-blue-100 text-blue-700" },
-  disetujui: { label: "Disetujui", tone: "bg-emerald-100 text-emerald-700" },
-  digenerate: { label: "Digenerate", tone: "bg-blue-100 text-blue-700" },
-  tiba_menunggu_konfirmasi: { label: "Menunggu Konfirmasi", tone: "bg-blue-100 text-blue-700" },
-  diterima_didistribusikan: { label: "Diterima / Didistribusikan", tone: "bg-emerald-100 text-emerald-700" },
-  sedang_dikirim: { label: "Sedang Dikirim", tone: "bg-amber-100 text-amber-700" },
-  ditolak: { label: "Ditolak", tone: "bg-rose-100 text-rose-700" },
+const STATUS_TONE: Record<string, string> = {
+  draft_diajukan: "bg-slate-100 text-slate-700",
+  menunggu_verifikasi: "bg-amber-100 text-amber-700",
+  ready_putaway: "bg-blue-100 text-blue-700",
+  disetujui: "bg-emerald-100 text-emerald-700",
+  digenerate: "bg-blue-100 text-blue-700",
+  tiba_menunggu_konfirmasi: "bg-blue-100 text-blue-700",
+  diterima_didistribusikan: "bg-emerald-100 text-emerald-700",
+  sedang_dikirim: "bg-amber-100 text-amber-700",
+  ditolak: "bg-rose-100 text-rose-700",
 };
 
 interface WarehouseStockItem {
@@ -410,7 +411,11 @@ export default function SupervisorApprovalOutboundDetailPage() {
     );
   }
 
-  const statusMeta = STATUS_META[request.status] ?? { label: request.status || "-", tone: "bg-slate-100 text-slate-700" };
+  // Label status dari helper bersama; warna badge tetap dikunci lokal per status.
+  const statusMeta = {
+    label: getSuratJalanStatusLabel(request.status),
+    tone: STATUS_TONE[String(request.status || "").toLowerCase()] || "bg-slate-100 text-slate-700",
+  };
 
   const tujuanLabel =
     request.tujuan_tipe === "lapangan"
@@ -477,7 +482,7 @@ export default function SupervisorApprovalOutboundDetailPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start w-full">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start w-full">
         {/* PANEL KIRI: DETAIL & ITEM SURAT JALAN OUTBOUND */}
         <div className="w-full max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <DetailSuratJalanDocument
@@ -671,7 +676,7 @@ export default function SupervisorApprovalOutboundDetailPage() {
 
       {isDocModalOpen && selectedDocItem && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+          <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Dokumentasi Barang</h3>
