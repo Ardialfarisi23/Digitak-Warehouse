@@ -121,7 +121,7 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   surat_jalan_item: "Item Surat Jalan",
   project: "Project",
   titik_lapangan: "Titik Lapangan",
-  user_account: "User",
+  user_account: "Akun Pengguna",
   item: "Barang",
   personil: "Personil",
   vehicle: "Kendaraan",
@@ -362,8 +362,6 @@ export function humanizeValue(key: string, value: unknown): string {
 
   return text;
 }
-
-export const ENTITY_TYPE_LABELS: Record<string, string> = VALUE_LABELS.entity_type;
 
 export function getAksiLabel(aksi: string): string {
   return VALUE_LABELS.audit_aksi[aksi] ?? humanizeValue("aksi", aksi);

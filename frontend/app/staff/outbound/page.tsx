@@ -114,6 +114,23 @@ export default function SuratJalanListPage() {
   // Row detail inline: surat jalan yang sedang dibuka daftar itemnya.
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const filterRef = useRef<HTMLDivElement | null>(null);
+  const [activeTab, setActiveTab] = useState<"SEMUA" | SuratJalanStatus>("SEMUA");
+  const [tipePengirimFilter, setTipePengirimFilter] = useState("");
+  const [gudangAsalFilter, setGudangAsalFilter] = useState("");
+  const [kategoriTujuanFilter, setKategoriTujuanFilter] = useState("");
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null);
+  const KATEGORI_TUJUAN_LABEL: Record<string, string> = {
+    gudang: "Gudang",
+    lapangan: "Project/Site",
+  };
+  const openPhotoModal = (url: string) => {
+    setSelectedPhotoUrl(url);
+    setIsPhotoModalOpen(true);
+  };
+  const closePhotoModal = () => {
+    setIsPhotoModalOpen(false);
+  };
 
   const fetchList = async () => {
     setIsLoading(true);
@@ -179,23 +196,6 @@ export default function SuratJalanListPage() {
       prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]
     );
   };
-
-  const filtered = useMemo(() => {
-    const query = searchQuery.trim().toLocaleLowerCase("id-ID");
-    const fromTime = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
-    const toTime = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
-    return list.filter((sj) => {
-      const matchesStatus = statusFilter.length === 0 || statusFilter.includes(sj.status);
-      const matchesSearch =
-        !query ||
-        sj.nomor_surat_jalan.toLocaleLowerCase("id-ID").includes(query) ||
-        (sj.project?.nama_project || "").toLocaleLowerCase("id-ID").includes(query);
-      const waktu = new Date(sj.tanggal || sj.created_at).getTime();
-      const matchesFrom = fromTime === null || waktu >= fromTime;
-      const matchesTo = toTime === null || waktu <= toTime;
-      return matchesStatus && matchesSearch && matchesFrom && matchesTo;
-    });
-  }, [list, statusFilter, searchQuery, dateFrom, dateTo]);
 
   const kategoriTujuanFilterOptions = useMemo(() => {
     const values = new Set<string>(Object.keys(KATEGORI_TUJUAN_LABEL));

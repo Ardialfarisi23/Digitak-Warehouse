@@ -10,6 +10,7 @@ import { KondisiBadge } from "@/components/common/KondisiBadge";
 import { KondisiUnitSummary } from "@/components/common/KondisiUnitSummary";
 import { hasKondisiUnit, type KondisiUnit } from "@/lib/kondisi-barang";
 import { getItemFotoUrls, type SuratJalanItemForFoto } from "@/lib/surat-jalan-item-foto";
+import { getSuratJalanStatusLabel } from "@/lib/surat-jalan-status";
 import { SuratJalanInboundDetailView } from "@/components/surat-jalan/SuratJalanInboundDetailView";
 
 // Warna badge per status (tetap per-halaman); label dari helper bersama

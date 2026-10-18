@@ -939,7 +939,6 @@ export default function SupervisorOperasionalPage() {
                </tbody>
              </table>
             </div>
-          </div>
         )}
       </div>
 

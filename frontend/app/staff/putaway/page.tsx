@@ -37,6 +37,8 @@ export default function PutawayListPage() {
   const [dateTo, setDateTo] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement | null>(null);
+  const [activeTab, setActiveTab] = useState<"MENUNGGU" | "SELESAI">("MENUNGGU");
+  const [gudangTujuanFilter, setGudangTujuanFilter] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -106,36 +108,27 @@ export default function PutawayListPage() {
     );
   };
 
-  // Penerimaan wajib tercatat (qty_diterima terisi di semua item) sebelum
-  // sebuah inbound masuk status "menunggu ditempatkan" — konsisten dengan
-  // guard backend di service.putaway.
   const received = (sj: ApiSuratJalan) =>
     (sj.items || []).every(
       (i) => i.qty_diterima !== null && i.qty_diterima !== undefined,
     );
 
-  const filtered = useMemo(() => {
-    const query = searchQuery.trim().toLocaleLowerCase("id-ID");
-    const fromTime = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
-    const toTime = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
-    return list.filter((sj) => {
-      // Status putaway yang relevan: menunggu (dengan penerimaan tercatat) atau
-      // sudah ditempatkan. Tanpa pilihan status = semua baris ditampilkan.
-      const putawayStatus =
-        sj.status === "diterima_didistribusikan"
-          ? "SELESAI"
-          : sj.status === "ready_putaway" && received(sj)
-            ? "MENUNGGU"
-            : null;
-      if (!putawayStatus) return false;
-      const matchesStatus = statusFilter.length === 0 || statusFilter.includes(putawayStatus);
-      const matchesSearch = !query || sj.nomor_surat_jalan.toLocaleLowerCase("id-ID").includes(query);
-      const waktu = sj.tanggal ? new Date(sj.tanggal).getTime() : NaN;
-      const matchesFrom = fromTime === null || (!Number.isNaN(waktu) && waktu >= fromTime);
-      const matchesTo = toTime === null || (!Number.isNaN(waktu) && waktu <= toTime);
-      return matchesStatus && matchesSearch && matchesFrom && matchesTo;
-    });
-  }, [list, statusFilter, searchQuery, dateFrom, dateTo]);
+  const matchesStatus = (sj: ApiSuratJalan) =>
+    activeTab === "MENUNGGU"
+      ? sj.status === "ready_putaway" && received(sj)
+      : sj.status === "diterima_didistribusikan";
+
+  const gudangTujuanOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          list
+            .map((sj) => sj.gudang_tujuan?.nama_gudang)
+            .filter((nama): nama is string => Boolean(nama))
+        )
+      ).sort((a, b) => a.localeCompare(b)),
+    [list]
+  );
 
   const isFilterActive =
     searchQuery.trim() !== "" || gudangTujuanFilter !== "";
