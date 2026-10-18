@@ -20,6 +20,7 @@ type ApiSuratJalanItem = {
   qty_diterima?: number | string | null;
   qty_ditolak?: number | string | null;
   alasan_penolakan?: string | null;
+  catatan?: string | null;
   kondisi?: string | null;
   // Penilaian kondisi per unit dari proses inbound (relasi `units`).
   units?: KondisiUnit[] | null;
@@ -508,6 +509,9 @@ export default function PutawayDetailPage() {
                   )}
                 </td>
                 <td className="py-3 pr-4 text-right text-gray-600">
+                  {Number(item.qty || 0)}
+                </td>
+                <td className="py-3 pr-4 text-right text-gray-600">
                   {ditolakPenuh ? (
                     <span className="font-semibold text-rose-600">0</span>
                   ) : (
@@ -518,6 +522,9 @@ export default function PutawayDetailPage() {
                       )}
                     </>
                   )}
+                </td>
+                <td className="py-3 pr-4 text-gray-600">
+                  {item.catatan || item.alasan_penolakan || "-"}
                 </td>
                 <td className="py-3">
                   {ditolakPenuh ? (
