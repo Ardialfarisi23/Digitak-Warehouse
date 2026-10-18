@@ -163,8 +163,8 @@ export default function SupervisorRejectedListPage() {
   }, [meta.total]);
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-6 bg-[#FAFAFA] min-h-screen text-slate-800">
-      <div className="flex items-center gap-4">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-5 sm:space-y-6 bg-[#FAFAFA] min-h-screen text-slate-800">
+      <div className="flex items-start gap-3 sm:gap-4">
         <button
           onClick={() => router.push("/dashboard/supervisor/approval")}
           className="p-2.5 bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-colors shadow-sm text-slate-600"
@@ -178,7 +178,7 @@ export default function SupervisorRejectedListPage() {
             <span className="text-slate-300">•</span>
             <span className="text-slate-400 font-normal capitalize">Riwayat Penolakan</span>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
             Riwayat Surat Jalan Ditolak
           </h1>
           <p className="mt-1 text-sm text-slate-500">
@@ -187,13 +187,13 @@ export default function SupervisorRejectedListPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex justify-between items-start">
           <div>
             <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">
               Total Ditolak
             </p>
-            <h3 className="text-3xl font-bold text-slate-900 mb-1">{totalLabel}</h3>
+            <h3 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-1">{totalLabel}</h3>
             <p className="text-xs text-slate-400">Seluruh periode</p>
           </div>
           <div className="p-2 bg-rose-50 rounded-lg text-rose-500">
@@ -205,7 +205,7 @@ export default function SupervisorRejectedListPage() {
             <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">
               Outbound Ditolak
             </p>
-            <h3 className="text-3xl font-bold text-orange-600 mb-1">
+            <h3 className="text-2xl sm:text-3xl font-bold text-orange-600 mb-1">
               {records.filter((r) => r.tipe === "outbound").length}
               <span className="text-base font-medium text-slate-400"> / {meta.total}</span>
             </h3>
@@ -283,18 +283,18 @@ export default function SupervisorRejectedListPage() {
         </div>
       ) : records.length > 0 ? (
         <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="w-full overflow-x-auto overscroll-x-contain">
+            <table className="w-full min-w-[900px] text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-xs uppercase text-slate-500">
-                  <th className="px-6 py-4 font-medium">Nomor SJ</th>
-                  <th className="px-6 py-4 font-medium">Tipe</th>
-                  <th className="px-6 py-4 font-medium">Tanggal</th>
-                  <th className="px-6 py-4 font-medium">Asal / Tujuan</th>
-                  <th className="px-6 py-4 font-medium">Alasan Penolakan</th>
-                  <th className="px-6 py-4 font-medium">Ditolak Oleh</th>
-                  <th className="px-6 py-4 font-medium">Ditolak Pada</th>
-                  <th className="px-6 py-4 font-medium text-right">Aksi</th>
+                  <th className="px-4 sm:px-4 sm:px-6 py-4 font-medium">Nomor SJ</th>
+                  <th className="px-4 sm:px-4 sm:px-6 py-4 font-medium">Tipe</th>
+                  <th className="px-4 sm:px-4 sm:px-6 py-4 font-medium">Tanggal</th>
+                  <th className="px-4 sm:px-4 sm:px-6 py-4 font-medium">Asal / Tujuan</th>
+                  <th className="px-4 sm:px-4 sm:px-6 py-4 font-medium">Alasan Penolakan</th>
+                  <th className="px-4 sm:px-4 sm:px-6 py-4 font-medium">Ditolak Oleh</th>
+                  <th className="px-4 sm:px-4 sm:px-6 py-4 font-medium">Ditolak Pada</th>
+                  <th className="px-4 sm:px-4 sm:px-6 py-4 font-medium text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody>
@@ -308,10 +308,10 @@ export default function SupervisorRejectedListPage() {
                   const tujuan = r.gudang_tujuan?.nama_gudang;
                   return (
                     <tr key={r.surat_jalan_id} className="border-t border-slate-100 align-top">
-                      <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">
+                      <td className="px-4 sm:px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">
                         {r.nomor_surat_jalan}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
                         <span
                           className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border ${tipeBadge(
                             r.tipe
@@ -320,10 +320,10 @@ export default function SupervisorRejectedListPage() {
                           {r.tipe === "inbound" ? "Inbound" : "Outbound"}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-slate-600 whitespace-nowrap">
+                      <td className="px-4 sm:px-6 py-4 text-slate-600 whitespace-nowrap">
                         {formatDateShort(r.tanggal)}
                       </td>
-                      <td className="px-6 py-4 text-slate-600 max-w-[220px]">
+                      <td className="px-4 sm:px-6 py-4 text-slate-600 max-w-[220px]">
                         <div className="text-xs text-slate-500">Asal</div>
                         <div className="font-medium text-slate-700">
                           {asal || <span className="text-slate-400">-</span>}
@@ -333,22 +333,22 @@ export default function SupervisorRejectedListPage() {
                           {tujuan || <span className="text-slate-400">-</span>}
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-slate-700 max-w-[280px]">
+                      <td className="px-4 sm:px-6 py-4 text-slate-700 max-w-[280px]">
                         {alasanPreview ? (
                           <span title={alasanFull}>{alasanPreview}</span>
                         ) : (
                           <span className="italic text-slate-400">Tanpa alasan tercatat</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-slate-700 whitespace-nowrap">
+                      <td className="px-4 sm:px-6 py-4 text-slate-700 whitespace-nowrap">
                         {r.ditolak_oleh?.nama ?? (
                           <span className="italic text-slate-400">Tidak diketahui</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-slate-600 whitespace-nowrap">
+                      <td className="px-4 sm:px-6 py-4 text-slate-600 whitespace-nowrap">
                         {formatDate(r.ditolak_pada)}
                       </td>
-                      <td className="px-6 py-4 text-right whitespace-nowrap">
+                      <td className="px-4 sm:px-6 py-4 text-right whitespace-nowrap">
                         <button
                           onClick={() =>
                             router.push(
@@ -378,8 +378,8 @@ export default function SupervisorRejectedListPage() {
       )}
 
       {meta.totalPages > 1 && (
-        <div className="flex items-center justify-between bg-white border border-slate-200/80 rounded-2xl px-4 py-3 shadow-sm">
-          <p className="text-xs text-slate-500">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-white border border-slate-200/80 rounded-2xl px-4 py-3 shadow-sm">
+          <p className="text-xs text-slate-500 text-center sm:text-left">
             Menampilkan halaman <strong>{meta.page}</strong> dari <strong>{meta.totalPages}</strong>
             {" "}({meta.total} total)
           </p>

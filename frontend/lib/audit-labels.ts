@@ -109,6 +109,55 @@ export const FIELD_LABELS: Record<string, string> = {
 
 export type ValueLabelGroup = Record<string, string>;
 
+/**
+ * Label bahasa Indonesia untuk setiap nilai `audit_log.entity_type`.
+ * Sumber nilai: backend/src/modules (createAuditLog) dan
+ * backend/src/modules/reconciliation/reconciliation.service.js.
+ * JANGAN kembalikan key mentah (snake_case) ke UI.
+ */
+export const ENTITY_TYPE_LABELS: Record<string, string> = {
+  boq: "BOQ",
+  surat_jalan: "Surat Jalan",
+  surat_jalan_item: "Item Surat Jalan",
+  project: "Project",
+  titik_lapangan: "Titik Lapangan",
+  user_account: "User",
+  item: "Barang",
+  personil: "Personil",
+  vehicle: "Kendaraan",
+  supplier: "Supplier",
+  warehouse: "Gudang",
+  cluster: "Cluster",
+  zona: "Zona",
+  tiket: "Tiket",
+  tiket_material: "Tiket Material",
+  reconciliation: "Rekonsiliasi",
+  reconciliation_remains_note: "Catatan Remains",
+  return: "Return",
+  stok: "Stok",
+};
+
+/**
+ * Label entity untuk Audit Log. Menanganya semua kasus:
+ * - entity_type tidak dikenal  -> "Catatan Remains"-style label generik
+ * - entity_id kosong/0         -> "-"
+ * - tidak ada nama entitas     -> "-" (bukan "entity_type #id (data mungkin telah dihapus)")
+ */
+export function getEntityTypeLabel(entityType?: string | null): string {
+  if (!entityType) return "-";
+  const key = String(entityType).trim().toLowerCase();
+  if (!key) return "-";
+  return ENTITY_TYPE_LABELS[key] ?? EntityTypeFallbackLabel(key);
+}
+
+/** Ubah snake_case menjadi Title Case untuk entity_type di luar daftar. */
+function EntityTypeFallbackLabel(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+
 export const VALUE_LABELS: Record<string, ValueLabelGroup> = {
   audit_aksi: {
     create: "Dibuat",
