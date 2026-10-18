@@ -6,6 +6,7 @@ import { ArrowLeft, Loader2, AlertCircle, MapPin, Truck, CheckCircle2, X, Clock,
 import { Button } from "@/components/ui/button";
 import { useApi, ensureOk } from "@/lib/api";
 import { safeUrl } from "@/lib/safe-url";
+import { getSuratJalanStatusLabel } from "@/lib/surat-jalan-status";
 
 type ApiSuratJalanItem = {
   item_id: number;

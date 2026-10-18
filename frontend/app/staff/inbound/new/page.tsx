@@ -631,6 +631,7 @@ export default function InboundNewPage() {
               barang_id?: string | number;
               id?: string | number;
               itemCode?: string;
+              itemName?: string;
               barang?: {
                 kode_perangkat?: string;
                 nama_barang?: string;

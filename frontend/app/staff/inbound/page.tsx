@@ -260,9 +260,30 @@ export default function InboundListPage() {
   ]);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
   const [gudangTujuanFilter, setGudangTujuanFilter] = useState("");
+  const statusFilterOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const options: { value: string; label: string }[] = [];
+    list.forEach((sj) => {
+      if (seen.has(sj.status)) return;
+      seen.add(sj.status);
+      options.push({ value: sj.status, label: STATUS_META[sj.status]?.label || sj.status });
+    });
+    return options;
+  }, [list]);
+  const gudangTujuanFilterOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          list
+            .map((sj) => sj.gudang_tujuan?.nama_gudang)
+            .filter((nama): nama is string => Boolean(nama))
+        )
+      ).sort((a, b) => a.localeCompare(b)),
+    [list]
+  );
+  const isFilterActive =
+    searchQuery.trim() !== "" || statusFilter.length !== 0 || gudangTujuanFilter !== "";
 
 
 
@@ -628,7 +649,7 @@ export default function InboundListPage() {
         <div className="relative sm:w-60">
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => setStatusFilter(e.target.value ? [e.target.value as InboundStatus] : [])}
             className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2.5 pl-3 pr-10 text-sm text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
           >
             <option value="">Semua Status</option>
@@ -654,7 +675,7 @@ export default function InboundListPage() {
       </div>
       {isFilterActive && (
         <p className="mb-3 text-xs text-slate-500">
-          Menampilkan <span className="font-semibold text-slate-700">{filteredList.length}</span> dari {list.length} data
+          Menampilkan <span className="font-semibold text-slate-700">{filtered.length}</span> dari {list.length} data
         </p>
       )}
 

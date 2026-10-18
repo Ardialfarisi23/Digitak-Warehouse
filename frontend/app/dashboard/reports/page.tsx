@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useApi } from "@/lib/api";
 import { humanizeKey, humanizeValue, VALUE_LABELS, getAksiLabel, getRoleLabel, ENTITY_TYPE_LABELS, formatIp, formatUserAgent } from "@/lib/audit-labels";
+import { getSuratJalanStatusLabel, SURAT_JALAN_STATUS_LABEL, SURAT_JALAN_STATUS_VALUES } from "@/lib/surat-jalan-status";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
