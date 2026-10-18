@@ -21,3 +21,9 @@ tsbuildinfo
 .kilo/
 
 # Uploads (already ignored in backend/.gitignore)
+playwright-report/
+test-results/
+.tmp/
+*.bak
+*.orig
+*.patch

@@ -1,144 +1,27 @@
-# Digitak Warehouse
+﻿# Digitak Warehouse
 
-Sistem manajemen gudang internal Digitak Studio — mengelola inbound, outbound, putaway, delivery, BOQ, rekonsiliasi, dan approval antar role (staff, supervisor, admin).
+Sistem manajemen gudang internal Digitak Studio untuk mengelola inbound, outbound, putaway, delivery, BOQ, rekonsiliasi, approval, dan operasional gudang berbasis role (Admin, Supervisor, Staf Gudang).
 
-## Tech Stack
+## Fitur Utama
 
-**Frontend**
-- Next.js (App Router) + TypeScript
-- Tailwind CSS
+- Manajemen master data (barang, kategori, satuan, gudang, zona, proyek, supplier, pelanggan, personil)
+- Transaksi gudang (Surat Jalan: inbound/outbound, putaway, picking, distribusi)
+- BOQ & Cluster, Permintaan BOQ
+- Approval berbasis role (RBAC)
+- Rekonsiliasi stok & laporan
+- Autentikasi JWT (access + refresh token), audit log, rate limiting
+- Dashboard per peran (Admin/Supervisor/Staf)
 
-**Backend**
-- Node.js + Express.js
-- PostgreSQL + Prisma ORM
-- JWT Authentication (jsonwebtoken + bcrypt)
+## Quick Start
 
-## Struktur Folder
+1. **Clone**: git clone https://github.com/Ardialfarisi23/Digitak-Warehouse.git && cd Digitak-Warehouse
+2. **Backend**: cd backend && npm install && cp .env.example .env (sesuaikan env), lalu 
+px prisma generate && npx prisma migrate dev && npm run seed && npm run dev
+3. **Frontend**: buka terminal baru, cd frontend && npm install && cp .env.local.example .env.local (atau buat .env.local dengan NEXT_PUBLIC_API_URL=http://localhost:5000), lalu 
+pm run dev
+4. **Akses**: buka http://localhost:3000 (frontend), backend http://localhost:5000
+5. **Dokumentasi**: lihat [docs/](./docs)
 
-```
-digitak-warehouse/
-├── backend/     # REST API (Express.js + PostgreSQL)
-├── frontend/    # Web app (Next.js)
-├── docs/        # Dokumentasi tambahan
-└── PRD_Sistem_Gudang_Internal_Digitak_Studio_v4_5 (2).md
-```
+## Dokumentasi Lengkap
 
-## Prasyarat
-
-Pastikan sudah terinstall di komputer kamu:
-
-- [Node.js](https://nodejs.org/) versi 18 ke atas
-- [PostgreSQL](https://www.postgresql.org/download/) versi 14 ke atas
-- [Git](https://git-scm.com/)
-- npm (sudah termasuk dalam instalasi Node.js)
-
-## Instalasi
-
-### 1. Clone repository
-
-```bash
-git clone https://github.com/Ardialfarisi23/Digitak-Warehouse.git
-cd Digitak-Warehouse
-```
-
-### 2. Setup Database
-
-Buat database PostgreSQL baru:
-
-```bash
-psql -U postgres
-CREATE DATABASE digitak_warehouse;
-\q
-```
-
-### 3. Setup Backend
-
-```bash
-cd backend
-npm install
-```
-
-Buat file `.env` di dalam folder `backend/` dengan isi berikut (sesuaikan dengan konfigurasi lokal kamu):
-
-```env
-PORT=5000
-DATABASE_URL="postgresql://username:password@localhost:5432/digitak_warehouse?schema=public"
-JWT_SECRET=ganti_dengan_secret_key_kamu
-```
-
-Generate Prisma Client dan jalankan migration ke database:
-
-```bash
-npx prisma generate
-npx prisma migrate dev
-```
-
-Isi data awal (seed):
-
-```bash
-npm run seed
-```
-
-Jalankan backend (mode development, auto-reload dengan nodemon):
-
-```bash
-npm run dev
-```
-
-Backend akan berjalan di `http://localhost:5000` (atau sesuai `PORT` yang diset).
-
-> Untuk melihat isi database lewat GUI, kamu juga bisa jalankan `npx prisma studio`.
-
-### 4. Setup Frontend
-
-Buka terminal baru:
-
-```bash
-cd frontend
-npm install
-```
-
-Buat file `.env.local` di dalam folder `frontend/`:
-
-```env
-NEXT_PUBLIC_API_URL=http://localhost:5000
-```
-
-Jalankan frontend:
-
-```bash
-npm run dev
-```
-
-Frontend akan berjalan di `http://localhost:3000`.
-
-## Menjalankan Project
-
-Setelah backend dan frontend berjalan bersamaan:
-
-1. Buka browser ke `http://localhost:3000`
-2. Login menggunakan akun yang sudah dibuat (lihat `frontend/app/forgot-password` atau hubungi admin jika belum ada akun)
-
-## Kontribusi
-
-1. Buat branch baru dari `main`
-   ```bash
-   git checkout -b fitur/nama-fitur-kamu
-   ```
-2. Commit perubahan kamu
-   ```bash
-   git add .
-   git commit -m "feat: deskripsi singkat perubahan"
-   ```
-3. Push dan buat Pull Request
-   ```bash
-   git push origin fitur/nama-fitur-kamu
-   ```
-
-## Dokumentasi
-
-Dokumentasi lebih lengkap tersedia di folder [`docs/`](./docs) dan file PRD di root repo.
-
-## Lisensi
-
-Internal project — Digitak Studio.
+Selengkapnya tersedia di folder [docs/](./docs) meliputi: Arsitektur, Instalasi, Dokumentasi API, Panduan Pengguna, Materi Pelatihan, Kebijakan Privasi, Syarat Penggunaan.
