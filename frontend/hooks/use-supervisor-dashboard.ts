@@ -83,18 +83,7 @@ type ProjectApiResponse = {
   progress?: string | number;
 };
 
-type TicketReconciliation = {
-  ticketCode: string;
-  projectName: string;
-  boqPlan: number;
-  additional: number;
-  mos: number;
-  used: number;
-  remains: number;
-  totalUnit: string;
-  status: string;
-  items: number;
-};
+import { ClusterReconciliation, buildClusterReconciliation } from "@/lib/cluster-reconciliation";
 
 type ProjectSummaryRow = {
   projectId: number;
@@ -152,7 +141,7 @@ export type SupervisorDashboardReturn = {
   projects: Project[];
   inboundMonitoring: InboundMonitoringItem[];
   activityLog: ActivityLogItem[];
-  ticketReconciliation: TicketReconciliation[];
+  clusterReconciliation: ClusterReconciliation[];
   projectSummary: ProjectSummaryRow[];
   metrics: SupervisorMetrics;
   queue: SupervisorQueue;
@@ -160,7 +149,6 @@ export type SupervisorDashboardReturn = {
   kapasitasPerGudang: WarehouseCapacityRow[];
   currentTimeLabel: string;
   boqStats: { draft: number | null; active: number | null; total: number | null };
-  activeBoqTickets: Set<string>;
   stagingSites: Warehouse[];
   handleFilterChange: (type: "warehouse" | "project", value: string) => void;
   showDeactivatedModal: boolean;
@@ -259,7 +247,7 @@ export function useSupervisorDashboard() {
 
   const fetchDashboardDataRef = useRef<((warehouseId: string, projectId: string) => Promise<void>) | null>(null);
   const [activityLog, setActivityLog] = useState<ActivityLogItem[]>(FALLBACK_ACTIVITY_LOG);
-  const [ticketReconciliation, setTicketReconciliation] = useState<TicketReconciliation[]>([]);
+  const [clusterReconciliation, setClusterReconciliation] = useState<ClusterReconciliation[]>([]);
   const [projectSummary, setProjectSummary] = useState<ProjectSummaryRow[]>([]);
   const [metrics, setMetrics] = useState<SupervisorMetrics>(FALLBACK_METRICS);
   const [queue, setQueue] = useState<SupervisorQueue>(FALLBACK_QUEUE);
@@ -271,7 +259,6 @@ export function useSupervisorDashboard() {
     active: 28,
     total: 43,
   });
-  const [activeBoqTickets, setActiveBoqTickets] = useState<Set<string>>(new Set());
   const [stagingSites, setStagingSites] = useState<Warehouse[]>([]);
 
   const fetchWarehouses = useCallback(async () => {
@@ -337,8 +324,11 @@ export function useSupervisorDashboard() {
       if (warehouseId !== "all") qs.set("warehouseId", warehouseId);
       if (projectId !== "all") qs.set("projectId", projectId);
       qs.set("status", "all");
+      // Backend mendukung pengelompokan per cluster; dashboard menampilkan
+      // rekonsiliasi per cluster (bukan per kode tiket).
+      qs.set("groupBy", "cluster");
 
-      const [approvalsRes, reconRes, activitiesRes, assessmentRes, statsRes, itemsRes, projectsRes, boqRes] = await Promise.all([
+      const [approvalsRes, reconRes, activitiesRes, assessmentRes, statsRes, itemsRes, projectsRes, boqStatsRes] = await Promise.all([
         get(`${API_BASE}/api/dashboard/approvals`),
         get(`${API_BASE}/api/reconciliation/inventory?${qs.toString()}`),
         get(`${API_BASE}/api/dashboard/activities`),
@@ -346,7 +336,7 @@ export function useSupervisorDashboard() {
         get(`${API_BASE}/api/dashboard/`),
         get(`${API_BASE}/api/items?limit=1`),
         get(`${API_BASE}/api/dashboard/project-summary`),
-        get(`${API_BASE}/api/boqs?limit=1000`),
+        get(`${API_BASE}/api/boqs/stats`),
       ]);
 
       if (approvalsRes.ok) {
@@ -422,12 +412,14 @@ export function useSupervisorDashboard() {
         if (contentType && contentType.includes("application/json")) {
           const json = await reconRes.json();
           const raw: unknown = json?.data;
+          // Mode groupBy=cluster: satu baris = satu (cluster, barang). Nilai
+          // boq/additional/mos/used/remains pada setiap baris sudah berupa
+          // KUANTITAS barang tersebut.
           const data: Array<{
-            kode_tiket?: string;
-            project_nama?: string;
-            project_id?: string;
-            barang_id?: string;
-            nama_barang?: string;
+            cluster_id?: string | null;
+            nama_cluster?: string | null;
+            projectNama?: string;
+            projectnama?: string;
             boq?: number;
             additional?: number;
             mos?: number;
@@ -438,11 +430,10 @@ export function useSupervisorDashboard() {
             ? raw
             : Array.isArray((raw as { data?: unknown[] })?.data)
               ? ((raw as { data: unknown[] }).data as Array<{
-                  kode_tiket?: string;
-                  project_nama?: string;
-                  project_id?: string;
-                  barang_id?: string;
-                  nama_barang?: string;
+                  cluster_id?: string | null;
+                  nama_cluster?: string | null;
+                  projectNama?: string;
+                  projectnama?: string;
                   boq?: number;
                   additional?: number;
                   mos?: number;
@@ -452,73 +443,7 @@ export function useSupervisorDashboard() {
                 }>)
               : [];
 
-          const grouped = new Map<string, {
-            ticketCode: string;
-            boqPlan: number;
-            additional: number;
-            mos: number;
-            used: number;
-            remains: number;
-            totalUnit: string;
-            status: string;
-            projectName: string;
-            items: number;
-          }>();
-          for (const row of data) {
-            const projectName = row.project_nama || "-";
-            const tickets = (row.kode_tiket || "-")
-              .split(",")
-              .map((t: string) => t.trim())
-              .filter(Boolean);
-            const ticketList = tickets.length ? tickets : ["-"];
-            const boq = Number(row.boq || 0);
-            const additional = Number(row.additional || 0);
-            const mos = Number(row.mos || 0);
-            const used = Number(row.used || 0);
-            const remains = Number(row.remains || 0);
-
-            const shareBoq = tickets.length ? boq / ticketList.length : boq;
-            const shareAdd = tickets.length ? additional / ticketList.length : additional;
-            const shareMos = tickets.length ? mos / ticketList.length : mos;
-            const shareUsed = tickets.length ? used / ticketList.length : used;
-            const shareRem = tickets.length ? remains / ticketList.length : remains;
-
-            for (const tkt of ticketList) {
-              const key = `${projectName}::${tkt}`;
-              if (!grouped.has(key)) {
-                const total = shareBoq + shareAdd;
-                grouped.set(key, {
-                  ticketCode: tkt,
-                  boqPlan: shareBoq,
-                  additional: shareAdd,
-                  mos: shareMos,
-                  used: shareUsed,
-                  remains: shareRem,
-                  totalUnit: `${total.toLocaleString("id-ID")} Unit Total`,
-                  status: row.status || "berjalan",
-                  projectName,
-                  items: 1,
-                });
-              } else {
-                const g = grouped.get(key)!;
-                g.boqPlan += shareBoq;
-                g.additional += shareAdd;
-                g.mos += shareMos;
-                g.used += shareUsed;
-                g.remains += shareRem;
-                g.items += 1;
-                g.totalUnit = `${(g.boqPlan + g.additional).toLocaleString("id-ID")} Unit Total`;
-              }
-            }
-          }
-          if (grouped.size) {
-            const list = Array.from(grouped.values()).sort((a, b) =>
-              a.ticketCode.localeCompare(b.ticketCode, "id-ID", { numeric: true })
-            );
-            setTicketReconciliation(list);
-          } else {
-            setTicketReconciliation([]);
-          }
+          setClusterReconciliation(buildClusterReconciliation(data));
         }
       }
 
@@ -639,27 +564,19 @@ export function useSupervisorDashboard() {
         }
       }
 
-      if (boqRes && boqRes.ok) {
-        const ct = boqRes.headers.get("content-type");
+      // Angka "Status BOQ Overall" memakai endpoint statistik BOQ resmi
+      // (/api/boqs/stats) supaya hitungan Draft/Aktif akurat sesuai data BOQ,
+      // bukan hasil parsing daftar yang terpotong paginasi.
+      if (boqStatsRes && boqStatsRes.ok) {
+        const ct = boqStatsRes.headers.get("content-type");
         if (ct && ct.includes("application/json")) {
-          const json = await boqRes.json();
-          const list: Array<{ status?: string; ticketNumber?: string; ticket?: { kode_tiket?: string }; project?: { nama_project?: string } }> = Array.isArray(json?.data)
-            ? json.data
-            : Array.isArray(json)
-              ? json
-              : [];
-          if (list.length || typeof json?.total === "number") {
-            const draft = list.filter((b) => (b.status || "").toLowerCase() === "draft").length;
-            const active = list.filter((b) => (b.status || "").toLowerCase() === "aktif").length;
-            const total = typeof json?.total === "number" ? json.total : list.length;
+          const json = await boqStatsRes.json();
+          const stats = json?.data || {};
+          const draft = typeof stats.draft === "number" ? stats.draft : null;
+          const active = typeof stats.aktif === "number" ? stats.aktif : null;
+          const total = typeof stats.total === "number" ? stats.total : null;
+          if (draft !== null || active !== null || total !== null) {
             setBoqStats({ draft, active, total });
-            const activeTickets = new Set(
-              list
-                .filter((b) => (b.status || "").toLowerCase() === "aktif")
-                .map((b) => b.ticketNumber || b.ticket?.kode_tiket || "")
-                .filter((ticket) => Boolean(ticket))
-            );
-            setActiveBoqTickets(activeTickets);
           }
         }
       }
@@ -746,7 +663,7 @@ export function useSupervisorDashboard() {
     projects,
     inboundMonitoring,
     activityLog,
-    ticketReconciliation,
+    clusterReconciliation,
     projectSummary,
     metrics,
     queue,
@@ -754,7 +671,6 @@ export function useSupervisorDashboard() {
     kapasitasPerGudang,
     currentTimeLabel,
     boqStats,
-    activeBoqTickets,
     stagingSites,
     handleFilterChange,
     showDeactivatedModal,

@@ -9,24 +9,31 @@ import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { KRITIS_THRESHOLD, MENIPIS_THRESHOLD } from "@/lib/constants/stok";
+import { getSuratJalanStatusLabel } from "@/lib/surat-jalan-status";
 
-const STATUS_META: Record<string, { label: string; tone: string }> = {
-  draft_diajukan: { label: "Menunggu Persetujuan Supervisor", tone: "bg-amber-50 text-amber-700" },
-  menunggu_verifikasi: { label: "Menunggu Verifikasi", tone: "bg-amber-50 text-amber-700" },
-  ready_putaway: { label: "Siap Putaway", tone: "bg-blue-50 text-blue-600" },
-  disetujui: { label: "Disetujui — Siap Picking", tone: "bg-emerald-50 text-emerald-600" },
-  digenerate: { label: "Digenerate", tone: "bg-blue-50 text-blue-600" },
-  diterima_didistribusikan: { label: "Terkirim", tone: "bg-gray-100 text-gray-500" },
-  sedang_dikirim: { label: "Sedang Dikirim", tone: "bg-amber-50 text-amber-600" },
-  tiba_di_transit: { label: "Di Gudang Transit", tone: "bg-purple-50 text-purple-700" },
-  ditolak: { label: "Ditolak", tone: "bg-rose-50 text-rose-600" },
+// Warna badge per status (tetap per-halaman), label-nya diambil dari helper
+// bersama supaya tidak ada lagi kode mentah yang tampil ke pengguna.
+const STATUS_TONE: Record<string, string> = {
+  draft_diajukan: "bg-amber-50 text-amber-700",
+  menunggu_verifikasi: "bg-amber-50 text-amber-700",
+  ready_putaway: "bg-blue-50 text-blue-600",
+  disetujui: "bg-emerald-50 text-emerald-600",
+  digenerate: "bg-blue-50 text-blue-600",
+  diterima_didistribusikan: "bg-gray-100 text-gray-500",
+  sedang_dikirim: "bg-amber-50 text-amber-600",
+  tiba_di_transit: "bg-purple-50 text-purple-700",
+  tiba_menunggu_konfirmasi: "bg-blue-50 text-blue-600",
+  ditolak: "bg-rose-50 text-rose-600",
 };
 
 function getStatusMeta(status: string, pickingSelesai?: boolean) {
+  const tone = STATUS_TONE[String(status || "").toLowerCase()] || "bg-gray-100 text-gray-600";
+
+  // Picking yang sudah selesai punya penanda khusus selain label status.
   if (status === "disetujui" && pickingSelesai) {
     return { label: "Picking Selesai — Siap Distribusi", tone: "bg-blue-50 text-blue-600" };
   }
-  return STATUS_META[status] || { label: status, tone: "bg-gray-100 text-gray-600" };
+  return { label: getSuratJalanStatusLabel(status), tone };
 }
 
 interface SuratJalanItem {
@@ -93,17 +100,13 @@ interface SuratJalan {
   }>;
 }
 
-// Baris label:nilai yang selalu sejajar, berapa pun panjang labelnya.
-// FIX: value dikasih min-w-0 + break-all — sebelumnya teks panjang tanpa
-// spasi (mis. nomor surat jalan "298990/SJ/OUT/DIGITAK/VIII/2026") nggak
-// mau wrap dan overflow nabrak ke kolom sebelah, karena grid item secara
-// default nggak mau nyusut di bawah lebar konten aslinya (min-width: auto).
-function InfoRow({ label, value }: { label: string; value: ReactNode }) {
+// Baris bernomor kecil di atas, nilai di bawahnya — sama seperti halaman
+// detail Inbound supaya visual kedua halaman konsisten.
+function InfoField({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="grid grid-cols-[130px_10px_1fr] items-start leading-snug">
-      <span className="text-gray-500">{label}</span>
-      <span className="text-gray-500">:</span>
-      <span className="min-w-0 break-all font-semibold text-gray-900">{value}</span>
+    <div>
+      <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
+      <div className="min-w-0 text-sm break-words text-gray-800">{value}</div>
     </div>
   );
 }
@@ -263,9 +266,9 @@ export default function SuratJalanDetailPage() {
 
   return (
     <div className="px-8 py-6">
-      {/* Toolbar — hilang saat print */}
-      <div className="mb-6 flex items-center justify-between print:hidden">
-        <div className="flex items-center gap-3">
+      {/* Toolbar — tombol aksi dikumpulkan di satu tempat, hilang saat print */}
+      <div className="mb-6 flex flex-col gap-3 print:hidden lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
           <button onClick={() => router.push("/staff/outbound")} className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-700">
             <ArrowLeft size={16} />
             Kembali
@@ -274,7 +277,7 @@ export default function SuratJalanDetailPage() {
             {getStatusMeta(suratJalan.status, suratJalan.picking_selesai).label}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {suratJalan.status === "disetujui" && suratJalan.picking_selesai !== true && (
             <Link
               href={`/staff/outbound/${suratJalan.surat_jalan_id}/picking`}
@@ -481,28 +484,29 @@ export default function SuratJalanDetailPage() {
           </div>
         </div>
 
-        {/* Info grid — 2 kolom */}
-        <div className="mb-8 grid grid-cols-2 gap-x-12 gap-y-3 text-sm">
-          <div className="min-w-0 space-y-3">
-            <InfoRow label="No Surat Jalan" value={displaySJ.nomor} />
-            <InfoRow label="Pengirim" value={<span>{pengirimLabel} {pengirimBadge}</span>} />
-            <InfoRow label="Tujuan" value={<span>{tujuanLabel} {tujuanBadge}</span>} />
+        {/* Info grid — label kecil abu-abu di atas, nilai di bawahnya */}
+        <div className="mb-8">
+          <div className="grid grid-cols-1 gap-x-8 gap-y-3.5 sm:grid-cols-2">
+          <div className="min-w-0 space-y-3.5">
+            <InfoField label="No Surat Jalan" value={<span className="font-mono break-all text-gray-900">{displaySJ.nomor}</span>} />
+            <InfoField label="Pengirim" value={<span>{pengirimLabel} {pengirimBadge}</span>} />
+            <InfoField label="Tujuan" value={<span>{tujuanLabel} {tujuanBadge}</span>} />
             {suratJalan.tujuan_tipe === "lapangan" && suratJalan.alamat_lapangan && (
-              <InfoRow label="Alamat Lapangan" value={suratJalan.alamat_lapangan} />
+              <InfoField label="Alamat Lapangan" value={suratJalan.alamat_lapangan} />
             )}
-            <InfoRow label="Project" value={displaySJ.projectName || "-"} />
+            <InfoField label="Project" value={displaySJ.projectName || "-"} />
           </div>
-          <div className="min-w-0 space-y-3">
-            <InfoRow label="Tanggal" value={displaySJ.tanggal} />
-            <InfoRow label="Nama PIC Penerima" value={displaySJ.namaPicPemohon} />
-            <InfoRow label="Kendaraan" value={displaySJ.kendaraan} />
-            <InfoRow label="No Polisi" value={displaySJ.noPolisi} />
-            <InfoRow label="Nama Driver" value={displaySJ.namaDriver} />
+          <div className="min-w-0 space-y-3.5">
+            <InfoField label="Tanggal" value={displaySJ.tanggal} />
+            <InfoField label="Nama PIC Penerima" value={displaySJ.namaPicPemohon} />
+            <InfoField label="Kendaraan" value={displaySJ.kendaraan} />
+            <InfoField label="No Polisi" value={displaySJ.noPolisi} />
+            <InfoField label="Nama Driver" value={displaySJ.namaDriver} />
             {suratJalan.boq_id ? (
-              <InfoRow
-                label="BOQ / Tiket"
+              <InfoField
+                label="Cluster & BOQ"
                 value={
-                  <span className="inline-flex items-center gap-2">
+                  <span className="flex flex-wrap items-center gap-2">
                     <Link
                       href="/dashboard/boq"
                       className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
@@ -510,42 +514,43 @@ export default function SuratJalanDetailPage() {
                       <ExternalLink size={12} />
                       {suratJalan.boq?.boq_number || `BOQ #${suratJalan.boq_id}`}
                     </Link>
-                    <span className="text-xs text-slate-500">
+                    <span className="text-xs text-gray-500">
                       Tiket: {suratJalan.boq?.tiket?.kode_tiket || "-"}
                     </span>
                   </span>
                 }
               />
             ) : (
-              <InfoRow
-                label="BOQ / Tiket"
-                value={<span className="text-xs text-slate-400">Tidak terhubung ke BOQ/Tiket</span>}
+              <InfoField
+                label="Cluster & BOQ"
+                value={<span className="text-xs text-gray-400">Tidak terhubung ke Cluster & BOQ</span>}
               />
             )}
+          </div>
           </div>
         </div>
 
         {/* Tabel item */}
         <div className="overflow-x-auto overscroll-x-contain">
-        <table className="min-w-[640px] mb-10 w-full border-collapse text-sm">
+        <table className="mb-10 min-w-[640px] w-full border-collapse text-sm">
           <thead>
             <tr className="bg-[#FFF7ED]">
-              <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">No</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Kode Barang</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Nama Barang</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">QTY</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">UOM</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Kondisi</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">Foto</th>
+              <th className="border border-[#F3D9C7] px-3 py-2.5 text-left font-semibold text-[#9a3412]">No</th>
+              <th className="border border-[#F3D9C7] px-3 py-2.5 text-left font-semibold text-[#9a3412]">Kode Barang</th>
+              <th className="border border-[#F3D9C7] px-3 py-2.5 text-left font-semibold text-[#9a3412]">Nama Barang</th>
+              <th className="border border-[#F3D9C7] px-3 py-2.5 text-right font-semibold text-[#9a3412]">QTY</th>
+              <th className="border border-[#F3D9C7] px-3 py-2.5 text-center font-semibold text-[#9a3412]">UOM</th>
+              <th className="border border-[#F3D9C7] px-3 py-2.5 text-left font-semibold text-[#9a3412]">Kondisi</th>
+              <th className="border border-[#F3D9C7] px-3 py-2.5 text-center font-semibold text-[#9a3412]">Foto</th>
             </tr>
           </thead>
           <tbody>
             {mappedItems.map((item, i) => (
               <tr key={item.kodeBarang} className="even:bg-gray-50">
-                <td className="border border-gray-200 px-3 py-2.5">{i + 1}</td>
-                <td className="border border-gray-200 px-3 py-2.5 font-medium">{item.kodeBarang}</td>
+                <td className="border border-gray-200 px-3 py-2.5 text-gray-500">{i + 1}</td>
+                <td className="border border-gray-200 px-3 py-2.5 font-mono text-xs text-gray-600">{item.kodeBarang}</td>
                 <td className="border border-gray-200 px-3 py-2.5">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 text-gray-700">
                     <span>{item.namaBarang}</span>
                     {item.isKritis && (
                       <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">Kritis</span>
@@ -555,8 +560,8 @@ export default function SuratJalanDetailPage() {
                     )}
                   </div>
                 </td>
-                <td className="border border-gray-200 px-3 py-2.5 text-center font-semibold">{item.qty}</td>
-                <td className="border border-gray-200 px-3 py-2.5 text-center">{item.uom}</td>
+                <td className="border border-gray-200 px-3 py-2.5 text-right text-gray-800">{item.qty}</td>
+                <td className="border border-gray-200 px-3 py-2.5 text-center text-gray-600">{item.uom}</td>
                 <td className="border border-gray-200 px-3 py-2.5 text-gray-500">{item.keterangan || "-"}</td>
                 <td className="border border-gray-200 px-3 py-2.5 text-center">
                   {item.fotoUrl ? (
@@ -584,7 +589,7 @@ export default function SuratJalanDetailPage() {
          </div>
 
         {/* Tanda tangan */}
-        <div className="mb-8 grid grid-cols-3 gap-6 text-center text-sm">
+        <div className="mb-8 grid grid-cols-1 gap-6 text-center text-sm sm:grid-cols-3">
           <div>
             <p className="mb-16 font-medium text-gray-700">Material Handler</p>
             <div className="border-t border-gray-400 pt-1">

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -41,6 +41,7 @@ import {
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
+import { safeUrl } from "@/lib/safe-url";
 import BarangPicker, { type BarangPickerItem } from "@/components/BarangPicker";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import Image from "next/image";
@@ -153,6 +154,35 @@ interface SummaryCounts {
 type TabType = "aktif" | "draft" | "selesai" | "ditolak";
 type SectionType = TabType;
 
+type ClusterForm = {
+  cluster_id: string;
+  nama_cluster: string;
+  cluster_type: string;
+  project_type: string;
+  kso_partner: string;
+  kso_contact: string;
+  no_tiket_release: string;
+  vendor: string;
+  alamat_lengkap: string;
+  project_id: string;
+  homepass_plan: number | null;
+  status_aktif: boolean;
+};
+
+const EMPTY_CLUSTER_FORM: ClusterForm = {
+  cluster_id: "",
+  nama_cluster: "",
+  cluster_type: "",
+  project_type: "",
+  kso_partner: "",
+  kso_contact: "",
+  no_tiket_release: "",
+  vendor: "",
+  alamat_lengkap: "",
+  project_id: "",
+  homepass_plan: null,
+  status_aktif: true};
+
 /* ------------------------------------------------------------------ */
 /* Role helpers                                                        */
 /* ------------------------------------------------------------------ */
@@ -206,6 +236,39 @@ function getVerificationBadge(status: ExternalVerificationStatus) {
     default:
       return { label: "Tidak berlaku", bg: "bg-slate-100", text: "text-slate-400", icon: ShieldAlert };
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Display text helpers                                                 */
+/* ------------------------------------------------------------------ */
+
+const DISPLAY_ABBREVIATIONS = [
+  "FTTH",
+  "POP",
+  "RW",
+  "RT",
+  "BOQ",
+  "ODP",
+  "ODC",
+  "OLT",
+  "FO",
+  "PT",
+  "CV",
+  "ID",
+];
+
+function formatDisplayText(text?: string | null): string {
+  if (!text) return "-";
+  return text
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      const upper = word.toUpperCase();
+      if (DISPLAY_ABBREVIATIONS.includes(upper) || /\d/.test(word)) return upper;
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(" ");
 }
 
 const TABS: { key: TabType; label: string; icon: React.ElementType }[] = [
@@ -263,9 +326,9 @@ export default function BoqPage() {
   const PAGE_SIZE = 25;
   const boqTableRef = useRef<HTMLDivElement>(null);
   const [areas, setAreas] = useState<string[]>([]);
-  const [items, setItems] = useState<{ id: string; kode_perangkat: string; nama_barang: string; satuan?: { kode_satuan: string } }[]>([]);
-  const [itemSearch, setItemSearch] = useState("");
-  const [itemErrors, setItemErrors] = useState<Record<number, string>>({});
+  const [selectedItem, setSelectedItem] = useState<BarangPickerItem | null>(null);
+  const [selectedQty, setSelectedQty] = useState("");
+  const [itemNotice, setItemNotice] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     projectId: "",
@@ -291,7 +354,7 @@ export default function BoqPage() {
 
   const [clusters, setClusters] = useState<{ cluster_id: string; nama_cluster: string }[]>([]);
   const [clusterModalOpen, setClusterModalOpen] = useState(false);
-  const [clusterForm, setClusterForm] = useState({ cluster_id: "", nama_cluster: "", cluster_type: "", project_type: "", kso_partner: "", kso_contact: "", no_tiket_release: "", vendor: "", alamat_lengkap: "" });
+  const [clusterForm, setClusterForm] = useState<ClusterForm>({ cluster_id: "", nama_cluster: "", cluster_type: "", project_type: "", kso_partner: "", kso_contact: "", no_tiket_release: "", vendor: "", alamat_lengkap: "", project_id: "", homepass_plan: null, status_aktif: true });
   const [clusterSubmitting, setClusterSubmitting] = useState(false);
   const [clusterError, setClusterError] = useState<string | null>(null);
 
@@ -406,13 +469,9 @@ export default function BoqPage() {
 
   const fetchMasterData = useCallback(async () => {
     try {
-      const [projectsRes, itemsRes] = await Promise.all([
-        get(`${API_BASE}/api/projects?all=true`),
-        get(`${API_BASE}/api/items?limit=100`),
-      ]);
+      const projectsRes = await get(`${API_BASE}/api/projects?all=true`);
 
       const projectsJson = await projectsRes.json();
-      const itemsJson = await itemsRes.json();
 
       if (projectsRes.ok) {
         const rawList = Array.isArray(projectsJson?.data)
@@ -432,21 +491,6 @@ export default function BoqPage() {
           provinsi: p.provinsi || "",
         }));
         setProjects(list);
-      }
-
-      if (itemsRes.ok) {
-        const rawList = Array.isArray(itemsJson?.data)
-          ? itemsJson.data
-          : Array.isArray(itemsJson?.data?.data)
-            ? itemsJson.data.data
-            : [];
-        const list = rawList.map((item: any) => ({
-          id: String(item.barang_id || item.id || ""),
-          kode_perangkat: item.kode_perangkat || item.code || "",
-          nama_barang: item.nama_barang || item.name || "",
-          satuan: item.satuan_default ? { kode_satuan: item.satuan_default.kode_satuan || "" } : undefined,
-        }));
-        setItems(list);
       }
     } catch {
       // ignore master data fetch errors
@@ -553,7 +597,7 @@ export default function BoqPage() {
     }
   }
 
-  // Staf Gudang is locked to the Aktif tab — never let it switch away.
+  // Staf Gudang is locked to the Aktif tab â€” never let it switch away.
   useEffect(() => {
     if (isStaffGudang && activeTab !== "aktif") {
       setActiveTab("aktif");
@@ -601,9 +645,12 @@ export default function BoqPage() {
       externalVerificationStatus: "menunggu",
       notes: "",
       referenceFile: "",
-      items: [{ itemCode: "", itemName: "", quantity: 1, unit: "", destinationWarehouseId: "", notes: "" }],
+      items: [],
     });
     setFormError(null);
+    setSelectedItem(null);
+    setSelectedQty("");
+    setItemNotice(null);
     setModalOpen(true);
   }
 
@@ -634,6 +681,9 @@ export default function BoqPage() {
       })),
     });
     setFormError(null);
+    setSelectedItem(null);
+    setSelectedQty("");
+    setItemNotice(null);
     setModalOpen(true);
   }
 
@@ -705,12 +755,6 @@ export default function BoqPage() {
       return;
     }
 
-    const itemErrorMessages = Object.values(itemErrors);
-    if (itemErrorMessages.length > 0) {
-      setFormError(itemErrorMessages[0]);
-      return;
-    }
-
     setSubmitting(true);
     setFormError(null);
 
@@ -746,6 +790,8 @@ export default function BoqPage() {
       }
 
       setModalOpen(false);
+      cancelSelectedItem();
+      setItemNotice(null);
       fetchBoqs();
       fetchSummary();
       if (modalMode === "create") {
@@ -761,42 +807,77 @@ export default function BoqPage() {
   }
 
   async function handleCreateCluster(e: React.FormEvent) {
-    e.preventDefault();
-    setClusterSubmitting(true);
-    setClusterError(null);
+     e.preventDefault();
+     setClusterSubmitting(true);
+     setClusterError(null);
 
-    try {
-      const res = await post(`${API_BASE}/api/clusters`, {
-        cluster_id: clusterForm.cluster_id,
-        project_id: form.projectId,
-        nama_cluster: clusterForm.nama_cluster,
-        cluster_type: clusterForm.cluster_type || null,
-        project_type: clusterForm.project_type || null,
-        kso_partner: clusterForm.kso_partner || null,
-        kso_contact: clusterForm.kso_contact || null,
-        no_tiket_release: clusterForm.no_tiket_release || null,
-        vendor: clusterForm.vendor || null,
-        alamat_lengkap: clusterForm.alamat_lengkap || null,
-      });
+     // Validation
+     if (!clusterForm.project_id) {
+       setClusterError("Nama Project wajib dipilih.");
+       return;
+     }
+     if (!clusterForm.nama_cluster.trim()) {
+       setClusterError("Nama cluster wajib diisi.");
+       return;
+     }
+     if (!clusterForm.cluster_id.trim()) {
+       setClusterError("Cluster ID wajib diisi.");
+       return;
+     }
+     if (clusterForm.homepass_plan !== null && (isNaN(clusterForm.homepass_plan) || clusterForm.homepass_plan < 0)) {
+       setClusterError("Homepass Plan harus bilangan bulat 0 atau lebih.");
+       return;
+     }
 
-      const json = await res.json();
-      if (!res.ok) {
-        throw new Error(json?.message || "Gagal membuat cluster.");
+     try {
+       const res = await post(`${API_BASE}/api/clusters`, {
+         cluster_id: clusterForm.cluster_id,
+         project_id: Number(clusterForm.project_id),
+         nama_cluster: clusterForm.nama_cluster,
+         cluster_type: clusterForm.cluster_type || null,
+         project_type: clusterForm.project_type || null,
+         kso_partner: clusterForm.kso_partner || null,
+         kso_contact: clusterForm.kso_contact || null,
+         no_tiket_release: clusterForm.no_tiket_release || null,
+         vendor: clusterForm.vendor || null,
+         alamat_lengkap: clusterForm.alamat_lengkap || null,
+         homepass_plan: clusterForm.homepass_plan,
+         status_aktif: clusterForm.status_aktif,
+       });
+
+       const json = await res.json();
+       if (!res.ok) {
+         throw new Error(json?.message || "Gagal membuat cluster.");
+       }
+
+       const newCluster = json.data;
+       setClusters((prev) => [...prev, newCluster]);
+       setForm((prev) => ({ ...prev, cluster_id: newCluster.cluster_id }));
+       setClusterModalOpen(false);
+       setClusterForm({ 
+         cluster_id: "", 
+         nama_cluster: "", 
+         cluster_type: "", 
+         project_type: "", 
+         kso_partner: "", 
+         kso_contact: "", 
+         no_tiket_release: "", 
+         vendor: "", 
+         alamat_lengkap: "",
+         project_id: "",
+         homepass_plan: null,
+         status_aktif: true,
+       });
+     } catch (err) {
+       setClusterError(err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.");
+     } finally {
+       setClusterSubmitting(false);
       }
-
-      const newCluster = json.data;
-      setClusters((prev) => [...prev, newCluster]);
-      setForm((prev) => ({ ...prev, cluster_id: newCluster.cluster_id }));
-      setClusterModalOpen(false);
-      setClusterForm({ cluster_id: "", nama_cluster: "", cluster_type: "", project_type: "", kso_partner: "", kso_contact: "", no_tiket_release: "", vendor: "", alamat_lengkap: "" });
-    } catch (err) {
-      setClusterError(err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.");
-    } finally {
-      setClusterSubmitting(false);
-    }
   }
 
-  async function handleUploadReference(file: File) {
+
+
+async function handleUploadReference(file: File) {
     setUploadingRef(true);
     setFormError(null);
 
@@ -894,26 +975,6 @@ export default function BoqPage() {
     }
   }
 
-  function addItem() {
-    setForm((prev) => ({
-      ...prev,
-      items: [
-        ...prev.items,
-        { itemCode: "", itemName: "", quantity: 1, unit: "", destinationWarehouseId: "", notes: "" },
-      ],
-    }));
-  }
-
-  function addItemFromMaster(itemCode: string, itemName: string, unit?: string) {
-    setForm((prev) => ({
-      ...prev,
-      items: [
-        ...prev.items,
-        { itemCode: itemCode, itemName: itemName, quantity: 1, unit: unit || "", destinationWarehouseId: "", notes: "" },
-      ],
-    }));
-  }
-
   function removeItem(index: number) {
     setForm((prev) => ({
       ...prev,
@@ -926,48 +987,57 @@ export default function BoqPage() {
       ...prev,
       items: prev.items.map((item, i) => (i === index ? { ...item, [field]: value } : item)),
     }));
+  }
 
-    if (field === "itemCode") {
-      const code = String(value || "");
-      if (!code.trim()) {
-        setItemErrors((prev) => {
-          const next = { ...prev };
-          delete next[index];
-          return next;
-        });
-        return;
-      }
-      const exists = items.some(
-        (it) => it.kode_perangkat.toLowerCase() === code.trim().toLowerCase()
+  function confirmSelectedItem() {
+    if (!selectedItem) return;
+    const qty = parseInt(selectedQty, 10);
+    if (!qty || qty <= 0) return;
+
+    const existingIndex = form.items.findIndex(
+      (it) => it.itemCode.toLowerCase() === selectedItem.kode_perangkat.toLowerCase()
+    );
+
+    if (existingIndex >= 0) {
+      setForm((prev) => ({
+        ...prev,
+        items: prev.items.map((it, i) =>
+          i === existingIndex ? { ...it, quantity: (it.quantity || 0) + qty } : it
+        ),
+      }));
+      setItemNotice(
+        `Kode ${selectedItem.kode_perangkat} sudah ada di daftar â€” qty ditambahkan ${qty}.`
       );
-      if (!exists) {
-        setItemErrors((prev) => ({
-          ...prev,
-          [index]: `Kode barang "${code}" belum terdaftar di master data. Hubungi Admin untuk menambahkan.`,
-        }));
-      } else {
-        setItemErrors((prev) => {
-          const next = { ...prev };
-          delete next[index];
-          return next;
-        });
-      }
+    } else {
+      setForm((prev) => ({
+        ...prev,
+        items: [
+          ...prev.items,
+          {
+            itemCode: selectedItem.kode_perangkat,
+            itemName: selectedItem.nama_barang,
+            quantity: qty,
+            unit: selectedItem.satuan_default_kode || "",
+            destinationWarehouseId: "",
+            notes: "",
+          },
+        ],
+      }));
+      setItemNotice(null);
     }
+
+    setSelectedItem(null);
+    setSelectedQty("");
+  }
+
+  function cancelSelectedItem() {
+    setSelectedItem(null);
+    setSelectedQty("");
   }
 
   const totalQty = useMemo(() => {
     return form.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
   }, [form.items]);
-
-  const filteredItems = useMemo(() => {
-    if (!itemSearch.trim()) return items;
-    const q = itemSearch.toLowerCase();
-    return items.filter(
-      (item) =>
-        item.kode_perangkat.toLowerCase().includes(q) ||
-        item.nama_barang.toLowerCase().includes(q)
-    );
-  }, [items, itemSearch]);
 
   /* ---------------------------------------------------------------- */
   /* Render                                                             */
@@ -987,9 +1057,9 @@ export default function BoqPage() {
         {/* 1. Header */}
         <header className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
-            <h1 className="text-2xl md:text-3xl font-bold text-slate-900">BOQ & Surat Tiket</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Cluster & BOQ</h1>
             <p className="mt-1 text-sm text-slate-500 line-clamp-2 md:line-clamp-none">
-              Kelola BOQ (Bill of Quantity) dan Surat Tiket proyek.
+              Kelola Cluster, BOQ (Bill of Quantity), dan Surat Tiket proyek.
             </p>
           </div>
 
@@ -1121,33 +1191,32 @@ export default function BoqPage() {
             <table className="w-full text-left text-sm md:min-w-full">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
+                  <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
+                    Cluster ID
+                  </th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Nomor BOQ / Tiket
+                    BOQ
                   </th>
                   <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
-                    Sumber
+                    Cluster Name
                   </th>
                   <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
-                    Project
-                  </th>
-                  <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
-                    Verifikasi Eksternal
+                    Project Name
                   </th>
                   <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                     Item
                   </th>
                   <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
-                    Total Qty
+                    Total Kuantitas
                   </th>
                   <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
                     Dokumen
                   </th>
                   <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
-                    Cluster
+                    Status Verifikasi
                   </th>
                   <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Status
+                    Status BOQ
                   </th>
                   <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                     Aksi
@@ -1162,7 +1231,7 @@ export default function BoqPage() {
                       <td className="px-3 py-3 md:px-6 md:py-4">
                         <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                       </td>
-                      {Array.from({ length: 10 }).map((_, colIndex) => (
+                      {Array.from({ length: 9 }).map((_, colIndex) => (
                         <td key={colIndex} className="px-3 py-3 md:px-6 md:py-4">
                           <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                         </td>
@@ -1171,28 +1240,26 @@ export default function BoqPage() {
                   ))
                 ) : error ? (
                   <tr>
-                    <td colSpan={11} className="px-3 py-3 md:px-6 md:py-16 text-center text-sm text-rose-500">
+                    <td colSpan={10} className="px-3 py-3 md:px-6 md:py-16 text-center text-sm text-rose-500">
                       {error}
                     </td>
                   </tr>
                 ) : boqs.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-3 py-3 md:px-6 md:py-16 text-center text-sm text-slate-400">
+                    <td colSpan={10} className="px-3 py-3 md:px-6 md:py-16 text-center text-sm text-slate-400">
                       {activeTab === "draft"
                         ? "Belum ada BOQ draft. BOQ baru dari email/PO akan muncul di sini."
                         : "Tidak ada data BOQ."}
                     </td>
                   </tr>
                 ) : (
-                  pagedBoqs.map((boq, index) => {
+                  pagedBoqs.map((boq) => {
                     const statusBadge = getStatusBadge(boq.status);
-                    const sourceBadge = getSourceBadge(boq.source);
                     const verificationBadge = getVerificationBadge(boq.externalVerificationStatus);
                     const totalQty = boq.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
                     const totalItems = boq.items.length;
                     const blockedFromActivation =
                       boq.externalVerificationStatus !== "terverifikasi";
-                    const rowNumber = (safePage - 1) * PAGE_SIZE + index + 1;
 
                     return (
                       <tr
@@ -1200,26 +1267,33 @@ export default function BoqPage() {
                         className="group cursor-pointer transition-colors hover:bg-slate-50"
                         onClick={() => openDetailModal(boq)}
                       >
-                        <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap text-center text-xs text-slate-500">{rowNumber}</td>
+                        <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell text-slate-700">
+                          <div className="text-sm font-medium text-slate-800">
+                            {boq.clusterId || boq.cluster?.cluster_id || "-"}
+                          </div>
+                        </td>
                         <td className="px-3 py-3 md:px-6 md:py-4">
-                          <div className="font-semibold text-orange-500 whitespace-nowrap">{boq.boqNumber}</div>
-                          <div className="text-xs text-slate-400">{boq.ticketNumber}</div>
-                          <div className="mt-0.5 text-xs text-slate-500 md:hidden">
-                            {boq.project?.projectName || boq.project?.title || boq.area || "-"}
+                          <div className="text-sm font-medium text-orange-500 whitespace-nowrap">{boq.boqNumber}</div>
+                          {boq.ticketNumber ? (
+                            <div className="text-xs font-normal text-slate-500">{formatDisplayText(boq.ticketNumber)}</div>
+                          ) : null}
+                          <div className="mt-0.5 text-xs font-normal text-slate-500 md:hidden">
+                            {formatDisplayText(boq.project?.projectName || boq.project?.title || boq.area)}
                             {boq.project?.status_aktif === false && " (Nonaktif)"}
                           </div>
                         </td>
                         <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell">
-                          <span
-                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${sourceBadge.bg} ${sourceBadge.text}`}
-                          >
-                            <sourceBadge.icon size={12} />
-                            {sourceBadge.label}
-                          </span>
+                          {boq.cluster?.nama_cluster ? (
+                            <div className="text-sm font-medium text-slate-800">{formatDisplayText(boq.cluster.nama_cluster)}</div>
+                          ) : (
+                            <span className="text-sm text-slate-300">-</span>
+                          )}
                         </td>
-                        <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell text-slate-700">
+                        <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell">
                           <div className="flex items-center gap-2">
-                            <span>{boq.project?.projectName || boq.project?.title || "-"}</span>
+                            <span className="text-sm font-medium text-slate-800">
+                              {formatDisplayText(boq.project?.projectName || boq.project?.title)}
+                            </span>
                             {boq.project?.status_aktif === false && (
                               <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
                                 <AlertCircle size={10} />
@@ -1227,25 +1301,19 @@ export default function BoqPage() {
                               </span>
                             )}
                           </div>
-                          <div className="text-xs text-slate-400">{boq.area}</div>
+                          {boq.area ? (
+                            <div className="text-xs font-normal text-slate-500">{formatDisplayText(boq.area)}</div>
+                          ) : null}
                         </td>
-                        <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell">
-                          <span
-                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${verificationBadge.bg} ${verificationBadge.text}`}
-                          >
-                            <verificationBadge.icon size={12} />
-                            {verificationBadge.label}
-                          </span>
+                        <td className="px-3 py-3 md:px-6 md:py-4 text-right text-sm font-medium text-slate-800 tabular-nums">
+                          {totalItems}
+                          <div className="text-xs font-normal text-slate-500 md:hidden">qty {totalQty}</div>
                         </td>
-                        <td className="px-3 py-3 md:px-6 md:py-4 text-right text-sm font-semibold text-slate-800">
-                          {totalItems} barang
-                          <div className="text-xs text-slate-500 md:hidden">qty {totalQty}</div>
-                        </td>
-                        <td className="px-3 py-3 md:px-6 md:py-4 text-right font-semibold text-slate-800 hidden md:table-cell">{totalQty}</td>
+                        <td className="px-3 py-3 md:px-6 md:py-4 text-right text-sm font-medium text-slate-800 tabular-nums hidden md:table-cell">{totalQty}</td>
                         <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell">
                           {boq.referenceFile ? (
                             <a
-                              href={boq.referenceFile}
+                              href={safeUrl(boq.referenceFile)}
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={(e) => e.stopPropagation()}
@@ -1259,13 +1327,13 @@ export default function BoqPage() {
                             <span className="text-xs text-slate-300">-</span>
                           )}
                         </td>
-                        <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell text-slate-700">
-                          <div className="text-sm font-medium text-slate-800">
-                            {boq.clusterId || boq.cluster?.cluster_id || "-"}
-                          </div>
-                          {boq.cluster?.nama_cluster && (
-                            <div className="text-xs text-slate-400">{boq.cluster.nama_cluster}</div>
-                          )}
+                        <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell">
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${verificationBadge.bg} ${verificationBadge.text}`}
+                          >
+                            <verificationBadge.icon size={12} />
+                            {verificationBadge.label}
+                          </span>
                         </td>
                         <td className="px-3 py-3 md:px-6 md:py-4">
                           <span
@@ -1326,7 +1394,7 @@ export default function BoqPage() {
                                 }}
                                 title={
                                   blockedFromActivation
-                                    ? "Belum bisa diaktifkan — menunggu verifikasi eksternal"
+                                    ? "Belum bisa diaktifkan â€” menunggu verifikasi eksternal"
                                     : "Aktifkan BOQ"
                                 }
                                 className={`min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg ${
@@ -1358,11 +1426,15 @@ export default function BoqPage() {
           />
         </div>
 
-        {/* Create/Edit Modal — "Input BOQ dari Email" */}
+        {/* Create/Edit Modal â€” "Input BOQ dari Email" */}
         {modalOpen && canManage && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-            onClick={() => setModalOpen(false)}
+            onClick={() => {
+                setModalOpen(false);
+                cancelSelectedItem();
+                setItemNotice(null);
+              }}
           >
             <div
               className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl"
@@ -1381,7 +1453,11 @@ export default function BoqPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setModalOpen(false)}
+                  onClick={() => {
+                setModalOpen(false);
+                cancelSelectedItem();
+                setItemNotice(null);
+              }}
                   className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                 >
                   <X size={16} />
@@ -1432,16 +1508,16 @@ export default function BoqPage() {
                           onChange={(e) => {
                             const value = e.target.value;
                             if (value === "__new__") {
+                              setClusterForm({
+                                ...EMPTY_CLUSTER_FORM,
+                                project_id: form.projectId,
+                              });
                               setClusterModalOpen(true);
                             } else {
-                              setForm((prev) => ({ ...prev, cluster_id: value }));
-                              const selected = clusters.find((c) => c.cluster_id === value);
-                              if (selected) {
-                                setForm((prev) => ({
-                                  ...prev,
-                                  cluster_id: value,
-                                }));
-                              }
+                              setForm((prev) => ({
+                                ...prev,
+                                cluster_id: value,
+                              }));
                             }
                           }}
                           className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
@@ -1567,7 +1643,7 @@ export default function BoqPage() {
                     {form.referenceFile && (
                       <div className="mt-2 flex items-center gap-2">
                         <a
-                          href={form.referenceFile}
+                          href={safeUrl(form.referenceFile)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs font-medium text-orange-600 hover:text-orange-700"
@@ -1625,116 +1701,122 @@ export default function BoqPage() {
 
                 {/* Items */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex flex-wrap items-end justify-between gap-2 mb-2">
                     <label className="text-xs font-medium text-slate-500">
                       Daftar Barang <span className="text-rose-500">*</span>
                     </label>
-                    <div className="flex items-center gap-2">
-                      <div className="relative">
-                        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input
-                          type="text"
-                          value={itemSearch}
-                          onChange={(e) => setItemSearch(e.target.value)}
-                          placeholder="Cari kode/nama..."
-                          className="rounded-lg border border-slate-200 pl-8 pr-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400 w-40"
-                        />
-                      </div>
-                      <select
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            const selected = filteredItems.find((it) => it.id === e.target.value);
-                            if (selected) {
-                              addItemFromMaster(selected.kode_perangkat, selected.nama_barang, selected.satuan?.kode_satuan);
-                            }
-                            e.target.value = "";
+                    <div className="w-64">
+                      <label className="mb-1 block text-[11px] font-medium text-slate-500">
+                        Cari & pilih item
+                      </label>
+                      <BarangPicker
+                        value={selectedItem?.kode_perangkat ?? ""}
+                        onSelect={(picked: BarangPickerItem) => {
+                          if (picked.id) {
+                            setSelectedItem(picked);
+                            setSelectedQty("1");
+                            setItemNotice(null);
+                          } else {
+                            setSelectedItem(null);
                           }
                         }}
-                        className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-orange-400"
-                      >
-                        <option value="">Pilih Barang...</option>
-                        {filteredItems.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.kode_perangkat} - {item.nama_barang}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={addItem}
-                        className="flex items-center gap-1 text-xs font-semibold text-orange-500 hover:text-orange-600"
-                      >
-                        <Plus size={14} />
-                        Tambah Item
-                      </button>
+                        placeholder="Ketik kode/nama barang..."
+                      />
                     </div>
                   </div>
 
-                   <div className="space-y-2">
-                     {form.items.map((item, index) => (
-                       <div key={index} className="grid grid-cols-12 gap-2 rounded-xl border border-slate-100 p-3">
-                           <div className="col-span-3">
-                             <BarangPicker
-                               value={item.itemCode}
-                               onSelect={(picked: BarangPickerItem) => {
-                                 if (picked.id) {
-                                   updateItem(index, "itemCode", picked.kode_perangkat);
-                                   updateItem(index, "itemName", picked.nama_barang);
-                                   updateItem(
-                                     index,
-                                     "unit",
-                                     picked.satuan_default_kode || "",
-                                   );
-                                 } else {
-                                   updateItem(index, "itemCode", picked.kode_perangkat);
-                                 }
-                               }}
-                               placeholder="Kode perangkat"
-                             />
-                             {itemErrors[index] && (
-                               <p className="mt-1 text-[10px] text-rose-600">{itemErrors[index]}</p>
-                             )}
-                           </div>
-                        <div className="col-span-3">
-                          <input
-                            type="text"
-                            value={item.itemName}
-                            onChange={(e) => updateItem(index, "itemName", e.target.value)}
-                            placeholder="Nama barang"
-                            className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <input
-                            type="number"
-                            value={item.quantity}
-                            onChange={(e) => updateItem(index, "quantity", parseInt(e.target.value) || 0)}
-                            placeholder="Qty"
-                            min="1"
-                            className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
-                          />
-                        </div>
-                         <div className="col-span-3">
-                           <input
-                             type="text"
-                             value={item.unit}
-                             onChange={(e) => updateItem(index, "unit", e.target.value)}
-                             placeholder="Satuan"
-                             className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
-                           />
-                         </div>
-                         <div className="col-span-1 flex items-center justify-end">
-                          <button
-                            type="button"
-                            onClick={() => removeItem(index)}
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-          </div>
-        </div>
+                  {selectedItem && (
+                    <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-orange-100 bg-orange-50/50 p-2.5">
+                      <div className="min-w-0 flex-1 text-xs text-slate-700">
+                        <span className="font-semibold text-slate-900">{selectedItem.kode_perangkat}</span>
+                        <span className="mx-1.5 text-slate-300">|</span>
+                        <span>{selectedItem.nama_barang}</span>
+                        {selectedItem.satuan_default_kode && (
+                          <>
+                            <span className="mx-1.5 text-slate-300">|</span>
+                            <span className="text-slate-500">{selectedItem.satuan_default_kode}</span>
+                          </>
+                        )}
+                      </div>
+                      <input
+                        type="number"
+                        min="1"
+                        value={selectedQty}
+                        onChange={(e) => setSelectedQty(e.target.value)}
+                        placeholder="Qty"
+                        className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-orange-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={confirmSelectedItem}
+                        disabled={!selectedQty.trim() || parseInt(selectedQty, 10) <= 0}
+                        className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                      >
+                        Konfirmasi
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelSelectedItem}
+                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-white"
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  )}
+                  {itemNotice && <p className="mb-2 text-[11px] text-emerald-600">{itemNotice}</p>}
 
-                    ))}
+                  <div className="rounded-xl border border-slate-100 overflow-hidden overflow-x-auto overscroll-x-contain">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-100 bg-slate-50">
+                          <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
+                          <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode</th>
+                          <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
+                          <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-24 text-right">Qty</th>
+                          <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Satuan</th>
+                          <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-16 text-right">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {form.items.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="px-4 py-6 text-center text-xs text-slate-400">
+                              Belum ada item
+                            </td>
+                          </tr>
+                        ) : (
+                          form.items.map((item, index) => (
+                            <tr key={index} className="odd:bg-white even:bg-slate-50">
+                              <td className="px-4 py-2.5 whitespace-nowrap text-center text-xs text-slate-500">{index + 1}</td>
+                              <td className="px-4 py-2.5 whitespace-nowrap text-slate-700">{item.itemCode}</td>
+                              <td className="px-4 py-2.5 font-medium text-slate-800">{item.itemName}</td>
+                              <td className="px-4 py-2.5 text-right">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={item.quantity || ""}
+                                  onChange={(e) => {
+                                    const parsed = parseInt(e.target.value, 10);
+                                    updateItem(index, "quantity", Number.isNaN(parsed) ? 0 : parsed);
+                                  }}
+                                  className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-right text-xs text-slate-800 outline-none focus:border-orange-400"
+                                />
+                              </td>
+                              <td className="px-4 py-2.5 text-slate-500">{item.unit || "-"}</td>
+                              <td className="px-4 py-2.5 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => removeItem(index)}
+                                  className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
                   </div>
 
                   {form.items.length > 0 && (
@@ -1760,7 +1842,11 @@ export default function BoqPage() {
                 <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => setModalOpen(false)}
+                    onClick={() => {
+                setModalOpen(false);
+                cancelSelectedItem();
+                setItemNotice(null);
+              }}
                     className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
                   >
                     Batal
@@ -1794,7 +1880,7 @@ export default function BoqPage() {
                 <div>
                   <h3 className="text-base font-semibold text-slate-900">Detail BOQ</h3>
                   <p className="text-xs text-slate-500">
-                    {detailBoq.boqNumber} • {detailBoq.ticketNumber}
+                    {detailBoq.boqNumber} â€¢ {detailBoq.ticketNumber}
                   </p>
                 </div>
                 <button
@@ -1913,7 +1999,7 @@ export default function BoqPage() {
                       <div className="mt-2 flex items-center gap-2">
                         <FileText size={14} className="text-slate-400" />
                         <a
-                          href={attachment.url}
+                          href={safeUrl(attachment.url)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs font-medium text-orange-600 hover:text-orange-700"
@@ -1948,7 +2034,7 @@ export default function BoqPage() {
                        </thead>
                        <tbody className="divide-y divide-slate-50">
                          {detailBoq.items.map((item, index) => (
-                           <tr key={item.id}>
+                            <tr key={item.id} className="odd:bg-white even:bg-slate-50">
                              <td className="px-4 py-2.5 whitespace-nowrap text-center text-xs text-slate-500">{index + 1}</td>
                              <td className="px-4 py-2.5 text-slate-700">{item.itemCode}</td>
                             <td className="px-4 py-2.5 font-medium text-slate-800">
@@ -2004,7 +2090,7 @@ export default function BoqPage() {
                          </thead>
                          <tbody className="divide-y divide-slate-50">
                            {detailBoq.suratJalanHistory.map((sj, index) => (
-                             <tr key={sj.id}>
+                              <tr key={sj.id} className="odd:bg-white even:bg-slate-50">
                                <td className="px-4 py-2.5 whitespace-nowrap text-center text-xs text-slate-500">{index + 1}</td>
                                <td className="px-4 py-2.5 text-slate-700">{sj.number}</td>
                               <td className="px-4 py-2.5 text-slate-500">
@@ -2153,7 +2239,7 @@ export default function BoqPage() {
         const mosSistem = boq.reconciliation?.mosSistem || 0;
         const used = boq.reconciliation?.used || 0;
         const approvedReturnQty = boq.reconciliation?.approved_return_qty || 0;
-        const remains = mosSistem - (totalBoq + totalAdditional) - used - approvedReturnQty;
+        const remains = mosSistem - (totalBoq + totalAdditional);
         const hasWarning = remains !== 0;
 
         return (
@@ -2169,9 +2255,9 @@ export default function BoqPage() {
                   <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                   <div>
                     <p className="font-semibold">Perhatian: BOQ ini masih memiliki sisa material.</p>
-                     <p className="mt-0.5 text-xs">
-                       Remains = <span className="font-semibold">{remains}</span> (MOS Sistem: {mosSistem}, BOQ: {totalBoq}, Additional: {totalAdditional}, Used: {used}, Return: {approvedReturnQty})
-                     </p>
+<p className="mt-0.5 text-xs">
+                        Remains = <span className="font-semibold">{remains}</span> (MOS: {mosSistem}, BOQ: {totalBoq}, Additional: {totalAdditional})
+                      </p>
                   </div>
                 </div>
               )}
@@ -2266,88 +2352,151 @@ export default function BoqPage() {
              </div>
 
               <form onSubmit={handleCreateCluster} className="space-y-3">
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
-                    Cluster ID <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={clusterForm.cluster_id}
-                    onChange={(e) => setClusterForm((prev) => ({ ...prev, cluster_id: e.target.value.toUpperCase() }))}
-                    placeholder="Contoh: CL001, NET-H-005502"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
-                    required
-                  />
-                </div>
+     <div>
+       <label className="mb-1.5 block text-xs font-medium text-slate-500">
+         Nama Project <span className="text-rose-500">*</span>
+       </label>
+       <select
+         value={clusterForm.project_id}
+         onChange={(e) => setClusterForm(prev => ({ ...prev, project_id: e.target.value }))}
+         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+         required
+       >
+         <option value="">Pilih project</option>
+         {projects.map(project => (
+           <option key={project.projectId} value={project.projectId}>
+             {project.projectName || project.title}
+           </option>
+         ))}
+       </select>
+     </div>
 
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
-                    Nama Cluster <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={clusterForm.nama_cluster}
-                    onChange={(e) => setClusterForm((prev) => ({ ...prev, nama_cluster: e.target.value }))}
-                    placeholder="Contoh: RW 05, Cluster A"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
-                    required
-                  />
-                </div>
+     <div>
+       <label className="mb-1.5 block text-xs font-medium text-slate-500">
+         Nama Cluster <span className="text-rose-500">*</span>
+       </label>
+       <input
+         type="text"
+         value={clusterForm.nama_cluster}
+         onChange={(e) => setClusterForm(prev => ({ ...prev, nama_cluster: e.target.value }))}
+         placeholder="Contoh: RW 05, Cluster A"
+         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+         required
+       />
+     </div>
 
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-400">
-                    Tipe Cluster
-                  </label>
-                  <input
-                    type="text"
-                    value={clusterForm.cluster_type}
-                    onChange={(e) => setClusterForm((prev) => ({ ...prev, cluster_type: e.target.value }))}
-                    placeholder="Opsional"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
-                  />
-                </div>
+     <div>
+       <label className="mb-1.5 block text-xs font-medium text-slate-500">
+         Cluster ID <span className="text-rose-500">*</span>
+       </label>
+       <input
+         type="text"
+         value={clusterForm.cluster_id}
+         onChange={(e) => setClusterForm(prev => ({ ...prev, cluster_id: e.target.value.toUpperCase() }))}
+         placeholder="Contoh: CL001, NET-H-005502"
+         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+         required
+       />
+     </div>
 
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-400">
-                    Alamat Lengkap
-                  </label>
-                  <textarea
-                    value={clusterForm.alamat_lengkap}
-                    onChange={(e) => setClusterForm((prev) => ({ ...prev, alamat_lengkap: e.target.value }))}
-                    placeholder="Opsional"
-                    rows={3}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
-                  />
-                </div>
+     <div>
+       <label className="mb-1.5 block text-xs font-medium text-slate-400">
+         Tipe Cluster
+       </label>
+       <input
+         type="text"
+         value={clusterForm.cluster_type}
+         onChange={(e) => setClusterForm(prev => ({ ...prev, cluster_type: e.target.value }))}
+         placeholder="Opsional"
+         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+       />
+     </div>
 
-                {clusterError && (
-                  <div className="flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-600">
-                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                    {clusterError}
-                  </div>
-                )}
+     <div>
+       <label className="mb-1.5 block text-xs font-medium text-slate-400">
+         Alamat Lengkap
+       </label>
+       <textarea
+         value={clusterForm.alamat_lengkap}
+         onChange={(e) => setClusterForm(prev => ({ ...prev, alamat_lengkap: e.target.value }))}
+         placeholder="Opsional"
+         rows={3}
+         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+       />
+     </div>
 
-                <div className="flex items-center justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setClusterModalOpen(false)}
-                    className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={clusterSubmitting}
-                    className="flex items-center gap-2 rounded-full bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:opacity-60"
-                  >
-                    {clusterSubmitting && <Loader2 size={14} className="animate-spin" />}
-                    Buat Cluster
-                  </button>
-                </div>
-              </form>
+     <div>
+       <label className="mb-1.5 block text-xs font-medium text-slate-400">
+         Homepass Plan
+       </label>
+       <input
+         type="number"
+         value={clusterForm.homepass_plan ?? ""}
+         onChange={(e) => {
+           const value = e.target.value;
+           setClusterForm(prev => ({
+             ...prev,
+             homepass_plan: value === "" ? null : Number(value),
+            }));
+         }}
+         placeholder="Opsional"
+         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+       />
+     </div>
+
+     <div>
+       <label className="mb-1.5 block text-xs font-medium text-slate-400">
+         Status
+       </label>
+       <select
+         value={clusterForm.status_aktif ? "true" : "false"}
+         onChange={(e) => setClusterForm(prev => ({ ...prev, status_aktif: e.target.value === "true" }))}
+         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+       >
+         <option value="true">Aktif</option>
+         <option value="false">Non-Aktif</option>
+       </select>
+     </div>
+
+     {clusterError && (
+       <div className="flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-600">
+         <AlertCircle size={14} className="mt-0.5 shrink-0" />
+         {clusterError}
+       </div>
+     )}
+
+     <div className="flex items-center justify-end gap-2 pt-2">
+       <button
+         type="button"
+         onClick={() => setClusterModalOpen(false)}
+         className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+       >
+         Batal
+       </button>
+       <button
+         type="submit"
+         disabled={clusterSubmitting}
+         className="flex items-center gap-2 rounded-full bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:opacity-60"
+       >
+         {clusterSubmitting && <Loader2 size={14} className="animate-spin" />}
+         Buat Cluster
+       </button>
+     </div>
+   </form>
            </div>
          </div>
        )}
      </div>
    );
  }
+
+
+
+
+
+
+
+
+
+
+

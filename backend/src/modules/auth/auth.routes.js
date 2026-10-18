@@ -1,73 +1,72 @@
 const express = require("express");
-
 const router = express.Router();
 
 const authController = require("./auth.controller");
 
-const { loginSchema, changePasswordSchema } = require("./auth.validation");
+const { loginSchema, changePasswordSchema, resetPasswordSchema } = require("./auth.validation");
 
 const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
 
 const validate = require("../../middlewares/validation.middleware");
+const { loginLimiter, passwordResetLimiter, refreshLimiter } = require("../../middlewares/rate-limit");
 
 router.post(
-    "/login",
-    validate(loginSchema),
-    authController.login
+  "/login",
+  validate(loginSchema),
+  loginLimiter,
+  authController.login
 );
 
 router.post(
-    "/forgot-password",
-    authController.forgotPassword
+  "/forgot-password",
+  passwordResetLimiter,
+  authController.forgotPassword
 );
 
 router.post(
-    "/reset-password",
-    authController.resetPassword
+  "/reset-password",
+  passwordResetLimiter,
+  validate(resetPasswordSchema),
+  authController.resetPassword
 );
 
 router.put(
-    "/change-password",
-    authenticate,
-    validate(changePasswordSchema),
-    authController.changePassword
+  "/change-password",
+  authenticate,
+  validate(changePasswordSchema),
+  authController.changePassword
 );
 
 router.post(
-    "/refresh",
-    authController.refresh
+  "/refresh",
+  refreshLimiter,
+  authController.refresh
 );
 
 router.post(
-    "/logout",
-    authenticate,
-    authController.logout
+  "/logout",
+  authenticate,
+  authController.logout
 );
 
 router.get(
-    "/me",
-    authenticate,
-    authController.me
+  "/me",
+  authenticate,
+  authController.me
 );
 
 router.get(
-    "/admin",
-    authenticate,
-    authorize("ADMIN"),
-    (req, res) => {
-
-        return res.json({
-
-            success: true,
-
-            message: "Selamat datang Admin.",
-
-            user: req.user
-
-        });
-
-    }
+  "/admin",
+  authenticate,
+  authorize("ADMIN"),
+  (req, res) => {
+    return res.json({
+      success: true,
+      message: "Selamat datang Admin.",
+      user: req.user
+    });
+  }
 );
 
 module.exports = router;

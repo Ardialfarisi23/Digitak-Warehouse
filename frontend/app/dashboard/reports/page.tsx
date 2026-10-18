@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo, Fragment } from "react";
+import { useState, useCallback, useEffect, useMemo, Fragment, useRef } from "react";
 import {
   Search,
   ChevronDown,
@@ -23,7 +23,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useApi } from "@/lib/api";
-import { humanizeKey, humanizeValue, VALUE_LABELS } from "@/lib/audit-labels";
+import { humanizeKey, humanizeValue, VALUE_LABELS, getAksiLabel, getRoleLabel, ENTITY_TYPE_LABELS, formatIp, formatUserAgent } from "@/lib/audit-labels";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -66,39 +66,11 @@ function Badge({ label, icon: Icon, variant = "gray", className }: { label: stri
   );
 }
 
-const aksiMap: Record<string, { label: string; icon: React.ComponentType<{ size?: number; className?: string }>; variant: BadgeVariant }> = {
-  create: { label: "Dibuat", icon: Plus, variant: "green" },
-  update: { label: "Diperbarui", icon: Pencil, variant: "blue" },
-  delete: { label: "Dihapus", icon: Trash2, variant: "red" },
-  approve: { label: "Disetujui", icon: CheckCircle, variant: "green" },
-  receive_inbound: { label: "Terima Inbound", icon: ArrowDownToLine, variant: "purple" },
-  approve_inbound: { label: "Setujui Inbound", icon: CheckCircle, variant: "green" },
-  approve_outbound: { label: "Setujui Outbound", icon: CheckCircle, variant: "green" },
-  confirm_distributed: { label: "Dikonfirmasi", icon: PackageCheck, variant: "purple" },
-  reject_inbound: { label: "Tolak Inbound", icon: XCircle, variant: "red" },
-  reject_outbound: { label: "Tolak Outbound", icon: XCircle, variant: "red" },
-  putaway: { label: "Penyimpanan", icon: PackageCheck, variant: "purple" },
-  retrieve: { label: "Pengambilan Stok", icon: PackageSearch, variant: "blue" },
-  create_inbound: { label: "Buat Inbound", icon: Plus, variant: "green" },
-  create_outbound: { label: "Buat Outbound", icon: Plus, variant: "green" },
-  nonaktifkan_project: { label: "Project Dinonaktifkan", icon: XCircle, variant: "red" },
-  aktifkan_project: { label: "Project Diaktifkan", icon: CheckCircle, variant: "green" },
-  soft_delete: { label: "Dihapus (Soft)", icon: Trash2, variant: "red" },
-  restore: { label: "Dipulihkan", icon: RotateCcw, variant: "green" },
-  start_delivery: { label: "Mulai Pengiriman", icon: ArrowDownToLine, variant: "purple" },
-};
-
-const roleMap: Record<string, { label: string; variant: BadgeVariant }> = {
-  admin_general: { label: "Admin General", variant: "outline-orange" },
-  supervisor: { label: "Supervisor", variant: "outline-blue" },
-  staf_gudang: { label: "Staf Gudang", variant: "outline-gray" },
-};
-
 interface AuditLogEntry {
   audit_id: number | string;
   created_at: string;
-  actor_nama: string;
-  actor_role: string;
+  actor_nama: string | null;
+  actor_role: string | null;
   aksi: string;
   entity_type?: string;
   entity_id?: string | number;
@@ -197,14 +169,14 @@ function Modal({ open, onClose, title, children, className }: { open: boolean; o
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 sm:p-0"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center sm:p-0"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
     >
       <div
-        className={`w-full max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl ${className || ""}`}
+        className={`w-full max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl ${className || ""} sm:max-w-lg`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
@@ -214,7 +186,7 @@ function Modal({ open, onClose, title, children, className }: { open: boolean; o
           <button
             type="button"
             onClick={onClose}
-            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 touch-target"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
             aria-label="Tutup"
           >
             <X size={20} />
@@ -234,6 +206,7 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
   const [aksi, setAksi] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [dateError, setDateError] = useState("");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -248,10 +221,26 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  const validasiRentangTanggal = useCallback(() => {
+    if (startDate && endDate && endDate < startDate) {
+      setDateError("Tanggal akhir tidak boleh lebih awal dari tanggal mulai.");
+      return false;
+    }
+    setDateError("");
+    return true;
+  }, [startDate, endDate]);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     setDetailRow(null);
+    if (!validasiRentangTanggal()) {
+      setLoading(false);
+      setData([]);
+      setTotal(0);
+      setTotalPages(1);
+      return;
+    }
     try {
       const params = new URLSearchParams();
       if (q.trim()) params.set("search", q.trim());
@@ -279,13 +268,14 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
     } finally {
       setLoading(false);
     }
-  }, [get, q, actorRole, aksi, startDate, endDate, page]);
+  }, [get, q, actorRole, aksi, startDate, endDate, page, validasiRentangTanggal]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
   const handleExportAuditLog = async () => {
+    if (!validasiRentangTanggal()) return;
     setExporting(true);
     setToast(null);
     try {
@@ -327,7 +317,7 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
     }
   };
 
-  const aksiList = ["create", "update", "delete", "approve", "receive_inbound", "approve_inbound", "approve_outbound", "confirm_distributed", "reject_inbound", "reject_outbound", "putaway", "retrieve", "create_inbound", "create_outbound", "nonaktifkan_project", "aktifkan_project", "soft_delete", "restore", "start_delivery", "input_rekonsiliasi"];
+  const aksiList = ["create", "update", "delete", "approve", "receive_inbound", "approve_inbound", "approve_outbound", "confirm_distributed", "reject_inbound", "reject_outbound", "putaway", "retrieve", "create_inbound", "create_outbound", "nonaktifkan_project", "aktifkan_project", "soft_delete", "restore", "start_delivery", "input_rekonsiliasi", "login_success", "login_failed", "reset_link_created", "report_arrival", "tiba_di_transit", "lanjut_dari_transit", "cancel_draft"];
 
   const formatDateTime = (iso: string) => {
     const d = new Date(iso);
@@ -339,31 +329,31 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
     return `${day} ${mon}, ${hh}:${mm}`;
   };
 
+  const LOGIN_ACTIONS = new Set(["login_success", "login_failed", "reset_link_created"]);
+
+  function getDetailSectionTitle(aksi: string, kind: "sebelum" | "sesudah"): string {
+    if (LOGIN_ACTIONS.has(aksi)) {
+      if (aksi === "reset_link_created") return "Detail Reset Link";
+      return "Detail Login";
+    }
+    return kind === "sebelum" ? "Data Sebelum" : "Data Sesudah";
+  }
+
   const getEntityLabel = (row: AuditLogEntry): string => {
     const kode = row.data_sesudah?.kode_tiket || row.data_sebelum?.kode_tiket;
     if (kode) return String(kode);
 
-    const entityTypeLabels: Record<string, string> = {
-      boq: "BOQ",
-      surat_jalan: "Surat Jalan",
-      project: "Project",
-      titik_lapangan: "Titik Lapangan",
-      user_account: "User",
-      item: "Barang",
-      personil: "Personil",
-      vehicle: "Kendaraan",
-      supplier: "Supplier",
-      warehouse: "Gudang",
-      cluster: "Cluster",
-    };
-
     if (row.entity_name) {
-      const label = entityTypeLabels[row.entity_type || ""] || row.entity_type || "Entitas";
+      const label = ENTITY_TYPE_LABELS[row.entity_type || ""] || row.entity_type || "Entitas";
       return `${label}: ${row.entity_name}`;
     }
 
+    if (row.entity_type === "user_account" && (!row.entity_id || String(row.entity_id) === "0")) {
+      return "Akun tidak dikenal";
+    }
+
     if (row.entity_type === "reconciliation") {
-      return "Reconciliation";
+      return "Rekonsiliasi";
     }
 
     const snapshot = row.data_sesudah || row.data_sebelum || {};
@@ -378,15 +368,16 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
       null;
 
     if (fallbackName) {
-      const label = entityTypeLabels[row.entity_type || ""] || row.entity_type || "Entitas";
+      const label = ENTITY_TYPE_LABELS[row.entity_type || ""] || row.entity_type || "Entitas";
       return `${label}: ${fallbackName}`;
     }
 
-    if (row.entity_type && row.entity_id && row.entity_id !== "0") {
-      return `${row.entity_type} #${row.entity_id} (data mungkin telah dihapus)`;
+    if (row.entity_type && row.entity_id && String(row.entity_id) !== "0") {
+      const label = ENTITY_TYPE_LABELS[row.entity_type || ""] || row.entity_type;
+      return `${label} #${row.entity_id} (data mungkin telah dihapus)`;
     }
 
-    return row.entity_type || "-";
+    return ENTITY_TYPE_LABELS[row.entity_type || ""] || row.entity_type || "-";
   };
 
   const getExtraRef = (row: AuditLogEntry) => {
@@ -416,7 +407,12 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
     "wajib_sn",
   ]);
 
-  const renderStructuredData = (label: string, data: Record<string, unknown>, resolvedRefs: Record<string, string | null> = {}) => {
+  const renderStructuredData = (
+    label: string,
+    data: Record<string, unknown>,
+    resolvedRefs: Record<string, string | null> = {},
+    aksi?: string
+  ) => {
     if (!data || typeof data !== "object") {
       return <p className="text-sm text-slate-500">-</p>;
     }
@@ -426,6 +422,19 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
       if (HIDDEN_AUDIT_FIELDS.has(k)) return false;
       return true;
     });
+
+    const isLoginAction = aksi && LOGIN_ACTIONS.has(aksi);
+
+    const loginOrder: Record<string, number> = { email: 1, reason: 2, ip: 3, userAgent: 4, user_agent: 4 };
+    entries.sort((a, b) => {
+      const oa = isLoginAction ? loginOrder[a[0]] : 0;
+      const ob = isLoginAction ? loginOrder[b[0]] : 0;
+      if (oa && ob) return oa - ob;
+      if (oa) return -1;
+      if (ob) return 1;
+      return 0;
+    });
+
     if (entries.length === 0) {
       return <p className="text-sm text-slate-500">-</p>;
     }
@@ -459,6 +468,19 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
           return "-";
         }
         return resolved;
+      }
+
+      if (key === "ip" || key === "ipAddress") {
+        return <span className="text-xs font-semibold text-slate-800 text-right break-all">{formatIp(value as string)}</span>;
+      }
+
+      if (key === "userAgent" || key === "user_agent") {
+        const ua = formatUserAgent(value as string);
+        return (
+          <span className="text-xs font-semibold text-slate-800 text-right break-all" title={ua.title}>
+            {ua.text}
+          </span>
+        );
       }
 
       if (Array.isArray(value)) {
@@ -509,247 +531,17 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
         })}
       </div>
     );
-  };
-
-  return (
-    <div>
-      <div className="mb-4 rounded-xl border border-orange-100 bg-orange-50 px-4 py-2 text-xs text-orange-700">
-        Tabel ini bersifat <strong>append-only</strong>. Semua entri dicatat otomatis dan tidak dapat diubah atau dihapus, termasuk oleh Admin General.
-      </div>
-
-      <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-        <div className="col-span-1 sm:col-span-2 lg:col-span-2 xl:col-span-3">
-          <div className="flex min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
-            <Search size={16} className="shrink-0 text-slate-400" />
-            <input
-              value={q}
-              onChange={(e) => { setQ(e.target.value); setPage(1); }}
-              placeholder="Cari Kode Tiket, aksi, atau entitas…"
-              className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-300"
-            />
-          </div>
-        </div>
-
-        <div>
-          <select
-            value={actorRole}
-            onChange={(e) => { setActorRole(e.target.value); setPage(1); }}
-            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
-          >
-            <option value="">Semua peran</option>
-            <option value="admin_general">Admin General</option>
-            <option value="supervisor">Supervisor</option>
-            <option value="staf_gudang">Staf Gudang</option>
-          </select>
-        </div>
-
-        <div>
-          <select
-            value={aksi}
-            onChange={(e) => { setAksi(e.target.value); setPage(1); }}
-            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
-          >
-            <option value="">Semua jenis aksi</option>
-            {aksiList.map((o) => (
-              <option key={o} value={o}>{VALUE_LABELS.audit_aksi[o] || o}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
-          />
-        </div>
-
-        <div>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
-          />
-        </div>
-
-        <div className="sm:col-span-2 lg:col-span-1 xl:col-span-1">
-          <button
-            type="button"
-            onClick={handleExportAuditLog}
-            disabled={exporting}
-            aria-label="Ekspor Audit Log" className="w-full flex items-center justify-center gap-2 rounded-full bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {exporting ? (
-              <span className="flex items-center gap-2">
-                <Loader2 size={16} className="animate-spin" />
-                <span className="hidden sm:inline">Mengekspor...</span>
-              </span>
-            ) : (
-              <span className="flex items-center gap-2">
-                <Download size={16} />
-                <span className="hidden sm:inline">Ekspor</span>
-              </span>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {toast && (
-        <div
-          className={[
-            "fixed top-20 right-6 z-50 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm font-medium shadow-2xl backdrop-blur-sm animate-in slide-in-from-right-full fade-in duration-300 max-w-sm",
-            toast.type === "success"
-              ? "border-emerald-200/80 bg-emerald-50/95 text-emerald-800"
-              : toast.type === "warning"
-                ? "border-amber-200/80 bg-amber-50/95 text-amber-800"
-                : "border-rose-200/80 bg-rose-50/95 text-rose-800",
-          ].join(" ")}
-        >
-          <div
-            className={[
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-              toast.type === "success"
-                ? "bg-emerald-100"
-                : toast.type === "warning"
-                  ? "bg-amber-100"
-                  : "bg-rose-100",
-            ].join(" ")}
-          >
-            {toast.type === "success" ? (
-              <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            ) : toast.type === "warning" ? (
-              <svg className="h-5 w-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-              </svg>
-            ) : (
-              <svg className="h-5 w-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            )}
-          </div>
-          <p className="flex-1 leading-snug">{toast.message}</p>
-          <button
-            type="button"
-            onClick={() => setToast(null)}
-            className={[
-              "ml-2 shrink-0 rounded-full p-1 transition-colors",
-              toast.type === "success"
-                ? "text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600"
-                : toast.type === "warning"
-                  ? "text-amber-400 hover:bg-amber-100 hover:text-amber-600"
-                  : "text-rose-400 hover:bg-rose-100 hover:text-rose-600",
-            ].join(" ")}
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      )}
-
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1260px] table-fixed text-left text-sm border-separate border-spacing-0">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Waktu</th>
-                <th className="w-[180px] min-w-[180px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Pengguna</th>
-                <th className="w-[140px] min-w-[140px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Peran</th>
-                <th className="w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
-                <th className="w-[280px] min-w-[280px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Entitas Terkait</th>
-                <th className="w-[300px] min-w-[300px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Referensi Tambahan</th>
-                <th className="w-10 min-w-10 overflow-hidden px-6 py-4"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i}>
-                    <td className="px-6 py-4" colSpan={7}>
-                      <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
-                    </td>
-                  </tr>
-                ))
-              ) : error ? (
-                <tr>
-                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={7}>{error}</td>
-                </tr>
-              ) : data.length === 0 ? (
-                <tr>
-                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={7}>
-                    Tidak ada entri audit yang cocok dengan filter ini.
-                  </td>
-                </tr>
-              ) : (
-                data.map((r) => {
-                  const extraRef = getExtraRef(r);
-                  return (
-                    <tr
-                      key={r.audit_id}
-                      className="group cursor-pointer transition-colors hover:bg-slate-50 min-h-16"
-                      onClick={() => setDetailRow(r)}
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400 overflow-hidden">
-                        {formatDateTime(r.created_at)}
-                      </td>
-                      <td className="px-6 py-4 min-w-0 overflow-hidden truncate" title={r.actor_nama}>
-                        <div className="font-semibold text-slate-900 truncate">{r.actor_nama}</div>
-                      </td>
-                      <td className="px-6 py-4 overflow-hidden">
-                        {roleMap[r.actor_role] ? (
-                          <Badge label={roleMap[r.actor_role].label} variant={roleMap[r.actor_role].variant} className="whitespace-nowrap shrink-0" />
-                        ) : (
-                          <span className="text-xs text-slate-500 whitespace-nowrap">{r.actor_role}</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 overflow-hidden">
-                        {aksiMap[r.aksi] ? (
-                          <Badge label={aksiMap[r.aksi].label} icon={aksiMap[r.aksi].icon} variant={aksiMap[r.aksi].variant} className="whitespace-nowrap shrink-0" />
-                        ) : (
-                          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 whitespace-nowrap shrink-0">
-                            {humanizeValue("aksi", r.aksi)}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 min-w-0 overflow-hidden">
-                        <Badge label={getEntityLabel(r)} variant="gray" className="whitespace-nowrap shrink-0" />
-                      </td>
-                      <td className="px-6 py-4 text-xs text-slate-500 min-w-0 overflow-hidden truncate">
-                        {extraRef !== "—" ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-mono whitespace-nowrap shrink-0">
-                            {extraRef}
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-right overflow-hidden">
-                        <button
-                          type="button"
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                          onClick={(e) => { e.stopPropagation(); setDetailRow(r); }}
-                        >
-                          <Eye size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
+};
 
   // Mobile card component for Audit Log
   function AuditLogCard({ row, onClick }: { row: AuditLogEntry; onClick: () => void }) {
     const extraRef = getExtraRef(row);
+    const actorNama = row.actor_nama ?? (row.aksi === "login_failed" ? "Tidak dikenal" : "—");
+    const actorRole = row.actor_role ?? (row.aksi === "login_failed" ? "Tidak dikenal" : "—");
+    const roleLabel = getRoleLabel(actorRole);
+    const roleBadge = actorRole ? (
+      <Badge label={roleLabel} variant="outline-gray" className="whitespace-nowrap shrink-0" />
+    ) : null;
     return (
       <div
         className="group rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:bg-slate-50 cursor-pointer"
@@ -758,20 +550,8 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              {aksiMap[row.aksi] ? (
-                <Badge label={aksiMap[row.aksi].label} icon={aksiMap[row.aksi].icon} variant={aksiMap[row.aksi].variant} className="whitespace-nowrap shrink-0" />
-              ) : (
-                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 whitespace-nowrap shrink-0">
-                  {humanizeValue("aksi", row.aksi)}
-                </span>
-              )}
-              {roleMap[row.actor_role] ? (
-                <Badge label={roleMap[row.actor_role].label} variant={roleMap[row.actor_role].variant} className="whitespace-nowrap shrink-0" />
-              ) : (
-                <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 whitespace-nowrap shrink-0">
-                  {row.actor_role}
-                </span>
-              )}
+              <Badge label={getAksiLabel(row.aksi)} variant="gray" className="whitespace-nowrap shrink-0" />
+              {roleBadge}
             </div>
             <p className="mt-1 font-mono font-semibold text-orange-500 truncate" title={getEntityLabel(row)}>
               {getEntityLabel(row)}
@@ -786,8 +566,8 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
 
         <div className="mt-2 min-w-0">
           <p className="text-xs font-medium text-slate-400">Pengguna</p>
-          <p className="font-semibold text-slate-900 truncate" title={row.actor_nama}>
-            {row.actor_nama}
+          <p className="font-semibold text-slate-900 truncate" title={actorNama}>
+            {actorNama}
           </p>
         </div>
 
@@ -803,11 +583,11 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
         <div className="mt-4 flex items-center justify-end">
           <button
             type="button"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 touch-target"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
             onClick={(e) => { e.stopPropagation(); onClick(); }}
             aria-label="Lihat detail"
           >
-            <Eye size={18} />
+            <Eye size={20} />
           </button>
         </div>
       </div>
@@ -872,7 +652,7 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
               <th className="w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
               <th className="w-[280px] min-w-[280px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Entitas Terkait</th>
               <th className="w-[300px] min-w-[300px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Referensi Tambahan</th>
-              <th className="w-10 min-w-10 overflow-hidden px-6 py-4"></th>
+              <th className="w-16 min-w-16 px-3 py-4 text-right"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
@@ -887,24 +667,18 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
                   <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400 overflow-hidden">
                     {formatDateTime(r.created_at)}
                   </td>
-                  <td className="px-6 py-4 min-w-0 overflow-hidden truncate" title={r.actor_nama}>
-                    <div className="font-semibold text-slate-900 truncate">{r.actor_nama}</div>
+                  <td className="px-6 py-4 min-w-0 overflow-hidden truncate" title={r.actor_nama ?? (r.aksi === "login_failed" ? "Tidak dikenal" : "—")}>
+                    <div className="font-semibold text-slate-900 truncate">{r.actor_nama ?? (r.aksi === "login_failed" ? "Tidak dikenal" : "—")}</div>
                   </td>
                   <td className="px-6 py-4 overflow-hidden">
-                    {roleMap[r.actor_role] ? (
-                      <Badge label={roleMap[r.actor_role].label} variant={roleMap[r.actor_role].variant} className="whitespace-nowrap shrink-0" />
+                    {r.actor_role ? (
+                      <Badge label={getRoleLabel(r.actor_role)} variant="outline-gray" className="whitespace-nowrap shrink-0" />
                     ) : (
-                      <span className="text-xs text-slate-500 whitespace-nowrap">{r.actor_role}</span>
+                      <span className="text-xs text-slate-500 whitespace-nowrap">Tidak dikenal</span>
                     )}
                   </td>
                   <td className="px-6 py-4 overflow-hidden">
-                    {aksiMap[r.aksi] ? (
-                      <Badge label={aksiMap[r.aksi].label} icon={aksiMap[r.aksi].icon} variant={aksiMap[r.aksi].variant} className="whitespace-nowrap shrink-0" />
-                    ) : (
-                      <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 whitespace-nowrap shrink-0">
-                        {humanizeValue("aksi", r.aksi)}
-                      </span>
-                    )}
+                    <Badge label={getAksiLabel(r.aksi)} variant="gray" className="whitespace-nowrap shrink-0" />
                   </td>
                   <td className="px-6 py-4 min-w-0 overflow-hidden">
                     <Badge label={getEntityLabel(r)} variant="gray" className="whitespace-nowrap shrink-0" />
@@ -918,11 +692,13 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
                       "—"
                     )}
                   </td>
-                  <td className="px-6 py-4 text-right overflow-hidden">
+                  <td className="px-3 py-4 text-right">
                     <button
                       type="button"
                       className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                       onClick={(e) => { e.stopPropagation(); setDetailRow(r); }}
+                      aria-label="Lihat detail audit log"
+                      title="Lihat detail"
                     >
                       <Eye size={16} />
                     </button>
@@ -936,7 +712,52 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
     </div>
   );
   return (
-    <div>
+    <div className="space-y-4">
+      {/* Toolbar */}
+      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end">
+        <div className="flex-1 min-w-[180px]">
+          <label className="mb-1 block text-xs font-medium text-slate-400">Pencarian</label>
+          <input
+            type="text"
+            value={q}
+            onChange={(e) => { setQ(e.target.value); setPage(1); }}
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          />
+        </div>
+        <div className="min-w-[150px]">
+          <label className="mb-1 block text-xs font-medium text-slate-400">Rentang Tanggal Dari</label>
+          <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(1); }} max={endDate || undefined} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+        </div>
+        <div className="min-w-[150px]">
+          <label className="mb-1 block text-xs font-medium text-slate-400">Sampai</label>
+          <input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(1); }} min={startDate || undefined} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+        </div>
+        <div className="min-w-[150px]">
+          <label className="mb-1 block text-xs font-medium text-slate-400">Role</label>
+          <select value={actorRole} onChange={(e) => { setActorRole(e.target.value); setPage(1); }} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+            <option value="">Semua Role</option>
+            {Object.keys(VALUE_LABELS.user_role).map((k) => (
+              <option key={k} value={k}>{getRoleLabel(k)}</option>
+            ))}
+          </select>
+        </div>
+        <div className="min-w-[120px]">
+          <label className="mb-1 block text-xs font-medium text-slate-400">Aksi</label>
+          <select value={aksi} onChange={(e) => { setAksi(e.target.value); setPage(1); }} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+            <option value="">Semua</option>
+            {aksiList.map((a) => <option key={a} value={a}>{getAksiLabel(a)}</option>)}
+          </select>
+        </div>
+        <button type="button" onClick={() => { setQ(""); setActorRole(""); setAksi(""); setStartDate(""); setEndDate(""); setDateError(""); setPage(1); }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">Reset</button>
+        <button type="button" onClick={handleExportAuditLog} disabled={exporting} className="rounded-lg bg-[#E8632C] text-white px-4 py-2 text-sm disabled:opacity-50">
+          {exporting ? "Mengekspor..." : "Ekspor"}
+        </button>
+      </div>
+      {dateError && (
+        <div className="mb-2 p-2 rounded bg-red-50 border border-red-100 text-red-700 text-xs">
+          {dateError}
+        </div>
+      )}
       {mobileCards}
       {desktopTable}
 
@@ -983,18 +804,18 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-400">Pengguna</p>
-                <p className="text-sm font-semibold text-slate-800">{detailRow.actor_nama}</p>
+                <p className="text-sm font-semibold text-slate-800">{detailRow.actor_nama ?? (detailRow.aksi === "login_failed" ? "Tidak dikenal" : "—")}</p>
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-400">Peran</p>
                 <p className="text-sm text-slate-800">
-                  {roleMap[detailRow.actor_role] ? roleMap[detailRow.actor_role].label : detailRow.actor_role}
+                  {detailRow.actor_role ? getRoleLabel(detailRow.actor_role) : (detailRow.aksi === "login_failed" ? "Tidak dikenal" : "—")}
                 </p>
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-400">Aksi</p>
                 <p className="text-sm text-slate-800">
-                  {aksiMap[detailRow.aksi] ? aksiMap[detailRow.aksi].label : humanizeValue("aksi", detailRow.aksi)}
+                  {getAksiLabel(detailRow.aksi)}
                 </p>
               </div>
               <div>
@@ -1012,14 +833,18 @@ function TabAuditLog({ get }: { get: (url: string) => Promise<Response> }) {
                 <div className="space-y-4">
                   {detailRow.data_sebelum && (
                     <div>
-                      <p className="text-xs font-medium text-slate-400 mb-2">Data Sebelum</p>
-                      {renderStructuredData("Sebelum", detailRow.data_sebelum, detailRow.entity_refs_resolved)}
+                      <p className="text-xs font-medium text-slate-400 mb-2">
+                        {getDetailSectionTitle(detailRow.aksi, "sebelum")}
+                      </p>
+                      {renderStructuredData("Sebelum", detailRow.data_sebelum, detailRow.entity_refs_resolved, detailRow.aksi)}
                     </div>
                   )}
                   {detailRow.data_sesudah && (
                     <div>
-                      <p className="text-xs font-medium text-slate-400 mb-2">Data Sesudah</p>
-                      {renderStructuredData("Sesudah", detailRow.data_sesudah, detailRow.entity_refs_resolved)}
+                      <p className="text-xs font-medium text-slate-400 mb-2">
+                        {getDetailSectionTitle(detailRow.aksi, "sesudah")}
+                      </p>
+                      {renderStructuredData("Sesudah", detailRow.data_sesudah, detailRow.entity_refs_resolved, detailRow.aksi)}
                     </div>
                   )}
                 </div>
@@ -1072,45 +897,104 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
     if (label && label !== "-") {
       const badgeLabel = ASAL_TIPE_LABEL[row.asal_tipe || ""] || row.asal_tipe || "";
       return (
-        <span className="inline-flex items-center gap-1.5">
-          <span className="truncate block" title={label}>
+        <span className="inline-flex items-center gap-1.5 min-w-0">
+          <span className="truncate block min-w-0" title={label}>
             {label}
           </span>
           {badgeLabel && (
-            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-600 bg-slate-100 whitespace-nowrap">
+            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-600 bg-slate-100 whitespace-nowrap shrink-0">
               {badgeLabel}
             </span>
           )}
         </span>
       );
     }
-    const fallback = row.gudang_asal || "-";
+    const fallback = row.gudang_asal?.trim() || "-";
     return (
-      <span className={fallback === "-" ? "text-slate-300" : ""}>
+      <span className={fallback === "-" ? "text-slate-300" : ""} title={fallback}>
         {fallback}
       </span>
     );
   };
 
   const renderTujuan = (row: StockHistoryEntry) => {
-    const gudang = row.gudang_tujuan || "-";
+    const gudang = row.gudang_tujuan?.trim();
     if (gudang && gudang !== "-") {
-      return <span className="truncate block" title={gudang}>{gudang}</span>;
+      return <span className="block truncate max-w-[160px]" title={gudang}>{gudang}</span>;
     }
-    const lapangan = row.lapangan_tujuan || "-";
+    const lapangan = row.lapangan_tujuan?.trim();
     if (lapangan && lapangan !== "-") {
       return (
-        <span className="inline-flex items-center gap-1.5">
-          <span className="truncate block max-w-[220px]" title={lapangan}>
+        <span className="inline-flex items-center gap-1.5 min-w-0">
+          <span className="truncate block min-w-0 max-w-[180px]" title={lapangan}>
             {lapangan}
           </span>
-          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-600 bg-slate-100 whitespace-nowrap">
+          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-600 bg-slate-100 whitespace-nowrap shrink-0">
             Lapangan
           </span>
         </span>
       );
     }
     return <span className="text-slate-300">-</span>;
+  };
+
+  // Table cell renderers: 2 lines (name + badge)
+  const renderAsalCell = (row: StockHistoryEntry) => {
+    const label = row.asal_label?.trim();
+    if (label && label !== "-") {
+      const badgeLabel = ASAL_TIPE_LABEL[row.asal_tipe || ""] || row.asal_tipe || "";
+      return (
+        <div className="leading-tight min-w-0">
+          <span className="text-xs font-medium text-slate-900 line-clamp-2 break-words block" title={label}>
+            {label}
+          </span>
+          {badgeLabel && (
+            <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold text-slate-600 bg-slate-100 whitespace-nowrap shrink-0 mt-0.5">
+              {badgeLabel}
+            </span>
+          )}
+        </div>
+      );
+    }
+    const fallback = row.gudang_asal || "-";
+    return (
+      <div className="leading-tight">
+        <span className="text-xs font-medium text-slate-900 line-clamp-2 break-words block" title={fallback}>
+          {fallback}
+        </span>
+      </div>
+    );
+  };
+
+  const renderTujuanCell = (row: StockHistoryEntry) => {
+    const gudang = row.gudang_tujuan || "-";
+    if (gudang && gudang !== "-") {
+      return (
+        <div className="leading-tight">
+          <span className="text-xs font-medium text-slate-900 line-clamp-2 break-words block" title={gudang}>
+            {gudang}
+          </span>
+        </div>
+      );
+    }
+    const lapangan = row.lapangan_tujuan || "-";
+    if (lapangan && lapangan !== "-") {
+      return (
+        <div className="leading-tight">
+          <span className="text-xs font-medium text-slate-900 line-clamp-2 break-words block" title={lapangan}>
+            {lapangan}
+          </span>
+          <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold text-slate-600 bg-slate-100 whitespace-nowrap shrink-0 mt-0.5">
+            Lapangan
+          </span>
+        </div>
+      );
+    }
+    return (
+      <div className="leading-tight">
+        <span className="text-xs text-slate-300">—</span>
+      </div>
+    );
   };
 
   // Formatters shared between table and card
@@ -1138,7 +1022,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
         backgroundColor: statusColor[r.status_surat_jalan]?.bg || "#F3F4F6",
       }}
     >
-      {statusLabel[r.status_surat_jalan] || r.status_surat_jalan || "-"}
+      {getSuratJalanStatusLabel(r.status_surat_jalan)}
     </span>
   );
 
@@ -1217,22 +1101,31 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
         {(row.asal_label || row.gudang_asal || row.gudang_tujuan || row.lapangan_tujuan) && (
           <div className="mt-3 pt-3 border-t border-slate-100">
             <p className="text-xs font-medium text-slate-400 mb-1">Alur</p>
-            <p className="text-sm text-slate-700 break-words">
-              {renderAsal(row)}
-              <span className="mx-1.5 text-slate-400">→</span>
-              {renderTujuan(row)}
-            </p>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <p className="text-[10px] font-medium text-slate-400 mb-0.5">Asal</p>
+                <div className="text-slate-700 break-words leading-tight">
+                  {renderAsalCell(row)}
+                </div>
+              </div>
+              <div>
+                <p className="text-[10px] font-medium text-slate-400 mb-0.5">Tujuan</p>
+                <div className="text-slate-700 break-words leading-tight">
+                  {renderTujuanCell(row)}
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
         <div className="mt-4 flex items-center justify-end">
           <button
             type="button"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 touch-target"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
             onClick={(e) => { e.stopPropagation(); onClick(); }}
             aria-label="Lihat detail"
           >
-            <Eye size={18} />
+            <Eye size={20} />
           </button>
         </div>
       </div>
@@ -1249,7 +1142,6 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
   }, []);
 
   const jenisList = ["inbound", "outbound"];
-  const statusList = ["draft_diajukan", "menunggu_verifikasi", "ready_putaway", "disetujui", "digenerate", "diterima_didistribusikan", "sedang_dikirim", "tiba_menunggu_konfirmasi", "ditolak"];
 
   // Semua dropdown filter diisi dari master data supaya value-nya berupa ID
   // numerik (backend memfilter pakai ID, bukan nama). Limit dikirim eksplisit
@@ -1471,22 +1363,16 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
     outbound: "Outbound",
   };
 
-  const statusLabel: Record<string, string> = {
-    draft_diajukan: "Draft",
-    menunggu_verifikasi: "Menunggu Verifikasi",
-    ready_putaway: "Siap Putaway",
-    disetujui: "Disetujui",
-    digenerate: "Digenerate",
-    tiba_menunggu_konfirmasi: "Menunggu Konfirmasi",
-    diterima_didistribusikan: "Diterima/Didistribusikan",
-    sedang_dikirim: "Sedang Dikirim",
-    ditolak: "Ditolak",
-  };
+  // Label status surat jalan dipakai dari helper bersama (@/lib/surat-jalan-status)
+  // supaya tidak ada lagi kode mentah seperti "ready_putaway" yang tampil.
+  // Daftar status untuk dropdown filter juga ikut dari helper yang sama.
+  const statusLabel: Record<string, string> = SURAT_JALAN_STATUS_LABEL as Record<string, string>;
+  const statusOptions = SURAT_JALAN_STATUS_VALUES;
 
   return (
-    <div>
-      <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <div className="sm:col-span-1">
+    <div className="pt-6">
+      <div className="mb-6 grid grid-cols-1 gap-2">
+        <div>
           <div className="flex min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
             <Search size={16} className="shrink-0 text-slate-400" />
             <input
@@ -1498,31 +1384,31 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
           </div>
         </div>
 
-        <div className="sm:col-span-1">
+        <div>
           <button
             type="button"
             onClick={handleExportRiwayatStok}
             disabled={exporting}
             aria-label="Ekspor riwayat stok"
             title="Ekspor riwayat stok"
-            className="w-9 h-9 sm:w-auto sm:h-9 flex items-center justify-center gap-2 self-end sm:self-auto rounded-full bg-orange-500 px-0 sm:px-4 py-2 text-xs font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
+            className="w-full sm:w-auto h-10 sm:h-9 flex items-center justify-center gap-2 rounded-full bg-orange-500 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
           >
             {exporting ? (
               <span className="flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="hidden sm:inline">Mengekspor...</span>
+                <span>Mengekspor...</span>
               </span>
             ) : (
               <span className="flex items-center gap-2">
                 <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Ekspor</span>
+                <span>Ekspor</span>
               </span>
             )}
           </button>
         </div>
       </div>
 
-      <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2">
+      <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
         <div>
           <label className="mb-1 block text-[11px] font-medium text-slate-400">Gudang</label>
           <div className="relative">
@@ -1566,8 +1452,8 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
               className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm text-slate-600 shadow-sm outline-none focus:border-orange-400 appearance-none"
             >
               <option value="">Semua status</option>
-              {statusList.map((o) => (
-                <option key={o} value={o}>{statusLabel[o] || o}</option>
+              {statusOptions.map((o) => (
+                <option key={o} value={o}>{statusLabel[o] || getSuratJalanStatusLabel(o)}</option>
               ))}
             </select>
             <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1629,7 +1515,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
       </div>
 
       {advancedOpen && (
-        <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+        <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           <div>
             <label className="mb-1 block text-[11px] font-medium text-slate-400">Zona</label>
             <div className="relative">
@@ -1778,85 +1664,142 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
         </div>
       )}
 
-      {/* Desktop table (md+) */}
+{/* Desktop table (md+) */}
       <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1300px] md:min-w-[1500px] xl:min-w-[1800px] 2xl:min-w-[2040px] table-fixed text-left text-sm border-separate border-spacing-0">
+          <table className="w-full max-w-full table-auto text-left border-separate border-spacing-0">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tanggal</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Tiket</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">No. Surat Jalan</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Jenis Transaksi</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diproses Oleh</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kode Perangkat</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama Barang</th>
-                <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Qty</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Zona</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Asal</th>
-                <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tujuan</th>
-                <th className="px-6 py-4 w-10"></th>
+                <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 whitespace-nowrap">Tanggal / Tiket</th>
+                <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 whitespace-nowrap">No. Surat Jalan</th>
+                <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 whitespace-nowrap">Jenis</th>
+                <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 whitespace-nowrap">Asal</th>
+                <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 whitespace-nowrap hidden lg:table-cell">Tujuan</th>
+                <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 whitespace-nowrap">Status / Diproses</th>
+                <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 whitespace-nowrap">Barang / Kode</th>
+                <th className="px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-slate-400 whitespace-nowrap">Qty</th>
+                <th className="px-3 py-2.5 w-8"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody>
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4" colSpan={13}>
+                    <td className="px-3 py-2.5" colSpan={9}>
                       <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                     </td>
                   </tr>
                 ))
               ) : error ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={13}>{error}</td>
+                  <td className="px-3 py-10 text-center text-sm text-rose-500" colSpan={9}>{error}</td>
                 </tr>
               ) : data.length === 0 ? (
                 <tr>
-                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={13}>
+                  <td className="px-3 py-10 text-center text-sm text-slate-400" colSpan={9}>
                     Tidak ada pergerakan stok yang cocok dengan filter ini.
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap font-mono font-semibold text-orange-500 overflow-hidden">
-                    {r.kode_tiket || "-"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap font-mono text-xs font-semibold text-slate-700 overflow-hidden">
-                    {r.nomor_surat_jalan && r.nomor_surat_jalan !== "-" ? r.nomor_surat_jalan : r.return_transaction_id ? `Return #${r.return_transaction_id}` : "-"}
-                  </td>
-                  <td className="px-6 py-4 min-w-0 overflow-hidden">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge
-                        label={r.tipe_surat_jalan === "inbound" ? "Inbound" : r.tipe_surat_jalan === "outbound" ? "Outbound" : r.tipe_surat_jalan || "-"}
-                        variant={r.tipe_surat_jalan === "inbound" ? "green" : r.tipe_surat_jalan === "outbound" ? "orange" : "gray"}
-                        className="whitespace-nowrap shrink-0"
-                      />
-                      {r.is_putaway && (
-                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 whitespace-nowrap shrink-0" title={r.jenis_mutasi === "out" ? "Putaway · keluar (Generic)" : r.jenis_mutasi === "in" ? "Putaway · masuk (Zona)" : "Perpindahan Internal (Putaway)"}>{
-                          r.jenis_mutasi === "out"
-                            ? "Putaway · keluar (Generic)"
-                            : r.jenis_mutasi === "in"
-                              ? "Putaway · masuk (Zona)"
-                              : "Perpindahan Internal (Putaway)"
-                        }</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-slate-700">
-                      {renderAsal(r)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-slate-700">
-                      {renderTujuan(r)}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        type="button"
-                        className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                        onClick={(e) => { e.stopPropagation(); setDetailTiket(r); }}
-                      >
-                        <Eye size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                </tr>
+              ) : (
+                data.map((r, rowIndex) => {
+                  return (
+                    <tr
+                      key={r.ledger_id}
+                      className="group cursor-pointer transition-colors hover:bg-slate-50 min-h-20"
+                      onClick={() => setDetailTiket(r)}
+                    >
+                      <td className="px-3 py-2.5 min-w-[140px] max-w-[180px] truncate">
+                        <div className="leading-tight">
+                          <span className="font-mono text-xs text-slate-400 truncate block" title={formatDateTime(r.waktu_mutasi)}>
+                            {formatDateTime(r.waktu_mutasi)}
+                          </span>
+                          <span className="font-mono font-semibold text-orange-500 text-xs truncate block" title={r.kode_tiket || "-"}>
+                            {r.kode_tiket || "-"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 min-w-[120px] max-w-[160px] truncate">
+                        <span className="font-mono text-xs font-semibold text-slate-700 truncate block" title={r.nomor_surat_jalan && r.nomor_surat_jalan !== "-" ? r.nomor_surat_jalan : r.return_transaction_id ? `Return #${r.return_transaction_id}` : "-"}>
+                          {r.nomor_surat_jalan && r.nomor_surat_jalan !== "-" ? r.nomor_surat_jalan : r.return_transaction_id ? `Return #${r.return_transaction_id}` : "-"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap min-w-[80px]">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge
+                            label={r.tipe_surat_jalan === "inbound" ? "Inbound" : r.tipe_surat_jalan === "outbound" ? "Outbound" : r.tipe_surat_jalan || "-"}
+                            variant={r.tipe_surat_jalan === "inbound" ? "green" : r.tipe_surat_jalan === "outbound" ? "orange" : "gray"}
+                            className="whitespace-nowrap shrink-0"
+                          />
+                          {r.is_putaway && (
+                            <span
+                              className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 whitespace-nowrap shrink-0"
+                              title={
+                                r.jenis_mutasi === "out"
+                                  ? "Putaway · keluar (Generic)"
+                                  : r.jenis_mutasi === "in"
+                                    ? "Putaway · masuk (Zona)"
+                                    : "Perpindahan Internal (Putaway)"
+                              }
+                            >
+                              {r.jenis_mutasi === "out"
+                                ? "Putaway Out"
+                                : r.jenis_mutasi === "in"
+                                  ? "Putaway In"
+                                  : "Putaway"}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 min-w-[140px] max-w-[180px]">
+                        {renderAsalCell(r)}
+                      </td>
+                      <td className="px-3 py-2.5 min-w-[140px] max-w-[180px] hidden lg:table-cell">
+                        {renderTujuanCell(r)}
+                      </td>
+                      <td className="px-3 py-2.5 min-w-[140px] max-w-[180px] truncate">
+                        <div className="leading-tight">
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap shrink-0"
+                            style={{
+                              color: statusColor[r.status_surat_jalan]?.fg || "#6B7280",
+                              backgroundColor: statusColor[r.status_surat_jalan]?.bg || "#F3F4F6",
+                            }}
+                          >
+                            {statusLabel[r.status_surat_jalan] || r.status_surat_jalan || "-"}
+                          </span>
+                          <span className="text-xs text-slate-500 truncate block mt-0.5" title={r.diproses_oleh || "-"}>
+                            {r.diproses_oleh || "-"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 min-w-[160px] max-w-[220px] truncate">
+                        <div className="leading-tight">
+                          <span className="font-semibold text-slate-900 text-xs truncate block" title={r.nama_barang || "-"}>
+                            {r.nama_barang || "-"}
+                          </span>
+                          <span className="font-mono text-[10px] text-slate-400 truncate block" title={r.kode_perangkat || "-"}>
+                            {r.kode_perangkat || "-"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap font-mono text-slate-700 min-w-[70px]">
+                        <span className="font-semibold text-xs">{r.qty}</span>
+                        {r.satuan && r.satuan !== "-" && (
+                          <span className="ml-1 text-[10px] text-slate-400">{r.satuan}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <button
+                          type="button"
+                          className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                          onClick={(e) => { e.stopPropagation(); setDetailTiket(r); }}
+                          aria-label="Lihat detail"
+                        >
+                          <Eye size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -2025,7 +1968,7 @@ function TabRiwayatStok({ get }: { get: (url: string) => Promise<Response> }) {
                 </div>
                 <div>
                   <p className="text-xs font-medium text-slate-400">Status</p>
-                  <p className="text-sm text-slate-800">{statusLabel[detailTiket.status_surat_jalan] || detailTiket.status_surat_jalan}</p>
+                  <p className="text-sm text-slate-800">{getSuratJalanStatusLabel(detailTiket.status_surat_jalan)}</p>
                 </div>
                 <div>
                   <p className="text-xs font-medium text-slate-400">Diproses Oleh</p>
@@ -2196,10 +2139,10 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
           </div>
         </div>
 
-        <div className="mt-4 flex items-center justify-end">
+<div className="mt-4 flex items-center justify-end">
           <button
             type="button"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 touch-target"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
             onClick={(e) => { e.stopPropagation(); onClick(); }}
             aria-label="Lihat detail"
           >
@@ -2270,7 +2213,7 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
               <th className="w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Berhasil</th>
               <th className="w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gagal</th>
               <th className="w-[140px] min-w-[140px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-              <th className="w-10 min-w-10 overflow-hidden px-6 py-4"></th>
+              <th className="w-16 min-w-16 px-3 py-4 text-right"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
@@ -2304,14 +2247,15 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
                     {overallStatus === "sebagian_gagal" && <Badge label="Sebagian Gagal" variant="orange" className="whitespace-nowrap shrink-0" />}
                     {overallStatus === "draft" && <Badge label="Draft" variant="gray" className="whitespace-nowrap shrink-0" />}
                   </td>
-                  <td className="px-6 py-4 text-right overflow-hidden">
+                  <td className="px-3 py-4 text-right">
                     <button
                       type="button"
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 touch-target"
+                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                       onClick={(e) => { e.stopPropagation(); setDetailRow(r); }}
                       aria-label="Lihat detail"
+                      title="Lihat detail"
                     >
-                      <Eye size={18} />
+                      <Eye size={20} />
                     </button>
                   </td>
                 </tr>
@@ -2325,13 +2269,6 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
 
   return (
     <div>
-      {mobileCards}
-      {desktopTable}  return (
-    <div>
-      <div className="mb-4 rounded-xl border border-orange-100 bg-orange-50 px-4 py-2 text-xs text-orange-700">
-        Tabel ini menampilkan histori upload laporan mitra. Setiap baris merepresentasikan 1 sesi upload file Excel.
-      </div>
-
       <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
         <div className="col-span-1 sm:col-span-2 lg:col-span-2 xl:col-span-2">
           <div className="flex min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
@@ -2377,156 +2314,48 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1120px] table-fixed text-left text-sm border-separate border-spacing-0">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="w-[160px] min-w-[160px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Waktu Upload</th>
-                <th className="w-[300px] min-w-[300px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nama File</th>
-                <th className="w-[240px] min-w-[240px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Diunggah Oleh</th>
-                <th className="w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Total</th>
-                <th className="w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Berhasil</th>
-                <th className="w-[80px] min-w-[80px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gagal</th>
-                <th className="w-[140px] min-w-[140px] overflow-hidden px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                <th className="w-10 min-w-10 overflow-hidden px-6 py-4"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i}>
-                    <td className="px-6 py-4" colSpan={8}>
-                      <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
-                    </td>
-                  </tr>
-                ))
-              ) : error ? (
-                <tr>
-                  <td className="px-6 py-16 text-center text-sm text-rose-500" colSpan={8}>{error}</td>
-                </tr>
-              ) : data.length === 0 ? (
-                <tr>
-                  <td className="px-6 py-16 text-center text-sm text-slate-400" colSpan={8}>
-                    Belum ada riwayat upload laporan mitra.
-                  </td>
-                </tr>
-              ) : (
-                data.map((r) => {
-                  const allSuccess = r.failed_rows === 0 && r.success_rows > 0;
-                  const hasFailed = r.failed_rows > 0;
-                  const overallStatus = allSuccess ? "berhasil" : hasFailed ? "sebagian_gagal" : "draft";
-                  return (
-                    <tr
-                      key={r.upload_id}
-                      className="group cursor-pointer transition-colors hover:bg-slate-50 min-h-16"
-                      onClick={() => setDetailRow(r)}
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400 overflow-hidden">
-                        {formatDateTime(r.uploaded_at)}
-                      </td>
-                      <td className="px-6 py-4 min-w-0 overflow-hidden">
-                        <div className="font-semibold text-slate-900 truncate">{renderFilename(r.filename)}</div>
-                      </td>
-                      <td className="px-6 py-4 min-w-0 overflow-hidden">
-                        <div className="font-semibold text-slate-900 truncate" title={r.uploaded_by_nama}>{r.uploaded_by_nama}</div>
-                        <div className="text-xs">
-                          <Badge label={humanizeValue("user_role", r.uploaded_by_role)} variant="gray" className="whitespace-nowrap shrink-0" />
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-center font-mono text-xs text-slate-600 overflow-hidden">{r.total_rows}</td>
-                      <td className="px-6 py-4 text-center font-mono text-xs text-emerald-600 overflow-hidden">{r.success_rows}</td>
-                      <td className="px-6 py-4 text-center font-mono text-xs text-rose-600 overflow-hidden">{r.failed_rows}</td>
-                      <td className="px-6 py-4 overflow-hidden">
-                        {overallStatus === "berhasil" && <Badge label="Berhasil" variant="green" className="whitespace-nowrap shrink-0" />}
-                        {overallStatus === "sebagian_gagal" && <Badge label="Sebagian Gagal" variant="orange" className="whitespace-nowrap shrink-0" />}
-                        {overallStatus === "draft" && <Badge label="Draft" variant="gray" className="whitespace-nowrap shrink-0" />}
-                      </td>
-                      <td className="px-6 py-4 text-right overflow-hidden">
-                        <button
-                          type="button"
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                          onClick={(e) => { e.stopPropagation(); setDetailRow(r); }}
-                        >
-                          <Eye size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {mobileCards}
+      {desktopTable}
 
-      {totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
-          <span>
-            Menampilkan {((page - 1) * limit) + 1}–{Math.min(page * limit, total)} dari {total} entri
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1 || loading}
-              className="rounded-full border border-slate-200 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-50"
-            >
-              Sebelumnya
-            </button>
-            <span className="font-mono">
-              {page} / {totalPages}
-            </span>
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages || loading}
-              className="rounded-full border border-slate-200 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-50"
-            >
-              Selanjutnya
-            </button>
-          </div>
-        </div>
-      )}
+      {detailRow && (
+        <Modal
+          open={!!detailRow}
+          onClose={() => setDetailRow(null)}
+          title="Detail Upload Laporan Mitra"
+          className="max-w-3xl"
+        >
+          {detailRow && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Nama File</p>
+                  <div className="text-sm font-semibold text-slate-800">{renderFilename(detailRow.filename)}</div>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Waktu Upload</p>
+                  <p className="text-sm font-semibold text-slate-800">{formatDateTime(detailRow.uploaded_at)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Diunggah Oleh</p>
+                  <p className="text-sm font-semibold text-slate-800">{detailRow.uploaded_by_nama}</p>
+                  {detailRow.uploaded_by_role && (
+                    <div className="mt-1">
+                      <Badge label={humanizeValue("user_role", detailRow.uploaded_by_role)} variant="gray" />
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Total / Berhasil / Gagal</p>
+                  <p className="text-sm font-semibold text-slate-800">
+                    {detailRow.total_rows} / {detailRow.success_rows} / {detailRow.failed_rows}
+                  </p>
+                </div>
+              </div>
 
-      <Modal
-        open={!!detailRow}
-        onClose={() => setDetailRow(null)}
-        title="Detail Upload Laporan Mitra"
-        className="max-w-3xl"
-      >
-        {detailRow && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs font-medium text-slate-400">Nama File</p>
-                <div className="text-sm font-semibold text-slate-800">{renderFilename(detailRow.filename)}</div>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-400">Waktu Upload</p>
-                <p className="text-sm font-semibold text-slate-800">{formatDateTime(detailRow.uploaded_at)}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-400">Diunggah Oleh</p>
-                <p className="text-sm font-semibold text-slate-800">{detailRow.uploaded_by_nama}</p>
-                {detailRow.uploaded_by_role && (
-                  <div className="mt-1">
-                    <Badge label={humanizeValue("user_role", detailRow.uploaded_by_role)} variant="gray" />
-                  </div>
-                )}
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-400">Total / Berhasil / Gagal</p>
-                <p className="text-sm font-semibold text-slate-800">
-                  {detailRow.total_rows} / {detailRow.success_rows} / {detailRow.failed_rows}
-                </p>
-              </div>
-            </div>
-
-            <div className="border-t border-slate-100 pt-4">
-              <p className="text-xs font-medium text-slate-400 mb-3">Detail Baris</p>
-              {detailRow.details && detailRow.details.length > 0 ? (
-                <div className="overflow-x-auto rounded-lg border border-slate-100">
+              <div className="border-t border-slate-100 pt-4">
+                <p className="text-xs font-medium text-slate-400 mb-3">Detail Baris</p>
+                {detailRow.details && detailRow.details.length > 0 ? (
+                  <div className="overflow-x-auto rounded-lg border border-slate-100">
                     <table className="min-w-full text-left text-xs">
                       <thead>
                         <tr className="border-b border-slate-100 bg-slate-50">
@@ -2585,14 +2414,15 @@ function TabRiwayatInputMitra({ get }: { get: (url: string) => Promise<Response>
                         })}
                       </tbody>
                     </table>
-                </div>
-              ) : (
-                <p className="text-sm text-slate-500">Tidak ada detail baris untuk upload ini.</p>
-              )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">Tidak ada detail baris untuk upload ini.</p>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-      </Modal>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }
@@ -2629,7 +2459,7 @@ export default function LaporanAuditPage() {
   return (
     <div className="flex flex-1 flex-col">
       <div className="w-full">
-<div className="mb-6">
+        <div className="mb-6">
           <div className="text-xs font-semibold uppercase tracking-wide text-orange-500">Admin General</div>
           <h1 className="mt-1 text-xl sm:text-2xl font-bold text-slate-900">Laporan & Audit Menyeluruh</h1>
           <p className="mt-1 text-sm text-slate-500">
@@ -2637,7 +2467,7 @@ export default function LaporanAuditPage() {
           </p>
         </div>
 
-                        <div className="overflow-x-auto pb-1 whitespace-nowrap border-b border-slate-100">
+                        <div className="overflow-x-auto pb-1 whitespace-nowrap border-b border-slate-100 -mx-4 px-4 sm:mx-0 sm:px-0">
           <div className="flex items-center gap-2 min-w-max" role="tablist" aria-label="Tab laporan">
             {tabs.map((t) => {
               const Icon = t.icon;
@@ -2651,7 +2481,7 @@ export default function LaporanAuditPage() {
                   aria-selected={active}
                   aria-controls={`panel-${t.key}`}
                   id={`tab-${t.key}`}
-                  className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors min-h-[40px] ${
                     active ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:text-slate-700"
                   }`}>
                   <Icon size={16} />
@@ -2659,25 +2489,6 @@ export default function LaporanAuditPage() {
                 </button>
               );
             })}
-          </div>
-        </div><div className="overflow-x-auto pb-1 whitespace-nowrap border-b border-slate-100">
-          <div className="flex items-center gap-2 min-w-max">
-          {tabs.map((t) => {
-            const Icon = t.icon;
-            const active = tab === t.key;
-            return (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
-                  active ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                <Icon size={16} />
-                {t.label}
-              </button>
-            );
-          })}
           </div>
         </div>
 

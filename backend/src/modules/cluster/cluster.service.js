@@ -2,16 +2,24 @@ const clusterRepository = require("./cluster.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
 
-const findByProjectId = async (projectId) => {
+const findByProjectId = async (projectId, status = "aktif") => {
   if (!projectId) {
     throw new AppError("Project ID wajib diisi.", 400);
   }
-
-  return await clusterRepository.findByProjectId(projectId);
+  const allowed = ["all", "aktif", "nonaktif"];
+  if (!allowed.includes(status)) {
+    throw new AppError("Status filter tidak valid. Gunakan 'all', 'aktif', atau 'nonaktif'.", 400);
+  }
+  return await clusterRepository.findByProjectId(projectId, status);
 };
 
-const findAll = async () => {
-  return await clusterRepository.findAll();
+const findAll = async (query = {}) => {
+  const { status } = query;
+  const allowed = ["all", "aktif", "nonaktif"];
+  if (status !== undefined && !allowed.includes(status)) {
+    throw new AppError("Status filter tidak valid. Gunakan 'all', 'aktif', atau 'nonaktif'.", 400);
+  }
+  return await clusterRepository.findAll(query);
 };
 
 const create = async (data, userId) => {

@@ -10,14 +10,46 @@ interface FetchOptions extends RequestInit {
   skipAuth?: boolean;
 }
 
+let refreshPromise: Promise<string | null> | null = null;
+
 export function useApi() {
   const router = useRouter();
-  const { token, logout, isLoggingOut } = useAuth();
+  const { logout, isLoggingOut } = useAuth();
 
   const isLoggingOutRef = useRef(isLoggingOut);
   useEffect(() => {
     isLoggingOutRef.current = isLoggingOut;
   }, [isLoggingOut]);
+
+  const doRefresh = useCallback(async (): Promise<string | null> => {
+    const refreshToken = typeof window !== "undefined" ? localStorage.getItem("refreshToken") : null;
+    if (!refreshToken) return null;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      if (!res.ok) {
+        await res.json().catch(() => ({}));
+        if (res.status === 401 || res.status === 403) {
+          return "logout";
+        }
+        return null;
+      }
+
+      const resData = await res.json();
+      const newToken = resData?.data?.token;
+      if (newToken && typeof window !== "undefined") {
+        localStorage.setItem("token", newToken);
+      }
+      return newToken;
+    } catch {
+      return "network_error";
+    }
+  }, []);
 
   const request = useCallback(
     async (url: string, options: FetchOptions = {}) => {
@@ -32,8 +64,9 @@ export function useApi() {
         headers["Content-Type"] = "application/json";
       }
 
-      if (!skipAuth && token) {
-        headers["Authorization"] = `Bearer ${token}`;
+      const currentToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      if (!skipAuth && currentToken) {
+        headers["Authorization"] = `Bearer ${currentToken}`;
       }
 
       const response = await fetch(url, {
@@ -41,7 +74,6 @@ export function useApi() {
         headers,
       });
 
-      // 1. Sesi kadaluarsa / Token invalid -> Redirect ke login
       if (response.status === 401) {
         const err = await response.clone().json().catch(() => null);
 
@@ -50,12 +82,58 @@ export function useApi() {
           return response;
         }
 
+        const isAuthEndpoint = url.includes("/api/auth/login") || url.includes("/api/auth/refresh") || url.includes("/api/auth/logout") || url.includes("/api/auth/reset-password");
+
+        if (isAuthEndpoint) {
+          logout();
+          if (!isLoggingOutRef.current) {
+            sessionStorage.setItem("flash:session_expired", "Sesi Anda telah berakhir, silakan login kembali.");
+            router.replace("/");
+            throw new Error("Sesi berakhir. Silakan login kembali.");
+          } else {
+            router.replace("/");
+          }
+          return response;
+        }
+
+        if (!refreshPromise) {
+          refreshPromise = doRefresh();
+        }
+
+        const refreshResult = await refreshPromise;
+        refreshPromise = null;
+
+        if (refreshResult === "logout") {
+          logout();
+          if (!isLoggingOutRef.current) {
+            sessionStorage.setItem("flash:session_expired", "Sesi Anda telah berakhir, silakan login kembali.");
+            router.replace("/");
+            throw new Error("Sesi berakhir. Silakan login kembali.");
+          } else {
+            router.replace("/");
+          }
+          return response;
+        }
+
+        if (refreshResult === "network_error") {
+          throw new Error("Gagal memperbarui token. Silakan coba lagi.");
+        }
+
+        if (refreshResult) {
+          const latestToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+          if (latestToken && latestToken !== currentToken) {
+            headers["Authorization"] = `Bearer ${latestToken}`;
+            const retryResponse = await fetch(url, {
+              ...fetchOptions,
+              headers,
+            });
+            return retryResponse;
+          }
+        }
+
         logout();
         if (!isLoggingOutRef.current) {
-          sessionStorage.setItem(
-            "flash:session_expired",
-            "Sesi Anda telah berakhir, silakan login kembali."
-          );
+          sessionStorage.setItem("flash:session_expired", "Sesi Anda telah berakhir, silakan login kembali.");
           router.replace("/");
           throw new Error("Sesi berakhir. Silakan login kembali.");
         } else {
@@ -63,7 +141,6 @@ export function useApi() {
         }
       }
 
-      // 2. Akses ditolak (Role tidak diizinkan) -> Jangan logout, biarkan UI menangani
       if (response.status === 403) {
         console.warn(`[403 Forbidden] Akses ditolak untuk endpoint: ${url}`);
         try {
@@ -78,7 +155,7 @@ export function useApi() {
 
       return response;
     },
-    [token, logout, isLoggingOut, router]
+    [logout, router, doRefresh]
   );
 
   const get = useCallback(

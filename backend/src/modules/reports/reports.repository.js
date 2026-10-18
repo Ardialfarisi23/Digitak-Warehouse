@@ -1,9 +1,11 @@
 const prisma = require("../../config/prisma");
+const { getAksiLabel, getEntityTypeLabel, getRoleLabel, formatAuditMetadata } = require("../../utils/audit-labels");
 const AppError = require("../../shared/errors");
 const reconciliationService = require("../reconciliation/reconciliation.service");
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
 const additionalRepository = require("../additional/additional.repository");
+const { isMosEligibleInbound } = require("../reconciliation/reconciliation.utils");
 
 const AUDIT_AKSI_VALUES = [
   "create",
@@ -198,10 +200,31 @@ const enrichAuditEntityNames = async (logs) => {
         }
         break;
       }
-      case "reconciliation": {
-        // Tidak ada tabel reconciliation tersendiri; entity_id di sini
-        // adalah tiket_id yang merujuk ke tiket_material. Dikecualikan
-        // sesuai permintaan investigasi.
+      case "reconciliation":
+      case "reconciliation_remains_note": {
+        // `reconciliation` tidak punya tabel tersendiri (entity_id = tiket_id).
+        // `reconciliation_remains_note` punya tabel sendiri tapi hanya berisi
+        // keterangan bebas, jadi tetap ditampilkan sebagai judul catatan.
+        if (entityType === "reconciliation") break;
+
+        const rows = await prisma.reconciliation_remains_note.findMany({
+          where: { id: { in: ids } },
+          select: {
+            id: true,
+            keterangan: true,
+            project: { select: { nama_project: true } },
+            barang: { select: { nama_barang: true } },
+          },
+        });
+        for (const row of rows) {
+          const projectName = row.project?.nama_project || "-";
+          const barangName = row.barang?.nama_barang || "-";
+          const note = row.keterangan ? String(row.keterangan).trim() : "";
+          nameMap.set(
+            `reconciliation_remains_note:${row.id}`,
+            note ? `${barangName} - ${projectName}: ${note}` : `${barangName} - ${projectName}`
+          );
+        }
         break;
       }
       default:
@@ -1460,6 +1483,10 @@ const getStockHistoryForExport = async (filters = {}) => {
   };
 };
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const normalTanggalAwal = (val) => (DATE_ONLY.test(val) ? `${val}T00:00:00+07:00` : val);
+const normalTanggalAkhir = (val) => (DATE_ONLY.test(val) ? `${val}T23:59:59.999+07:00` : val);
+
 const getAuditLogs = async (filters = {}) => {
   const {
     search = "",
@@ -1524,10 +1551,14 @@ const getAuditLogs = async (filters = {}) => {
     where.entity_id = BigInt(tiketId);
   }
 
+  if (startDate && endDate && new Date(endDate) < new Date(startDate)) {
+    throw new AppError("Tanggal akhir tidak boleh lebih awal dari tanggal mulai.", 400);
+  }
+
   if (startDate || endDate) {
     where.created_at = {};
-    if (startDate) where.created_at.gte = new Date(startDate);
-    if (endDate) where.created_at.lte = new Date(endDate + "T23:59:59");
+    if (startDate) where.created_at.gte = new Date(normalTanggalAwal(startDate));
+    if (endDate) where.created_at.lte = new Date(normalTanggalAkhir(endDate));
   }
 
   const skip = (Number(page) - 1) * Number(limit);
@@ -1648,10 +1679,14 @@ const getAuditLogForExport = async (filters = {}) => {
     where.entity_id = BigInt(tiketId);
   }
 
+  if (startDate && endDate && new Date(endDate) < new Date(startDate)) {
+    throw new AppError("Tanggal akhir tidak boleh lebih awal dari tanggal mulai.", 400);
+  }
+
   if (startDate || endDate) {
     where.created_at = {};
-    if (startDate) where.created_at.gte = new Date(startDate);
-    if (endDate) where.created_at.lte = new Date(endDate + "T23:59:59");
+    if (startDate) where.created_at.gte = new Date(normalTanggalAwal(startDate));
+    if (endDate) where.created_at.lte = new Date(normalTanggalAkhir(endDate));
   }
 
   const EXPORT_LIMIT = 10000;
@@ -1682,21 +1717,52 @@ const getAuditLogForExport = async (filters = {}) => {
 
   const enrichedData = await enrichAuditEntityNames(data);
 
-  const rows = enrichedData.map((log) => ({
-    audit_id: String(log.audit_id),
-    created_at: log.created_at,
-    aksi: log.aksi,
-    entity_type: log.entity_type,
-    entity_id: String(log.entity_id),
-    actor_id: String(log.actor_id),
-    actor_nama: log.actor?.personils?.[0]?.nama || log.actor?.nama || "-",
-    actor_email: log.actor?.email || "-",
-    actor_role: log.actor?.role || "-",
-    data_sebelum: log.data_sebelum,
-    data_sesudah: log.data_sesudah,
-    entity_name: log.entity_name ?? null,
-    entity_refs_resolved: log.entity_refs_resolved ?? {},
-  }));
+  const rows = enrichedData.map((log) => {
+    const isLogin = ["login_success", "login_failed", "reset_link_created"].includes(log.aksi);
+    const hasActor = log.actor_id && String(log.actor_id) !== "0" && log.actor_id !== "null";
+    const entityLabel = (() => {
+      const kode = log.data_sesudah?.kode_tiket || log.data_sebelum?.kode_tiket;
+      if (kode) return String(kode);
+      if (log.entity_type === "user_account" && (!log.entity_id || String(log.entity_id) === "0")) {
+        return "Akun tidak dikenal";
+      }
+      if (log.entity_type && log.entity_id && String(log.entity_id) !== "0") {
+        return `${getEntityTypeLabel(log.entity_type)} #${log.entity_id}`;
+      }
+      return getEntityTypeLabel(log.entity_type || "-");
+    })();
+
+    return {
+      audit_id: String(log.audit_id),
+      created_at: log.created_at,
+      aksi: getAksiLabel(log.aksi || "-"),
+      entity_type: getEntityTypeLabel(log.entity_type || "-"),
+      entity_id: String(log.entity_id),
+      actor_id: String(log.actor_id),
+      actor_nama: hasActor ? (log.actor?.personils?.[0]?.nama || log.actor?.nama || "Tidak dikenal") : "Tidak dikenal",
+      actor_email: log.actor?.email || "-",
+      actor_role: hasActor ? getRoleLabel(log.actor?.role || "-") : "Tidak dikenal",
+      detail: formatAuditMetadata(log.aksi, log.data_sebelum, log.data_sesudah),
+      entity_name: entityLabel,
+      extra_ref: (() => {
+        const ds = log.data_sesudah || {};
+        const parts = [];
+        if (ds.source_file || ds.filename || ds.nama_file) {
+          parts.push(ds.source_file || ds.filename || ds.nama_file);
+        }
+        if (ds.username_target || ds.target_user || ds.user_target) {
+          parts.push(`user: ${ds.username_target || ds.target_user || ds.user_target}`);
+        }
+        if (ds.catatan) {
+          parts.push(ds.catatan);
+        }
+        return parts.length > 0 ? parts.join(" | ") : "—";
+      })(),
+      data_sebelum: log.data_sebelum,
+      data_sesudah: log.data_sesudah,
+      entity_refs_resolved: log.entity_refs_resolved ?? {},
+    };
+  });
 
   return {
     data: rows,
@@ -1736,7 +1802,7 @@ const getHardwareReconciliation = async (filters = {}) => {
     include: {
       tiket: {
         select: {
-          project_id: true,
+          tiket_id: true,
         },
       },
       cluster: {
@@ -1747,14 +1813,7 @@ const getHardwareReconciliation = async (filters = {}) => {
       },
       items: {
         select: {
-          barang_id: true,
           qty_rencana: true,
-          barang: {
-            select: {
-              nama_barang: true,
-              kode_perangkat: true,
-            },
-          },
         },
       },
     },
@@ -1781,7 +1840,6 @@ const getHardwareReconciliation = async (filters = {}) => {
       items: {
         select: {
           qty: true,
-          barang_id: true,
         },
       },
     },
@@ -1952,20 +2010,48 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
     },
   });
 
-  const shipmentWhere = {
+  // Query outbound Surat Jalan
+  const outboundShipmentWhere = {
     status: { in: ["disetujui", "diterima_didistribusikan"] },
+    tipe: "outbound",
   };
   if (projectId !== "all") {
-    shipmentWhere.project_id = BigInt(projectId);
+    outboundShipmentWhere.project_id = BigInt(projectId);
   }
   if (startDate || endDate) {
-    shipmentWhere.tanggal = {};
-    if (startDate) shipmentWhere.tanggal.gte = new Date(startDate);
-    if (endDate) shipmentWhere.tanggal.lte = new Date(endDate + "T23:59:59");
+    outboundShipmentWhere.tanggal = {};
+    if (startDate) outboundShipmentWhere.tanggal.gte = new Date(startDate);
+    if (endDate) outboundShipmentWhere.tanggal.lte = new Date(endDate + "T23:59:59");
   }
 
-  const suratJalans = await prisma.surat_jalan.findMany({
-    where: shipmentWhere,
+  const outboundSuratJalans = await prisma.surat_jalan.findMany({
+    where: outboundShipmentWhere,
+    include: {
+      items: {
+        select: {
+          qty: true,
+          is_kelebihan: true,
+        },
+      },
+    },
+  });
+
+  // Query inbound Surat Jalan with approved statuses
+  const inboundShipmentWhere = {
+    status: { in: ["ready_putaway", "disetujui", "diterima_didistribusikan"] },
+    tipe: "inbound",
+  };
+  if (projectId !== "all") {
+    inboundShipmentWhere.project_id = BigInt(projectId);
+  }
+  if (startDate || endDate) {
+    inboundShipmentWhere.tanggal = {};
+    if (startDate) inboundShipmentWhere.tanggal.gte = new Date(startDate);
+    if (endDate) inboundShipmentWhere.tanggal.lte = new Date(endDate + "T23:59:59");
+  }
+
+  const inboundSuratJalans = await prisma.surat_jalan.findMany({
+    where: inboundShipmentWhere,
     include: {
       items: {
         select: {
@@ -1979,25 +2065,39 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
   const inboundByProject = new Map();
   const outboundByProject = new Map();
   const additionalByProject = new Map();
+  const inboundMosByProject = new Map();
 
   const additionalTotalsByProject =
     projectId !== "all"
       ? await additionalRepository.getAdditionalTotalsByProjectOnly([Number(projectId)])
       : new Map();
 
-  for (const sj of suratJalans) {
+  // Build inbound MOS map using isMosEligibleInbound
+  for (const sj of inboundSuratJalans) {
     const pid = Number(sj.project_id);
     if (!pid) continue;
     for (const item of sj.items) {
       const qty = Number(item.qty || 0);
-      if (sj.tipe === "inbound") {
-        inboundByProject.set(pid, (inboundByProject.get(pid) || 0) + qty);
+      if (isMosEligibleInbound(sj)) {
+        inboundMosByProject.set(pid, (inboundMosByProject.get(pid) || 0) + qty);
       }
+    }
+  }
+
+  // Build outbound map (for Used/other calculations, NOT for MOS)
+  for (const sj of outboundSuratJalans) {
+    const pid = Number(sj.project_id);
+    if (!pid) continue;
+    for (const item of sj.items) {
+      const qty = Number(item.qty || 0);
       if (sj.tipe === "outbound" && sj.tujuan_tipe !== "gudang") {
         outboundByProject.set(pid, (outboundByProject.get(pid) || 0) + qty);
       }
     }
   }
+
+  // MOS = inbound only (external vendor inbound)
+  const mosByProject = inboundMosByProject;
 
   // Compute approved returns per tiket from the Return module.
   const approvedReturnByTiket = new Map();
@@ -2027,7 +2127,7 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
     const projectIdNum = Number(tiket.project_id);
     const boqPlan = tiket.boq?.items?.reduce((sum, item) => sum + Number(item.qty_rencana || 0), 0) || 0;
     const additional = Number(additionalTotalsByProject.get(projectIdNum) || 0);
-    const mos = Number(outboundByProject.get(projectIdNum) || 0);
+    const mos = Number(mosByProject.get(projectIdNum) || 0);
     const used = tiket.used ? Number(tiket.used) : Number(outboundByProject.get(projectIdNum) || 0);
     const approvedReturnQty = Number(approvedReturnByTiket.get(tiket.tiket_id) || 0);
     const remains = mos - (boqPlan + additional) - used - approvedReturnQty;
@@ -2451,6 +2551,7 @@ const backfillReconciliation = async (actorId) => {
   const inboundByProject = new Map();
   const outboundByProject = new Map();
   const additionalByProject = new Map();
+  const inboundMosByProject = new Map();
 
   const projectIdsForAdditional = Array.from(
     new Set(allSuratJalans.map((sj) => sj.project_id).filter((id) => id != null))
@@ -2468,12 +2569,18 @@ const backfillReconciliation = async (actorId) => {
       const qty = Number(item.qty || 0);
       if (sj.tipe === "inbound") {
         inboundByProject.set(pid, (inboundByProject.get(pid) || 0) + qty);
+        if (isMosEligibleInbound(sj)) {
+          inboundMosByProject.set(pid, (inboundMosByProject.get(pid) || 0) + qty);
+        }
       }
       if (sj.tipe === "outbound" && sj.tujuan_tipe !== "gudang") {
         outboundByProject.set(pid, (outboundByProject.get(pid) || 0) + qty);
       }
     }
   }
+
+  // MOS = inbound only (external vendor inbound)
+  const mosByProject = inboundMosByProject;
 
   const affectedTiketIds = [];
 
@@ -2519,6 +2626,89 @@ const backfillReconciliation = async (actorId) => {
   }
 
   return { updated: affectedTiketIds.length };
+};
+
+// Normalisasi kunci kode_tiket agar cocok walau data tersimpan dengan spasi/karakter tak terlihat.
+// Pola yang sama dipakai saat parsing file upload di reports.controller.js.
+const normalizeTicketKey = (value) =>
+  String(value ?? "")
+    .normalize("NFKC")
+    .replace(/[\u00A0\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .toUpperCase();
+
+// Memetakan row tiket_material (batch query) menjadi Map kode_tiket -> info cluster/project.
+// Dipakai untuk memperkaya riwayat upload laporan mitra tanpa query N+1.
+const buildTicketInfoMap = (tikets = []) => {
+  const map = new Map();
+  for (const tiket of tikets) {
+    const key = normalizeTicketKey(tiket?.kode_tiket);
+    if (!key || map.has(key)) continue;
+    const boq = tiket.boq || null;
+    const cluster = boq?.cluster || null;
+    // Urutan fallback cluster: BOQ (wajib ber-cluster) -> kolom cluster_id pada tiket.
+    const clusterId = cluster?.cluster_id || boq?.cluster_id || tiket.cluster_id || null;
+    map.set(key, {
+      project_nama: tiket.project?.nama_project || null,
+      cluster_id: clusterId,
+      nama_cluster: cluster?.nama_cluster || null,
+    });
+  }
+  return map;
+};
+
+// Menambahkan project_nama/cluster_id/nama_cluster pada setiap detail dan
+// ringkasan unik tingkat log. Fungsi murni (tanpa DB) agar mudah diuji.
+const enrichUploadLogs = (logs = [], ticketMap = new Map()) => {
+  // Kumpulkan nilai unik sesuai urutan kemunculan; nilai tampil apa adanya,
+  // tapi perbandingan memakai kunci ternormalisasi agar tidak ganda karena spasi.
+  const collectUnique = (values) => {
+    const seen = new Map();
+    for (const { value, key } of values) {
+      if (value === null || value === undefined) continue;
+      const display = String(value);
+      if (!display) continue;
+      const dedupeKey = key || normalizeTicketKey(display);
+      if (seen.has(dedupeKey)) continue;
+      seen.set(dedupeKey, display);
+    }
+    return [...seen.values()];
+  };
+
+  return logs.map((log) => {
+    const details = (log.details || []).map((detail) => {
+      const info = detail.kode_tiket ? ticketMap.get(normalizeTicketKey(detail.kode_tiket)) : null;
+      return {
+        ...detail,
+        project_nama: detail.project_nama || info?.project_nama || null,
+        cluster_id: info?.cluster_id ?? null,
+        nama_cluster: info?.nama_cluster ?? null,
+      };
+    });
+
+    // Nilai tampil kode_tiket tetap apa adanya (mis. mempertahankan spasi),
+    // hanya dedupe-nya yang memakai kunci ternormalisasi.
+    const kode_tikets = [];
+    const seenKodeTiket = new Set();
+    for (const detail of details) {
+      if (detail.kode_tiket === null || detail.kode_tiket === undefined) continue;
+      const display = String(detail.kode_tiket);
+      if (!display) continue;
+      const key = normalizeTicketKey(detail.kode_tiket);
+      if (seenKodeTiket.has(key)) continue;
+      seenKodeTiket.add(key);
+      kode_tikets.push(display);
+    }
+
+    return {
+      ...log,
+      details,
+      cluster_ids: collectUnique(details.map((d) => ({ value: d.cluster_id, key: null }))),
+      cluster_names: collectUnique(details.map((d) => ({ value: d.nama_cluster, key: null }))),
+      project_names: collectUnique(details.map((d) => ({ value: d.project_nama, key: null }))),
+      kode_tikets,
+    };
+  });
 };
 
 const getReconciliationUploadLogs = async (filters = {}) => {
@@ -2598,11 +2788,44 @@ const getReconciliationUploadLogs = async (filters = {}) => {
       used: d.used ? Number(d.used) : 0,
       status: d.status,
       reason: d.reason,
+      project_nama: d.project_nama || null,
     })),
   }));
 
+  // Batch tunggal: kumpulkan semua kode_tiket pada halaman ini, lalu ambil info cluster/project-nya.
+  // Kunci dinormalisasi agar cocok dengan data yang tersimpan memiliki spasi tak sengaja.
+  const kodeTiketList = [
+    ...new Set(rows.flatMap((log) => (log.details || []).map((d) => normalizeTicketKey(d.kode_tiket)).filter(Boolean))),
+  ];
+
+  let ticketMap = new Map();
+  if (kodeTiketList.length > 0) {
+    const tikets = await prisma.tiket_material.findMany({
+      where: { kode_tiket: { in: kodeTiketList } },
+      include: {
+        project: {
+          select: {
+            nama_project: true,
+          },
+        },
+        boq: {
+          select: {
+            cluster_id: true,
+            cluster: {
+              select: {
+                cluster_id: true,
+                nama_cluster: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    ticketMap = buildTicketInfoMap(tikets);
+  }
+
   return {
-    data: rows,
+    data: enrichUploadLogs(rows, ticketMap),
     meta: {
       total,
       page: Number(page),
@@ -2624,4 +2847,6 @@ module.exports = {
   getZoneUtilization,
   backfillReconciliation,
   getReconciliationUploadLogs,
+  enrichUploadLogs,
+  buildTicketInfoMap,
 };

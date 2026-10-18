@@ -4,6 +4,7 @@ const passwordHelper = require("../../shared/password");
 const prisma = require("../../config/prisma");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 
 const create = async (data) => {
   const existing = await usersRepository.findByEmail(data.email, { includeInactive: true });
@@ -69,7 +70,7 @@ const findByEmail = async (email) => {
   return user;
 };
 
-const update = async (user_id, data) => {
+const update = async (user_id, data, actorId) => {
   const existingUser = await usersRepository.findById(user_id, { includeInactive: true });
 
   if (!existingUser) {
@@ -98,7 +99,29 @@ const update = async (user_id, data) => {
     }
   }
 
-  const result = await usersRepository.update(user_id, data);
+  if (data.is_aktif === false && Number(user_id) === Number(actorId)) {
+    throw new AppError("Tidak dapat menonaktifkan akun Anda sendiri.", 400);
+  }
+
+  const result = await usersRepository.update(user_id, data, actorId);
+
+  // If password was changed by admin, revoke ALL refresh tokens for the target user
+  if (data.password_hash) {
+    try {
+      await prisma.refresh_token.updateMany({
+        where: {
+          user_id: BigInt(user_id),
+          revoked_at: null,
+        },
+        data: {
+          revoked_at: new Date(),
+        },
+      });
+    } catch (revokeErr) {
+      console.error("[users.update] Gagal mencabut refresh token setelah admin ganti password:", revokeErr.message);
+      // Do not fail the update if token revocation fails
+    }
+  }
 
   try {
     const admins = await prisma.user_account.findMany({
@@ -186,6 +209,37 @@ const deleteAvatar = async (userId) => {
   return { foto: null };
 };
 
+const generateResetLinkForUser = async (user_id) => {
+  const user = await usersRepository.findById(user_id, { includeInactive: true });
+  if (!user) {
+    throw new AppError("Akun tidak ditemukan.", 404);
+  }
+
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
+  const expires = new Date(Date.now() + 60 * 60 * 1000);
+
+  const authRepository = require("../auth/auth.repository");
+  await authRepository.createPasswordResetToken({
+    id: crypto.randomUUID(),
+    email: user.email,
+    token: hashedToken,
+    expires,
+  });
+
+  let frontendUrl = process.env.FRONTEND_URL?.trim();
+  if (!frontendUrl) {
+    if (process.env.NODE_ENV === "production") {
+      throw new AppError("Konfigurasi FRONTEND_URL belum diatur.", 500);
+    }
+    frontendUrl = "http://localhost:3000";
+  }
+  frontendUrl = frontendUrl.replace(/\/+$/, "");
+  const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}&email=${encodeURIComponent(user.email)}`;
+
+  return { resetUrl, expires, email: user.email };
+};
+
 module.exports = {
   create,
   findAll,
@@ -194,4 +248,5 @@ module.exports = {
   update,
   updateAvatar,
   deleteAvatar,
+  generateResetLinkForUser,
 };

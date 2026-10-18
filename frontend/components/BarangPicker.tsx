@@ -33,6 +33,8 @@ interface ApiBarang {
   nama_barang?: string;
   satuan_default_id?: string | number | null;
   satuan_default?: { kode_satuan?: string } | null;
+  satuan_id?: string | number | null;
+  satuan_kode?: string | null;
 }
 
 function normalize(raw: ApiBarang): BarangPickerItem {
@@ -41,8 +43,8 @@ function normalize(raw: ApiBarang): BarangPickerItem {
     id,
     kode_perangkat: raw.kode_perangkat ?? "",
     nama_barang: raw.nama_barang ?? "",
-    satuan_default_id: raw.satuan_default_id ?? null,
-    satuan_default_kode: raw.satuan_default?.kode_satuan ?? null,
+    satuan_default_id: raw.satuan_default_id ?? raw.satuan_id ?? null,
+    satuan_default_kode: raw.satuan_kode ?? raw.satuan_default?.kode_satuan ?? null,
   };
 }
 

@@ -1,8 +1,16 @@
 const prisma = require("../../config/prisma");
 
-const findByProjectId = async (projectId) => {
+const findByProjectId = async (projectId, status = "aktif") => {
+  const where = { project_id: Number(projectId) };
+  if (status === "aktif") {
+    where.status_aktif = true;
+  } else if (status === "nonaktif") {
+    where.status_aktif = false;
+  }
+  // "all" => tanpa filter status_aktif
+
   return await prisma.cluster.findMany({
-    where: { project_id: Number(projectId), status_aktif: true },
+    where,
     select: {
       cluster_id: true,
       nama_cluster: true,
@@ -26,7 +34,7 @@ const findByProjectId = async (projectId) => {
   });
 };
 
-const findAll = async ({ search, status_aktif, project_id } = {}) => {
+const findAll = async ({ search, status_aktif, project_id, status } = {}) => {
   let normalizedSearch = "";
   if (typeof search === "string") {
     normalizedSearch = search.trim();
@@ -40,13 +48,18 @@ const findAll = async ({ search, status_aktif, project_id } = {}) => {
     where.project_id = Number(project_id);
   }
 
-  if (status_aktif === "true") {
+  // Support both "status" (new) and "status_aktif" (legacy) query params
+  const effectiveStatus = status !== undefined ? status : status_aktif;
+  if (effectiveStatus === "all") {
+    // tanpa filter status_aktif
+  } else if (effectiveStatus === "true" || effectiveStatus === "aktif") {
     where.status_aktif = true;
-  } else if (status_aktif === "false") {
+  } else if (effectiveStatus === "false" || effectiveStatus === "nonaktif") {
     where.status_aktif = false;
-  } else {
+  } else if (effectiveStatus === undefined) {
     where.status_aktif = true;
   }
+  // nilai selain di atas: tidak set filter (dialihkan validasi ke service)
 
   if (normalizedSearch) {
       where.OR = [

@@ -197,6 +197,47 @@ export default function SuratJalanListPage() {
     });
   }, [list, statusFilter, searchQuery, dateFrom, dateTo]);
 
+  const kategoriTujuanFilterOptions = useMemo(() => {
+    const values = new Set<string>(Object.keys(KATEGORI_TUJUAN_LABEL));
+    list.forEach((sj) => {
+      if (sj.tujuan_tipe) values.add(sj.tujuan_tipe);
+    });
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [list]);
+
+  const isFilterActive =
+    searchQuery.trim() !== "" ||
+    tipePengirimFilter !== "" ||
+    gudangAsalFilter !== "" ||
+    kategoriTujuanFilter !== "";
+
+  const filtered = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return list.filter((sj) => {
+      if (activeTab !== "SEMUA" && sj.status !== activeTab) return false;
+      if (tipePengirimFilter && sj.tipe_pengirim !== tipePengirimFilter) return false;
+      if (gudangAsalFilter && sj.gudang_asal?.nama_gudang !== gudangAsalFilter) return false;
+      if (kategoriTujuanFilter && sj.tujuan_tipe !== kategoriTujuanFilter) return false;
+      if (query) {
+        const haystack = [
+          sj.nomor_surat_jalan,
+          sj.gudang_tujuan?.nama_gudang,
+          sj.project?.nama_project,
+          sj.pengirim_eksternal_nama,
+          sj.titik_lapangan?.nama_lokasi,
+          sj.pic_pemohon_nama,
+          sj.kendaraan?.no_polisi,
+          sj.boq?.boq_number,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
+      return true;
+    });
+  }, [activeTab, list, searchQuery, tipePengirimFilter, gudangAsalFilter, kategoriTujuanFilter]);
+
   return (
     <div className="px-8 py-6">
       {/* Toolbar: judul + aksi di kiri, kontrol di kanan (tumpuk di layar kecil) */}
@@ -500,6 +541,47 @@ export default function SuratJalanListPage() {
         </table>
         </div>
       </div>
+
+      {/* Modal Foto Barang */}
+      {isPhotoModalOpen && selectedPhotoUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm"
+          onClick={closePhotoModal}
+        >
+          <div
+            className="relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <h3 className="text-sm font-semibold text-slate-800">Foto Barang</h3>
+              <button
+                type="button"
+                onClick={closePhotoModal}
+                aria-label="Tutup"
+                className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex items-center justify-center overflow-hidden p-5">
+              <img
+                src={selectedPhotoUrl}
+                alt="Foto barang"
+                className="max-h-[60vh] w-auto max-w-full rounded-lg object-contain"
+              />
+            </div>
+            <div className="border-t border-slate-100 px-5 py-4 text-right">
+              <button
+                type="button"
+                onClick={closePhotoModal}
+                className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-200"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

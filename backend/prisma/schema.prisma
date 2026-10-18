@@ -56,6 +56,7 @@ model user_account {
   additional_adjustments          additional_adjustment[]
   created_reconciliation_remains_notes reconciliation_remains_note[] @relation("ReconciliationRemainsNoteCreatedBy")
   updated_reconciliation_remains_notes reconciliation_remains_note[] @relation("ReconciliationRemainsNoteUpdatedBy")
+  refresh_tokens                    refresh_token[]
 
   @@index([email])
 }
@@ -751,11 +752,11 @@ model audit_log {
   entity_type  String
   entity_id    BigInt
   aksi         audit_aksi
-  actor_id     BigInt
+  actor_id     BigInt?
   data_sebelum Json?
   data_sesudah Json?
   created_at   DateTime     @default(now())
-  actor        user_account @relation(fields: [actor_id], references: [user_id])
+  actor        user_account? @relation(fields: [actor_id], references: [user_id])
 
   @@index([entity_type, entity_id])
   @@index([actor_id])
@@ -1048,6 +1049,9 @@ enum audit_aksi {
   soft_delete
   restore
   input_rekonsiliasi
+  login_success
+  login_failed
+  reset_link_created
 }
 
 enum notification_type {
@@ -1077,11 +1081,28 @@ model notification {
 }
 
 model password_reset_token {
-  id        String   @id
-  email     String
-  token     String   @unique
-  expires   DateTime
-  createdAt DateTime @default(now())
+   id        String   @id
+   email     String
+   token     String   @unique
+   expires   DateTime
+   createdAt DateTime @default(now())
 
-  @@map("password_resets")
-}
+   @@map("password_resets")
+ }
+
+model refresh_token {
+   id            String   @id
+   user_id       BigInt
+   token_hash    String   @unique
+   expires_at    DateTime
+   revoked_at    DateTime?
+   replaced_by   String?
+   ip            String?
+   user_agent    String?
+   created_at    DateTime @default(now())
+
+   user          user_account @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+   @@index([user_id])
+   @@index([expires_at])
+ }

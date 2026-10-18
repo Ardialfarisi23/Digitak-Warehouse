@@ -3,7 +3,8 @@ const response = require("../../shared/response");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const XLSX = require("xlsx");
+const { parseReconciliationFileExceljs } = require("./upload-parse");
+const { validateUploadFile } = require("./upload-validate");
 const ExcelJS = require("exceljs");
 const prisma = require("../../config/prisma");
 const reportsRepository = require("./reports.repository");
@@ -11,12 +12,76 @@ const reconciliationService = require("../reconciliation/reconciliation.service"
 
 const RECONCILIATION_REQUIRED_COLUMNS = [
   { name: "Kode Tiket", aliases: ["Kode Tiket", "kode_tiket", "KODE_TIKET"] },
-  { name: "Project", aliases: ["Project", "project", "Nama Project"] },
+  { name: "Project Name", aliases: ["Project Name", "Project", "project", "Nama Project"] },
   { name: "Nama Barang", aliases: ["Nama Barang", "nama_barang", "Barang"] },
-  { name: "Used", aliases: ["Used", "used"] },
+  { name: "Angka Used", aliases: ["Angka Used", "Used", "used"] },
   { name: "Kondisi", aliases: ["Kondisi", "kondisi", "KONDISI"] },
-  { name: "Catatan", aliases: ["Catatan", "catatan", "Keterangan"] },
+  { name: "Keterangan", aliases: ["Keterangan", "Catatan", "catatan"] },
 ];
+
+// Kolom opsional: hanya informasi di file upload, tidak dipakai untuk mencocokkan data sistem.
+const RECONCILIATION_OPTIONAL_COLUMNS = [
+  { name: "Cluster ID", aliases: ["Cluster ID", "cluster_id"] },
+  { name: "Cluster Name", aliases: ["Cluster Name", "cluster_name", "Nama Cluster", "nama_cluster"] },
+];
+
+// Pencocokan nama header tidak sensitif huruf besar/kecil dan spasi berlebih.
+const normalizeHeaderKey = (value) =>
+  String(value ?? "")
+    .normalize("NFKC")
+    .replace(/[\u00A0\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+
+const RECONCILIATION_COLUMN_ALIASES = {};
+[...RECONCILIATION_REQUIRED_COLUMNS, ...RECONCILIATION_OPTIONAL_COLUMNS].forEach((col) => {
+  RECONCILIATION_COLUMN_ALIASES[col.name] = col.aliases;
+});
+
+const findMissingReconciliationColumns = (rowKeys) => {
+  const normalizedKeys = rowKeys.map(normalizeHeaderKey);
+  return RECONCILIATION_REQUIRED_COLUMNS.filter(
+    (col) => !col.aliases.some((alias) => normalizedKeys.includes(normalizeHeaderKey(alias)))
+  ).map((col) => col.name);
+};
+
+const pickRowValue = (row, aliases) => {
+  for (const alias of aliases) {
+    const normalizedAlias = normalizeHeaderKey(alias);
+    for (const key of Object.keys(row)) {
+      if (normalizeHeaderKey(key) === normalizedAlias) {
+        const value = row[key];
+        if (value !== undefined && value !== null && value !== "") return value;
+      }
+    }
+  }
+  return null;
+};
+
+const readReconciliationRow = (row) => {
+  const usedRaw = pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Angka Used"]);
+  return {
+    kodeTiket: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Kode Tiket"]),
+    projectName: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Project Name"]),
+    namaBarang: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Nama Barang"]),
+    used: usedRaw === null ? 0 : Number(usedRaw),
+    kondisi: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Kondisi"]),
+    catatan: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Keterangan"]),
+  };
+};
+
+// Normalisasi kunci kode_tiket agar pencocokan tahan terhadap spasi/karakter tak terlihat
+// dan perbedaan huruf besar/kecil (pola yang sama dipakai saat parsing file upload).
+const normalizeTicketKey = (value) =>
+  String(value ?? "")
+    .normalize("NFKC")
+    .replace(/[\u00A0\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .toUpperCase();
+
+// Pesan penanda bahwa tiket dibuat otomatis dari BOQ (mis. masuk audit_log).
+const AUTO_TIKET_FROM_BOQ_NOTE = "Dibuat otomatis dari BOQ";
 
 const KONDISI_BARANG_VALUES = new Set(["baik", "rusak_ringan", "rusak_berat", "tidak_sesuai_spek", "doa"]);
 const KONDISI_BARANG_LABEL_MAP = new Map([
@@ -81,7 +146,7 @@ const exportAuditLogExcel = async (req, res, next) => {
       right: { style: "thin" },
     };
 
-    const headers = ["Waktu", "Pengguna", "Peran", "Aksi", "Entitas Terkait", "Referensi Tambahan"];
+    const headers = ["Waktu", "Pengguna", "Peran", "Aksi", "Entitas Terkait", "Referensi Tambahan", "Detail"];
     headers.forEach((header, index) => {
       const cell = worksheet.getCell(1, index + 1);
       cell.value = header;
@@ -93,36 +158,15 @@ const exportAuditLogExcel = async (req, res, next) => {
 
     rows.forEach((row, rowIndex) => {
       const excelRow = rowIndex + 2;
-      const ds = row.data_sesudah || {};
-      const entityLabel = (() => {
-        const kode = ds.kode_tiket || row.data_sebelum?.kode_tiket;
-        if (kode) return kode;
-        if (row.entity_type && row.entity_id && row.entity_id !== "0") {
-          return `${row.entity_type} #${row.entity_id}`;
-        }
-        return row.entity_type || "-";
-      })();
-      const extraRef = (() => {
-        const parts = [];
-        if (ds.source_file || ds.filename || ds.nama_file) {
-          parts.push(ds.source_file || ds.filename || ds.nama_file);
-        }
-        if (ds.username_target || ds.target_user || ds.user_target) {
-          parts.push(`user: ${ds.username_target || ds.target_user || ds.user_target}`);
-        }
-        if (ds.catatan) {
-          parts.push(ds.catatan);
-        }
-        return parts.length > 0 ? parts.join(" | ") : "—";
-      })();
 
       const values = [
         row.created_at ? new Date(row.created_at).toLocaleString("id-ID") : "-",
-        row.actor_nama || "-",
-        row.actor_role || "-",
+        row.actor_nama || "Tidak dikenal",
+        row.actor_role || "Tidak dikenal",
         row.aksi || "-",
-        entityLabel,
-        extraRef,
+        row.entity_name || "-",
+        row.extra_ref || "—",
+        row.detail || "-",
       ];
 
       values.forEach((value, colIndex) => {
@@ -334,11 +378,25 @@ const uploadReconciliationFile = async (req, res, next) => {
       return response.error(res, "No file uploaded.", 400);
     }
 
+    const validation = validateUploadFile({
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      buffer: fs.readFileSync(req.file.path),
+    });
+    if (!validation.ok) {
+      fs.unlinkSync(req.file.path);
+      console.error(
+        `[upload-validate] ditolak: ${req.file.originalname} | mimetype=${req.file.mimetype} | reason=${validation.reason}`,
+      );
+      return response.error(
+        res,
+        `File tidak valid: ${validation.reason}`,
+        400,
+      );
+    }
+
     try {
-      const workbook = XLSX.readFile(req.file.path);
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+      const { jsonData } = await parseReconciliationFileExceljs(req.file.path);
 
       if (!jsonData.length) {
         fs.unlinkSync(req.file.path);
@@ -346,9 +404,7 @@ const uploadReconciliationFile = async (req, res, next) => {
       }
 
       const firstRowKeys = Object.keys(jsonData[0] || {});
-      const missingColumns = RECONCILIATION_REQUIRED_COLUMNS
-        .filter((col) => !col.aliases.some((alias) => firstRowKeys.includes(alias)))
-        .map((col) => col.name);
+      const missingColumns = findMissingReconciliationColumns(firstRowKeys);
 
       if (missingColumns.length > 0) {
         fs.unlinkSync(req.file.path);
@@ -401,7 +457,14 @@ const uploadReconciliationFile = async (req, res, next) => {
 
       for (let i = 0; i < jsonData.length; i++) {
         const row = jsonData[i];
-        const rawKodeTiket = row["Kode Tiket"] || row["kode_tiket"] || row["KODE_TIKET"];
+        const {
+          kodeTiket: rawKodeTiket,
+          projectName,
+          namaBarang,
+          used,
+          kondisi,
+          catatan,
+        } = readReconciliationRow(row);
         const kodeTiket = rawKodeTiket
           ? String(rawKodeTiket)
               .normalize("NFKC")
@@ -409,11 +472,6 @@ const uploadReconciliationFile = async (req, res, next) => {
               .trim()
               .toUpperCase()
           : null;
-        const projectName = row["Project"] || row["project"] || row["Nama Project"] || null;
-        const used = Number(row["Used"] || row["used"] || 0);
-        const namaBarang = row["Nama Barang"] || row["nama_barang"] || row["Barang"] || null;
-        const kondisi = row["Kondisi"] || row["kondisi"] || row["KONDISI"] || null;
-        const catatan = row["Catatan"] || row["catatan"] || row["Keterangan"] || null;
 
         if (!kodeTiket) {
           failed.push({ row: i + 2, used, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak ditemukan" });
@@ -487,6 +545,173 @@ const uploadReconciliationFile = async (req, res, next) => {
   });
 };
 
+// Payload baris reconciliation_upload_detail berstatus gagal (dipakai beberapa jalur).
+const buildFailedUploadDetail = ({
+  uploadId,
+  kodeTiket,
+  used,
+  kondisi,
+  namaBarang,
+  projectNama,
+  tanggalLaporan,
+  picMitra,
+  catatan,
+  reason,
+}) => ({
+  upload_id: uploadId,
+  kode_tiket: kodeTiket || "-",
+  mos: 0,
+  remains_lapangan: 0,
+  used: Number(used || 0),
+  status: "gagal",
+  reason,
+  kondisi: normalizeKondisi(kondisi),
+  nama_barang: namaBarang || null,
+  kode_barang: null,
+  project_nama: projectNama || null,
+  tanggal_laporan: tanggalLaporan ? new Date(tanggalLaporan) : new Date(),
+  pic_mitra: picMitra || null,
+  catatan: catatan || null,
+});
+
+// Menyelesaikan tiket untuk baris laporan manual yang hanya punya boq_id/boq_number.
+// Idempoten: pemanggilan berikutnya memakai tiket yang sama tanpa membuat duplikat.
+const resolveOrCreateTiketForBoq = async (tx, { boqId, actorId }) => {
+  if (!boqId) {
+    return { error: "BOQ tidak ditemukan" };
+  }
+
+  const boq = await tx.boq.findUnique({
+    where: { boq_id: BigInt(boqId) },
+    include: {
+      cluster: { select: { cluster_id: true, project_id: true } },
+    },
+  });
+
+  if (!boq) {
+    return { error: "BOQ tidak ditemukan" };
+  }
+
+  if (boq.tiket_id) {
+    const existingOnBoq = await tx.tiket_material.findUnique({
+      where: { tiket_id: BigInt(boq.tiket_id) },
+      select: {
+        tiket_id: true,
+        kode_tiket: true,
+        project_id: true,
+        mos: true,
+        used: true,
+        cluster_id: true,
+        project: { select: { nama_project: true } },
+      },
+    });
+    if (existingOnBoq) {
+      return { tiket: existingOnBoq };
+    }
+  }
+
+  const boqNumber = boq.boq_number ? String(boq.boq_number).trim() : "";
+  if (!boqNumber) {
+    return { error: "BOQ tidak memiliki nomor tiket" };
+  }
+
+  // Cari tiket dengan kode yang sama. Karena kolom kode_tiket bertipe Text + unique,
+  // normalisasi dilakukan di sisi aplikasi: pakai `contains` (case-insensitive) sebagai
+  // filter superset, lalu Wajib lolos pemeriksaan normalizeTicketKey di bawah.
+  const normalizedKey = normalizeTicketKey(boqNumber);
+  const BOQ_TIKET_SELECT = {
+    tiket_id: true,
+    kode_tiket: true,
+    project_id: true,
+    mos: true,
+    used: true,
+    cluster_id: true,
+    project: { select: { nama_project: true } },
+  };
+  const candidateRows = await tx.tiket_material.findMany({
+    where: { kode_tiket: { contains: boqNumber, mode: "insensitive" } },
+    select: BOQ_TIKET_SELECT,
+  });
+
+  const matchByKey = candidateRows.find(
+    (candidate) => normalizeTicketKey(candidate.kode_tiket) === normalizedKey
+  );
+
+  if (matchByKey) {
+    if (matchByKey.cluster_id && boq.cluster_id && matchByKey.cluster_id !== boq.cluster_id) {
+      return { error: "Kode tiket bentrok dengan cluster lain" };
+    }
+
+    // cluster_id tiket null/belum diisi: lengkapi agar rekonsiliasi per cluster terhitung.
+    if (!matchByKey.cluster_id && boq.cluster_id) {
+      await tx.tiket_material.update({
+        where: { tiket_id: BigInt(matchByKey.tiket_id) },
+        data: { cluster_id: boq.cluster_id },
+      });
+      matchByKey.cluster_id = boq.cluster_id;
+    }
+
+    if (!boq.tiket_id) {
+      await tx.boq.update({
+        where: { boq_id: boq.boq_id },
+        data: { tiket_id: BigInt(matchByKey.tiket_id) },
+      });
+    }
+
+    return { tiket: matchByKey, note: AUTO_TIKET_FROM_BOQ_NOTE };
+  }
+
+  if (!boq.cluster?.project_id) {
+    return { error: "Cluster BOQ tidak memiliki project" };
+  }
+
+  // Kolom NOT NULL tiket_material: kode_tiket, project_id, created_by.
+  // Kolom lain (cluster_id, area, mos, used, used_terpasang) nullable -> null.
+  let created;
+  try {
+    created = await tx.tiket_material.create({
+      data: {
+        kode_tiket: boqNumber,
+        project_id: BigInt(boq.cluster.project_id),
+        cluster_id: boq.cluster_id,
+        created_by: BigInt(actorId),
+      },
+      select: {
+        tiket_id: true,
+        kode_tiket: true,
+        project_id: true,
+        mos: true,
+        used: true,
+        cluster_id: true,
+        project: { select: { nama_project: true } },
+      },
+    });
+  } catch (createErr) {
+    // P2002 = unique violation: tiket sudah dibuat oleh request lain, ambil ulang.
+    if (createErr?.code === "P2002") {
+      const existing = await tx.tiket_material.findMany({
+        where: { kode_tiket: { contains: boqNumber, mode: "insensitive" } },
+        select: BOQ_TIKET_SELECT,
+      });
+      const match = existing.find(
+        (candidate) => normalizeTicketKey(candidate.kode_tiket) === normalizedKey
+      );
+      if (!match) {
+        return { error: "Gagal menyiapkan tiket dari BOQ" };
+      }
+      return { tiket: match, note: AUTO_TIKET_FROM_BOQ_NOTE };
+    }
+    throw createErr;
+  }
+
+  await tx.boq.update({
+    where: { boq_id: boq.boq_id },
+    data: { tiket_id: BigInt(created.tiket_id) },
+  });
+
+  return { tiket: created, note: AUTO_TIKET_FROM_BOQ_NOTE };
+};
+
 const confirmReconciliationUpload = async (req, res, next) => {
   try {
     const {
@@ -516,17 +741,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
 
     const jenisLaporan = filename === "manual-input" ? "manual" : "excel";
 
-    const uploadLog = await prisma.reconciliation_upload_log.create({
-      data: {
-        filename,
-        file_url: `/uploads/reconciliation/${filename}`,
-        uploaded_by: BigInt(actorId),
-        total_rows: preview.length + failed.length,
-        success_rows: 0,
-        failed_rows: 0,
-      },
-    });
-
+    let uploadLog;
     let successCount = 0;
     let failedCount = 0;
     let updatedTikets = [];
@@ -534,9 +749,20 @@ const confirmReconciliationUpload = async (req, res, next) => {
     const failedItems = [];
 
     await prisma.$transaction(async (tx) => {
+      uploadLog = await tx.reconciliation_upload_log.create({
+        data: {
+          filename,
+          file_url: `/uploads/reconciliation/${filename}`,
+          uploaded_by: BigInt(actorId),
+          total_rows: preview.length + failed.length,
+          success_rows: 0,
+          failed_rows: 0,
+        },
+      });
       for (const item of preview) {
         let tiketId = item.tiket_id;
         let kodeTiket = item.kode_tiket;
+        let autoTiketNote = null;
 
         if (!tiketId && kodeTiket) {
           const tiket = await tx.tiket_material.findUnique({
@@ -547,6 +773,44 @@ const confirmReconciliationUpload = async (req, res, next) => {
             tiketId = tiket.tiket_id;
             kodeTiket = tiket.kode_tiket;
           }
+        }
+
+        // Baris manual yang hanya membawa boq_id/boq_number: siapkan tiket otomatis.
+        // Alur upload file dan manual dengan tiket asli tetap melewati blok di atas.
+        if (!tiketId && item.boq_id) {
+          const resolved = await resolveOrCreateTiketForBoq(tx, {
+            boqId: item.boq_id,
+            actorId,
+          });
+
+          if (resolved.error || !resolved.tiket) {
+            await tx.reconciliation_upload_detail.create({
+              data: buildFailedUploadDetail({
+                uploadId: uploadLog.upload_id,
+                kodeTiket,
+                used: item.used,
+                kondisi: item.kondisi,
+                namaBarang: item.nama_barang,
+                projectNama: null,
+                tanggalLaporan: tanggal_laporan,
+                picMitra: pic_mitra,
+                catatan: item.catatan,
+                reason: resolved.error || "Tiket tidak terdaftar",
+              }),
+            });
+            failedCount++;
+            failedItems.push({
+              kode_tiket: kodeTiket || "-",
+              nama_barang: item.nama_barang || "-",
+              used: Number(item.used || 0),
+              reason: resolved.error || "Tiket tidak terdaftar",
+            });
+            continue;
+          }
+
+          tiketId = resolved.tiket.tiket_id;
+          kodeTiket = resolved.tiket.kode_tiket;
+          autoTiketNote = resolved.note || null;
         }
 
         if (!tiketId) {
@@ -750,6 +1014,7 @@ const confirmReconciliationUpload = async (req, res, next) => {
               used: item.used,
               source_file: filename,
               jenis_laporan: jenisLaporan,
+              ...(autoTiketNote ? { catatan: autoTiketNote } : {}),
             },
           },
         });
@@ -781,14 +1046,14 @@ const confirmReconciliationUpload = async (req, res, next) => {
       for (const tiketId of affectedTiketIds) {
         await reconciliationService.refreshTiketMosUsed(tiketId, tx);
       }
-    });
 
-    await prisma.reconciliation_upload_log.update({
-      where: { upload_id: uploadLog.upload_id },
-      data: {
-        success_rows: successCount,
-        failed_rows: failedCount,
-      },
+      await tx.reconciliation_upload_log.update({
+        where: { upload_id: uploadLog.upload_id },
+        data: {
+          success_rows: successCount,
+          failed_rows: failedCount,
+        },
+      });
     });
 
     return response.success(res, "Rekonsiliasi berhasil disimpan.", {
@@ -818,28 +1083,40 @@ const downloadReconciliationTemplate = async (req, res, next) => {
       right: { style: "thin" },
     };
 
-    const headers = ["Kode Tiket", "Project", "Nama Barang", "Used", "Kondisi", "Catatan"];
-    headers.forEach((header, index) => {
+    const templateColumns = [
+      { header: "Cluster ID", example: "CL-0001", width: 18 },
+      { header: "Cluster Name", example: "Cluster Contoh", width: 24 },
+      { header: "Project Name", example: "Project A", width: 24 },
+      { header: "Kode Tiket", example: "TIKET-001", width: 18 },
+      { header: "Nama Barang", example: "Kabel Fiber Optik", width: 28 },
+      { header: "Angka Used", example: 3, width: 14, numeric: true },
+      { header: "Kondisi", example: "Baik", width: 16 },
+      { header: "Keterangan", example: "Contoh catatan opsional", width: 32 },
+    ];
+
+    templateColumns.forEach((column, index) => {
       const cell = worksheet.getCell(1, index + 1);
-      cell.value = header;
+      cell.value = column.header;
       cell.font = headerFont;
       cell.fill = headerFill;
       cell.alignment = { horizontal: "center", vertical: "middle" };
       cell.border = borderStyle;
     });
 
-    const exampleRow = ["TIKET-001", "Project A", "Kabel Fiber Optik", 3, "Baik", "Contoh catatan opsional"];
-    exampleRow.forEach((value, colIndex) => {
-      const cell = worksheet.getCell(2, colIndex + 1);
-      cell.value = value;
+    templateColumns.forEach((column, index) => {
+      const cell = worksheet.getCell(2, index + 1);
+      cell.value = column.example;
       cell.border = borderStyle;
       cell.alignment = { vertical: "middle" };
+      if (column.numeric) {
+        cell.numFmt = "0";
+      }
     });
 
     worksheet.getRow(1).height = 22;
-    for (let i = 1; i <= headers.length; i++) {
-      worksheet.getColumn(i).width = 28;
-    }
+    templateColumns.forEach((column, index) => {
+      worksheet.getColumn(index + 1).width = column.width;
+    });
 
     const buffer = await workbook.xlsx.writeBuffer();
     const filename = "Template_Rekonsiliasi.xlsx";
@@ -884,4 +1161,9 @@ module.exports = {
   confirmReconciliationUpload,
   getReconciliationUploadLogs,
   downloadReconciliationTemplate,
+  RECONCILIATION_REQUIRED_COLUMNS,
+  RECONCILIATION_OPTIONAL_COLUMNS,
+  findMissingReconciliationColumns,
+  readReconciliationRow,
+  resolveOrCreateTiketForBoq,
 };

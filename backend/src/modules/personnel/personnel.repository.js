@@ -126,10 +126,13 @@ const findAll = async ({
     where.gudang_id = Number(gudang_id);
   }
 
+  // Default: hanya personil aktif. is_aktif="true"/"false" untuk filter eksplisit.
   if (is_aktif === "true") {
     where.is_aktif = true;
   } else if (is_aktif === "false") {
     where.is_aktif = false;
+  } else {
+    where.is_aktif = true;
   }
 
   if (search) {

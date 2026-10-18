@@ -29,11 +29,11 @@ import {
   Users,
   Warehouse,
 } from "lucide-react";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole, formatRole } from "@/lib/navigation";
 import { useSupervisorDashboard } from "@/hooks/use-supervisor-dashboard";
 import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity } from "@/lib/capacity";
-import { ConfirmModal } from "@/components/ConfirmModal";
 
 const summaryCards = [
   {
@@ -240,8 +240,6 @@ export default function SupervisorDashboard() {
   const router = useRouter();
   const { user, logout, isLoading, isAuthenticated } = useAuth();
 
-  const { kapasitasPerGudang, projectSummary, showDeactivatedModal, handleReturnToLogin } = useSupervisorDashboard();
-
   useEffect(() => {
     if (!isLoading) {
       if (!isAuthenticated) {
@@ -265,6 +263,8 @@ export default function SupervisorDashboard() {
       </div>
     );
   }
+
+  const { kapasitasPerGudang, projectSummary, showDeactivatedModal, handleReturnToLogin } = useSupervisorDashboard();
 
   return (
     <div className={`flex min-h-screen bg-[#F8F6F0] text-slate-800`}>
@@ -441,7 +441,7 @@ export default function SupervisorDashboard() {
                   </h3>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+                <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                   {approvalCards.map((card) => (
                     <div
                       key={card.title}
@@ -613,7 +613,7 @@ export default function SupervisorDashboard() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
                   {projectSummary.length === 0 ? (
                     <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">
                       Belum ada data project.
@@ -624,71 +624,48 @@ export default function SupervisorDashboard() {
                       const StatusIcon = statusMeta.icon;
                       const maxVal = Math.max(1, p.boq + p.additional);
                       const remWidth = Math.max(0, p.remains);
+
                       return (
                         <div
                           key={p.projectId}
                           className="rounded-2xl border border-stone-100 bg-white p-3 transition-colors hover:border-stone-200"
                         >
                           {/* Header baris */}
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <span className="text-xs font-bold leading-snug text-slate-900">
-                                  {p.projectName}
-                                </span>
-                                <span
-                                  className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusMeta.badge}`}
-                                >
-                                  <StatusIcon size={11} strokeWidth={2.5} />
-                                  {statusMeta.label}
-                                </span>
-                              </div>
-                              <div className="mt-0.5 text-[11px] text-slate-400">
-                                {p.area}
-                                {p.clusterId ? ` • ${p.clusterLabel}` : ""}
-                                {p.statusBoq ? ` • BOQ ${p.statusBoq}` : ""}
-                              </div>
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <h4 className="text-sm font-bold text-slate-900">
+                                {p.projectName}
+                              </h4>
+                              <p className="text-[10px] text-slate-500">
+                                {p.clusterLabel || "-"}
+                              </p>
                             </div>
-                            <div className="shrink-0 text-right">
-                              <div className="text-[10px] uppercase tracking-wide text-slate-400">
-                                Total Unit
-                              </div>
-                              <div className="text-sm font-bold text-slate-900">
-                                {formatNumber(p.hardwareOnSite)}
-                              </div>
+                            <StatusIcon size={14} className={statusMeta.badge} />
+                          </div>
+
+                          <div className="space-y-1 text-[10px]">
+                            <div className="flex justify-between text-slate-600">
+                              <span>BOQ Plan</span>
+                              <span>{formatNumber(p.boq)}</span>
+                            </div>
+                            <div className="flex justify-between text-slate-600">
+                              <span>Additional</span>
+                              <span>{formatNumber(p.additional)}</span>
+                            </div>
+                            <div className="flex justify-between text-slate-600">
+                              <span>Used</span>
+                              <span>{formatNumber(p.hardwareOnSite)}</span>
+                            </div>
+                            <div className="flex justify-between text-slate-600">
+                              <span>Remains</span>
+                              <span>{formatNumber(p.remains)}</span>
                             </div>
                           </div>
 
-                          {/* Stacked progress bar */}
-                          <div className="mt-2 flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                          <div className="mt-2 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                             <div
-                              style={{ width: `${(p.hardwareOnSite / maxVal) * 100}%` }}
-                              className="bg-emerald-500"
-                              title={`MOS: ${p.hardwareOnSite}`}
-                            />
-                            <div
-                              style={{ width: `${(p.used / maxVal) * 100}%` }}
-                              className="bg-orange-500"
-                              title={`Used: ${p.used}`}
-                            />
-                            <div
-                              style={{ width: `${(remWidth / maxVal) * 100}%` }}
-                              className={p.remains < 0 ? "bg-rose-400" : "bg-slate-300"}
-                              title={`Remains: ${p.remains}`}
-                            />
-                          </div>
-
-                          {/* Grid 5 metric */}
-                          <div className="mt-2 grid grid-cols-5 gap-1.5 text-center">
-                            <MetricBox label="BOQ Plan" value={p.boq} tone="slate" />
-                            <MetricBox label="Additional" value={p.additional} tone="slate" />
-                            <MetricBox label="MOS" value={p.hardwareOnSite} tone="emerald" />
-                            <MetricBox label="Used" value={p.used} tone="orange" />
-                            <MetricBox
-                              label="Remains"
-                              value={p.remains}
-                              tone={p.remains < 0 ? "rose" : "slate"}
-                              highlight={p.remains < 0}
+                              className="h-full bg-emerald-600"
+                              style={{ width: `${Math.min(100, (p.hardwareOnSite / maxVal) * 100)}%` }}
                             />
                           </div>
                         </div>
@@ -775,7 +752,7 @@ export default function SupervisorDashboard() {
                     </button>
                   </div>
 
-                  <div className="overflow-x-auto">
+                  <div className="w-full overflow-x-auto">
                     <table className="w-full text-left text-xs">
                       <thead>
                         <tr className="border-b border-stone-100 text-slate-400 font-bold">

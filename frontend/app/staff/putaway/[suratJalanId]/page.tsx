@@ -62,6 +62,16 @@ function zonaLabel(z: ApiZona): string {
   return z.tipe_zona ? `${nama} — ${z.tipe_zona}` : nama;
 }
 
+type ConfirmModalProps = {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  submitting: boolean;
+  data: ApiSuratJalan | null;
+  zonas: ApiZona[];
+  zonaByItem: Record<number, string>;
+};
+
 function ConfirmModal({
   open,
   onClose,

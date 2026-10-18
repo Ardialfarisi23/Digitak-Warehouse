@@ -1,5 +1,4 @@
 const express = require("express");
-
 const router = express.Router();
 
 const projectController = require("./project.controller");
@@ -12,6 +11,7 @@ const {
 const validate = require("../../middlewares/validation.middleware");
 const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
+const { deleteLimiter } = require("../../middlewares/rate-limit");
 
 router.post(
   "/",
@@ -35,6 +35,7 @@ router.delete(
   "/:project_id",
   authenticate,
   authorize("ADMIN", "SUPERVISOR"),
+  deleteLimiter,
   projectController.remove
 );
 

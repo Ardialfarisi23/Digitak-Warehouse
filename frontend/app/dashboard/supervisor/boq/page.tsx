@@ -27,7 +27,6 @@ import {
   ExternalLink,
   History,
   Download,
-  Lock,
   Info,
   ChevronDown,
 } from "lucide-react";
@@ -35,6 +34,7 @@ import {
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
+import { safeUrl } from "@/lib/safe-url";
 import Image from "next/image";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -63,6 +63,7 @@ interface Project {
   desa_kelurahan?: string;
   kota_kabupaten?: string;
   provinsi?: string;
+  status_aktif?: boolean;
 }
 
 interface Warehouse {
@@ -177,8 +178,24 @@ function getVerificationBadge(status: ExternalVerificationStatus) {
     case "menunggu":
       return { label: "Menunggu verifikasi", bg: "bg-amber-50", text: "text-amber-600", icon: ShieldAlert };
     default:
-      return { label: "Tidak berlaku", bg: "bg-slate-100", text: "text-slate-400", icon: ShieldAlert };
+      return { label: "Tidak berlaku", bg: "bg-slate-100", text: "text-slate-600", icon: ShieldAlert };
   }
+}
+
+const DISPLAY_ABBREVIATIONS = ["FTTH", "POP", "RW", "RT", "BOQ", "ODP", "ODC", "OLT", "FO", "PT", "CV", "ID"];
+
+function formatDisplayText(text?: string | null): string {
+  if (!text) return "-";
+  return text
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      const upper = word.toUpperCase();
+      if (DISPLAY_ABBREVIATIONS.includes(upper) || /\d/.test(word)) return upper;
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(" ");
 }
 
 const TABS: { key: TabType; label: string; icon: React.ElementType }[] = [
@@ -191,11 +208,9 @@ const TABS: { key: TabType; label: string; icon: React.ElementType }[] = [
 export default function BoqPage() {
   const router = useRouter();
   const { get, post, put } = useApi();
-  const { user } = useAuth();
-  const role = mapRole(user?.role);
-  const isSupervisor = role === "supervisor";
 
   const [activeTab, setActiveTab] = useState<SectionType>("aktif");
+  const [page, setPage] = useState(1);
   const [boqs, setBoqs] = useState<Boq[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -752,11 +767,11 @@ export default function BoqPage() {
   return (
     <div className={`${plusJakartaSans.className}`}>
       <div className="flex flex-1 flex-col p-6">
-        <header className="mb-6 flex items-start justify-between gap-4">
+        <header className="mt-4 mb-6 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">BOQ & Surat Tiket</h1>
+            <h1 className="text-2xl font-bold text-slate-900">Cluster & BOQ</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Kelola BOQ (Bill of Quantity) dan Surat Tiket untuk area supervisi Anda.
+              Kelola Cluster, BOQ (Bill of Quantity), dan Surat Tiket untuk area supervisi Anda.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -780,14 +795,7 @@ export default function BoqPage() {
           </div>
         </header>
 
-        {isSupervisor && (
-          <div className="mb-6 flex items-center gap-2 rounded-xl bg-sky-50 px-4 py-2.5 text-xs text-sky-700">
-            <Lock size={14} className="shrink-0" />
-            Anda login sebagai Supervisor. BOQ baru akan otomatis berstatus <b>Draft</b> dengan sumber <b>Top-Down (PO Internal)</b>.
-          </div>
-        )}
-
-        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs font-medium text-slate-400">BOQ Aktif</p>
             <p className="mt-1 text-2xl font-bold text-slate-900">{summary.aktif}</p>
@@ -853,101 +861,143 @@ export default function BoqPage() {
 
         <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
+            <table className="w-full text-left text-sm md:min-w-full">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nomor BOQ / Tiket</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Sumber</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Verifikasi Eksternal</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Item</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Total Qty</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Dokumen</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Cluster</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                  <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
+                  <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
+                    Cluster ID
+                  </th>
+                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    BOQ
+                  </th>
+                  <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
+                    Cluster Name
+                  </th>
+                  <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
+                    Project Name
+                  </th>
+                  <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Item
+                  </th>
+                  <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
+                    Total Kuantitas
+                  </th>
+                  <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
+                    Dokumen
+                  </th>
+                  <th className="px-3 py-3 md:px-6 md:py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">
+                    Status Verifikasi
+                  </th>
+                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Status BOQ
+                  </th>
+                  <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Aksi
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {loading ? (
                   Array.from({ length: 5 }).map((_, rowIndex) => (
                     <tr key={rowIndex}>
-                      {Array.from({ length: 11 }).map((_, colIndex) => (
-                        <td key={colIndex} className="px-6 py-4"><div className="h-4 animate-pulse rounded-lg bg-slate-100" /></td>
+                      <td className="px-3 py-3 md:px-6 md:py-4"><div className="h-4 animate-pulse rounded-lg bg-slate-100" /></td>
+                      {Array.from({ length: 9 }).map((_, colIndex) => (
+                        <td key={colIndex} className="px-3 py-3 md:px-6 md:py-4"><div className="h-4 animate-pulse rounded-lg bg-slate-100" /></td>
                       ))}
                     </tr>
                   ))
                 ) : error ? (
-                  <tr><td colSpan={11} className="px-6 py-16 text-center text-sm text-rose-500">{error}</td></tr>
+                  <tr>
+                    <td colSpan={10} className="px-3 py-3 md:px-6 md:py-16 text-center text-sm text-rose-500">
+                      {error}
+                    </td>
+                  </tr>
                 ) : boqs.length === 0 ? (
-                  <tr><td colSpan={11} className="px-6 py-16 text-center text-sm text-slate-400">
-                    {activeTab === "draft" ? "Belum ada BOQ draft. BOQ baru dari email/PO akan muncul di sini." : "Tidak ada data BOQ."}
-                  </td></tr>
+                  <tr>
+                    <td colSpan={10} className="px-3 py-3 md:px-6 md:py-16 text-center text-sm text-slate-400">
+                      {activeTab === "draft" ? "Belum ada BOQ draft. BOQ baru dari email/PO akan muncul di sini." : "Tidak ada data BOQ."}
+                    </td>
+                  </tr>
                 ) : (
-                  boqs.map((boq, index) => {
+                  boqs.map((boq) => {
                     const statusBadge = getStatusBadge(boq.status);
                     const sourceBadge = getSourceBadge(boq.source);
                     const verificationBadge = getVerificationBadge(boq.externalVerificationStatus);
-                    const rowQty = boq.items.reduce((s, i) => s + (i.quantity || 0), 0);
+                    const totalQty = boq.items.reduce((s, i) => s + (i.quantity || 0), 0);
                     const totalItems = boq.items.length;
                     const blockedFromActivation = boq.externalVerificationStatus !== "terverifikasi";
-                    const rowNumber = (page - 1) * 50 + index + 1;
+
                     return (
                       <tr key={boq.id} className="group cursor-pointer transition-colors hover:bg-slate-50" onClick={() => openDetailModal(boq)}>
-                        <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500">{rowNumber}</td>
-                        <td className="px-6 py-4">
-                          <div className="font-semibold text-orange-500">{boq.boqNumber}</div>
-                          <div className="text-xs text-slate-400">{boq.ticketNumber}</div>
+                        <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell text-slate-700">
+                          <div className="text-sm font-medium text-slate-800">
+                            {boq.clusterId || boq.cluster?.cluster_id || "-"}
+                          </div>
                         </td>
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${sourceBadge.bg} ${sourceBadge.text}`}>
-                            <sourceBadge.icon size={12} />{sourceBadge.label}
-                          </span>
+                        <td className="px-3 py-3 md:px-6 md:py-4">
+                          <div className="text-sm font-medium text-orange-500 whitespace-nowrap">{boq.boqNumber}</div>
+                          {boq.ticketNumber ? (
+                            <div className="text-xs font-normal text-slate-500">{formatDisplayText(boq.ticketNumber)}</div>
+                          ) : null}
+                          <div className="mt-0.5 text-xs font-normal text-slate-500 md:hidden">
+                            {formatDisplayText(boq.project?.projectName || boq.project?.title || boq.area)}
+                          </div>
                         </td>
-                        <td className="px-6 py-4 text-slate-700">
-                          <div>{boq.project?.projectName || boq.project?.title || "-"}</div>
-                          <div className="text-xs text-slate-400">{boq.area}</div>
+                        <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell">
+                          {boq.cluster?.nama_cluster ? (
+                            <div className="text-sm font-medium text-slate-800">{formatDisplayText(boq.cluster.nama_cluster)}</div>
+                          ) : (
+                            <span className="text-sm text-slate-300">-</span>
+                          )}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-slate-800">
+                              {formatDisplayText(boq.project?.projectName || boq.project?.title)}
+                            </span>
+                          </div>
+                          {boq.area ? (
+                            <div className="text-xs font-normal text-slate-500">{formatDisplayText(boq.area)}</div>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-3 md:px-6 md:py-4 text-right text-sm font-medium text-slate-800 tabular-nums">
+                          {totalItems}
+                          <div className="text-xs font-normal text-slate-500 md:hidden">qty {totalQty}</div>
+                        </td>
+                        <td className="px-3 py-3 md:px-6 md:py-4 text-right text-sm font-medium text-slate-800 tabular-nums hidden md:table-cell">
+                          {totalQty}
+                        </td>
+                        <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell">
+                          {boq.referenceFile ? (
+                            <a href={safeUrl(boq.referenceFile)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-100">
+                              <FileText size={14} />PDF
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-300">-</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 md:px-6 md:py-4 hidden md:table-cell">
                           <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${verificationBadge.bg} ${verificationBadge.text}`}>
                             <verificationBadge.icon size={12} />{verificationBadge.label}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-right text-sm font-semibold text-slate-800">{totalItems} barang</td>
-                        <td className="px-6 py-4 text-right font-semibold text-slate-800">{rowQty}</td>
-                        <td className="px-6 py-4">
-                          {boq.referenceFile ? (
-                            <a href={boq.referenceFile} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-100">
-                              <FileText size={14} />PDF
-                            </a>
-                          ) : (<span className="text-xs text-slate-300">-</span>)}
-                        </td>
-                        <td className="px-6 py-4 text-slate-700">
-                          <div className="text-sm font-medium text-slate-800">
-                            {boq.clusterId || boq.cluster?.cluster_id || "-"}
-                          </div>
-                          {boq.cluster?.nama_cluster && (
-                            <div className="text-xs text-slate-400">{boq.cluster.nama_cluster}</div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
+                        <td className="px-3 py-3 md:px-6 md:py-4">
                           <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusBadge.bg} ${statusBadge.text}`}>
                             <statusBadge.icon size={12} />{statusBadge.label}
                           </span>
                         </td>
-                        <td className="px-4 py-4">
+                        <td className="px-3 py-3 md:px-4 md:py-4">
                           <div className="flex items-center justify-end gap-1">
-                            <button type="button" onClick={(e) => { e.stopPropagation(); openDetailModal(boq); }} title="Lihat detail" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                            <button type="button" onClick={(e) => { e.stopPropagation(); openDetailModal(boq); }} title="Lihat detail" className="min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700">
                               <Eye size={15} />
                             </button>
                             {boq.status === "draft" && (
-                              <button type="button" onClick={(e) => { e.stopPropagation(); openEditModal(boq); }} title="Edit" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-orange-600">
+                              <button type="button" onClick={(e) => { e.stopPropagation(); openEditModal(boq); }} title="Edit" className="min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-orange-600">
                                 <Pencil size={15} />
                               </button>
                             )}
                             {activeTab === "draft" && (
-                              <button type="button" onClick={(e) => { e.stopPropagation(); handleActivate(boq); }} title={blockedFromActivation ? "Belum bisa diaktifkan — menunggu verifikasi eksternal" : "Aktifkan BOQ"} className={`rounded-lg p-1.5 ${blockedFromActivation ? "text-slate-300 hover:bg-slate-50" : "text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"}`}>
+                              <button type="button" onClick={(e) => { e.stopPropagation(); handleActivate(boq); }} title={blockedFromActivation ? "Belum bisa diaktifkan — menunggu verifikasi eksternal" : "Aktifkan BOQ"} className={`min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg ${blockedFromActivation ? "text-slate-300 cursor-not-allowed" : "text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"}`}>
                                 <CheckCircle2 size={15} />
                               </button>
                             )}
@@ -965,7 +1015,7 @@ export default function BoqPage() {
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setModalOpen(false)}>
-          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">{modalMode === "create" ? "Input BOQ" : "Edit BOQ"}</h3>
@@ -1060,7 +1110,7 @@ export default function BoqPage() {
                   {uploadingRef && <p className="mt-1 text-xs text-slate-400">Mengunggah file...</p>}
                   {form.referenceFile && (
                     <div className="mt-2 flex items-center gap-2">
-                      <a href={form.referenceFile} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-orange-600 hover:text-orange-700">Lihat file referensi</a>
+                      <a href={safeUrl(form.referenceFile)} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-orange-600 hover:text-orange-700">Lihat file referensi</a>
                       <button type="button" onClick={() => setForm((p) => ({ ...p, referenceFile: "" }))} className="text-xs text-slate-400 hover:text-slate-600">Hapus</button>
                     </div>
                   )}
@@ -1159,7 +1209,7 @@ export default function BoqPage() {
 
       {detailOpen && detailBoq && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setDetailOpen(false)}>
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Detail BOQ</h3>
@@ -1213,7 +1263,7 @@ export default function BoqPage() {
                   <p className="text-xs font-medium text-slate-400">Dokumen Referensi BOQ</p>
                   <div className="mt-2 flex items-center gap-2">
                     <FileText size={14} className="text-slate-400" />
-                    <a href={detailBoq.referenceFile} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-orange-600 hover:text-orange-700">Lihat dokumen referensi</a>
+                    <a href={safeUrl(detailBoq.referenceFile)} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-orange-600 hover:text-orange-700">Lihat dokumen referensi</a>
                   </div>
                 </div>
               )}
@@ -1228,7 +1278,7 @@ export default function BoqPage() {
               <div>
                 <p className="text-xs font-medium text-slate-400 mb-2">Daftar Barang</p>
                  <div className="rounded-xl border border-slate-100 overflow-hidden">
-                   <div className="overflow-x-auto overscroll-x-contain">
+                   <div className="w-full overflow-x-auto max-h-[90vh] overscroll-x-contain">
                    <table className="w-full text-left text-sm">
                     <thead>
                       <tr className="border-b border-slate-100 bg-slate-50">
@@ -1269,7 +1319,7 @@ export default function BoqPage() {
                 <p className="flex items-center gap-1.5 text-xs font-medium text-slate-400 mb-2"><History size={13} />Riwayat Surat Jalan</p>
                  {detailBoq.suratJalanHistory && detailBoq.suratJalanHistory.length > 0 ? (
                    <div className="rounded-xl border border-slate-100 overflow-hidden">
-                     <div className="overflow-x-auto overscroll-x-contain">
+                     <div className="w-full overflow-x-auto max-h-[90vh] overscroll-x-contain">
                      <table className="w-full text-left text-sm">
                       <thead>
 <tr className="border-b border-slate-100 bg-slate-50">
@@ -1321,11 +1371,11 @@ export default function BoqPage() {
         const mosSistem = boq.reconciliation?.mosSistem || 0;
         const used = boq.reconciliation?.used || 0;
         const approvedReturnQty = boq.reconciliation?.approved_return_qty || 0;
-        const remains = mosSistem - (totalBoq + totalAdditional) - used - approvedReturnQty;
+        const remains = mosSistem - (totalBoq + totalAdditional);
         const hasWarning = remains !== 0;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
               <h3 className="text-base font-semibold text-slate-900">Tandai BOQ sebagai Selesai?</h3>
               <p className="mt-1 text-sm text-slate-500">BOQ <span className="font-semibold text-slate-700">{boq.boqNumber || boq.id}</span> akan diubah menjadi status Selesai.</p>
               {hasWarning && (
@@ -1333,7 +1383,7 @@ export default function BoqPage() {
                   <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                   <div>
                     <p className="font-semibold">Perhatian: BOQ ini masih memiliki sisa material.</p>
-                     <p className="mt-0.5 text-xs">Remains = <span className="font-semibold">{remains}</span> (MOS Sistem: {mosSistem}, BOQ: {totalBoq}, Additional: {totalAdditional}, Used: {used}, Return: {approvedReturnQty})</p>
+                     <p className="mt-0.5 text-xs">Remains = <span className="font-semibold">{remains}</span> (MOS: {mosSistem}, BOQ: {totalBoq}, Additional: {totalAdditional})</p>
                   </div>
                 </div>
               )}
@@ -1359,8 +1409,8 @@ export default function BoqPage() {
       )}
 
       {clusterModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop:blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop:blur-sm p-4">
+            <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
               <h3 className="text-base font-semibold text-slate-900">Tambah Cluster Baru</h3>
               <button type="button" onClick={() => setClusterModalOpen(false)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">

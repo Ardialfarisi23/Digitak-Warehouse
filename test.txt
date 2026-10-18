@@ -1,0 +1,19 @@
+﻿}
+
+function formatTime(iso?: string) {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "-";
+  return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+}
+
+function getBoqStatusLabel(status: string, statusVerifikasi?: string) {
+  const s = (status || "").toLowerCase();
+  const v = (statusVerifikasi || "").toLowerCase();
+  if (s === "draft" || v === "draft") return "Draft";
+  if (s === "aktif") return "Aktif";
+  if (s === "selesai") return "Selesai";
+  if (s === "ditolak") return "Ditolak";
+  if (s === "dihapus") return "Dihapus";
+  return status || "-";
+}

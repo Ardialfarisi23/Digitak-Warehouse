@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Filter, Clock, AlertTriangle, Layers, FileText, ArrowLeft, ArrowDownLeft } from "lucide-react";
+import { Search, Filter, Clock, FileText, ArrowLeft, ArrowDownLeft } from "lucide-react";
 import { useApi } from "@/lib/api";
 
 interface GudangTujuan {
@@ -18,15 +18,79 @@ interface InboundRequest {
   gudang_asal?: { nama_gudang: string };
   gudang_tujuan?: GudangTujuan;
   kategori_approval?: string;
+  boq_id?: number | string | null;
+  boq?: { boq_number?: string; tiket?: { kode_tiket?: string } | null } | null;
   status: string;
   total_tipe?: number;
   total_unit?: number;
-  ada_fisik_rusak?: boolean;
-  selisih_po?: boolean;
   surat_jalan_url?: string;
 }
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+// Status yang benar-benar bisa muncul pada daftar surat jalan inbound
+// (lihat findInboundList di backend). Status pengiriman seperti sedang_dikirim
+// hanya berlaku untuk tracking distribusi, bukan daftar inbound.
+const STATUS_LABELS: Record<string, string> = {
+  draft_diajukan: "Draft Diajukan",
+  menunggu_verifikasi: "Menunggu Verifikasi",
+  ready_putaway: "Siap Putaway",
+  disetujui: "Disetujui",
+  digenerate: "Digenerate",
+  diterima_didistribusikan: "Diterima & Didistribusikan",
+  ditolak: "Ditolak",
+};
+
+const STATUS_BADGE_CLASSES: Record<string, string> = {
+  draft_diajukan: "bg-slate-100 text-slate-600 border-slate-200",
+  menunggu_verifikasi: "bg-amber-50 text-amber-700 border-amber-200",
+  ready_putaway: "bg-amber-50 text-amber-700 border-amber-200",
+  disetujui: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  digenerate: "bg-slate-100 text-slate-600 border-slate-200",
+  diterima_didistribusikan: "bg-blue-50 text-blue-700 border-blue-200",
+  ditolak: "bg-rose-50 text-rose-700 border-rose-200",
+};
+
+const DEFAULT_STATUS_BADGE = "bg-slate-100 text-slate-600 border-slate-200";
+
+const formatStatusFallback = (status: string) =>
+  status
+    .split("_")
+    .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1) : word))
+    .join(" ");
+
+// Surat jalan inbound dibuat staf dengan kategori generik ("manual_override"),
+// sehingga pembeda riil antara inbound terencana dan di luar rencana adalah
+// keterkaitannya dengan BOQ/Tiket. Fallback kategori_approval tetap dihormati
+// kalau kelak backend menyimpan nilai yang lebih spesifik.
+const kategoriSuratJalan = (request: InboundRequest): string => {
+  const kategori = (request.kategori_approval || "").trim();
+  if (kategori === "inbound_po" || kategori === "inbound_di_luar_po") return kategori;
+  const terhubungBoq = request.boq_id !== null && request.boq_id !== undefined && request.boq_id !== "";
+  return terhubungBoq ? "inbound_po" : "inbound_di_luar_po";
+};
+
+const ITEMS_PER_PAGE = 10;
+
+// Daftar nomor halaman yang ditampilkan pada kontrol pagination.
+// Selalu memunculkan halaman pertama, terakhir, dan sekitar halaman aktif,
+// dengan "..." sebagai penanda agar tetap ringkas walau halamannya banyak.
+const buildPageList = (currentPage: number, totalPages: number): (number | "...")[] => {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
+  }
+
+  const pages: (number | "...")[] = [1];
+  const start = Math.max(2, currentPage - 1);
+  const end = Math.min(totalPages - 1, currentPage + 1);
+
+  if (start > 2) pages.push("...");
+  for (let page = start; page <= end; page += 1) pages.push(page);
+  if (end < totalPages - 1) pages.push("...");
+
+  pages.push(totalPages);
+  return pages;
+};
 
 export default function SupervisorApprovalPage() {
   const router = useRouter();
@@ -36,6 +100,8 @@ export default function SupervisorApprovalPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [query, setQuery] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "history">("all");
 
@@ -89,17 +155,37 @@ export default function SupervisorApprovalPage() {
           ? r.gudang_asal?.nama_gudang || ""
           : "";
 
+      const boqText = `${r.boq?.boq_number ?? ""} ${r.boq?.tiket?.kode_tiket ?? ""}`;
+
       const matchSearch =
         !query.trim() ||
         (r.nomor_surat_jalan || "").toLowerCase().includes(query.toLowerCase()) ||
         pengirimText.toLowerCase().includes(query.toLowerCase()) ||
-        (r.gudang_tujuan?.nama_gudang || "").toLowerCase().includes(query.toLowerCase());
+        (r.gudang_tujuan?.nama_gudang || "").toLowerCase().includes(query.toLowerCase()) ||
+        boqText.toLowerCase().includes(query.toLowerCase());
 
-      const matchCat = selectedCategory === "all" || (r.kategori_approval || "inbound_di_luar_po") === selectedCategory;
+      const matchCat = selectedCategory === "all" || kategoriSuratJalan(r) === selectedCategory;
 
-      return matchSearch && matchCat;
+      const matchStatus = selectedStatus === "all" || r.status === selectedStatus;
+
+      return matchSearch && matchCat && matchStatus;
     });
-  }, [requests, query, selectedCategory, activeTab]);
+  }, [requests, query, selectedCategory, selectedStatus, activeTab]);
+
+  const filterKey = `${query}|${selectedCategory}|${selectedStatus}|${activeTab}`;
+  const [lastFilterKey, setLastFilterKey] = useState(filterKey);
+  if (lastFilterKey !== filterKey) {
+    setLastFilterKey(filterKey);
+    setCurrentPage(1);
+  }
+
+  const totalPages = Math.max(1, Math.ceil(filteredRequests.length / ITEMS_PER_PAGE));
+
+  const paginatedRequests = useMemo(() => {
+    const safePage = Math.min(Math.max(1, currentPage), totalPages);
+    const start = (safePage - 1) * ITEMS_PER_PAGE;
+    return filteredRequests.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredRequests, currentPage, totalPages]);
 
   const stats = useMemo(() => {
     const tabRequests = requests.filter((r) => {
@@ -110,37 +196,9 @@ export default function SupervisorApprovalPage() {
     });
 
     const totalAntrean = tabRequests.length;
-    const fisikRusak = tabRequests.filter((r) => {
-      const item = r as any;
-      return (
-        item.hasDamage === true ||
-        item.condition === "DAMAGED" ||
-        item.physicalStatus === "RUSAK" ||
-        (typeof item.damagedQty === "number" && item.damagedQty > 0) ||
-        item.ada_fisik_rusak === true
-      );
-    }).length;
-    const selisihPo = tabRequests.filter((r) => {
-      const item = r as any;
-      return (
-        item.hasDiscrepancy === true ||
-        (typeof item.qtyReceived === "number" && typeof item.qtyPo === "number" && item.qtyReceived !== item.qtyPo) ||
-        item.isSelisih === true ||
-        item.selisih_po === true
-      );
-    }).length;
-    const diLuarPo = tabRequests.filter((r) => {
-      const item = r as any;
-      return (
-        item.isUnscheduled === true ||
-        item.isOutsidePo === true ||
-        item.type === "UNSCHEDULED" ||
-        item.poNumber === null ||
-        (item.kategori_approval || "inbound_di_luar_po") === "inbound_di_luar_po"
-      );
-    }).length;
+    const diLuarPo = tabRequests.filter((r) => kategoriSuratJalan(r) === "inbound_di_luar_po").length;
 
-    return { totalAntrean, fisikRusak, selisihPo, diLuarPo };
+    return { totalAntrean, diLuarPo };
   }, [requests, activeTab]);
 
   return (
@@ -159,7 +217,7 @@ export default function SupervisorApprovalPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex justify-between items-start">
           <div>
           <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">TOTAL INBOUND</p>
@@ -171,31 +229,9 @@ export default function SupervisorApprovalPage() {
           </div>
         </div>
 
-        <div className="bg-rose-50/40 border border-rose-100 rounded-2xl p-5 shadow-sm flex justify-between items-start">
-          <div>
-            <p className="text-xs font-bold tracking-wider text-rose-600 uppercase mb-2">ADA FISIK RUSAK</p>
-            <h3 className="text-3xl font-bold text-rose-600 mb-1">{stats.fisikRusak}</h3>
-            <p className="text-xs text-rose-500 font-medium">Butuh berita acara</p>
-          </div>
-          <div className="p-2 bg-rose-100/50 rounded-lg text-rose-500">
-            <AlertTriangle className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-amber-50/40 border border-amber-100 rounded-2xl p-5 shadow-sm flex justify-between items-start">
-          <div>
-            <p className="text-xs font-bold tracking-wider text-amber-600 uppercase mb-2">SELISIH QTY / PO</p>
-            <h3 className="text-3xl font-bold text-amber-600 mb-1">{stats.selisihPo}</h3>
-            <p className="text-xs text-amber-500 font-medium">Verifikasi pengirim</p>
-          </div>
-          <div className="p-2 bg-amber-100/50 rounded-lg text-amber-500">
-            <Layers className="w-5 h-5" />
-          </div>
-        </div>
-
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex justify-between items-start">
           <div>
-            <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">DI LUAR PO</p>
+            <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">DI LUAR BOQ</p>
             <h3 className="text-3xl font-bold text-slate-900 mb-1">{stats.diLuarPo}</h3>
             <p className="text-xs text-slate-400">Manual / Retur</p>
           </div>
@@ -225,16 +261,26 @@ export default function SupervisorApprovalPage() {
             className="w-full pl-10 pr-8 py-2.5 bg-slate-50/60 border-none rounded-xl text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer appearance-none font-medium"
           >
             <option value="all">Semua Kategori</option>
-            <option value="inbound_di_luar_po">Di Luar PO / Unscheduled</option>
-            <option value="inbound_po">Inbound PO</option>
+            <option value="inbound_po">Terhubung BOQ / Tiket</option>
+            <option value="inbound_di_luar_po">Di Luar BOQ / Manual</option>
           </select>
         </div>
-        <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="w-full sm:w-auto rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2 text-sm font-medium text-slate-700">
-          <option value="all">Semua Kategori</option>
-          <option value="inbound_rusak">Fisik Cacat/Rusak</option>
-          <option value="inbound_selisih">Selisih Jumlah</option>
-          <option value="inbound_di_luar_po">Di Luar PO</option>
-        </select>
+
+        <div className="relative w-full sm:w-56">
+          <Filter className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <select
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value)}
+            className="w-full pl-10 pr-8 py-2.5 bg-slate-50/60 border-none rounded-xl text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer appearance-none font-medium"
+          >
+            <option value="all">Semua Status</option>
+            {Object.entries(STATUS_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
@@ -264,7 +310,7 @@ export default function SupervisorApprovalPage() {
         <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400 font-medium">Memuat data antrean...</div>
       ) : filteredRequests.length > 0 ? (
         <div className="space-y-4">
-          {filteredRequests.map((req) => {
+          {paginatedRequests.map((req) => {
             const items = (req as any).items || [];
             const totalUnit = items.reduce((sum: number, item: any) => sum + (Number(item.qty) || 0), 0);
             const totalTipe = new Set(
@@ -305,30 +351,12 @@ export default function SupervisorApprovalPage() {
                 >
                   Review Detail
                 </button>
-                <span className={`px-3 py-2 rounded-xl text-xs font-semibold border ${
-                  req.status === "ready_putaway"
-                    ? "bg-amber-50 text-amber-700 border-amber-200"
-                    : req.status === "disetujui"
-                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                      : req.status === "digenerate"
-                        ? "bg-slate-100 text-slate-600 border-slate-200"
-                        : req.status === "ditolak"
-                          ? "bg-rose-50 text-rose-700 border-rose-200"
-                          : req.status === "diterima_didistribusikan"
-                            ? "bg-blue-50 text-blue-700 border-blue-200"
-                            : "bg-slate-100 text-slate-600 border-slate-200"
-                }`}>
-                  {req.status === "ready_putaway"
-                    ? "Siap Putaway"
-                    : req.status === "disetujui"
-                      ? "Disetujui"
-                      : req.status === "digenerate"
-                        ? "Digenerate"
-                        : req.status === "ditolak"
-                          ? "Ditolak"
-                          : req.status === "diterima_didistribusikan"
-                            ? "Diterima & Didistribusikan"
-                            : req.status}
+                <span
+                  className={`px-3 py-2 rounded-xl text-xs font-semibold border ${
+                    STATUS_BADGE_CLASSES[req.status] || DEFAULT_STATUS_BADGE
+                  }`}
+                >
+                  {STATUS_LABELS[req.status] || formatStatusFallback(req.status)}
                 </span>
               </div>
             </div>
@@ -340,6 +368,52 @@ export default function SupervisorApprovalPage() {
           {activeTab === "all"
             ? "Belum ada data inbound."
             : "Belum ada riwayat inbound."}
+        </div>
+      )}
+
+      {!loading && totalPages > 1 && (
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p className="text-xs text-slate-500">
+            Halaman {Math.min(currentPage, totalPages)} dari {totalPages} &middot; Menampilkan{" "}
+            {(Math.min(currentPage, totalPages) - 1) * ITEMS_PER_PAGE + 1}-
+            {Math.min(Math.min(currentPage, totalPages) * ITEMS_PER_PAGE, filteredRequests.length)} dari{" "}
+            {filteredRequests.length} surat jalan
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={Math.min(currentPage, totalPages) === 1}
+              className="px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Sebelumnya
+            </button>
+            {buildPageList(Math.min(currentPage, totalPages), totalPages).map((page, index) =>
+              page === "..." ? (
+                <span key={`ellipsis-${index}`} className="px-2 py-2 text-xs font-semibold text-slate-400">
+                  ...
+                </span>
+              ) : (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-colors ${
+                    page === Math.min(currentPage, totalPages)
+                      ? "bg-sky-600 text-white border-sky-600 shadow-sm"
+                      : "border-slate-200 text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  {page}
+                </button>
+              )
+            )}
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={Math.min(currentPage, totalPages) === totalPages}
+              className="px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Selanjutnya
+            </button>
+          </div>
         </div>
       )}
 

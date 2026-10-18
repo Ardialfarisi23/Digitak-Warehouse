@@ -9,6 +9,24 @@ const boqItemSchema = z.object({
   notes: z.string().optional().nullable(),
 });
 
+const safeUrlSchema = z
+  .string()
+  .optional()
+  .nullable()
+  .refine(
+    (val) => {
+      if (!val) return true;
+      const trimmed = val.trim();
+      try {
+        const url = new URL(trimmed);
+        return url.protocol === "http:" || url.protocol === "https:";
+      } catch {
+        return trimmed.startsWith("/") && !trimmed.startsWith("//") && !trimmed.includes("\\");
+      }
+    },
+    { message: "URL referensi harus http/https atau path relatif" }
+  );
+
 const normalizeStatus = (val) => {
   if (!val) return undefined;
   const map = { DRAFT: "DRAFT", AKTIF: "AKTIF", SELESAI: "SELESAI", DITOLAK: "DITOLAK", draft: "DRAFT", aktif: "AKTIF", selesai: "SELESAI", ditolak: "DITOLAK" };
@@ -36,7 +54,7 @@ const createBoqSchema = z.object({
   source: z.enum(["TOP_DOWN", "BOTTOM_UP", "EMAIL_PO", "SUPERVISOR_REQUEST"]).optional().default("TOP_DOWN"),
   externalVerificationStatus: z.enum(["TERVERIFIKASI", "MENUNGGU", "VERIFIED", "PENDING"]).optional().default("MENUNGGU"),
   notes: z.string().optional().nullable(),
-  referenceFile: z.string().optional().nullable(),
+  referenceFile: safeUrlSchema,
   emailReference: z.string().optional().nullable(),
   items: z.array(boqItemSchema).min(1, "Minimal satu item harus diisi."),
 });
@@ -50,7 +68,7 @@ const updateBoqSchema = z.object({
   source: z.enum(["TOP_DOWN", "BOTTOM_UP", "EMAIL_PO", "SUPERVISOR_REQUEST", "top_down", "bottom_up"]).optional().nullable(),
   externalVerificationStatus: z.enum(["TERVERIFIKASI", "MENUNGGU", "VERIFIED", "PENDING", "terverifikasi", "menunggu", "tidak_berlaku"]).optional().nullable(),
   notes: z.string().optional().nullable(),
-  referenceFile: z.string().optional().nullable(),
+  referenceFile: safeUrlSchema,
   emailReference: z.string().optional().nullable(),
   items: z.array(boqItemSchema).optional().nullable(),
 }).refine(
@@ -68,4 +86,5 @@ module.exports = {
   createBoqSchema,
   updateBoqSchema,
   updateBoqStatusSchema,
+  safeUrlSchema,
 };

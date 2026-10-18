@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Search, ChevronDown, Filter, X, Eye, CheckSquare, AlertTriangle, Clock, PackageCheck, Truck, XCircle } from "lucide-react";
+import { ArrowLeft, Search, ChevronDown, Filter, X, Eye, CheckSquare, AlertTriangle, Clock, XCircle } from "lucide-react";
 import { useApi } from "@/lib/api";
 import { DetailSuratJalanDocument } from "@/components/surat-jalan/DetailSuratJalanDocument";
 import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
@@ -19,6 +19,58 @@ const STATUS_BADGE: Record<string, string> = {
   melewati_batas: "bg-rose-50 text-rose-700 border-rose-200",
   manual_override: "bg-slate-100 text-slate-700 border-slate-200",
 };
+
+// Label alami untuk kode mentah status surat jalan (kolom `status` / `status_surat_jalan`).
+const SJ_STATUS_LABEL: Record<string, string> = {
+  draft_diajukan: "Draft Diajukan",
+  menunggu_verifikasi: "Menunggu Verifikasi",
+  ready_putaway: "Siap Picking",
+  disetujui: "Disetujui",
+  digenerate: "Siap Kirim",
+  sedang_dikirim: "Sedang Dikirim",
+  tiba_di_transit: "Di Gudang Transit",
+  tiba_menunggu_konfirmasi: "Menunggu Konfirmasi",
+  diterima_didistribusikan: "Diterima & Didistribusikan",
+  ditolak: "Ditolak",
+};
+
+const SJ_STATUS_BADGE: Record<string, string> = {
+  draft_diajukan: "bg-amber-50 text-amber-700 border-amber-200",
+  menunggu_verifikasi: "bg-amber-50 text-amber-700 border-amber-200",
+  ready_putaway: "bg-blue-50 text-blue-700 border-blue-200",
+  disetujui: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  digenerate: "bg-slate-100 text-slate-600 border-slate-200",
+  sedang_dikirim: "bg-amber-50 text-amber-700 border-amber-200",
+  tiba_di_transit: "bg-purple-50 text-purple-700 border-purple-200",
+  tiba_menunggu_konfirmasi: "bg-blue-50 text-blue-700 border-blue-200",
+  diterima_didistribusikan: "bg-slate-100 text-slate-600 border-slate-200",
+  ditolak: "bg-rose-50 text-rose-700 border-rose-200",
+};
+
+// Opsi filter "Status Surat Jalan" (hanya status yang relevan untuk siklus hidup outbound).
+const SJ_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: "draft_diajukan", label: "Draft Diajukan" },
+  { value: "disetujui", label: "Disetujui" },
+  { value: "digenerate", label: "Siap Kirim" },
+  { value: "sedang_dikirim", label: "Sedang Dikirim" },
+  { value: "tiba_di_transit", label: "Di Gudang Transit" },
+  { value: "tiba_menunggu_konfirmasi", label: "Menunggu Konfirmasi" },
+  { value: "diterima_didistribusikan", label: "Diterima & Didistribusikan" },
+  { value: "ditolak", label: "Ditolak" },
+];
+
+function getSjStatusLabel(status?: string | null) {
+  if (!status) return "-";
+  return SJ_STATUS_LABEL[status] || status;
+}
+
+function getSjStatusBadge(status?: string | null) {
+  return SJ_STATUS_BADGE[status || ""] || "bg-slate-100 text-slate-600 border-slate-200";
+}
+
+const HISTORY_PER_PAGE = 10;
+const HISTORY_PAGE_SIZE = 50;
+const MAX_HISTORY_PAGES = 20;
 
 interface OutboundItem {
   item_id: number;
@@ -67,6 +119,92 @@ interface HistoryRow {
   status_surat_jalan: string | null;
 }
 
+// Bangun daftar nomor halaman dengan elipsis, mis. [1, "…", 4, 5, 6, "…", 12].
+function buildPageList(current: number, total: number): (number | "gap")[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  const pages = new Set<number>([1, total, current]);
+  for (let i = 1; i <= 2; i += 1) {
+    if (current - i > 1) pages.add(current - i);
+    if (current + i < total) pages.add(current + i);
+  }
+  const sorted = [...pages].sort((a, b) => a - b);
+  const result: (number | "gap")[] = [];
+  let previous = 0;
+  for (const page of sorted) {
+    if (previous && page - previous > 1) result.push("gap");
+    result.push(page);
+    previous = page;
+  }
+  return result;
+}
+
+function Pagination({
+  page,
+  totalPages,
+  onChange,
+}: {
+  page: number;
+  totalPages: number;
+  onChange: (page: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+
+  const navButtonClass =
+    "rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white";
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+      <button
+        type="button"
+        onClick={() => onChange(Math.max(1, page - 1))}
+        disabled={page === 1}
+        className={navButtonClass}
+      >
+        Sebelumnya
+      </button>
+
+      <div className="flex items-center gap-1">
+        {buildPageList(page, totalPages).map((item, index) =>
+          item === "gap" ? (
+            <span key={`gap-${index}`} className="px-1 text-xs text-slate-400">
+              ...
+            </span>
+          ) : (
+            <button
+              key={item}
+              type="button"
+              onClick={() => onChange(item)}
+              aria-current={item === page ? "page" : undefined}
+              className={`h-8 min-w-8 rounded-lg border px-2 text-xs font-semibold transition ${
+                item === page
+                  ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
+                  : "border-slate-200 text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              {item}
+            </button>
+          )
+        )}
+      </div>
+
+      <span className="text-xs text-slate-500">
+        Halaman {page} dari {totalPages}
+      </span>
+
+      <button
+        type="button"
+        onClick={() => onChange(Math.min(totalPages, page + 1))}
+        disabled={page === totalPages}
+        className={navButtonClass}
+      >
+        Selanjutnya
+      </button>
+    </div>
+  );
+}
+
 export default function SupervisorApprovalOutboundPage() {
   const router = useRouter();
   const { get, put } = useApi();
@@ -75,9 +213,12 @@ export default function SupervisorApprovalOutboundPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [pendingTotal, setPendingTotal] = useState(0);
   const ITEMS_PER_PAGE = 10;
 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -101,7 +242,6 @@ export default function SupervisorApprovalOutboundPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
-  const [historyTotalPages, setHistoryTotalPages] = useState(1);
   const [historyKeputusan, setHistoryKeputusan] = useState<string>("all");
 
   const openDocModal = (item: any) => {
@@ -124,7 +264,7 @@ export default function SupervisorApprovalOutboundPage() {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
       const params = new URLSearchParams();
       params.set("page", String(currentPage));
-      if (query.trim()) params.set("search", query.trim());
+      if (debouncedQuery.trim()) params.set("search", debouncedQuery.trim());
       if (selectedCategory !== "all") params.set("kategori_approval", selectedCategory);
 
       const response = await get(`${baseUrl}/api/surat-jalan/outbound/approval?${params.toString()}`);
@@ -136,39 +276,65 @@ export default function SupervisorApprovalOutboundPage() {
       const list = Array.isArray(result.data) ? result.data : Array.isArray(result) ? result : [];
       setRequests(list as OutboundRow[]);
       setTotalPages((result?.meta?.totalPages as number) || 1);
+      setPendingTotal(typeof result?.meta?.total === "number" ? (result.meta.total as number) : list.length);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan saat memuat data.");
     } finally {
       setIsLoading(false);
     }
-  }, [get, currentPage, query, selectedCategory]);
+  }, [get, currentPage, debouncedQuery, selectedCategory]);
 
+  // Debounce pencarian supaya tidak memanggil API pada setiap ketikan.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 400);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  // Riwayat dimuat satu kali (semua halaman API) supaya filter "Status Surat Jalan"
+  // berjalan akurat, lalu paginasi & slice baris dilakukan di sisi klien.
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
     setHistoryError(null);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const params = new URLSearchParams();
-      params.set("page", String(historyPage));
-      params.set("limit", "10");
-      if (query.trim()) params.set("search", query.trim());
-      if (historyKeputusan !== "all") params.set("keputusan", historyKeputusan);
+      const allRows: HistoryRow[] = [];
+      const seen = new Set<string>();
 
-      const response = await get(`${baseUrl}/api/surat-jalan/outbound/riwayat-approval?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error("Gagal mengambil riwayat approval outbound.");
+      for (let page = 1; page <= MAX_HISTORY_PAGES; page += 1) {
+        const params = new URLSearchParams();
+        params.set("page", String(page));
+        params.set("limit", String(HISTORY_PAGE_SIZE));
+        if (debouncedQuery.trim()) params.set("search", debouncedQuery.trim());
+        if (historyKeputusan !== "all") params.set("keputusan", historyKeputusan);
+
+        const response = await get(`${baseUrl}/api/surat-jalan/outbound/riwayat-approval?${params.toString()}`);
+        if (!response.ok) {
+          throw new Error("Gagal mengambil riwayat approval outbound.");
+        }
+        const json = await response.json();
+        const result = json?.data ?? json ?? {};
+        const list = Array.isArray(result.data) ? result.data : Array.isArray(result) ? result : [];
+
+        let added = 0;
+        for (const row of list as HistoryRow[]) {
+          const key = `${row.surat_jalan_id}-${row.waktu_keputusan}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          allRows.push(row);
+          added += 1;
+        }
+
+        if (list.length < HISTORY_PAGE_SIZE || added === 0) break;
       }
-      const json = await response.json();
-      const result = json?.data ?? json ?? {};
-      const list = Array.isArray(result.data) ? result.data : Array.isArray(result) ? result : [];
-      setHistoryData(list as HistoryRow[]);
-      setHistoryTotalPages((result?.meta?.totalPages as number) || 1);
+
+      setHistoryData(allRows);
+      setHistoryPage(1);
     } catch (err) {
       setHistoryError(err instanceof Error ? err.message : "Terjadi kesalahan saat memuat riwayat.");
     } finally {
       setHistoryLoading(false);
     }
-  }, [get, historyPage, query, historyKeputusan]);
+  }, [get, debouncedQuery, historyKeputusan]);
 
   useEffect(() => {
     fetchApprovalQueue();
@@ -180,26 +346,34 @@ export default function SupervisorApprovalOutboundPage() {
     }
   }, [activeTab, fetchHistory]);
 
+  // Antrean: kategori & pencarian sudah difilter di sisi API, jadi di klien hanya
+  // perlu memastikan baris yang masih berstatus draft_diajukan (termasuk setelah
+  // aksi setujui/tolak yang memperbarui status secara lokal).
   const filteredRequests = useMemo(() => {
-    return requests.filter((r) => {
-      if (activeTab === "pending") {
-        return r.status === "draft_diajukan";
-      }
-      return ["disetujui", "ditolak"].includes(r.status || "");
-    }).filter((r) => {
-      const matchCat =
-        selectedCategory === "all" ||
-        (r.kategori_approval || "manual_override") === selectedCategory;
-      return matchCat;
-    });
-  }, [requests, selectedCategory, activeTab]);
+    return requests.filter((r) => r.status === "draft_diajukan");
+  }, [requests]);
 
   const filteredHistory = useMemo(() => {
     return historyData.filter((r) => {
-      if (historyKeputusan === "all") return true;
-      return r.keputusan === historyKeputusan;
+      const matchKeputusan =
+        historyKeputusan === "all" || r.keputusan === historyKeputusan;
+      const matchStatus =
+        selectedStatus === "all" || (r.status_surat_jalan || "") === selectedStatus;
+      return matchKeputusan && matchStatus;
     });
-  }, [historyData, historyKeputusan]);
+  }, [historyData, historyKeputusan, selectedStatus]);
+
+  const historyTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredHistory.length / HISTORY_PER_PAGE)),
+    [filteredHistory]
+  );
+
+  const activeHistoryPage = Math.min(historyPage, historyTotalPages);
+
+  const pagedHistory = useMemo(() => {
+    const start = (activeHistoryPage - 1) * HISTORY_PER_PAGE;
+    return filteredHistory.slice(start, start + HISTORY_PER_PAGE);
+  }, [filteredHistory, activeHistoryPage]);
 
   const formatDateTime = (value: string) => {
     if (!value) return "-";
@@ -215,45 +389,11 @@ export default function SupervisorApprovalOutboundPage() {
   };
 
   const stats = useMemo(() => {
-    const tabRequests = requests.filter((r) => {
-      if (activeTab === "pending") {
-        return r.status === "draft_diajukan";
-      }
-      return ["disetujui", "ditolak"].includes(r.status || "");
-    });
-
-    const totalAntrean = tabRequests.length;
-    const stokTidakCukup = tabRequests.filter((r) => {
-      const item = r as any;
-      return (
-        (typeof item.stockAvailable === "number" && typeof item.requestedQty === "number" && item.stockAvailable < item.requestedQty) ||
-        item.isInsufficient === true ||
-        item.stockStatus === "INSUFFICIENT" ||
-        item.kategori_approval === "stok_kurang"
-      );
-    }).length;
-    const melewatiLimit = tabRequests.filter((r) => {
-      const item = r as any;
-      return (
-        item.exceedsLimit === true ||
-        (typeof item.qty === "number" && typeof item.maxLimit === "number" && item.qty > item.maxLimit) ||
-        item.limitStatus === "EXCEEDED" ||
-        item.kategori_approval === "melewati_batas"
-      );
-    }).length;
-    const manualOutbound = tabRequests.filter((r) => {
-      const item = r as any;
-      return (
-        item.isManual === true ||
-        item.statusType === "Manual Outbound" ||
-        item.tipe === "MANUAL" ||
-        item.status === "Manual Outbound" ||
-        item.kategori_approval === "manual_override"
-      );
-    }).length;
-
-    return { totalAntrean, stokTidakCukup, melewatiLimit, manualOutbound };
-  }, [requests, activeTab]);
+    // "Total" diambil dari meta API (bukan panjang halaman aktif) agar tidak berubah
+    // saat tombol halaman ditekan.
+    const totalAntrean = activeTab === "pending" ? pendingTotal : historyData.length;
+    return { totalAntrean };
+  }, [activeTab, pendingTotal, historyData]);
 
   const formatDate = (value: string) => {
     if (!value) return "-";
@@ -362,48 +502,17 @@ export default function SupervisorApprovalOutboundPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex justify-between items-start">
           <div>
             <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">Total Antrean</p>
             <h3 className="text-3xl font-bold text-slate-900 mb-1">{stats.totalAntrean}</h3>
-            <p className="text-xs text-slate-400">Menunggu persetujuan</p>
+            <p className="text-xs text-slate-400">
+              {activeTab === "pending" ? "Menunggu persetujuan" : "Total riwayat keputusan"}
+            </p>
           </div>
           <div className="p-2 bg-slate-50 rounded-lg text-slate-400">
             <Clock className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-rose-50/40 border border-rose-100 rounded-2xl p-5 shadow-sm flex justify-between items-start">
-          <div>
-            <p className="text-xs font-bold tracking-wider text-rose-600 uppercase mb-2">Stok Tidak Cukup</p>
-            <h3 className="text-3xl font-bold text-rose-600 mb-1">{stats.stokTidakCukup}</h3>
-            <p className="text-xs text-rose-500 font-medium">Perlu penyesuaian stok</p>
-          </div>
-          <div className="p-2 bg-rose-100/50 rounded-lg text-rose-500">
-            <AlertTriangle className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-orange-50/40 border border-orange-100 rounded-2xl p-5 shadow-sm flex justify-between items-start">
-          <div>
-            <p className="text-xs font-bold tracking-wider text-orange-600 uppercase mb-2">Melewati Limit</p>
-            <h3 className="text-3xl font-bold text-orange-600 mb-1">{stats.melewatiLimit}</h3>
-            <p className="text-xs text-orange-500 font-medium">Melebihi kuota</p>
-          </div>
-          <div className="p-2 bg-orange-100/50 rounded-lg text-orange-500">
-            <Truck className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex justify-between items-start">
-          <div>
-            <p className="text-xs font-bold tracking-wider text-slate-400 uppercase mb-2">Manual Outbound</p>
-            <h3 className="text-3xl font-bold text-slate-900 mb-1">{stats.manualOutbound}</h3>
-            <p className="text-xs text-slate-400">Tanpa persetujuan otomatis</p>
-          </div>
-          <div className="p-2 bg-slate-50 rounded-lg text-slate-400">
-            <PackageCheck className="w-5 h-5" />
           </div>
         </div>
       </div>
@@ -419,38 +528,65 @@ export default function SupervisorApprovalOutboundPage() {
           />
         </div>
 
-        <div className="relative w-full sm:w-56">
-          <Filter className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="w-full pl-10 pr-8 py-2.5 bg-slate-50/60 border-none rounded-xl text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer appearance-none font-medium"
-          >
-            <option value="all">Semua Kategori</option>
-            <option value="stok_kurang">Stok Tidak Cukup</option>
-            <option value="melewati_batas">Melewati Limit Kuota</option>
-            <option value="manual_override">Manual</option>
-          </select>
-          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-        </div>
-
-        {activeTab === "history" && (
+        {activeTab === "pending" && (
           <div className="relative w-full sm:w-56">
             <Filter className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <select
-              value={historyKeputusan}
+              value={selectedCategory}
               onChange={(e) => {
-                setHistoryKeputusan(e.target.value);
-                setHistoryPage(1);
+                setSelectedCategory(e.target.value);
+                setCurrentPage(1);
               }}
               className="w-full pl-10 pr-8 py-2.5 bg-slate-50/60 border-none rounded-xl text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer appearance-none font-medium"
             >
-              <option value="all">Semua Keputusan</option>
-              <option value="disetujui">Disetujui</option>
-              <option value="ditolak">Ditolak</option>
+              <option value="all">Semua Kategori</option>
+              <option value="stok_kurang">Stok Tidak Cukup</option>
+              <option value="melewati_batas">Melewati Limit Kuota</option>
+              <option value="manual_override">Manual</option>
             </select>
             <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
+        )}
+
+        {activeTab === "history" && (
+          <>
+            <div className="relative w-full sm:w-56">
+              <Filter className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <select
+                value={historyKeputusan}
+                onChange={(e) => {
+                  setHistoryKeputusan(e.target.value);
+                  setHistoryPage(1);
+                }}
+                className="w-full pl-10 pr-8 py-2.5 bg-slate-50/60 border-none rounded-xl text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer appearance-none font-medium"
+              >
+                <option value="all">Semua Keputusan</option>
+                <option value="disetujui">Disetujui</option>
+                <option value="ditolak">Ditolak</option>
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+
+            <div className="relative w-full sm:w-56">
+              <Filter className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <select
+                value={selectedStatus}
+                onChange={(e) => {
+                  setSelectedStatus(e.target.value);
+                  setHistoryPage(1);
+                }}
+                className="w-full pl-10 pr-8 py-2.5 bg-slate-50/60 border-none rounded-xl text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer appearance-none font-medium"
+              >
+                <option value="all">Semua Status Surat Jalan</option>
+                {SJ_STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+          </>
         )}
       </div>
 
@@ -480,7 +616,7 @@ export default function SupervisorApprovalOutboundPage() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="w-full overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider text-xs border-b border-slate-200">
               <tr>
@@ -491,6 +627,7 @@ export default function SupervisorApprovalOutboundPage() {
                   <>
                     <th className="px-4 py-3">Asal / Tujuan</th>
                     <th className="px-4 py-3">Keputusan</th>
+                    <th className="px-4 py-3">Status Surat Jalan</th>
                     <th className="px-4 py-3">Catatan</th>
                     <th className="px-4 py-3">Oleh</th>
                     <th className="px-4 py-3">Waktu Keputusan</th>
@@ -499,7 +636,8 @@ export default function SupervisorApprovalOutboundPage() {
                   <>
                     <th className="px-4 py-3">Project</th>
                     <th className="px-4 py-3">Gudang</th>
-                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Kategori</th>
+                    <th className="px-4 py-3">Status Surat Jalan</th>
                   </>
                 )}
                 <th className="px-4 py-3 text-center">Aksi</th>
@@ -508,28 +646,28 @@ export default function SupervisorApprovalOutboundPage() {
             <tbody className="divide-y divide-slate-100">
               {isLoading && activeTab === "pending" ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
                     <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
                     <p className="mt-2 text-sm">Memuat data outbound...</p>
                   </td>
                 </tr>
               ) : historyLoading && activeTab === "history" ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
                     <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
                     <p className="mt-2 text-sm">Memuat riwayat...</p>
                   </td>
                 </tr>
               ) : activeTab === "pending" && filteredRequests.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
                     <p className="text-sm font-semibold text-slate-700">Tidak ada pengajuan outbound yang menunggu persetujuan</p>
                     <p className="text-xs text-slate-400">Ganti kata kunci atau pilih filter lain.</p>
                   </td>
                 </tr>
               ) : activeTab === "history" && filteredHistory.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
                     <p className="text-sm font-semibold text-slate-700">Tidak ada riwayat persetujuan outbound</p>
                     <p className="text-xs text-slate-400">Setujui atau tolak pengajuan untuk melihat riwayat.</p>
                   </td>
@@ -568,6 +706,11 @@ export default function SupervisorApprovalOutboundPage() {
                         )}
                       </td>
                       <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${getSjStatusBadge(r.status)}`}>
+                          {getSjStatusLabel(r.status)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-2">
                           <button
                             type="button"
@@ -604,20 +747,10 @@ export default function SupervisorApprovalOutboundPage() {
                   );
                 })
               ) : (
-                filteredHistory.map((r, index) => {
-                  const keputusanBadge =
-                    r.keputusan === "disetujui"
-                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                      : r.keputusan === "ditolak"
-                        ? "bg-rose-50 text-rose-700 border-rose-200"
-                        : "bg-slate-100 text-slate-700 border-slate-200";
-                  const keputusanLabel =
-                    r.keputusan === "disetujui"
-                      ? "Disetujui"
-                      : r.keputusan === "ditolak"
-                        ? "Ditolak"
-                        : r.keputusan || "-";
-                  const rowNumber = (historyPage - 1) * ITEMS_PER_PAGE + index + 1;
+                pagedHistory.map((r, index) => {
+                  const keputusanBadge = getSjStatusBadge(r.keputusan);
+                  const keputusanLabel = getSjStatusLabel(r.keputusan);
+                  const rowNumber = (activeHistoryPage - 1) * HISTORY_PER_PAGE + index + 1;
 
                   return (
                     <tr key={`${r.surat_jalan_id}-${r.waktu_keputusan}`} className="hover:bg-slate-50/50 transition">
@@ -634,6 +767,11 @@ export default function SupervisorApprovalOutboundPage() {
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${keputusanBadge}`}>
                           {keputusanLabel}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${getSjStatusBadge(r.status_surat_jalan)}`}>
+                          {getSjStatusLabel(r.status_surat_jalan)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-slate-700">
@@ -667,53 +805,25 @@ export default function SupervisorApprovalOutboundPage() {
         </div>
       </div>
 
-      {activeTab === "pending" && totalPages > 1 && (
-        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <button
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-          >
-            Sebelumnya
-          </button>
-          <span className="text-xs text-slate-500">
-            Halaman {currentPage} dari {totalPages}
-          </span>
-          <button
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-          >
-            Selanjutnya
-          </button>
-        </div>
+      {activeTab === "pending" && (
+        <Pagination
+          page={currentPage}
+          totalPages={totalPages}
+          onChange={setCurrentPage}
+        />
       )}
 
-      {activeTab === "history" && historyTotalPages > 1 && (
-        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <button
-            onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
-            disabled={historyPage === 1}
-            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-          >
-            Sebelumnya
-          </button>
-          <span className="text-xs text-slate-500">
-            Halaman {historyPage} dari {historyTotalPages}
-          </span>
-          <button
-            onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}
-            disabled={historyPage === historyTotalPages}
-            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-          >
-            Selanjutnya
-          </button>
-        </div>
+      {activeTab === "history" && (
+        <Pagination
+          page={activeHistoryPage}
+          totalPages={historyTotalPages}
+          onChange={setHistoryPage}
+        />
       )}
 
       {isDocModalOpen && selectedDocItem && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+          <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Dokumentasi Barang</h3>
@@ -797,7 +907,7 @@ export default function SupervisorApprovalOutboundPage() {
 
       {showConfirmDialog && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 p-6">
+          <div className="relative w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl border border-slate-200 p-6">
             <div className="flex items-start gap-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
                 <AlertTriangle size={24} />
@@ -835,7 +945,7 @@ export default function SupervisorApprovalOutboundPage() {
 
       {showRejectDialog && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 p-6">
+          <div className="relative w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl border border-slate-200 p-6">
             <div className="flex items-start gap-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
                 <AlertTriangle size={24} />
@@ -923,7 +1033,7 @@ export default function SupervisorApprovalOutboundPage() {
 
       {previewImage && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm" onClick={closePreview}>
-          <div className="relative max-w-4xl max-h-[90vh] w-full mx-4" onClick={(e) => e.stopPropagation()}>
+          <div className="relative w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <img src={previewImage} alt="Preview Dokumentasi" className="max-w-full max-h-[85vh] rounded-2xl border border-slate-200 shadow-2xl object-contain" />
             <button type="button" onClick={closePreview} className="absolute -top-3 -right-3 rounded-full bg-white p-2 text-slate-500 shadow hover:text-slate-800">
               <X size={18} />

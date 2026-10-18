@@ -11,10 +11,6 @@ function mockModule(modulePath, factory) {
   };
 }
 
-/**
- * Mock prisma hanya untuk tabel yang dibaca middleware gudang-scope:
- * personil, user_gudang, gudang, dan zona_gudang.
- */
 function buatPrismaMock() {
   return {
     personil: {
@@ -110,7 +106,6 @@ describe("attachGudangScope", () => {
     ({ attachGudangScope } = require("./gudang-scope.middleware"));
   }
 
-  /** Jalankan middleware dan kembalikan req + hasil pemanggilan next. */
   async function jalankan(user) {
     const req = { user };
     const hasil = { dipanggil: 0, error: null };
@@ -159,8 +154,9 @@ describe("attachGudangScope", () => {
   });
 
   it("staf_gudang dengan penugasan -> dibatasi ke daftar gudang", async () => {
-    prismaMock.personil.findUnique = async () => ({ personil_id: 5, gudang_id: null });
-    prismaMock.gudang.findMany = async () => [{ gudang_id: 1n }];
+    prismaMock.personil.findUnique = async () => ({ personil_id: 5, gudang_id: 1n });
+    prismaMock.user_gudang.findMany = async () => [];
+    prismaMock.gudang.findMany = async () => [];
 
     const { req, hasil } = await jalankan({ id: 8, role: "staf_gudang" });
 
@@ -174,6 +170,10 @@ describe("attachGudangScope", () => {
   });
 
   it("staf_gudang tanpa penugasan -> tidak dibatasi dan TIDAK diblokir 403", async () => {
+    prismaMock.personil.findUnique = async () => ({ personil_id: 5, gudang_id: null });
+    prismaMock.user_gudang.findMany = async () => [];
+    prismaMock.gudang.findMany = async () => [];
+
     const { req, hasil } = await jalankan({ id: 8, role: "staf_gudang" });
 
     assert.equal(hasil.error, null, "staf tanpa penugasan tidak boleh diblokir");
@@ -184,6 +184,12 @@ describe("attachGudangScope", () => {
       gudangIds: [],
       gudangUtamaId: null,
     });
+  });
+
+  it("role tak dikenal -> 403", async () => {
+    const { hasil } = await jalankan({ id: 99, role: "unknown_role" });
+    assert.equal(hasil.error?.statusCode, 403);
+    assert.equal(hasil.error?.message, "Anda tidak memiliki akses ke gudang ini.");
   });
 });
 
@@ -216,7 +222,6 @@ describe("assertGudangDiizinkan / assertAdaGudangDiizinkan", () => {
 
   it("surat jalan dua sisi gudang: cukup satu sisi diizinkan", () => {
     const scope = { dibatasi: true, sudahDitugaskan: true, gudangIds: [1], gudangUtamaId: 1 };
-    // Surat Jalan 27: asal 2 (di luar), tujuan 1 (di dalam) -> boleh.
     assert.equal(middleware.assertAdaGudangDiizinkan(scope, [2, 1]), true);
     assert.throws(() => middleware.assertAdaGudangDiizinkan(scope, [2, 3]), { statusCode: 403 });
   });

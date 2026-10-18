@@ -1,5 +1,4 @@
 const express = require("express");
-
 const router = express.Router();
 
 const suratJalanController = require("./surat-jalan.controller");
@@ -19,6 +18,7 @@ const validate = require("../../middlewares/validation.middleware");
 const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
 const { attachGudangScope } = require("../../middlewares/gudang-scope.middleware");
+const { uploadLimiter, deleteLimiter } = require("../../middlewares/rate-limit");
 
 router.post("/", authenticate, authorize("ADMIN", "STAFF"), validate(createSuratJalanSchema), suratJalanController.create);
 router.post(
@@ -44,7 +44,6 @@ router.get(
   attachGudangScope,
   suratJalanController.findOutboundDetail
 );
-
 router.get("/inbound", authenticate, suratJalanController.findInboundList);
 router.get("/staff/history", authenticate, suratJalanController.findStaffHistory);
 router.get("/rejected", authenticate, authorize("SUPERVISOR"), suratJalanController.findRejectedList);
@@ -136,6 +135,7 @@ router.post(
   "/:id/items/:itemId/fotos",
   authenticate,
   authorize("STAFF", "SUPERVISOR"),
+  uploadLimiter,
   attachGudangScope,
   validate(itemFotoSchema),
   suratJalanController.addItemFoto
@@ -146,6 +146,7 @@ router.delete(
   authenticate,
   authorize("STAFF", "SUPERVISOR"),
   attachGudangScope,
+  deleteLimiter,
   suratJalanController.deleteItemFoto
 );
 

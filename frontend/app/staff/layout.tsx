@@ -4,6 +4,7 @@ import { CompactSidebar } from "@/components/CompactSidebar";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import { ProtectedRoute } from "@/lib/protected-route";
+import { safeUrl } from "@/lib/safe-url";
 import { useSidebar } from "@/components/sidebar-context";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";

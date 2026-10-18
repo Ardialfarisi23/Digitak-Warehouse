@@ -102,9 +102,61 @@ export const FIELD_LABELS: Record<string, string> = {
   supplier_id: "Supplier",
   user_id: "Pengguna",
   pic_id: "PIC",
+  ip: "Alamat IP",
+  userAgent: "Browser / Perangkat",
+  user_agent: "Browser / Perangkat",
 };
 
 export type ValueLabelGroup = Record<string, string>;
+
+/**
+ * Label bahasa Indonesia untuk setiap nilai `audit_log.entity_type`.
+ * Sumber nilai: backend/src/modules (createAuditLog) dan
+ * backend/src/modules/reconciliation/reconciliation.service.js.
+ * JANGAN kembalikan key mentah (snake_case) ke UI.
+ */
+export const ENTITY_TYPE_LABELS: Record<string, string> = {
+  boq: "BOQ",
+  surat_jalan: "Surat Jalan",
+  surat_jalan_item: "Item Surat Jalan",
+  project: "Project",
+  titik_lapangan: "Titik Lapangan",
+  user_account: "User",
+  item: "Barang",
+  personil: "Personil",
+  vehicle: "Kendaraan",
+  supplier: "Supplier",
+  warehouse: "Gudang",
+  cluster: "Cluster",
+  zona: "Zona",
+  tiket: "Tiket",
+  tiket_material: "Tiket Material",
+  reconciliation: "Rekonsiliasi",
+  reconciliation_remains_note: "Catatan Remains",
+  return: "Return",
+  stok: "Stok",
+};
+
+/**
+ * Label entity untuk Audit Log. Menanganya semua kasus:
+ * - entity_type tidak dikenal  -> "Catatan Remains"-style label generik
+ * - entity_id kosong/0         -> "-"
+ * - tidak ada nama entitas     -> "-" (bukan "entity_type #id (data mungkin telah dihapus)")
+ */
+export function getEntityTypeLabel(entityType?: string | null): string {
+  if (!entityType) return "-";
+  const key = String(entityType).trim().toLowerCase();
+  if (!key) return "-";
+  return ENTITY_TYPE_LABELS[key] ?? EntityTypeFallbackLabel(key);
+}
+
+/** Ubah snake_case menjadi Title Case untuk entity_type di luar daftar. */
+function EntityTypeFallbackLabel(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 
 export const VALUE_LABELS: Record<string, ValueLabelGroup> = {
   audit_aksi: {
@@ -130,6 +182,11 @@ export const VALUE_LABELS: Record<string, ValueLabelGroup> = {
     restore: "Dipulihkan",
     cancel_draft: "Batalkan Draft",
     report_arrival: "Lapor Tiba",
+    login_success: "Login Berhasil",
+    login_failed: "Login Gagal",
+    tiba_di_transit: "Tiba di Transit",
+    lanjut_dari_transit: "Lanjut dari Transit",
+    reset_link_created: "Link Reset Dibuat",
   },
   surat_jalan_status: {
     draft_diajukan: "Draft",
@@ -172,6 +229,11 @@ export const VALUE_LABELS: Record<string, ValueLabelGroup> = {
     supervisor: "Supervisor",
     staf_gudang: "Staf Gudang",
   },
+  login_reason: {
+    email_not_found: "Email tidak terdaftar",
+    account_inactive: "Akun nonaktif",
+    wrong_password: "Password salah",
+  },
   status_kecukupan_zona: {
     CUKUP: "Cukup",
     MENDEKATI_PENUH: "Mendekati Penuh",
@@ -191,6 +253,20 @@ export const VALUE_LABELS: Record<string, ValueLabelGroup> = {
   reconciliation_detail_status: {
     berhasil: "Berhasil",
     gagal: "Gagal",
+  },
+  entity_type: {
+    user_account: "Akun Pengguna",
+    boq: "BOQ",
+    surat_jalan: "Surat Jalan",
+    project: "Project",
+    item: "Barang",
+    personil: "Personil",
+    vehicle: "Kendaraan",
+    supplier: "Supplier",
+    warehouse: "Gudang",
+    titik_lapangan: "Titik Lapangan",
+    cluster: "Cluster",
+    reconciliation: "Rekonsiliasi",
   },
 };
 
@@ -285,4 +361,48 @@ export function humanizeValue(key: string, value: unknown): string {
   }
 
   return text;
+}
+
+export const ENTITY_TYPE_LABELS: Record<string, string> = VALUE_LABELS.entity_type;
+
+export function getAksiLabel(aksi: string): string {
+  return VALUE_LABELS.audit_aksi[aksi] ?? humanizeValue("aksi", aksi);
+}
+
+export function getRoleLabel(role?: string | null): string {
+  if (!role) return "Tidak dikenal";
+  return VALUE_LABELS.user_role[role] ?? role;
+}
+
+export function formatIp(ip: string | null | undefined): string {
+  if (!ip) return "-";
+  const trimmed = String(ip).trim();
+  if (trimmed === "::1") return "::1 (localhost)";
+  if (trimmed === "127.0.0.1") return "127.0.0.1 (localhost)";
+  return trimmed;
+}
+
+export function formatUserAgent(ua: string | null | undefined): { text: string; title: string } {
+  if (!ua) return { text: "-", title: "" };
+  const full = String(ua);
+  let browser = "Lainnya";
+  let os = "Lainnya";
+
+  if (full.includes("Edg/")) browser = "Edge";
+  else if (full.includes("Chrome/")) browser = "Chrome";
+  else if (full.includes("Firefox/")) browser = "Firefox";
+  else if (full.includes("Safari/")) browser = "Safari";
+
+  const verMatch = full.match(/(Edg|Chrome|Firefox|Safari)\/(\d+)/);
+  const version = verMatch ? ` ${verMatch[2]}` : "";
+
+  if (full.includes("Windows")) os = "Windows";
+  else if (full.includes("Macintosh") || full.includes("Mac OS")) os = "macOS";
+  else if (full.includes("Linux")) os = "Linux";
+  else if (full.includes("Android")) os = "Android";
+  else if (full.includes("iPhone") || full.includes("iPad")) os = "iOS";
+
+  const text = `${browser}${version} di ${os}`;
+  if (full.length <= 60) return { text, title: full };
+  return { text: text.length > 55 ? text.slice(0, 55) + "…" : text, title: full };
 }

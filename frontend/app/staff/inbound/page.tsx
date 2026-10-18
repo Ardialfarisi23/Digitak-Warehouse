@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { MobileCardList, type MobileCardField, type MobileCardItem } from "@/components/MobileCardList";
+import { safeUrl } from "@/lib/safe-url";
 
 type InboundStatus = "draft_diajukan" | "disetujui" | "digenerate" | "diterima_didistribusikan" | "ditolak" | "menunggu_verifikasi" | "ready_putaway" | "sedang_dikirim" | "tiba_menunggu_konfirmasi";
 
@@ -72,7 +73,7 @@ interface InboundSuratJalan {
   kendaraan?: { jenis_kendaraan?: string; merk?: string; no_polisi?: string } | null;
   personil_pengantar?: { nama?: string } | null;
   surat_jalan_url?: string | null;
-  cluster_id?: string | null;
+cluster_id?: string | null;
   boq?: {
     boq_id: number;
     boq_number?: string;
@@ -259,6 +260,9 @@ export default function InboundListPage() {
   ]);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [gudangTujuanFilter, setGudangTujuanFilter] = useState("");
 
 
 
@@ -607,6 +611,51 @@ export default function InboundListPage() {
             Coba Lagi
           </Button>
         </div>
+      )}
+
+      {/* Filter & Pencarian */}
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cari No. Surat Jalan / Asal..."
+            className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+        </div>
+        <div className="relative sm:w-60">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2.5 pl-3 pr-10 text-sm text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+          >
+            <option value="">Semua Status</option>
+            {statusFilterOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        </div>
+        <div className="relative sm:w-60">
+          <select
+            value={gudangTujuanFilter}
+            onChange={(e) => setGudangTujuanFilter(e.target.value)}
+            className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2.5 pl-3 pr-10 text-sm text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+          >
+            <option value="">Semua Gudang</option>
+            {gudangTujuanFilterOptions.map((nama) => (
+              <option key={nama} value={nama}>{nama}</option>
+            ))}
+          </select>
+          <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        </div>
+      </div>
+      {isFilterActive && (
+        <p className="mb-3 text-xs text-slate-500">
+          Menampilkan <span className="font-semibold text-slate-700">{filteredList.length}</span> dari {list.length} data
+        </p>
       )}
 
       {/* List Inbound */}
