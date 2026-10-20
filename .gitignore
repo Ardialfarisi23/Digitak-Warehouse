@@ -15,3 +15,5 @@ temp_*.js
 tsbuildinfo
 
 # Uploads (already ignored in backend/.gitignore)
+
+node_modules/
