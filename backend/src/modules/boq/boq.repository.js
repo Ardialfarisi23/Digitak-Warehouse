@@ -741,6 +741,20 @@ const getExportMatrixData = async () => {
     }
   }
 
+  // Saldo awal (import BOQ) per project + barang — bagian dari definisi
+  // MOS Sistem (K5) yang sama dengan tabel rekonsiliasi.
+  const openingMosByProjectBarang = new Map();
+  for (const item of boqItems) {
+    const project = item.boq?.cluster?.project || item.boq?.tiket?.project;
+    const projectIdNum = Number(project?.project_id || 0);
+    const barangId = String(item.barang_id);
+    const key = `${projectIdNum}-${barangId}`;
+    openingMosByProjectBarang.set(
+      key,
+      (openingMosByProjectBarang.get(key) || 0) + Number(item.qty_mos || 0)
+    );
+  }
+
   // Build outbound map (for Used/other calculations, NOT for MOS)
   for (const item of outboundShipmentItems) {
     const projectIdNum = Number(item.surat_jalan?.project_id);
@@ -857,7 +871,10 @@ const getExportMatrixData = async () => {
 
     const boq = Number(item.qty_rencana || 0);
     const additional = Number(additionalByProjectBarang.get(key) || 0);
-    const mos = Number(mosByProjectBarang.get(key) || 0);
+    const mos = reconciliationUtils.computeMosSistem(
+      mosByProjectBarang.get(key) || 0,
+      openingMosByProjectBarang.get(key) || 0
+    );
     const used = Number(usedByProjectBarang.get(key) || 0) > 0
       ? Number(usedByProjectBarang.get(key) || 0)
       : Number(outboundByProjectBarang.get(key) || 0);

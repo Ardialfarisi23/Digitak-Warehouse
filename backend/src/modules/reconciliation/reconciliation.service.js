@@ -2,29 +2,108 @@
 const prisma = require("../../config/prisma");
 const { createAuditLog } = require("../../utils/audit-log");
 const AppError = require("../../shared/errors");
+const { pickLatestPerKey } = require("./reconciliation.utils");
 
+/**
+ * Refresh angka MOS & Used pada tiket_material.
+ *
+ * MOS = snapshot TERAKHIR laporan mitra untuk tiap (tiket, barang) lalu
+ * dijumlahkan per barang. `laporan_mitra` berisi snapshot MOS per tanggal
+ * laporan (bukan akumulasi), jadi memakai baris terbaru mencegah
+ * penghitungan ganda ketika mitra meng-upload laporan lebih dari sekali untuk
+ * (tiket, barang) yang sama.
+ *
+ * Used = penjumlahan seluruh laporan aktif (perilaku lama, tetap sama dengan
+ * perhitungan `used` pada tabel rekonsiliasi).
+ */
 const refreshTiketMosUsed = async (tiketId, tx) => {
   const client = tx || prisma;
 
-  const aggregates = await client.laporan_mitra.groupBy({
-    by: ["tiket_id"],
+  const laporanRows = await client.laporan_mitra.findMany({
     where: {
       tiket_id: BigInt(tiketId),
       is_aktif: true,
     },
-    _sum: {
+    select: {
+      laporan_id: true,
+      tiket_id: true,
+      barang_id: true,
+      nama_barang: true,
       mos: true,
       used: true,
+      tanggal_laporan: true,
+      uploaded_at: true,
     },
   });
 
-  const mos = aggregates[0]?._sum.mos ? Number(aggregates[0]._sum.mos) : 0;
-  const used = aggregates[0]?._sum.used ? Number(aggregates[0]._sum.used) : 0;
+  const latestByBarang = pickLatestPerKey(
+    laporanRows,
+    (row) => String(row.barang_id || row.nama_barang || ""),
+    (row) => {
+      const tanggal = row.tanggal_laporan ? new Date(row.tanggal_laporan).getTime() : 0;
+      const uploaded = row.uploaded_at ? new Date(row.uploaded_at).getTime() : 0;
+      return Math.max(tanggal, uploaded) + Number(row.laporan_id || 0) / 1e6;
+    }
+  );
+
+  let mos = 0;
+  let used = 0;
+  for (const row of latestByBarang.values()) {
+    mos += Number(row.mos || 0);
+  }
+  for (const row of laporanRows) {
+    used += Number(row.used || 0);
+  }
 
   await client.tiket_material.update({
     where: { tiket_id: BigInt(tiketId) },
     data: { mos, used },
   });
+};
+
+/**
+ * Metrik rekonsiliasi kanonik per (cluster, barang).
+ *
+ * Nilainya diambil Langsung dari tabel rekonsiliasi (getInventory mode
+ * cluster), sehingga angka MOS pada ringkasan rekonsiliasi dan angka MOS
+ * yang disimpan pada riwayat laporan mitra dijamin identik (sumber data
+ * tunggal).
+ *
+ * @returns {Promise<Map<string, {mos:number, boq:number, additional:number, remains:number}>>}
+ *          key: `${clusterId}-${barangId}`
+ */
+const getRekonsiliasiMetricsByCluster = async (projectIds = []) => {
+  const metrics = new Map();
+  const uniqueProjectIds = Array.from(
+    new Set((projectIds || []).filter((id) => id !== null && id !== undefined && id !== "").map((id) => String(id)))
+  );
+
+  for (const projectId of uniqueProjectIds) {
+    const result = await reconciliationRepository.getInventory(
+      {
+        groupBy: "cluster",
+        projectId,
+        clusterId: "all",
+        search: "",
+        status: "all",
+        warehouseId: "all",
+      },
+      null
+    );
+
+    for (const row of result?.data || []) {
+      const clusterId = row.cluster_id;
+      if (!clusterId) continue;
+      metrics.set(`${clusterId}-${row.barang_id}`, {
+        mos: Number(row.mos || 0),
+        boq: Number(row.boq || 0),
+        additional: Number(row.additional || 0),
+        remains: Number(row.remains || 0),
+      });
+    }
+  }
+
+  return metrics;
 };
 
 const getInventory = async (filters = {}, actor = null) => {
@@ -176,6 +255,7 @@ const saveRemainsNote = async (payload, user) => {
 module.exports = {
   getInventory,
   getFilterOptions,
+  getRekonsiliasiMetricsByCluster,
   refreshTiketMosUsed,
   saveRemainsNote,
 };

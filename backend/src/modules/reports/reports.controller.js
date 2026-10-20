@@ -942,26 +942,69 @@ const confirmReconciliationUpload = async (req, res, next) => {
 
     const jenisLaporan = filename === "manual-input" ? "manual" : "excel";
 
-    // Tanggal laporan maksimal hari ini (tidak boleh di masa depan).
-    const dateValidation = validateReportDateValue(tanggal_laporan);
-    if (dateValidation.error) {
-      return response.error(res, dateValidation.error, 400);
-    }
-    const tanggalLaporan = parseReportDate(tanggal_laporan);
-    if (!tanggalLaporan) {
-      return response.error(res, "Tanggal laporan tidak valid.", 400);
-    }
-    const picMitra = pic_mitra ? String(pic_mitra).trim() || null : null;
+    // --- MOS Mitra: sumber angka tunggal -------------------------------
+    // Angka MOS pada laporan mitra harus PERSIS sama dengan angka MOS pada
+    // tabel/ringkasan rekonsiliasi (BUG-06). Karena itu metrik rekonsiliasi
+    // (MOS + Remains) diambil dari tabel rekonsiliasi SEBELUM baris laporan
+    // disimpan, lalu disimpan bersama laporan mitra & detail upload.
+    const preTiketIds = preview
+      .map((item) => item.tiket_id)
+      .filter((id) => id !== null && id !== undefined && id !== "");
+    const preKodeTikets = preview.map((item) => item.kode_tiket).filter(Boolean);
+    const preBoqIds = preview
+      .map((item) => item.boq_id)
+      .filter((id) => id !== null && id !== undefined && id !== "");
 
-    // Kondisi barang (bila diisi di tingkat permintaan) harus nilai yang dikenal.
-    const kondisiValidation = validateKondisiValue(kondisi);
-    if (kondisiValidation.error) {
-      return response.error(res, kondisiValidation.error, 400);
+    const preTiketFilters = [];
+    if (preTiketIds.length) {
+      preTiketFilters.push({ tiket_id: { in: preTiketIds.map((id) => BigInt(id)) } });
     }
-    const failedRows = Array.isArray(failed) ? failed : [];
+    if (preKodeTikets.length) {
+      preTiketFilters.push({ kode_tiket: { in: preKodeTikets } });
+    }
 
-    // TAHAP 1: validasi semua baris di luar transaksi (hanya query baca).
-    const preparedRows = await prepareReportRows({ rows: preview, tanggalLaporan, picMitra, kondisi });
+    const preTikets = preTiketFilters.length
+      ? await prisma.tiket_material.findMany({
+          where: { OR: preTiketFilters },
+          select: {
+            tiket_id: true,
+            kode_tiket: true,
+            project_id: true,
+            cluster_id: true,
+            boq: { select: { cluster_id: true, cluster: { select: { project_id: true } } } },
+          },
+        })
+      : [];
+
+    const preBoqs = preBoqIds.length
+      ? await prisma.boq.findMany({
+          where: { boq_id: { in: preBoqIds.map((id) => BigInt(id)) } },
+          select: { boq_id: true, cluster_id: true, cluster: { select: { project_id: true } } },
+        })
+      : [];
+
+    const preProjectIds = new Set();
+    for (const t of preTikets) {
+      if (t.project_id) preProjectIds.add(String(t.project_id));
+      if (t.boq?.cluster?.project_id) preProjectIds.add(String(t.boq.cluster.project_id));
+    }
+    for (const b of preBoqs) {
+      if (b.cluster?.project_id) preProjectIds.add(String(b.cluster.project_id));
+    }
+
+    const rekonsiliasiMetrics = await reconciliationService.getRekonsiliasiMetricsByCluster(
+      Array.from(preProjectIds)
+    );
+
+    // MOS & Remains kanonik untuk satu baris laporan (cluster + barang).
+    const resolveMosMetrics = (barangId, clusterId) => {
+      if (!barangId || !clusterId) return { mos: 0, remains: 0 };
+      const metrics = rekonsiliasiMetrics.get(`${clusterId}-${String(barangId)}`);
+      return {
+        mos: Number(metrics?.mos || 0),
+        remains: Number(metrics?.remains || 0),
+      };
+    };
 
     let uploadLog;
     let successCount = 0;
@@ -1085,12 +1128,17 @@ const confirmReconciliationUpload = async (req, res, next) => {
           boqItem = boq.items[0];
         }
 
-        // Cegah duplikat sekali lagi di dalam transaksi (perlindungan submit bersamaan).
-        const duplikat = await findActiveLaporanMitra(tx, {
-          tiketId: BigInt(tiket.tiket_id),
-          tanggalLaporan,
-          picMitra,
-          barangId: item.barang_id,
+        const tiket = await tx.tiket_material.findUnique({
+          where: { tiket_id: BigInt(tiketId) },
+          select: {
+            tiket_id: true,
+            kode_tiket: true,
+            project_id: true,
+            cluster_id: true,
+            mos: true,
+            used: true,
+            project: { select: { nama_project: true } },
+          },
         });
         if (duplikat) {
           await catatGagal({
@@ -1110,45 +1158,142 @@ const confirmReconciliationUpload = async (req, res, next) => {
           used: tiket.used ? Number(tiket.used) : null,
         };
 
-        await tx.laporan_mitra.create({
-          data: {
-            tiket_id: BigInt(tiket.tiket_id),
-            kode_tiket: tiket.kode_tiket,
-            project_id: tiket.project_id,
-            jenis_laporan: jenisLaporan,
-            tanggal_laporan: tanggalLaporan,
-            pic_mitra: picMitra,
-            nama_barang: nama_barang || item.nama_barang || null,
-            barang_id: item.barang_id ? BigInt(item.barang_id) : null,
-            mos: 0,
-            remains_lapangan: 0,
-            used: prepared.used,
-            catatan: catatan || item.catatan || null,
-            kondisi: normalizeKondisi(kondisi || item.kondisi),
-            cluster_id: tiket.cluster_id || null,
-            uploaded_by: BigInt(actorId),
-            is_aktif: true,
-          },
-        });
+        if (!item.barang_id) {
+          await tx.reconciliation_upload_detail.create({
+            data: {
+              upload_id: uploadLog.upload_id,
+              kode_tiket: tiket.kode_tiket,
+              mos: 0,
+              remains_lapangan: 0,
+              used: Number(item.used || 0),
+              status: "gagal",
+              reason: "Barang tidak terdaftar",
+              kondisi: normalizeKondisi(item.kondisi),
+              nama_barang: item.nama_barang || null,
+              kode_barang: null,
+              project_nama: tiket.project?.nama_project || null,
+              tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+              pic_mitra: pic_mitra || null,
+              catatan: catatan || item.catatan || null,
+            },
+          });
+          failedCount++;
+          failedItems.push({ kode_tiket: tiket.kode_tiket, nama_barang: item.nama_barang || "-", used: Number(item.used || 0), reason: "Barang tidak terdaftar" });
+          continue;
+        }
 
-        await tx.reconciliation_upload_detail.create({
-          data: {
-            upload_id: uploadLog.upload_id,
-            kode_tiket: tiket.kode_tiket,
-            mos: 0,
-            remains_lapangan: 0,
-            used: prepared.used,
-            status: "berhasil",
-            reason: null,
-            kondisi: normalizeKondisi(kondisi || item.kondisi),
-            nama_barang: nama_barang || item.nama_barang || null,
-            kode_barang: boqItem?.barang?.kode_perangkat || null,
-            project_nama: tiket.project?.nama_project || null,
-            tanggal_laporan: tanggalLaporan,
-            pic_mitra: picMitra,
-            catatan: catatan || item.catatan || null,
+        const boq = await tx.boq.findFirst({
+          where: { tiket_id: BigInt(tiketId), status: { in: ["draft", "aktif", "selesai"] } },
+          select: {
+            cluster_id: true,
+            items: {
+              where: { barang_id: BigInt(item.barang_id) },
+              select: { barang: { select: { kode_perangkat: true } } },
+            },
           },
         });
+        if (!boq || !boq.items.length) {
+            await tx.reconciliation_upload_detail.create({
+              data: {
+                upload_id: uploadLog.upload_id,
+                kode_tiket: tiket.kode_tiket,
+                mos: 0,
+                remains_lapangan: 0,
+                used: Number(item.used || 0),
+                status: "gagal",
+                reason: `Barang tidak terdaftar di BOQ tiket ${tiket.kode_tiket}`,
+                kondisi: normalizeKondisi(item.kondisi),
+                nama_barang: item.nama_barang || null,
+                kode_barang: null,
+                project_nama: tiket.project?.nama_project || null,
+                tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+                pic_mitra: pic_mitra || null,
+                catatan: catatan || item.catatan || null,
+              },
+            });
+            failedCount++;
+            failedItems.push({ kode_tiket: tiket.kode_tiket, nama_barang: item.nama_barang || "-", used: Number(item.used || 0), reason: `Barang tidak terdaftar di BOQ tiket ${tiket.kode_tiket}` });
+            continue;
+          }
+
+        let mosValue = 0;
+        let remainsValue = 0;
+        try {
+          const clusterFromTiket = await tx.cluster.findFirst({ where: { cluster_id: tiket.cluster_id }, select: { cluster_id: true } });
+          const clusterIdBarang = tiket.cluster_id || boq.cluster_id || null;
+          const metrics = resolveMosMetrics(item.barang_id, clusterIdBarang);
+          mosValue = metrics.mos;
+          remainsValue = metrics.remains;
+
+          await tx.laporan_mitra.create({
+            data: {
+              tiket_id: BigInt(tiketId),
+              kode_tiket: tiket.kode_tiket,
+              project_id: tiket.project_id,
+              jenis_laporan: jenisLaporan,
+              tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+              pic_mitra: pic_mitra || null,
+              nama_barang: nama_barang || item.nama_barang || null,
+              barang_id: item.barang_id ? BigInt(item.barang_id) : null,
+              mos: mosValue,
+              remains_lapangan: remainsValue,
+              used: Number(item.used || 0),
+              catatan: catatan || item.catatan || null,
+              kondisi: normalizeKondisi(kondisi || item.kondisi),
+              cluster_id: clusterFromTiket?.cluster_id || clusterIdBarang || null,
+              uploaded_by: BigInt(actorId),
+              is_aktif: true,
+            },
+          });
+
+          await tx.reconciliation_upload_detail.create({
+            data: {
+              upload_id: uploadLog.upload_id,
+              kode_tiket: tiket.kode_tiket,
+              mos: mosValue,
+              remains_lapangan: remainsValue,
+              used: Number(item.used || 0),
+              status: "berhasil",
+              reason: null,
+              kondisi: normalizeKondisi(kondisi || item.kondisi),
+              nama_barang: nama_barang || item.nama_barang || null,
+              kode_barang: boq.items[0]?.barang?.kode_perangkat || null,
+              project_nama: tiket.project?.nama_project || null,
+              tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+              pic_mitra: pic_mitra || null,
+              catatan: catatan || item.catatan || null,
+            },
+          });
+          successCount++;
+          affectedTiketIds.add(String(tiketId));
+          updatedTikets.push({
+            tiket_id: tiketId,
+            kode_tiket: tiket.kode_tiket,
+            remains_lapangan: remainsValue,
+            used: item.used,
+          });
+        } catch (insertErr) {
+          await tx.reconciliation_upload_detail.create({
+            data: {
+              upload_id: uploadLog.upload_id,
+              kode_tiket: tiket.kode_tiket,
+              mos: 0,
+              remains_lapangan: 0,
+              used: Number(item.used || 0),
+              status: "gagal",
+              reason: insertErr.message || "Gagal menyimpan laporan mitra",
+              kondisi: normalizeKondisi(kondisi || item.kondisi),
+              nama_barang: nama_barang || item.nama_barang || null,
+              kode_barang: boq.items[0]?.barang?.kode_perangkat || null,
+              project_nama: tiket.project?.nama_project || null,
+              tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+              pic_mitra: pic_mitra || null,
+              catatan: catatan || item.catatan || null,
+            },
+          });
+          failedCount++;
+          failedItems.push({ kode_tiket: tiket.kode_tiket, nama_barang: item.nama_barang || "-", used: Number(item.used || 0), reason: insertErr.message || "Gagal menyimpan laporan mitra" });
+        }
 
         await tx.audit_log.create({
           data: {
@@ -1158,8 +1303,9 @@ const confirmReconciliationUpload = async (req, res, next) => {
             actor_id: BigInt(actorId),
             data_sebelum: dataSebelum,
             data_sesudah: {
-              remains_lapangan: 0,
-              used: prepared.used,
+              mos: mosValue,
+              remains_lapangan: remainsValue,
+              used: item.used,
               source_file: filename,
               jenis_laporan: jenisLaporan,
               ...(autoTiketNote ? { catatan: autoTiketNote } : {}),
@@ -1286,6 +1432,35 @@ const downloadReconciliationTemplate = async (req, res, next) => {
     templateColumns.forEach((column, index) => {
       worksheet.getColumn(index + 1).width = column.width;
     });
+
+    // Sheet petunjuk — menegaskan bahwa MOS dihitung sistem (satu-satunya acuan)
+    // dan tidak boleh diisi mitra, sehingga angka MOS pada ringkasan
+    // rekonsiliasi, form input, dan template Excel selalu sama.
+    const guideSheet = workbook.addWorksheet("Petunjuk");
+    const guideRows = [
+      ["Kolom", "Keterangan"],
+      ["Angka Used", "Diisi mitra. Jumlah material yang sudah terpasang di lapangan."],
+      ["MOS", "DIHITUNG OTOMATIS oleh sistem (tidak diisi). MOS = inbound vendor eksternal yang sudah disetujui/diterima + saldo awal import."],
+      ["Remains", "DIHITUNG OTOMATIS oleh sistem. Remains = MOS - (BoQ Plan + Additional)."],
+      ["Kondisi", "Baik / Rusak / Rusak Ringan / Rusak Berat."],
+      ["Keterangan", "Catatan opsional."],
+    ];
+    guideRows.forEach((row, index) => {
+      const guideRow = guideSheet.getRow(index + 1);
+      row.forEach((value, colIndex) => {
+        const cell = guideRow.getCell(colIndex + 1);
+        cell.value = value;
+        cell.border = borderStyle;
+        cell.alignment = { vertical: "middle", wrapText: true };
+        if (index === 0) {
+          cell.font = headerFont;
+          cell.fill = headerFill;
+          cell.alignment = { horizontal: "center", vertical: "middle" };
+        }
+      });
+    });
+    guideSheet.getColumn(1).width = 18;
+    guideSheet.getColumn(2).width = 96;
 
     const buffer = await workbook.xlsx.writeBuffer();
     const filename = "Template_Rekonsiliasi.xlsx";

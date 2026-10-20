@@ -470,7 +470,10 @@ export default function ReconciliationInventoryPage() {
 const mapped: ReconciliationRecord[] = list.map((item: any) => {
           const boq = Number(item.boq ?? item.qty_boq ?? item.qty_rencana ?? 0);
           const additional = Number(item.additional ?? item.qty_additional ?? 0);
-          const mos = Number(item.mos ?? item.hardware_on_site ?? item.qty_on_site ?? 0);
+          // MOS: satu-satunya sumber acuan (backend reconciliation = MOS Sistem K5).
+          // Field legacy (hardware_on_site / qty_on_site) tidak dipakai lagi agar
+          // tidak ada dua angka MOS yang berbeda pada tabel yang sama.
+          const mos = Number(item.mos ?? 0);
           const used = Number(item.used ?? item.qty_used ?? 0);
          const remains = Number(item.remains ?? (mos - (boq + additional)));
 
