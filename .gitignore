@@ -27,3 +27,5 @@ test-results/
 *.bak
 *.orig
 *.patch
+
+node_modules/
