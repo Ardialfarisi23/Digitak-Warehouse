@@ -38,6 +38,10 @@ type Props<T extends HistoryRowBase> = {
   renderStatus: (row: T) => ReactNode;
   renderActions?: (row: T) => ReactNode;
   reloadToken?: number;
+  /** Klik baris (mis. buka detail) */
+  onRowClick?: (row: T) => void;
+  /** Render sel multi-nilai (cluster/project/tiket); default: gabung dengan koma */
+  renderMulti?: (v: unknown[] | null | undefined) => ReactNode;
 };
 
 function fmtDate(iso?: string | null): string {
@@ -71,6 +75,8 @@ export function HistoryTab<T extends HistoryRowBase>({
   renderStatus,
   renderActions,
   reloadToken = 0,
+  onRowClick,
+  renderMulti,
 }: Props<T>) {
   const f = useHistoryFilters();
   const [rows, setRows] = useState<T[]>([]);
@@ -234,27 +240,23 @@ export function HistoryTab<T extends HistoryRowBase>({
 
             {!error &&
               rows.map((row, i) => (
-                <tr key={String(row.upload_id)} className="border-t border-gray-100 hover:bg-gray-50/60">
+                <tr
+                  key={String(row.upload_id)}
+                  className={`border-t border-gray-100 hover:bg-gray-50/60 ${onRowClick ? "cursor-pointer" : ""}`}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                >
                   <td className={`${td} text-gray-500`}>{(meta.page - 1) * meta.limit + i + 1}</td>
                   <td className={`${td} whitespace-nowrap text-gray-500`}>{fmtDate(row.uploaded_at)}</td>
-                  <td className={`${td} font-medium`}>{row.filename || "-"}</td>
+                  <td className={`${td} font-medium`}>{row.filename === "manual-input" ? "Input Manual" : row.filename || "-"}</td>
                   <td className={td}>
                     <div className="font-medium">{row.uploaded_by_nama || "-"}</div>
                     <div className="text-xs text-gray-500">{fmtRole(row.uploaded_by_role)}</div>
                   </td>
-                  <td className={`${td} max-w-[140px] truncate text-xs`} title={joinList(row.cluster_ids)}>
-                    {joinList(row.cluster_ids)}
-                  </td>
-                  <td className={`${td} max-w-[180px] truncate text-xs`} title={joinList(row.cluster_names)}>
-                    {joinList(row.cluster_names)}
-                  </td>
-                  <td className={`${td} max-w-[200px] truncate text-xs`} title={joinList(row.project_names)}>
-                    {joinList(row.project_names)}
-                  </td>
-                  <td className={`${td} max-w-[140px] truncate text-xs`} title={joinList(row.kode_tikets)}>
-                    {joinList(row.kode_tikets)}
-                  </td>
-                  <td className={td}>
+                  <td className={td}>{renderMulti ? renderMulti(row.cluster_ids) : joinList(row.cluster_ids)}</td>
+                  <td className={td}>{renderMulti ? renderMulti(row.cluster_names) : joinList(row.cluster_names)}</td>
+                  <td className={td}>{renderMulti ? renderMulti(row.project_names) : joinList(row.project_names)}</td>
+                  <td className={td}>{renderMulti ? renderMulti(row.kode_tikets) : joinList(row.kode_tikets)}</td>
+                  <td className={td} onClick={(e) => e.stopPropagation()}>
                     <HistoryBarangCell
                       logId={row.upload_id}
                       jumlahBarang={Number(row.jumlah_barang) || 0}
@@ -266,7 +268,7 @@ export function HistoryTab<T extends HistoryRowBase>({
                   <td className={`${td} text-center text-green-600`}>{row.success_rows ?? 0}</td>
                   <td className={`${td} text-center text-red-500`}>{row.failed_rows ?? 0}</td>
                   <td className={td}>{renderStatus(row)}</td>
-                  <td className={td}>{renderActions ? renderActions(row) : null}</td>
+                  <td className={td} onClick={(e) => e.stopPropagation()}>{renderActions ? renderActions(row) : null}</td>
                 </tr>
               ))}
           </tbody>
