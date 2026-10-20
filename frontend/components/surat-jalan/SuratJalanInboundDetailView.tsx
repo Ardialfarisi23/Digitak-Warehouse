@@ -7,6 +7,8 @@ import { ExternalLink, FileText, Maximize2, Package, X } from "lucide-react";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
 import { KondisiUnitSummary } from "@/components/common/KondisiUnitSummary";
 import { hasKondisiUnit, type KondisiUnit } from "@/lib/kondisi-barang";
+import { useAuth } from "@/lib/auth-context";
+import { canAccessBoqModule } from "@/lib/navigation";
 
 interface InboundItemBarang {
   kode_perangkat?: string;
@@ -204,6 +206,7 @@ export function SuratJalanInboundDetailView({
   onItemDetail,
 }: SuratJalanInboundDetailViewProps) {
   // Hooks must run unconditionally. Compute derived values after hooks.
+  const { user } = useAuth();
   const attachmentRaw = data?.surat_jalan_url || data?.document_url || data?.attachment || null;
   const attachmentViewUrl = useAttachmentViewUrl(attachmentRaw);
   const attachmentKind = getAttachmentKind(attachmentRaw);
@@ -260,15 +263,24 @@ export function SuratJalanInboundDetailView({
     ) : null;
 
   const hasBoq = data.boq_id !== null && data.boq_id !== undefined && data.boq_id !== "";
+  // Staf Gudang tidak punya akses ke modul BOQ (K7) → tampilkan nomor BOQ
+  // sebagai teks biasa, tanpa tautan ke halaman manajemen.
+  const canOpenBoq = canAccessBoqModule(user?.role);
   const boqValue = hasBoq ? (
     <span className="flex flex-wrap items-center gap-2">
-      <Link
-        href="/dashboard/boq"
-        className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
-      >
-        <ExternalLink size={12} />
-        {tampilkan(data.boq?.boq_number, "BOQ Tidak Diketahui")}
-      </Link>
+      {canOpenBoq ? (
+        <Link
+          href="/dashboard/boq"
+          className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
+        >
+          <ExternalLink size={12} />
+          {tampilkan(data.boq?.boq_number, "BOQ Tidak Diketahui")}
+        </Link>
+      ) : (
+        <span className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600">
+          {tampilkan(data.boq?.boq_number, "BOQ Tidak Diketahui")}
+        </span>
+      )}
       <span className="text-xs text-slate-500">Tiket: {tampilkan(data.boq?.tiket?.kode_tiket)}</span>
     </span>
   ) : (

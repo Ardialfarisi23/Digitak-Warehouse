@@ -550,7 +550,8 @@ export default function InboundNewPage() {
       setLoadingClusters(true);
       try {
         const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-        const res = await get(`${baseUrl}/api/clusters?project_id=${encodeURIComponent(selectedProjectId)}`);
+        // Endpoint read-only khusus staf: hanya id/kode/nama cluster.
+        const res = await get(`${baseUrl}/api/clusters/options?project_id=${encodeURIComponent(selectedProjectId)}`);
         if (!res.ok) throw new Error("Gagal mengambil daftar cluster.");
         const json = await res.json();
         const rows = Array.isArray(json?.data) ? json.data : [];
@@ -584,7 +585,8 @@ export default function InboundNewPage() {
           status: "aktif",
           limit: "100",
         });
-        const res = await get(`${baseUrl}/api/boqs?${params.toString()}`);
+        // Endpoint read-only khusus staf: daftar BOQ minimal untuk form Surat Jalan.
+        const res = await get(`${baseUrl}/api/boqs/options?${params.toString()}`);
         if (!res.ok) throw new Error("Gagal mengambil BOQ aktif untuk cluster ini.");
         const json = await res.json();
         const rows = Array.isArray(json?.data) ? json.data : Array.isArray(json?.data?.data) ? json.data.data : [];
@@ -619,7 +621,8 @@ export default function InboundNewPage() {
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
     const fetchBoqDetail = async () => {
       try {
-        const res = await get(`${baseUrl}/api/boqs/${selectedBoqId}`);
+        // Endpoint read-only khusus staf: detail BOQ minimal (item BOQ).
+        const res = await get(`${baseUrl}/api/boqs/options/${selectedBoqId}`);
         if (!res.ok) return;
         const json = await res.json();
         const boq = json?.data;

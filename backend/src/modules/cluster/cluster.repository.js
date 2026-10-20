@@ -95,6 +95,53 @@ const findAll = async ({ search, status_aktif, project_id, status } = {}) => {
   });
 };
 
+/**
+ * Data minimal cluster untuk endpoint read-only (dropdown/picker).
+ *
+ * Hanya mengembalikan field yang benar-benar dipakai form (id, kode, nama),
+ * tanpa data manajemen (PIC, KSO, vendor, alamat, dsb).
+ */
+const findOptions = async ({ projectId, status = "aktif", search } = {}) => {
+  const conditions = [];
+
+  if (projectId !== undefined && projectId !== null && projectId !== "") {
+    const projectIdNum = Number(projectId);
+    if (Number.isFinite(projectIdNum) && projectIdNum > 0) {
+      conditions.push({ project_id: projectIdNum });
+    }
+  }
+
+  if (status === "aktif") {
+    conditions.push({ status_aktif: true });
+  } else if (status === "nonaktif") {
+    conditions.push({ status_aktif: false });
+  }
+
+  const normalizedSearch = typeof search === "string" ? search.trim() : "";
+  if (normalizedSearch) {
+    conditions.push({
+      OR: [
+        { nama_cluster: { contains: normalizedSearch, mode: "insensitive" } },
+        { cluster_id: { contains: normalizedSearch, mode: "insensitive" } },
+      ],
+    });
+  }
+
+  const where = conditions.length ? { AND: conditions } : {};
+
+  return await prisma.cluster.findMany({
+    where,
+    select: {
+      cluster_id: true,
+      nama_cluster: true,
+      project_id: true,
+      project: { select: { nama_project: true } },
+    },
+    orderBy: [{ project_id: "asc" }, { nama_cluster: "asc" }],
+    take: 500,
+  });
+};
+
 const update = async (clusterId, data) => {
   return await prisma.cluster.update({
     where: { cluster_id: clusterId },
@@ -146,6 +193,7 @@ const create = async (data) => {
 module.exports = {
   findByProjectId,
   findAll,
+  findOptions,
   update,
   toggleStatus,
   create,

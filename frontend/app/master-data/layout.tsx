@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { CompactSidebar } from "@/components/CompactSidebar";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
@@ -33,8 +35,28 @@ export default function MasterDataLayout({
 }) {
   const { user, isLoading } = useAuth();
   const { width } = useSidebar();
+  const router = useRouter();
 
   const userRole = mapRole(user?.role);
+
+  // Route guard (K7): Master Data (termasuk tab Cluster) hanya untuk Admin &
+  // Supervisor. Staf Gudang yang membuka URL langsung diarahkan ke beranda staf.
+  useEffect(() => {
+    if (isLoading) return;
+    if (!user) {
+      router.push("/");
+    } else if (userRole === "staff") {
+      router.replace("/staff/dashboard");
+    }
+  }, [isLoading, user, userRole, router]);
+
+  if (isLoading || !user || userRole === "staff") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#FAF8F5] text-slate-500">
+        Memuat...
+      </div>
+    );
+  }
 
   return (
     <ProtectedRoute>

@@ -857,6 +857,42 @@ const getExportMatrixData = async () => {
   return await boqRepository.getExportMatrixData();
 };
 
+/**
+ * Daftar BOQ read-only (dropdown/picker) — data minimal, tanpa metadata
+ * manajemen. Dipakai staf pada form Surat Jalan.
+ */
+const findOptions = async (query = {}) => {
+  const clusterIds = query.clusterIds
+    ? String(query.clusterIds)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : query.clusterId
+      ? [String(query.clusterId)]
+      : undefined;
+
+  return await boqRepository.findOptions({
+    search: query.search,
+    status: query.status,
+    excludeStatus: query.excludeStatus,
+    projectId: query.projectId,
+    clusterIds,
+    limit: query.limit,
+  });
+};
+
+/**
+ * Detail BOQ read-only (form Surat Jalan staf) — hanya id/nomor/tiket/cluster
+ * dan daftar item (barang + qty rencana).
+ */
+const findOptionDetail = async (id) => {
+  const boq = await boqRepository.findOptionDetail(id);
+  if (!boq) {
+    throw new AppError("BOQ tidak ditemukan.", 404);
+  }
+  return boq;
+};
+
 const getItems = async (projectId, statuses, clusterId = null, searchKeywords = []) => {
   return await boqRepository.findItemsByProject(projectId, clusterId, statuses, searchKeywords);
 };
@@ -889,6 +925,8 @@ module.exports = {
   create,
   findAll,
   findById,
+  findOptions,
+  findOptionDetail,
   update,
   updateStatus,
   softDelete,

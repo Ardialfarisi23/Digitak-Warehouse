@@ -10,7 +10,7 @@ const ROLE_ALIASES = {
 const normalizeRole = (role) => ROLE_ALIASES[role] || role;
 
 const authorize = (...roles) => {
-  return (req, res, next) => {
+  const middleware = (req, res, next) => {
     try {
       if (!req.user) {
         throw new AppError("Unauthorized.", 401);
@@ -49,6 +49,12 @@ const authorize = (...roles) => {
       next(err);
     }
   };
+
+  // Metadata introspektif: dipakai unit test untuk memverifikasi role yang
+  // diizinkan pada tiap endpoint (tanpa harus menjalankan server).
+  middleware.allowedRoles = roles;
+
+  return middleware;
 };
 
 module.exports = authorize;

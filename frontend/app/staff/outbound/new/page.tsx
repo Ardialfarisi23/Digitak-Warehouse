@@ -463,7 +463,8 @@ export default function AjukanSuratJalanPage() {
     setSelectedClusterIds([]);
     setBoqNumber("");
 
-    get(`${apiBase}/api/clusters?project_id=${selectedProjectId}`)
+    // Endpoint read-only khusus staf: hanya id/kode/nama cluster.
+    get(`${apiBase}/api/clusters/options?project_id=${selectedProjectId}`)
       .then(async (res) => {
         if (!res.ok) throw new Error("Gagal mengambil daftar cluster.");
         const json = await res.json();
@@ -501,7 +502,8 @@ export default function AjukanSuratJalanPage() {
     params.set("clusterIds", selectedClusterIds.join(","));
     params.set("status", "aktif");
 
-    get(`${apiBase}/api/boqs?${params.toString()}`)
+    // Endpoint read-only khusus staf: daftar BOQ minimal untuk form Surat Jalan.
+    get(`${apiBase}/api/boqs/options?${params.toString()}`)
       .then(async (res) => {
         if (!res.ok) return;
         const json = await res.json();
@@ -536,7 +538,8 @@ export default function AjukanSuratJalanPage() {
     params.set("clusterIds", selectedClusterIds.join(","));
     params.set("statuses", "aktif");
 
-    get(`${apiBase}/api/boqs/items?${params.toString()}`)
+    // Endpoint read-only khusus staf: item BOQ (barang, qty rencana, additional, MOS).
+    get(`${apiBase}/api/boqs/options/items?${params.toString()}`)
       .then(async (res) => {
         if (!res.ok) throw new Error("Gagal mengambil daftar item BOQ Plan.");
         const json = await res.json();

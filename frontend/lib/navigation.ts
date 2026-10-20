@@ -23,6 +23,15 @@ export function formatRole(role?: string): string {
   return labels[mapped] || role || "User";
 }
 
+/**
+ * Modul Cluster & BOQ (serta Master Data) hanya boleh diakses Admin &
+ * Supervisor. Staf Gudang tetap dapat memilih BOQ pada form Surat Jalan lewat
+ * endpoint read-only, namun tidak boleh membuka halaman manajemennya.
+ */
+export function canAccessBoqModule(role?: string): boolean {
+  return mapRole(role) !== "staff";
+}
+
 export interface NavItem {
   id: string;
   title: string;
@@ -49,6 +58,9 @@ export const navigationConfig: NavItem[] = [
     roles: ["admin"],
     section: "master",
   },
+  // K7: menu "Cluster & BOQ" (dan Master Data) TIDAK BOLEH diberi role
+  // "staff" — Staf Gudang hanya memakai form Surat Jalan, yang mengambil
+  // data BOQ lewat endpoint read-only /api/boqs/options.
   {
     id: "boq-admin",
     title: "Cluster & BOQ",

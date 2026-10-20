@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Download, ArrowLeft, ExternalLink, Loader2, X } from "lucide-react";
+import { Download, ArrowLeft, Loader2, X } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
@@ -507,13 +507,11 @@ export default function SuratJalanDetailPage() {
                 label="Cluster & BOQ"
                 value={
                   <span className="flex flex-wrap items-center gap-2">
-                    <Link
-                      href="/dashboard/boq"
-                      className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
-                    >
-                      <ExternalLink size={12} />
+                    {/* Staf Gudang tidak punya akses ke modul BOQ (K7): nomor BOQ
+                        ditampilkan sebagai teks, tanpa tautan ke halaman manajemen. */}
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600">
                       {suratJalan.boq?.boq_number || `BOQ #${suratJalan.boq_id}`}
-                    </Link>
+                    </span>
                     <span className="text-xs text-gray-500">
                       Tiket: {suratJalan.boq?.tiket?.kode_tiket || "-"}
                     </span>
