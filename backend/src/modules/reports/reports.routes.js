@@ -10,6 +10,7 @@ router.get("/stock-history", authenticate, authorize("ADMIN"), reportsController
 router.get("/stock-history/export", authenticate, authorize("ADMIN"), reportsController.exportStockHistoryExcel);
 router.get("/audit-log", authenticate, authorize("ADMIN"), reportsController.getAuditLogs);
 router.get("/audit-log/export", authenticate, authorize("ADMIN"), reportsController.exportAuditLogExcel);
+router.get("/reconciliation-upload-logs/filter-options", authenticate, authorize("ADMIN"), reportsController.getReconciliationUploadLogFilterOptions);
 router.get("/reconciliation-upload-logs", authenticate, authorize("ADMIN"), reportsController.getReconciliationUploadLogs);
 router.get("/reconciliation-upload-logs/:id/barang", authenticate, authorize("ADMIN"), reportsController.getReconciliationUploadLogBarang);
 router.get(

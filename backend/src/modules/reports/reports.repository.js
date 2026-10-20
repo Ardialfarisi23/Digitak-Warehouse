@@ -2717,6 +2717,8 @@ const getReconciliationUploadLogs = async (filters = {}) => {
     actorId = "all",
     startDate,
     endDate,
+    projectName = "",
+    jenisInput = "",
     page = 1,
     limit = 20,
   } = filters;
@@ -2755,6 +2757,9 @@ const getReconciliationUploadLogs = async (filters = {}) => {
     if (endDate) where.uploaded_at.lte = new Date(endDate + "T23:59:59+07:00");
   }
 
+  if (jenisInput === "manual") where.filename = "manual-input";
+  if (jenisInput === "excel") where.filename = { not: "manual-input" };
+  if (projectName) where.details = { some: { project_nama: { equals: projectName, mode: "insensitive" } } };
   const skip = (Number(page) - 1) * Number(limit);
 
   const [data, total] = await Promise.all([
@@ -2890,6 +2895,15 @@ const getReconciliationUploadLogBarang = async (uploadId) => {
   }));
 };
 
+const getReconciliationUploadLogFilterOptions = async () => {
+  const logs = await prisma.reconciliation_upload_log.findMany({
+    select: { uploaded_by: true, actor: { select: { nama: true } }, details: { select: { project_nama: true } } },
+  });
+  const projects = [...new Set(logs.flatMap((l) => l.details.map((d) => d.project_nama).filter(Boolean)))];
+  const actors = [...new Map(logs.map((l) => [String(l.uploaded_by), l.actor?.nama || "-"])).entries()].map(([id, nama]) => ({ id, nama }));
+  return { statuses: ["berhasil", "sebagian_gagal", "draft"], clusters: [], projects: projects.map((p) => ({ id: p, nama: p })), actors };
+};
+
 module.exports = {
   getStockHistory,
   getStockHistoryForExport,
@@ -2903,6 +2917,7 @@ module.exports = {
   backfillReconciliation,
   getReconciliationUploadLogs,
   getReconciliationUploadLogBarang,
+  getReconciliationUploadLogFilterOptions,
   enrichUploadLogs,
   buildTicketInfoMap,
 };

@@ -1304,6 +1304,8 @@ const getReconciliationUploadLogs = async (req, res, next) => {
       actorId: req.query.actorId || "all",
       startDate: req.query.startDate || "",
       endDate: req.query.endDate || "",
+      projectName: req.query.projectName || "",
+      jenisInput: req.query.jenisInput || "",
       page: req.query.page || 1,
       limit: req.query.limit || 20,
     };
@@ -1320,6 +1322,15 @@ const getReconciliationUploadLogBarang = async (req, res, next) => {
     const data = await reportsRepository.getReconciliationUploadLogBarang(req.params.id);
     if (!data) return response.error(res, "Data tidak ditemukan.", 404);
     return response.success(res, "Data barang berhasil diambil.", data);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const getReconciliationUploadLogFilterOptions = async (req, res, next) => {
+  try {
+    const data = await reportsRepository.getReconciliationUploadLogFilterOptions();
+    return response.success(res, "OK", data);
   } catch (err) {
     next(err);
   }
@@ -1504,6 +1515,7 @@ module.exports = {
   deactivateReconciliationReport,
   getReconciliationUploadLogs,
   getReconciliationUploadLogBarang,
+  getReconciliationUploadLogFilterOptions,
   downloadReconciliationTemplate,
   RECONCILIATION_REQUIRED_COLUMNS,
   RECONCILIATION_OPTIONAL_COLUMNS,
