@@ -16,14 +16,16 @@ router.get("/hardware-reconciliation/per-tiket", authenticate, authorize("ADMIN"
 router.get("/hardware-reconciliation/detailed", authenticate, authorize("ADMIN"), reportsController.getHardwareReconciliationDetailed);
 router.get("/zone-utilization-history", authenticate, authorize("ADMIN"), reportsController.getZoneUtilizationHistory);
 router.get("/zone-utilization", authenticate, authorize("ADMIN"), reportsController.getZoneUtilization);
-router.get("/reconciliation/template", authenticate, authorize("ADMIN", "SUPERVISOR"), reportsController.downloadReconciliationTemplate);
+// Template laporan mitra hanya boleh diunduh Admin (format = data input-sensitive).
+router.get("/reconciliation/template", authenticate, authorize("ADMIN"), reportsController.downloadReconciliationTemplate);
 
 router.post("/reconciliation/backfill", authenticate, authorize("ADMIN"), reportsController.backfillReconciliation);
 
+// Input laporan mitra (upload Excel + submit konfirmasi) hanya boleh dilakukan Admin.
 router.post(
   "/reconciliation/upload",
   authenticate,
-  authorize("ADMIN", "SUPERVISOR"),
+  authorize("ADMIN"),
   uploadLimiter,
   reportsController.uploadReconciliationFile
 );
@@ -31,7 +33,7 @@ router.post(
 router.post(
   "/reconciliation/confirm",
   authenticate,
-  authorize("ADMIN", "SUPERVISOR"),
+  authorize("ADMIN"),
   reportsController.confirmReconciliationUpload
 );
 
