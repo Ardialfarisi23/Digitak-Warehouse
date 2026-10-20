@@ -146,7 +146,7 @@ export function HistoryBarangCell({
                 <li key={i} className="text-sm">
                   <div className="font-medium">{it.nama}</div>
                   <div className="text-xs text-muted-foreground">
-                    {it.kode} â€¢ {it.qty} {it.satuan}
+                    {it.kode} • {it.qty} {it.satuan}
                   </div>
                 </li>
               ))}
