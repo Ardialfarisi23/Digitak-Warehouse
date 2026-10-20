@@ -1304,6 +1304,8 @@ const getReconciliationUploadLogs = async (req, res, next) => {
       actorId: req.query.actorId || "all",
       startDate: req.query.startDate || "",
       endDate: req.query.endDate || "",
+      status: req.query.status || "",
+      clusterId: req.query.clusterId || "",
       projectName: req.query.projectName || "",
       jenisInput: req.query.jenisInput || "",
       page: req.query.page || 1,
