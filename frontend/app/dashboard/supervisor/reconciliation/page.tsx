@@ -18,7 +18,7 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 const RECONCILIATION_ENDPOINT = `${API_BASE}/api/reconciliation/inventory`;
 const FILTER_OPTIONS_ENDPOINT = `${API_BASE}/api/reconciliation/filter-options`;
-const HISTORY_ENDPOINT = `${API_BASE}/api/reports/reconciliation/history`;
+const HISTORY_ENDPOINT = `${API_BASE}/api/reports/reconciliation-upload-logs`;
 
 interface ReconciliationRecord {
   id: string;
@@ -190,6 +190,7 @@ export default function SupervisorReconciliationPage() {
       params.set("groupBy", "cluster");
       params.set("projectId", projectFilter);
       params.set("clusterId", clusterFilter);
+      params.set("status", statusFilter);
       if (search.trim()) params.set("search", search.trim());
 
       const response = await get(`${RECONCILIATION_ENDPOINT}?${params.toString()}`);
@@ -221,7 +222,10 @@ export default function SupervisorReconciliationPage() {
       const mapped: ReconciliationRecord[] = list.map((item: any) => {
         const boq = Number(item.boq ?? item.qty_boq ?? item.qty_rencana ?? 0);
         const additional = Number(item.additional ?? item.qty_additional ?? 0);
-        const mos = Number(item.mos ?? item.hardware_on_site ?? item.qty_on_site ?? 0);
+        // MOS: satu-satunya sumber acuan (backend reconciliation = MOS Sistem K5).
+        // Field legacy (hardware_on_site / qty_on_site) TIDAK lagi dipakai agar
+        // tidak ada dua angka MOS yang berbeda pada tabel yang sama.
+        const mos = Number(item.mos ?? 0);
         const used = Number(item.used ?? item.qty_used ?? 0);
         const approvedReturnQty = Number(item.approved_return_qty ?? 0);
         const remains = Number(item.remains ?? (mos - (boq + additional)));
@@ -276,7 +280,7 @@ export default function SupervisorReconciliationPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [get, projectFilter, clusterFilter, search, isSelectionComplete]);
+  }, [get, projectFilter, clusterFilter, search, statusFilter, isSelectionComplete]);
 
   const fetchHistory = async () => {
     setIsHistoryLoading(true);
@@ -290,17 +294,24 @@ export default function SupervisorReconciliationPage() {
       }
 
       const json = await res.json();
+      // Endpoint riwayat mengembalikan { data: { data: [...], meta: {...} } }.
       const payload = json?.data ?? [];
-      const list: any[] = Array.isArray(payload) ? payload : [];
+      const list: any[] = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload?.logs)
+            ? payload.logs
+            : [];
       setHistoryRecords(
         list.map((item: any) => ({
-          id: String(item.id ?? ""),
+          id: String(item.id ?? item.upload_id ?? ""),
           filename: item.filename ?? "laporan_mitra.xlsx",
-          actor_nama: item.actor_nama ?? item.actor?.name ?? "-",
-          created_at: item.created_at ?? new Date().toISOString(),
-          total_items: Number(item.total_items ?? item.total ?? 0),
-          success_count: Number(item.success_count ?? item.berhasil ?? item.total_items ?? 0),
-          failed_count: Number(item.failed_count ?? item.gagal ?? 0),
+          actor_nama: item.actor_nama ?? item.actor?.name ?? item.uploaded_by_nama ?? "-",
+          created_at: item.created_at ?? item.uploaded_at ?? new Date().toISOString(),
+          total_items: Number(item.total_items ?? item.total ?? item.total_rows ?? 0),
+          success_count: Number(item.success_count ?? item.berhasil ?? item.success_rows ?? item.total_items ?? 0),
+          failed_count: Number(item.failed_count ?? item.gagal ?? item.failed_rows ?? 0),
           status: item.status ?? "processed",
         })),
       );
@@ -404,9 +415,10 @@ export default function SupervisorReconciliationPage() {
       const matchesProject = projectFilter === "all" || record.project_id === projectFilter;
       const matchesCluster = clusterFilter === "all" || record.cluster_id === clusterFilter;
       const matchesWarehouse = warehouseFilter === "all" || record.gudang_nama === warehouseFilter;
-      return matchesProject && matchesCluster && matchesWarehouse;
+      const matchesStatus = statusFilter === "all" || record.status === statusFilter;
+      return matchesProject && matchesCluster && matchesWarehouse && matchesStatus;
     });
-  }, [records, projectFilter, clusterFilter, warehouseFilter]);
+  }, [records, projectFilter, clusterFilter, warehouseFilter, statusFilter]);
 
   const filteredHistoryRecords = useMemo(() => {
     return historyRecords.filter((item) => {
@@ -515,9 +527,9 @@ export default function SupervisorReconciliationPage() {
              <div className="mb-6 grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
                <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
                <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
-               <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material on Site (termasuk inbound disetujui)" icon={PackageCheck} tone="slate" />
-               <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan" icon={PackageMinus} tone="slate" />
-               <KpiCard title="Sisa Lapangan" value={formatNumber(summary.remains)} description="Sisa di lapangan setelah dikurangi BOQ, Additional, Used, dan Return" icon={Wallet} tone={summary.remains < 0 ? "rose" : "slate"} />
+               <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material On Site (sistem): inbound vendor eksternal + saldo awal" icon={PackageCheck} tone="slate" />
+               <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan (input laporan mitra)" icon={PackageMinus} tone="slate" />
+               <KpiCard title="Sisa Lapangan" value={formatNumber(summary.remains)} description="Rumus: MOS − (BOQ Plan + Additional)" icon={Wallet} tone={summary.remains < 0 ? "rose" : "slate"} />
              </div>
 
             {/* Filters */}
@@ -795,7 +807,7 @@ export default function SupervisorReconciliationPage() {
                 </div>
                 <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
                   <p className="text-xs font-semibold text-blue-800">MOS</p>
-                   <p className="mt-1 text-[11px] leading-relaxed text-blue-700">Material yang sudah dikirim dan terkonfirmasi diterima di lapangan.</p>
+                   <p className="mt-1 text-[11px] leading-relaxed text-blue-700">Material On Site (Sistem): inbound vendor eksternal yang sudah disetujui/diterima, ditambah saldo awal import. Angka ini dihitung sistem dan menjadi satu-satunya acuan MOS (dipakai juga pada riwayat laporan mitra).</p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-xs font-semibold text-slate-800">Used</p>

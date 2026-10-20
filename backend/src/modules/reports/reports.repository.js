@@ -5,7 +5,7 @@ const reconciliationService = require("../reconciliation/reconciliation.service"
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
 const additionalRepository = require("../additional/additional.repository");
-const { isMosEligibleInbound } = require("../reconciliation/reconciliation.utils");
+const { isMosEligibleInbound, computeMosSistem, computeRemains } = require("../reconciliation/reconciliation.utils");
 
 const AUDIT_AKSI_VALUES = [
   "create",
@@ -1835,8 +1835,11 @@ const getHardwareReconciliation = async (filters = {}) => {
     },
     select: {
       tipe: true,
+      status: true,
       project_id: true,
+      cluster_id: true,
       tujuan_tipe: true,
+      tipe_pengirim: true,
       items: {
         select: {
           qty: true,
@@ -1849,6 +1852,23 @@ const getHardwareReconciliation = async (filters = {}) => {
   const additionalByProject = new Map();
   const hardwareOnSiteByProject = new Map();
   const usedByProject = new Map();
+  const openingBalanceByProject = new Map();
+
+  // Saldo awal (import BOQ) per project — bagian dari definisi MOS Sistem (K5).
+  const openingBalanceRows = await prisma.boq_item.findMany({
+    where: {
+      boq: {
+        status: { in: ["draft", "aktif", "selesai"] },
+        ...(projectId !== "all" ? { cluster: { project_id: BigInt(projectId) } } : {}),
+      },
+    },
+    select: { qty_mos: true, boq: { select: { cluster: { select: { project_id: true } } } } },
+  });
+  for (const row of openingBalanceRows) {
+    const pid = Number(row.boq?.cluster?.project_id || 0);
+    if (!pid) continue;
+    openingBalanceByProject.set(pid, (openingBalanceByProject.get(pid) || 0) + Number(row.qty_mos || 0));
+  }
 
   for (const boq of boqRecords) {
     const projectIdNum = Number(boq.cluster?.project_id);
@@ -1887,19 +1907,37 @@ const getHardwareReconciliation = async (filters = {}) => {
 
     const totalQty = shipment.items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
 
-    if (shipment.tipe === "outbound" && shipment.tujuan_tipe !== "gudang") {
+    // MOS Sistem (K5) = inbound vendor eksternal (disetujui/diterima).
+    if (isMosEligibleInbound(shipment)) {
       hardwareOnSiteByProject.set(
         projectIdNum,
         (hardwareOnSiteByProject.get(projectIdNum) || 0) + totalQty
       );
     }
 
+    // Outbound ke lapangan dipakai sebagai fallback `used` bila laporan mitra
+    // belum tersedia (sama seperti aturan pada tabel rekonsiliasi).
     if (shipment.tipe === "outbound" && shipment.tujuan_tipe !== "gudang") {
       usedByProject.set(
         projectIdNum,
         (usedByProject.get(projectIdNum) || 0) + totalQty
       );
     }
+  }
+
+  // Used = input laporan mitra (sumber utama), dijumlahkan per project.
+  const laporanRows = await prisma.laporan_mitra.findMany({
+    where: { is_aktif: true, ...(projectId !== "all" ? { project_id: BigInt(projectId) } : {}) },
+    select: { project_id: true, used: true },
+  });
+  const usedFromLaporanByProject = new Map();
+  for (const row of laporanRows) {
+    const pid = Number(row.project_id || 0);
+    if (!pid) continue;
+    usedFromLaporanByProject.set(pid, (usedFromLaporanByProject.get(pid) || 0) + Number(row.used || 0));
+  }
+  for (const [pid, total] of usedFromLaporanByProject.entries()) {
+    if (total > 0) usedByProject.set(pid, total);
   }
 
   // Compute approved returns per project from the Return module.
@@ -1945,10 +1983,14 @@ const getHardwareReconciliation = async (filters = {}) => {
     const projectIdNum = Number(project.project_id);
     const boq = Number(boqByProject.get(projectIdNum) || 0);
     const additional = Number(additionalByProject.get(projectIdNum) || 0);
-    const hardwareOnSite = Number(hardwareOnSiteByProject.get(projectIdNum) || 0);
+    // MOS Sistem (K5) — sama dengan angka pada tabel rekonsiliasi.
+    const hardwareOnSite = computeMosSistem(
+      hardwareOnSiteByProject.get(projectIdNum) || 0,
+      openingBalanceByProject.get(projectIdNum) || 0
+    );
     const used = Number(usedByProject.get(projectIdNum) || 0);
     const approvedReturnQty = Number(approvedReturnByProject.get(projectIdNum) || 0);
-    const remains = hardwareOnSite - (boq + additional) - used - approvedReturnQty;
+    const remains = computeRemains(hardwareOnSite, boq, additional) - used - approvedReturnQty;
 
     let status = "berjalan";
     if (remains < 0) {
@@ -2096,7 +2138,24 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
     }
   }
 
-  // MOS = inbound only (external vendor inbound)
+  // Saldo awal (import BOQ) per project — bagian dari definisi MOS Sistem (K5).
+  const openingBalanceByProject = new Map();
+  const openingBalanceRows = await prisma.boq_item.findMany({
+    where: {
+      boq: {
+        status: { in: ["draft", "aktif", "selesai"] },
+        ...(projectId !== "all" ? { cluster: { project_id: BigInt(projectId) } } : {}),
+      },
+    },
+    select: { qty_mos: true, boq: { select: { cluster: { select: { project_id: true } } } } },
+  });
+  for (const row of openingBalanceRows) {
+    const pid = Number(row.boq?.cluster?.project_id || 0);
+    if (!pid) continue;
+    openingBalanceByProject.set(pid, (openingBalanceByProject.get(pid) || 0) + Number(row.qty_mos || 0));
+  }
+
+  // MOS = inbound only (external vendor inbound) + saldo awal (import BOQ)
   const mosByProject = inboundMosByProject;
 
   // Compute approved returns per tiket from the Return module.
@@ -2127,7 +2186,10 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
     const projectIdNum = Number(tiket.project_id);
     const boqPlan = tiket.boq?.items?.reduce((sum, item) => sum + Number(item.qty_rencana || 0), 0) || 0;
     const additional = Number(additionalTotalsByProject.get(projectIdNum) || 0);
-    const mos = Number(mosByProject.get(projectIdNum) || 0);
+    const mos = computeMosSistem(
+      mosByProject.get(projectIdNum) || 0,
+      openingBalanceByProject.get(projectIdNum) || 0
+    );
     const used = tiket.used ? Number(tiket.used) : Number(outboundByProject.get(projectIdNum) || 0);
     const approvedReturnQty = Number(approvedReturnByTiket.get(tiket.tiket_id) || 0);
     const remains = mos - (boqPlan + additional) - used - approvedReturnQty;
@@ -2548,39 +2610,33 @@ const backfillReconciliation = async (actorId) => {
     },
   });
 
-  const inboundByProject = new Map();
-  const outboundByProject = new Map();
-  const additionalByProject = new Map();
   const inboundMosByProject = new Map();
-
-  const projectIdsForAdditional = Array.from(
-    new Set(allSuratJalans.map((sj) => sj.project_id).filter((id) => id != null))
-  ).map((id) => Number(id));
-
-  const additionalTotalsByProject =
-    projectIdsForAdditional.length > 0
-      ? await additionalRepository.getAdditionalTotalsByProjectOnly(projectIdsForAdditional)
-      : new Map();
 
   for (const sj of allSuratJalans) {
     const pid = Number(sj.project_id);
     if (!pid) continue;
     for (const item of sj.items) {
       const qty = Number(item.qty || 0);
-      if (sj.tipe === "inbound") {
-        inboundByProject.set(pid, (inboundByProject.get(pid) || 0) + qty);
-        if (isMosEligibleInbound(sj)) {
-          inboundMosByProject.set(pid, (inboundMosByProject.get(pid) || 0) + qty);
-        }
-      }
-      if (sj.tipe === "outbound" && sj.tujuan_tipe !== "gudang") {
-        outboundByProject.set(pid, (outboundByProject.get(pid) || 0) + qty);
+      if (sj.tipe === "inbound" && isMosEligibleInbound(sj)) {
+        inboundMosByProject.set(pid, (inboundMosByProject.get(pid) || 0) + qty);
       }
     }
   }
 
   // MOS = inbound only (external vendor inbound)
   const mosByProject = inboundMosByProject;
+
+  // Saldo awal (import BOQ) per project — bagian dari definisi MOS Sistem (K5).
+  const openingBalanceByProject = new Map();
+  const openingBalanceRows = await prisma.boq_item.findMany({
+    where: { boq: { status: { in: ["draft", "aktif", "selesai"] } } },
+    select: { qty_mos: true, boq: { select: { cluster: { select: { project_id: true } } } } },
+  });
+  for (const row of openingBalanceRows) {
+    const pid = Number(row.boq?.cluster?.project_id || 0);
+    if (!pid) continue;
+    openingBalanceByProject.set(pid, (openingBalanceByProject.get(pid) || 0) + Number(row.qty_mos || 0));
+  }
 
   const affectedTiketIds = [];
 
@@ -2597,10 +2653,17 @@ const backfillReconciliation = async (actorId) => {
     }
 
     const pid = Number(tiket.project_id);
-    // TODO: backfill ini masih pakai proxy dari surat jalan untuk migrasi data lama.
-    // Untuk data baru, Used harus SELALU dari input manual laporan mitra, bukan dari fungsi ini.
-    const mos = Number(outboundByProject.get(pid) || 0);
-    const used = Number(inboundByProject.get(pid) || 0);
+    // MOS memakai definisi kanonik (K5) yang sama dengan tabel rekonsiliasi:
+    // inbound vendor eksternal (disetujui/diterima) + saldo awal import.
+    //
+    // Used TIDAK boleh memakai proxy surat jalan. Used selalu berasal dari input
+    // laporan mitra, sehingga untuk data migrasi nilainya 0 sampai mitra
+    // mengonfirmasi laporannya.
+    const mos = computeMosSistem(
+      mosByProject.get(pid) || 0,
+      openingBalanceByProject.get(pid) || 0
+    );
+    const used = 0;
 
     await prisma.laporan_mitra.create({
       data: {

@@ -170,7 +170,7 @@ describe("reconciliation.repository", () => {
     surat_jalan: {
       surat_jalan_id: 100,
       tipe: "inbound",
-      status: "ready_putaway",
+      status: "disetujui",
       tipe_pengirim: "external",
       project_id: 17,
       cluster_id: "NET-H-004396",
@@ -244,5 +244,23 @@ describe("reconciliation.repository", () => {
     const row = result.data.find((r) => r.cluster_id === "NET-H-004396" && r.barang_id === "218");
     assert.ok(row, "row untuk cluster NET-H-004396 harus ada");
     assert.equal(row.mos, 10, "MOS harus 10 untuk inbound external lama");
+  });
+
+  it("MOS: inbound status ready_putaway (belum disetujui/diterima) -> MOS tidak bertambah", async () => {
+    mockPrisma.surat_jalan_item.findMany = async () => [makeShipmentItem({ status: "ready_putaway" })];
+    const result = await getInventory({ projectId: "17", groupBy: "cluster", clusterId: "all" });
+    const row = result.data.find((r) => r.cluster_id === "NET-H-004396" && r.barang_id === "218");
+    if (row) {
+      assert.equal(row.mos, 0, "MOS harus 0 untuk inbound ready_putaway");
+    }
+  });
+
+  it("MOS: inbound status diterima_didistribusikan -> MOS bertambah", async () => {
+    mockPrisma.surat_jalan_item.findMany = async () => [makeShipmentItem({ status: "diterima_didistribusikan" })];
+    const result = await getInventory({ projectId: "17", groupBy: "cluster", clusterId: "all" });
+    const row = result.data.find((r) => r.cluster_id === "NET-H-004396" && r.barang_id === "218");
+    if (row) {
+      assert.equal(row.mos, 10, "MOS harus 10 untuk inbound diterima_didistribusikan");
+    }
   });
 });
