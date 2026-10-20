@@ -1798,6 +1798,7 @@ function DeleteConfirmModal({
   record,
   idField,
   idFields,
+  softDelete = false,
   onSuccess,
   onShowToast,
 }: {
@@ -1808,6 +1809,7 @@ function DeleteConfirmModal({
   record: GenericRecord | null;
   idField?: string;
   idFields?: string[];
+  softDelete?: boolean;
   onSuccess: () => void;
   onShowToast: (message: string, type: "success" | "error") => void;
 }) {
@@ -1883,21 +1885,29 @@ function DeleteConfirmModal({
     }
   }
 
+  const recordName = record
+    ? String(
+        record.nama_barang || record.nama || record.no_polisi || record.id || "",
+      )
+    : "";
+
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={`Hapus ${tabLabel}`}
+      title={softDelete ? "Hapus" : `Hapus ${tabLabel}`}
       widthClass="max-w-sm"
     >
       {isActivePersonnel ? (
         <div className="rounded-xl bg-amber-50 px-3 py-2.5 text-xs text-amber-700">
           Personil masih aktif! Harap nonaktifkan terlebih dahulu di Halaman
-          Operasional sebelum menghapus.
+          Operasional sebelum dihapus.
         </div>
       ) : (
         <p className="text-sm text-slate-600">
-          Yakin ingin menghapus ? Tindakan ini tidak dapat dibatalkan.
+          {softDelete
+            ? `Hapus ${recordName}? Data tidak akan ditampilkan lagi, riwayat transaksi tetap tersimpan.`
+            : "Yakin ingin menghapus ? Tindakan ini tidak dapat dibatalkan."}
         </p>
       )}
 
@@ -2721,7 +2731,7 @@ function ClusterAktifModal({
 
 function MasterDataPageContent() {
   const router = useRouter();
-  const { get } = useApi();
+  const { get, put } = useApi();
   const { logout, user } = useAuth();
 
   // -------------------------------------------------------------------------
@@ -2759,6 +2769,7 @@ function MasterDataPageContent() {
   const [clusterProjectFilter, setClusterProjectFilter] = useState("");
   const [clusterStatusFilter, setClusterStatusFilter] = useState("");
   const [supplierStatusFilter, setSupplierStatusFilter] = useState("");
+  const [isRestoring, setIsRestoring] = useState(false);
   const [warehouseOptions, setWarehouseOptions] = useState<
     Array<{ value: number; label: string }>
   >([]);
@@ -3267,6 +3278,52 @@ function MasterDataPageContent() {
     setClusterProjectFilter("");
     setSupplierStatusFilter("");
     setError(null);
+  }
+
+  // -------------------------------------------------------------------------
+  // Restore (aktifkan kembali) gudang
+  // -------------------------------------------------------------------------
+
+  async function handleRestore(record: GenericRecord | null) {
+    if (!record) return;
+
+    setIsRestoring(true);
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      let url: string;
+
+      if (activeTab === "warehouses") {
+        url = `/api/warehouses/${encodeURIComponent(
+          String(record.nama_gudang ?? record.id),
+        )}/restore`;
+      } else {
+        return;
+      }
+
+      const response = await put(new URL(url, baseUrl).toString(), {});
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(
+          result?.message ||
+            `Gagal mengaktifkan kembali ${activeConfig?.label.toLowerCase()}.`,
+        );
+      }
+
+      showToast(
+        `${activeConfig?.label} berhasil diaktifkan kembali.`,
+        "success",
+      );
+      fetchMasterData();
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.",
+        "error",
+      );
+    } finally {
+      setIsRestoring(false);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -3949,30 +4006,33 @@ function MasterDataPageContent() {
                                   (record as any).is_aktif === true ||
                                   rawStatus.toLowerCase() === "aktif";
 
-                                return (
+                                return isActive ? (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    title="Nonaktifkan personil di Halaman Operasional sebelum dihapus"
+                                    className="rounded-lg p-1.5 text-slate-300 opacity-30 cursor-not-allowed"
+                                  >
+                                    <Ban size={15} />
+                                  </button>
+                                ) : (
                                   <button
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      if (!isActive) {
-                                        setDeleteRecord(record);
-                                      }
+                                      setAktifRecord(record);
                                     }}
-                                    title={
-                                      isActive
-                                        ? "Nonaktifkan personil di Halaman Operasional sebelum menghapus"
-                                        : "Hapus permanen"
-                                    }
-                                    disabled={isActive}
-                                    className={`rounded-lg p-1.5 transition-colors ${isActive ? "text-slate-300 opacity-30 cursor-not-allowed" : "text-red-500 cursor-pointer hover:bg-rose-50 hover:text-red-700"}`}
+                                    title="Aktifkan kembali"
+                                    className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
                                   >
-                                    <Trash2 size={15} />
+                                    <RotateCcw size={15} />
                                   </button>
                                 );
                               })()}
 
                             {activeTab !== "personnel" &&
                               activeTab !== "suppliers" &&
+                              activeTab !== "warehouses" &&
                               canDelete && (
                                 <button
                                   type="button"
@@ -3986,6 +4046,46 @@ function MasterDataPageContent() {
                                   <Trash2 size={15} />
                                 </button>
                               )}
+
+                            {activeTab === "warehouses" &&
+                              canDelete &&
+                              (() => {
+                                const isActive = Boolean(
+                                  (record as any).is_aktif ?? true,
+                                );
+
+                                return (
+                                  <>
+                                    {isActive && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setDeleteRecord(record);
+                                        }}
+                                        title="Nonaktifkan"
+                                        className="rounded-lg p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600"
+                                      >
+                                        <Ban size={15} />
+                                      </button>
+                                    )}
+                                    {!isActive && (
+                                      <button
+                                        type="button"
+                                        disabled={isRestoring}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleRestore(record);
+                                        }}
+                                        title="Aktifkan kembali"
+                                        className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                                      >
+                                        <RotateCcw size={15} />
+                                      </button>
+                                    )}
+                                  </>
+                                );
+                              })()}
 
                             {activeTab === "suppliers" &&
                               canDelete &&
@@ -4175,6 +4275,7 @@ function MasterDataPageContent() {
             record={deleteRecord}
             idField={activeConfig.idField}
             idFields={activeConfig.idFields}
+            softDelete={activeTab === "items" || activeTab === "vehicles"}
             onSuccess={fetchMasterData}
             onShowToast={showToast}
           />

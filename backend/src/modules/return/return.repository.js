@@ -1075,6 +1075,9 @@ const getBaselineReference = async (filters = {}) => {
   const candidates = await prisma.laporan_mitra.findMany({
     where: {
       tiket_id: tiketIdNum,
+      // Laporan yang sudah dinonaktifkan (soft delete) tidak boleh dipakai sebagai
+      // baseline fisik untuk return.
+      is_aktif: true,
       OR: [
         { barang_id: barangIdNum },
         {

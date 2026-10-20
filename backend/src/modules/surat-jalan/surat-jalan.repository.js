@@ -757,6 +757,24 @@ const claimStatusTransit = async (id, dariStatus, keStatus, tx = prisma) => {
   return result.count === 1;
 };
 
+// Claim approval outbound secara atomik. Hanya satu request boleh mengubah
+// status dari draft_diajukan menjadi disetujui; request lain melihat count = 0.
+const claimApproveOutbound = async (id, dariStatus, tx = prisma) => {
+  const result = await tx.surat_jalan.updateMany({
+    where: {
+      surat_jalan_id: Number(id),
+      tipe: "outbound",
+      status: dariStatus,
+    },
+    data: {
+      status: "disetujui",
+      tanggal_disetujui: new Date(),
+    },
+  });
+
+  return result.count === 1;
+};
+
 const createTransitCheckpoint = async (data, tx = prisma) =>
   tx.surat_jalan_transit.create({ data, select: { transit_id: true, urutan: true } });
 
@@ -1158,6 +1176,39 @@ const deductOutboundStock = async (suratJalan, tx = prisma) => {
   }
 };
 
+// Ketersediaan stok untuk approve outbound (tidak memotong stok).
+// Stok outbound yang sebenarnya dipotong saat picking, jadi di tahap approve
+// fungsi ini hanya menjadi penjaga: surat jalan tidak boleh disetujui kalau
+// stok di gudang asal tidak mencukupi.
+const getStokTersediaOutbound = async (suratJalan, tx = prisma) => {
+  const gudangAsalId = Number(suratJalan.gudang_asal_id);
+
+  if (!gudangAsalId) {
+    throw new AppError(
+      "Gudang asal belum terisi pada surat jalan ini, ketersediaan stok tidak dapat diperiksa.",
+      400
+    );
+  }
+
+  const grouped = await tx.stok_gudang.groupBy({
+    by: ["barang_id", "kondisi"],
+    where: { gudang_id: gudangAsalId },
+    _sum: { qty: true },
+  });
+
+  const stokPerBarang = new Map();
+  for (const row of grouped) {
+    const key = `${row.barang_id}|${String(row.kondisi || "baik").toLowerCase()}`;
+    stokPerBarang.set(key, (stokPerBarang.get(key) || 0) + Number(row._sum.qty || 0));
+  }
+
+  return {
+    gudangAsalId,
+    gudangAsalNama: suratJalan.gudang_asal?.nama_gudang || `Gudang ID ${gudangAsalId}`,
+    stokPerBarang,
+  };
+};
+
 const reduceBoqAllocation = async (suratJalan, tx = prisma) => {
   if (!suratJalan.boq_id || !suratJalan.boq?.items?.length) {
     return;
@@ -1177,6 +1228,14 @@ const reduceBoqAllocation = async (suratJalan, tx = prisma) => {
       (bi) => Number(bi.barang_id) === Number(barangId)
     );
     if (!boqItem) continue;
+
+    const boqStatus = String(suratJalan.boq?.status || "").toLowerCase();
+    if (boqStatus !== "aktif" && boqStatus !== "selesai") {
+      console.warn(
+        `reduceBoqAllocation dilewati: surat_jalan_id=${suratJalan.surat_jalan_id}, boq_id=${suratJalan.boq_id}, status=${boqStatus}`
+      );
+      continue;
+    }
 
     const currentQty = Number(boqItem.qty_rencana || 0);
     const newQty = currentQty - totalQty;
@@ -1533,6 +1592,8 @@ module.exports = {
   findOutboundForDelivery,
   updateStatus,
   deductOutboundStock,
+  getStokTersediaOutbound,
+  claimApproveOutbound,
   addInboundStock,
   createApprovalLog,
   reduceBoqAllocation,

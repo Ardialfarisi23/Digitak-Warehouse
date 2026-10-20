@@ -163,6 +163,58 @@ describe("Rute laporan mitra - hak akses Admin", () => {
         assert.ok(namaControllerDipanggil().includes(ep.controller));
       });
     }
+
+    // K12: ekspektasi baru - Supervisor tidak bisa menginput laporan mitra.
+    it("Supervisor tidak bisa menginput upload Excel (POST /reconciliation/upload)", async () => {
+      const res = await call("POST", "/api/reports/reconciliation/upload", ROLE_SUPERVISOR, {});
+      assert.equal(res.status, 403);
+      assert.equal(res.body?.success, false);
+      assert.ok(!namaControllerDipanggil().includes("uploadReconciliationFile"));
+    });
+
+    it("Supervisor tidak bisa menginput manual (POST /reconciliation/confirm)", async () => {
+      const payloadManual = {
+        filename: "manual-input",
+        preview: [
+          {
+            kode_tiket: "T-001",
+            nama_barang: "ODP",
+            used: 1,
+            mos: 0,
+            tanggal_laporan: "2026-10-20",
+            pic_mitra: "Mitra uji",
+          },
+        ],
+        failed: [],
+      };
+      const res = await call("POST", "/api/reports/reconciliation/confirm", ROLE_SUPERVISOR, payloadManual);
+      assert.equal(res.status, 403);
+      assert.equal(res.body?.success, false);
+      assert.ok(!namaControllerDipanggil().includes("confirmReconciliationUpload"));
+    });
+  });
+
+  describe("Riwayat upload laporan mitra: Admin & Supervisor boleh baca, staf gudang ditolak", () => {
+    const endpoint = [
+      { method: "GET", path: "/api/reports/reconciliation-upload-logs", controller: "getReconciliationUploadLogs" },
+      { method: "GET", path: "/api/reports/reconciliation-upload-logs/filter-options", controller: "getReconciliationUploadLogFilterOptions" },
+      { method: "GET", path: "/api/reports/reconciliation-upload-logs/7/barang", controller: "getReconciliationUploadLogBarang" },
+    ];
+
+    for (const ep of endpoint) {
+      it(`${ep.method} ${ep.path} mengizinkan supervisor`, async () => {
+        const res = await call(ep.method, ep.path, ROLE_SUPERVISOR);
+        assert.equal(res.status, 200);
+        assert.ok(namaControllerDipanggil().includes(ep.controller));
+      });
+
+      it(`${ep.method} ${ep.path} menolak staf gudang dengan 403`, async () => {
+        const res = await call(ep.method, ep.path, ROLE_STAFF);
+        assert.equal(res.status, 403);
+        assert.equal(res.body?.success, false);
+        assert.ok(!namaControllerDipanggil().includes(ep.controller));
+      });
+    }
   });
 
   describe("BB-LMT-17: nonaktifkan laporan mitra hanya Admin", () => {

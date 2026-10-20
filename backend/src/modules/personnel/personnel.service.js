@@ -188,7 +188,7 @@ const update = async (personil_id, data, actor) => {
   });
 };
 
-const remove = async (personil_id, userId) => {
+const softDelete = async (personil_id, userId) => {
   const record = await personnelRepository.findByPersonilId(
     personil_id,
     {
@@ -205,12 +205,69 @@ const remove = async (personil_id, userId) => {
 
   if (record.is_aktif) {
     throw new AppError(
-      "Gagal menghapus! Personil harus dinonaktifkan terlebih dahulu di Halaman Operasional.",
+      "Nonaktifkan personil terlebih dahulu di Halaman Operasional sebelum menghapus.",
       400
     );
   }
 
-  return await personnelRepository.remove(personil_id);
+  const result = await personnelRepository.softDelete(personil_id, userId);
+
+  if (!result) {
+    throw new AppError(
+      "Personnel tidak ditemukan.",
+      404
+    );
+  }
+
+  await createAuditLog(
+    {
+      entityType: "personil",
+      entityId: Number(personil_id),
+      aksi: "soft_delete",
+      actorId: userId,
+      dataSebelum: null,
+      dataSesudah: { personil_id: Number(personil_id), is_aktif: false },
+    },
+    prisma
+  );
+
+  return result;
+};
+
+const restore = async (personil_id, userId) => {
+  const record = await personnelRepository.findByPersonilId(
+    personil_id,
+    {
+      includeInactive: true,
+    }
+  );
+
+  if (!record) {
+    throw new AppError(
+      "Personnel tidak ditemukan.",
+      404
+    );
+  }
+
+  const result = await personnelRepository.restore(personil_id, userId);
+
+  if (result.alreadyActive) {
+    throw new AppError("Personil sudah aktif.", 400);
+  }
+
+  await createAuditLog(
+    {
+      entityType: "personil",
+      entityId: Number(personil_id),
+      aksi: "restore",
+      actorId: userId,
+      dataSebelum: null,
+      dataSesudah: { personil_id: Number(personil_id), is_aktif: true },
+    },
+    prisma
+  );
+
+  return result;
 };
 
 module.exports = {
@@ -218,5 +275,6 @@ module.exports = {
   findAll,
   findByPersonilId,
   update,
-  remove,
+  softDelete,
+  restore,
 };

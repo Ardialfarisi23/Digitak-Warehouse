@@ -149,9 +149,18 @@ function buildItemPickSummary(picks = []) {
 }
 
 /**
+<<<<<<< HEAD
  * Menentukan apakah inbound SJ layak menambah MOS Sistem (K5).
  * - Hanya inbound (bukan outbound)
  * - Status approved & diterima: `disetujui` / `diterima_didistribusikan`
+=======
+ * Menentukan apakah inbound SJ layak menambah MOS.
+ * MOS naik saat barang masuk gudang dan di-putaway oleh staf, yaitu
+ * status diterima_didistribusikan (hasil putaway), BUKAN saat
+ * distribusi ke lapangan dikonfirmasi.
+ * - Hanya inbound (bukan outbound)
+ * - Status: diterima_didistribusikan (putaway staf selesai)
+>>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
  * - Memiliki project_id atau cluster_id (barang ditujukan untuk project/cluster)
  * - WAJIB tipe_pengirim === "external" (vendor/supplier, gudang_asal_id null)
  *
@@ -160,13 +169,18 @@ function buildItemPickSummary(picks = []) {
  */
 function isMosEligibleInbound(sj) {
   if (!sj || sj.tipe !== "inbound") return false;
+<<<<<<< HEAD
   if (!MOS_INBOUND_STATUSES.includes(sj.status)) return false;
+=======
+  if (sj.status !== "diterima_didistribusikan") return false;
+>>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
   if (!sj.project_id && !sj.cluster_id) return false;
   if (sj.tipe_pengirim !== "external") return false;
   return true;
 }
 
 /**
+<<<<<<< HEAD
  * Ambil baris terbaru per kunci (semantik snapshot laporan mitra).
  *
  * `laporan_mitra` berisi snapshot per tanggal laporan, bukan akumulasi. Satu
@@ -194,6 +208,26 @@ function pickLatestPerKey(rows, keyFn, dateFn) {
     if (rowTime >= currentTime) latest.set(key, row);
   }
   return latest;
+=======
+ * Bangun Map MOS per key dari daftar item surat jalan, menggunakan fungsi
+ * bersama untuk mode project dan cluster. Hanya inbound yang lulus
+ * isMosEligibleInbound (diterima_didistribusikan) yang dihitung.
+ * @param {Array} shipmentItems
+ * @param {Function} getKey(item) -> string|null
+ */
+function buildInboundMosMap(shipmentItems, getKey) {
+  const mosMap = new Map();
+  for (const item of shipmentItems) {
+    const sj = item && item.surat_jalan;
+    if (!sj || sj.tipe !== "inbound") continue;
+    if (!isMosEligibleInbound(sj)) continue;
+    const key = getKey(item);
+    if (!key) continue;
+    const qty = Number(item.qty || 0);
+    mosMap.set(key, (mosMap.get(key) || 0) + qty);
+  }
+  return mosMap;
+>>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
 }
 
 module.exports = {
@@ -207,5 +241,9 @@ module.exports = {
   buildPickSummary,
   buildItemPickSummary,
   isMosEligibleInbound,
+<<<<<<< HEAD
   pickLatestPerKey,
+=======
+  buildInboundMosMap,
+>>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
 };

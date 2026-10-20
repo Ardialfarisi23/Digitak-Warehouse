@@ -12,14 +12,20 @@ const {
 
 describe("reconciliation.utils - MOS helpers", () => {
   describe("isMosEligibleInbound", () => {
+<<<<<<< HEAD
     it("returns true for valid external inbound with project_id", () => {
       const sj = { tipe: "inbound", status: "disetujui", tipe_pengirim: "external", project_id: 17, cluster_id: "CL001", gudang_asal_id: null, gudang_tujuan_id: 5 };
       assert.equal(isMosEligibleInbound(sj), true);
+=======
+    it("returns false for inbound ready_putaway (belum di-putaway)", () => {
+      const sj = { tipe: "inbound", status: "ready_putaway", tipe_pengirim: "external", project_id: 17, cluster_id: "CL001", gudang_asal_id: null, gudang_tujuan_id: 5 };
+      assert.equal(isMosEligibleInbound(sj), false);
+>>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
     });
 
-    it("returns true for valid external inbound with cluster_id only", () => {
+    it("returns false for inbound disetujui (belum di-putaway)", () => {
       const sj = { tipe: "inbound", status: "disetujui", tipe_pengirim: "external", project_id: null, cluster_id: "CL001", gudang_asal_id: null, gudang_tujuan_id: 5 };
-      assert.equal(isMosEligibleInbound(sj), true);
+      assert.equal(isMosEligibleInbound(sj), false);
     });
 
     it("returns false for outbound", () => {

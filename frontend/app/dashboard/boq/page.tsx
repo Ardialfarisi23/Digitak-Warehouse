@@ -661,7 +661,7 @@ export default function BoqPage() {
     setForm({
       projectId: boq.projectId,
       area: boq.area,
-      cluster_id: selectedProject?.cluster_id || "",
+      cluster_id: boq.clusterId || boq.cluster?.cluster_id || selectedProject?.cluster_id || "",
       kecamatan: selectedProject?.kecamatan || "",
       desa_kelurahan: selectedProject?.desa_kelurahan || "",
       kota_kabupaten: selectedProject?.kota_kabupaten || "",
@@ -685,6 +685,33 @@ export default function BoqPage() {
     setSelectedQty("");
     setItemNotice(null);
     setModalOpen(true);
+
+    // Load clusters including non-active (draft) ones so the saved cluster still shows
+    if (boq.projectId) {
+      (async () => {
+        try {
+          const res = await get(`${API_BASE}/api/clusters?project_id=${boq.projectId}&status=all`);
+          const json = await res.json();
+          if (res.ok && Array.isArray(json?.data)) {
+            const list = json.data;
+            const cid = boq.clusterId || boq.cluster?.cluster_id;
+            const cName = boq.cluster?.nama_cluster;
+            if (cid && !list.some((c: any) => c.cluster_id === cid)) {
+              list.unshift({ cluster_id: cid, nama_cluster: cName || cid });
+            }
+            setClusters(list);
+          } else {
+            const cid = boq.clusterId || boq.cluster?.cluster_id;
+            setClusters(cid ? [{ cluster_id: cid, nama_cluster: boq.cluster?.nama_cluster || cid }] : []);
+            setToast({ message: "Gagal memuat daftar cluster.", type: "error" });
+          }
+        } catch {
+          const cid = boq.clusterId || boq.cluster?.cluster_id;
+          setClusters(cid ? [{ cluster_id: cid, nama_cluster: boq.cluster?.nama_cluster || cid }] : []);
+          setToast({ message: "Gagal memuat daftar cluster.", type: "error" });
+        }
+      })();
+    }
   }
 
   function openDetailModal(boq: Boq) {
@@ -1880,7 +1907,7 @@ async function handleUploadReference(file: File) {
                 <div>
                   <h3 className="text-base font-semibold text-slate-900">Detail BOQ</h3>
                   <p className="text-xs text-slate-500">
-                    {detailBoq.boqNumber} â€¢ {detailBoq.ticketNumber}
+                    {detailBoq.boqNumber}, {detailBoq.ticketNumber}
                   </p>
                 </div>
                 <button

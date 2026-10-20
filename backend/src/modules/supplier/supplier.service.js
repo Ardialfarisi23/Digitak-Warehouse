@@ -76,7 +76,24 @@ const softDelete = async (kode) => {
     throw new AppError("Supplier sudah dinonaktifkan.", 400);
   }
 
-  return await supplierRepository.softDelete(kode);
+  const result = await supplierRepository.softDelete(kode);
+
+  try {
+    await prisma.audit_log.create({
+      data: {
+        entity_type: "supplier",
+        entity_id: BigInt(record.supplier_id),
+        aksi: "soft_delete",
+        actor_id: BigInt(record.updated_by || 0),
+        data_sebelum: { is_aktif: true },
+        data_sesudah: { is_aktif: false },
+      },
+    });
+  } catch (auditErr) {
+    console.error("Gagal membuat audit log soft_delete supplier:", auditErr);
+  }
+
+  return result;
 };
 
 const restore = async (kode) => {
@@ -90,7 +107,24 @@ const restore = async (kode) => {
     throw new AppError("Supplier sudah aktif.", 400);
   }
 
-  return await supplierRepository.restore(kode);
+  const result = await supplierRepository.restore(kode);
+
+  try {
+    await prisma.audit_log.create({
+      data: {
+        entity_type: "supplier",
+        entity_id: BigInt(record.supplier_id),
+        aksi: "restore",
+        actor_id: BigInt(record.updated_by || 0),
+        data_sebelum: { is_aktif: false },
+        data_sesudah: { is_aktif: true },
+      },
+    });
+  } catch (auditErr) {
+    console.error("Gagal membuat audit log restore supplier:", auditErr);
+  }
+
+  return result;
 };
 
 module.exports = {

@@ -243,6 +243,7 @@ const boqDataWithMeta = {
     if (items.some((item) => item.itemCode && !item.barang_id)) {
       const barangs = await prisma.barang.findMany({
         where: {
+          is_aktif: true,
           kode_perangkat: {
             in: items.filter((item) => item.itemCode && !item.barang_id).map((item) => item.itemCode),
           },
@@ -491,6 +492,7 @@ const update = async (id, data, userId) => {
     if (items.some((item) => item.itemCode && !item.barang_id)) {
       const barangs = await prisma.barang.findMany({
         where: {
+          is_aktif: true,
           kode_perangkat: {
             in: items.filter((item) => item.itemCode && !item.barang_id).map((item) => item.itemCode),
           },
@@ -719,7 +721,17 @@ const updateStatus = async (id, status, userId) => {
         aksi: "update",
         actor_id: BigInt(Number(userId)),
         data_sebelum: { status: boq.status },
-        data_sesudah: { status: result.status, boq_id: Number(id) },
+        data_sesudah: {
+          status: result.status,
+          boq_id: Number(id),
+          ...(normalizedStatus === "aktif"
+            ? {
+                keterangan: "Aktivasi BOQ",
+                boq_number: boq.boq_number || null,
+                nama_cluster: boq.cluster?.nama_cluster || null,
+              }
+            : {}),
+        },
       },
     });
   } catch (auditErr) {

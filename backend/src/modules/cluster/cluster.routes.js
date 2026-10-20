@@ -10,8 +10,10 @@ const authorize = require("../../middlewares/role.middleware");
 
 const { createClusterSchema, updateClusterSchema } = require("./cluster.validation");
 
+// GET / dipakai form Surat Jalan staf untuk memilih cluster -> tetap terbuka untuk semua role.
+// GET /all hanya dipakai halaman Master Data (Admin & Supervisor).
 router.get("/", authenticate, clusterController.listByProject);
-router.get("/all", authenticate, clusterController.listAll);
+router.get("/all", authenticate, authorize("ADMIN", "SUPERVISOR"), clusterController.listAll);
 router.post(
   "/",
   authenticate,

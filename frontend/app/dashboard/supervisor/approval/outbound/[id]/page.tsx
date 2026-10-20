@@ -183,7 +183,9 @@ export default function SupervisorApprovalOutboundDetailPage() {
   const stockStatusByItemId = useMemo(() => {
     const statusMap: Record<number, StockStatusInfo> = {};
     const items = request?.items ?? [];
-    const stock = filteredStock;
+    // Pakil seluruh stok gudang (bukan hasil pencarian) supaya status
+    // kecukupan tidak berubah hanya karena supervisor mengetik di kotak cari.
+    const stock = warehouseStock;
 
     for (const item of items) {
       const itemId = Number(item.item_id);
@@ -216,7 +218,29 @@ export default function SupervisorApprovalOutboundDetailPage() {
     }
 
     return statusMap;
-  }, [request, filteredStock]);
+  }, [request, warehouseStock]);
+
+  // Item yang stoknya tidak mencukupi → approve outbound harus diblokir.
+  const itemStokKurang = useMemo(() => {
+    const items = request?.items ?? [];
+    return items
+      .map((item) => {
+        const info = stockStatusByItemId[Number(item.item_id)];
+        if (!info || info.status === "Cukup") return null;
+        return {
+          item_id: item.item_id,
+          nama_barang: item.barang?.nama_barang || "-",
+          qty: Number(item.qty || 0),
+          tersedia: info.availableQty,
+          status: info.status,
+        };
+      })
+      .filter((value): value is NonNullable<typeof value> => value !== null);
+  }, [request, stockStatusByItemId]);
+
+  // Penjaga stok hanya berlaku kalau data stok gudang berhasil dimuat.
+  const stokDimuat = !stockLoading && !stockError && gudangAsalId != null;
+  const approveDiblokirStok = stokDimuat && itemStokKurang.length > 0;
 
   useEffect(() => {
     let mounted = true;
@@ -336,7 +360,7 @@ export default function SupervisorApprovalOutboundDetailPage() {
         const err = await resp.json().catch(() => null);
         throw new Error(err?.message || "Gagal menyetujui outbound.");
       }
-      setToast({ message: "Surat Jalan berhasil disetujui & stok berhasil direservasi.", type: "success" });
+      setToast({ message: "Surat Jalan berhasil disetujui.", type: "success" });
       setTimeout(() => router.push("/dashboard/supervisor/approval"), 1500);
     } catch (error) {
       setToast({ message: (error as Error).message || "Gagal menyetujui outbound.", type: "error" });
@@ -446,9 +470,9 @@ export default function SupervisorApprovalOutboundDetailPage() {
     ) : null;
 
   return (
-    <div className="min-h-screen px-8 py-6">
-      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
+    <div className="mx-auto w-full max-w-[1280px] px-4 sm:px-6 lg:px-8 py-6">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <p className="text-sm font-semibold uppercase tracking-[0.24em] text-orange-500">
             Detail Form Persetujuan Outbound
           </p>
@@ -482,9 +506,9 @@ export default function SupervisorApprovalOutboundDetailPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start w-full">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start w-full">
         {/* PANEL KIRI: DETAIL & ITEM SURAT JALAN OUTBOUND */}
-        <div className="w-full max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <DetailSuratJalanDocument
             data={request as DetailSuratJalanData}
             variant="full"
@@ -544,7 +568,7 @@ export default function SupervisorApprovalOutboundDetailPage() {
               <p className="text-xs text-slate-500">Tidak ada stok barang di gudang ini.</p>
             </div>
           ) : (
-             <div className="max-h-[500px] overflow-y-auto space-y-2 pr-1">
+             <div className="max-h-[420px] overflow-y-auto space-y-2 pr-1">
                {stockByBarang.map((item) => (
                  <div key={item.barang_id} className="flex items-center justify-between rounded-xl border border-slate-200 p-3">
                    <div>
@@ -572,11 +596,23 @@ export default function SupervisorApprovalOutboundDetailPage() {
             <div className="space-y-3">
               <Button
                 onClick={handleApprove}
-                disabled={actionLoading}
-                className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
+                disabled={actionLoading || approveDiblokirStok}
+                className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {actionLoading ? "Memproses..." : "Setujui (Reservasi Stok)"}
+                {actionLoading ? "Memproses..." : "Setujui"}
               </Button>
+              {approveDiblokirStok && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                  <p className="font-semibold">Stok di gudang asal tidak mencukupi, approval diblokir:</p>
+                  <ul className="mt-1 list-disc pl-4">
+                    {itemStokKurang.map((item) => (
+                      <li key={item.item_id}>
+                        {item.nama_barang} — butuh {item.qty}, tersedia {item.tersedia} ({item.status})
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <Button
                 variant="outline"
                 onClick={() => setShowRejectBox(true)}

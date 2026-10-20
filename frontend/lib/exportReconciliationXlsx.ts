@@ -429,7 +429,7 @@ export async function exportReconciliationXlsx(records: ReconciliationRecord[]) 
     const notes = [
       "BoQ Plan : Jumlah material yang direncanakan sejak awal untuk cluster ini.",
       "Additional : Tambahan material yang diajukan karena kekurangan dari rencana BOQ awal, setelah disetujui dan ditambahkan resmi ke sistem.",
-      "MOS (Material On Site) : Material yang sudah dikirim dan terkonfirmasi diterima di lapangan.",
+      "MOS (Material On Site) : Barang inbound yang sudah di-putaway staf (diterima_didistribusikan) + saldo awal import.",
       "Used : Jumlah material yang sudah dipasang/digunakan di lapangan, berdasarkan laporan harian dari mitra.",
       "Remains : MOS - (BoQ Plan + Additional). Menghitung sisa pengiriman, bukan pemakaian di lapangan.",
     ];

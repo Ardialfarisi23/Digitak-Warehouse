@@ -120,7 +120,7 @@ const getFilterOptions = async (actor = null) => {
         some: {
           boqs: {
             some: {
-              status: { in: [boq_status.draft, boq_status.aktif, boq_status.selesai] },
+              status: { in: [boq_status.aktif, boq_status.selesai] },
               source: "top_down",
             },
           },
@@ -134,7 +134,7 @@ const getFilterOptions = async (actor = null) => {
         where: {
           boqs: {
             some: {
-              status: { in: [boq_status.draft, boq_status.aktif, boq_status.selesai] },
+              status: { in: [boq_status.aktif, boq_status.selesai] },
               source: "top_down",
             },
           },
@@ -169,7 +169,7 @@ const saveRemainsNote = async (payload, user) => {
   const project = await prisma.project.findUnique({ where: { project_id: BigInt(project_id) } });
   if (!project) throw new AppError("Project tidak ditemukan", 404);
 
-  const barang = await prisma.barang.findUnique({ where: { barang_id: BigInt(barang_id) } });
+  const barang = await prisma.barang.findUnique({ where: { barang_id: BigInt(barang_id), is_aktif: true } });
   if (!barang) throw new AppError("Barang tidak ditemukan", 404);
 
   if (cluster_id) {

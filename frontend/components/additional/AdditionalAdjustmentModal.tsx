@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { X, Loader2, History } from "lucide-react";
-import { useApi } from "@/lib/api";
+import { useApi, API_BASE } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
 type ProjectOption = [string, string];
@@ -86,7 +86,7 @@ export function AdditionalAdjustmentModal({
     });
     if (clusterId) params.set("cluster_id", clusterId);
 
-    get(`/api/additional-adjustments?${params.toString()}`)
+    get(`${API_BASE}/api/additional-adjustments?${params.toString()}`)
       .then(async (res) => {
         if (!res.ok) {
           const json = await res.clone().json().catch(() => null);
@@ -154,7 +154,7 @@ export function AdditionalAdjustmentModal({
       };
       if (clusterId) body.cluster_id = clusterId;
 
-      const res = await post("/api/additional-adjustments", body);
+      const res = await post(`${API_BASE}/api/additional-adjustments`, body);
       const json = await res.json();
       if (!res.ok) {
         throw new Error(json?.message || "Gagal menyimpan penyesuaian additional.");

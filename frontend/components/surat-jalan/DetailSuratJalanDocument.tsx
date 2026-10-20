@@ -61,9 +61,8 @@ interface InfoRowProps {
 
 function InfoRow({ label, value }: InfoRowProps) {
   return (
-    <div className="grid grid-cols-[7rem_auto_1fr] gap-x-2 items-start leading-snug text-gray-900">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-2 gap-y-1 items-start leading-snug text-gray-900">
       <span className="text-xs text-gray-500 sm:text-sm sm:font-medium sm:text-gray-900">{label}</span>
-      <span className="text-xs text-gray-500 sm:text-sm sm:font-medium sm:text-gray-900">:</span>
       <span className="min-w-0 break-words overflow-wrap-break-word font-semibold sm:font-normal">{value}</span>
     </div>
   );
@@ -235,18 +234,18 @@ export function DetailSuratJalanDocument({
 
       {/* Info grid — responsive */}
       <div className="mb-8 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 md:gap-x-8 text-xs sm:text-sm print:gap-x-8 print:text-xs">
-        <div className="space-y-3 sm:border-r sm:border-gray-100 sm:pr-4 print:border-0 print:pr-0">
+        <div className="space-y-3">
            <InfoRow 
              label="No Surat Jalan" 
-             value={<span className="break-all font-semibold">{formatNomorSuratWithWbr(tampilkan(data.nomor_surat_jalan))}</span>} 
+             value={<span className="min-w-0 break-words font-semibold">{formatNomorSuratWithWbr(tampilkan(data.nomor_surat_jalan))}</span>} 
            />
           <InfoRow label="Tipe" value={tipeLabel} />
           <InfoRow label="Project" value={namaProject} />
            <InfoRow
              label="Gudang Asal"
              value={
-               <span className="flex flex-nowrap items-center gap-2">
-                 {pengirimLabel}
+               <span className="flex flex-wrap items-center gap-2 min-w-0 break-words">
+                 <span className="min-w-0 break-words">{pengirimLabel}</span>
                  {pengirimBadge}
                </span>
              }
@@ -257,8 +256,8 @@ export function DetailSuratJalanDocument({
            <InfoRow
              label="Gudang Tujuan"
              value={
-               <span className="flex flex-nowrap items-center gap-2">
-                 {tujuanLabel}
+               <span className="flex flex-wrap items-center gap-2 min-w-0 break-words">
+                 <span className="min-w-0 break-words">{tujuanLabel}</span>
                  {tujuanBadge}
                </span>
              }

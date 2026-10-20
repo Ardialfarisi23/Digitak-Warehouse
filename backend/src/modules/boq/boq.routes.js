@@ -22,15 +22,20 @@ router.post(
   boqController.create
 );
 
+// Endpoint di bawah dipakai form Surat Jalan (staf) untuk memilih BOQ -> tetap terbuka untuk semua role:
+//   GET /            (BoqPicker.tsx, staff/inbound/new, staff/outbound/new)
+//   GET /items       (staff/outbound/new - item BOQ)
+//   GET /:id         (staff/inbound/new - detail BOQ)
+// Endpoint baca khusus management Cluster & BOQ -> Admin & Supervisor saja.
 router.get("/", authenticate, boqController.findAll);
-router.get("/stats", authenticate, boqController.getStats);
-router.get("/areas", authenticate, boqController.getAreas);
+router.get("/stats", authenticate, authorize("ADMIN", "SUPERVISOR"), boqController.getStats);
+router.get("/areas", authenticate, authorize("ADMIN", "SUPERVISOR"), boqController.getAreas);
 router.get("/items", authenticate, boqController.getItems);
-router.get("/check-ticket", authenticate, boqController.checkTicketAvailability);
-router.get("/export", authenticate, boqController.exportBoqs);
-router.get("/export-matrix", authenticate, boqController.exportMatrixExcel);
+router.get("/check-ticket", authenticate, authorize("ADMIN", "SUPERVISOR"), boqController.checkTicketAvailability);
+router.get("/export", authenticate, authorize("ADMIN", "SUPERVISOR"), boqController.exportBoqs);
+router.get("/export-matrix", authenticate, authorize("ADMIN", "SUPERVISOR"), boqController.exportMatrixExcel);
 router.get("/:id", authenticate, boqController.findById);
-router.get("/:id/summary", authenticate, boqController.getSummary);
+router.get("/:id/summary", authenticate, authorize("ADMIN", "SUPERVISOR"), boqController.getSummary);
 
 router.put(
   "/:id",

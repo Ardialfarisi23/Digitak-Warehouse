@@ -21,6 +21,7 @@ model user_account {
   audit_logs                      audit_log[]
   created_barangs                 barang[]                        @relation("barang_created_by")
   updated_barangs                 barang[]                        @relation("barang_updated_by")
+  deleted_barangs                 barang[]                        @relation("barang_deleted_by")
   created_boqs                    boq[]                           @relation("boq_created_by")
   boq_diaktifkan_oleh             boq[]                           @relation("boq_diaktifkan")
   updated_boqs                    boq[]                           @relation("boq_updated_by")
@@ -28,6 +29,7 @@ model user_account {
   updated_gudangs                 gudang[]                        @relation("gudang_updated_by")
   created_kendaraans              kendaraan[]                     @relation("kendaraan_created_by")
   updated_kendaraans              kendaraan[]                     @relation("kendaraan_updated_by")
+  deleted_kendaraans            kendaraan[]                     @relation("kendaraan_deleted_by")
   personil_creator                personil[]                      @relation("personil_created_by")
   personil_updater                personil[]                      @relation("personil_updated_by")
   personils                       personil?
@@ -135,14 +137,19 @@ model kendaraan {
   updated_at       DateTime      @default(now())
   created_by       BigInt
   updated_by       BigInt
+  is_aktif         Boolean       @default(true)
+  deleted_at       DateTime?
+  deleted_by       BigInt?
   gudang_id        BigInt?
   gudang           gudang?       @relation("kendaraan_gudang", fields: [gudang_id], references: [gudang_id])
   creator          user_account  @relation("kendaraan_created_by", fields: [created_by], references: [user_id])
   updater          user_account  @relation("kendaraan_updated_by", fields: [updated_by], references: [user_id])
+  deleter          user_account? @relation("kendaraan_deleted_by", fields: [deleted_by], references: [user_id], onDelete: SetNull)
   surat_jalans     surat_jalan[]
 
   @@index([no_polisi])
   @@index([gudang_id])
+  @@index([is_aktif])
 }
 
 model project {
@@ -349,10 +356,14 @@ model barang {
   updated_at                    DateTime                       @default(now())
   created_by                    BigInt
   updated_by                    BigInt
+  is_aktif                      Boolean                        @default(true)
+  deleted_at                    DateTime?
+  deleted_by                    BigInt?
   creator                       user_account                   @relation("barang_created_by", fields: [created_by], references: [user_id])
   kategori                      kategori_barang                @relation(fields: [kategori_id], references: [kategori_id])
   satuan_default                satuan                         @relation("BarangSatuanDefault", fields: [satuan_default_id], references: [satuan_id])
   updater                       user_account                   @relation("barang_updated_by", fields: [updated_by], references: [user_id])
+  deleter                       user_account?                  @relation("barang_deleted_by", fields: [deleted_by], references: [user_id], onDelete: SetNull)
   boq_items                     boq_item[]
   permintaan_boqs               permintaan_boq[]
   stok_gudangs                  stok_gudang[]
@@ -366,6 +377,7 @@ model barang {
 
   @@index([kode_perangkat])
   @@index([kategori_id])
+  @@index([is_aktif])
 }
 
 model tiket_material {

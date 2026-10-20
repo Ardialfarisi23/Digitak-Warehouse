@@ -55,7 +55,8 @@ const readReconciliationRow = (row) => {
     kodeTiket: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Kode Tiket"]),
     projectName: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Project Name"]),
     namaBarang: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Nama Barang"]),
-    used: usedRaw === null ? 0 : Number(usedRaw),
+    // Nilai Used disimpan apa adanya; validasi angka dilakukan di report-row-validator.
+    used: usedRaw,
     kondisi: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Kondisi"]),
     catatan: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Keterangan"]),
   };
