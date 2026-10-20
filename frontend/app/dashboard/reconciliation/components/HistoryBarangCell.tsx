@@ -1,13 +1,8 @@
-"use client";
+﻿"use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 
 type Raw = Record<string, unknown>;
 
@@ -50,11 +45,13 @@ export function HistoryBarangCell({
   preview,
   loadBarang,
 }: Props) {
+  const [open, setOpen] = useState(false);
   const [state, setState] = useState<"idle" | "loading" | "error" | "ready">(
     "idle"
   );
   const [items, setItems] = useState<BarangItem[]>([]);
   const cache = useRef<BarangItem[] | null>(null);
+  const box = useRef<HTMLDivElement | null>(null);
 
   const fetchItems = useCallback(async () => {
     if (cache.current) {
@@ -74,6 +71,22 @@ export function HistoryBarangCell({
     }
   }, [loadBarang, logId]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   if (!jumlahBarang || jumlahBarang <= 0) {
     return <span className="text-muted-foreground">-</span>;
   }
@@ -83,59 +96,63 @@ export function HistoryBarangCell({
     .map((p) => str(p.nama_barang ?? p.nama ?? p.namaBarang));
   const extra = jumlahBarang - 2;
 
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next) void fetchItems();
+  };
+
   return (
-    <div className="flex max-w-[220px] flex-col gap-1">
+    <div ref={box} className="relative flex max-w-[220px] flex-col gap-1">
       {names.map((n, i) => (
         <span key={i} title={n} className="truncate text-sm">
           {n}
         </span>
       ))}
       {extra > 0 && (
-        <Popover onOpenChange={(open) => open && void fetchItems()}>
-          <PopoverTrigger asChild>
-            <button type="button" className="w-fit">
-              <Badge variant="secondary" className="cursor-pointer">
-                +{extra} lainnya
-              </Badge>
-            </button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-80 p-3">
-            <p className="mb-2 text-sm font-medium">
-              Daftar barang ({jumlahBarang})
-            </p>
-            {state === "loading" && (
-              <p className="text-sm text-muted-foreground">Memuat...</p>
-            )}
-            {state === "error" && (
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm text-destructive">Gagal memuat barang.</p>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void fetchItems()}
-                >
-                  Coba lagi
-                </Button>
-              </div>
-            )}
-            {state === "ready" && items.length === 0 && (
-              <p className="text-sm text-muted-foreground">Tidak ada data.</p>
-            )}
-            {state === "ready" && items.length > 0 && (
-              <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
-                {items.map((it, i) => (
-                  <li key={i} className="text-sm">
-                    <div className="font-medium">{it.nama}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {it.kode} • {it.qty} {it.satuan}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </PopoverContent>
-        </Popover>
+        <button type="button" onClick={toggle} className="w-fit">
+          <Badge variant="subtle" className="cursor-pointer">
+            +{extra} lainnya
+          </Badge>
+        </button>
+      )}
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-80 rounded-lg border bg-white p-3 text-left shadow-lg">
+          <p className="mb-2 text-sm font-medium">
+            Daftar barang ({jumlahBarang})
+          </p>
+          {state === "loading" && (
+            <p className="text-sm text-muted-foreground">Memuat...</p>
+          )}
+          {state === "error" && (
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm text-destructive">Gagal memuat barang.</p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void fetchItems()}
+              >
+                Coba lagi
+              </Button>
+            </div>
+          )}
+          {state === "ready" && items.length === 0 && (
+            <p className="text-sm text-muted-foreground">Tidak ada data.</p>
+          )}
+          {state === "ready" && items.length > 0 && (
+            <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
+              {items.map((it, i) => (
+                <li key={i} className="text-sm">
+                  <div className="font-medium">{it.nama}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {it.kode} â€¢ {it.qty} {it.satuan}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );
