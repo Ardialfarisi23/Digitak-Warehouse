@@ -1794,7 +1794,7 @@ const getHardwareReconciliation = async (filters = {}) => {
 
   const boqRecords = await prisma.boq.findMany({
     where: {
-      status: { in: ["draft", "aktif", "selesai"] },
+      status: { in: ["aktif", "selesai"] },
       ...(projectId !== "all" && {
         cluster: { project_id: BigInt(projectId) },
       }),
@@ -1993,7 +1993,7 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
         },
       },
       boq: {
-        where: { status: { in: ["draft", "aktif", "selesai"] } },
+        where: { status: { in: ["aktif", "selesai"] } },
         include: {
           items: {
             select: {
@@ -2186,7 +2186,7 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
 
   const whereBoq = {
     boq: {
-      status: { in: ["draft", "aktif", "selesai"] },
+      status: { in: ["aktif", "selesai"] },
       ...(projectId !== "all" ? { tiket: { project_id: BigInt(projectId) } } : {}),
     },
   };
@@ -2717,6 +2717,10 @@ const getReconciliationUploadLogs = async (filters = {}) => {
     actorId = "all",
     startDate,
     endDate,
+    status = "",
+    clusterId = "",
+    projectName = "",
+    jenisInput = "",
     page = 1,
     limit = 20,
   } = filters;
@@ -2724,14 +2728,24 @@ const getReconciliationUploadLogs = async (filters = {}) => {
   const where = {};
 
   if (search.trim()) {
-    const s = search.trim();
-    const matchedAksi = AUDIT_AKSI_VALUES.filter((aksi) =>
-      aksi.toLowerCase().includes(s.toLowerCase())
-    );
+    const s = search.trim().slice(0, 100);
     where.OR = [
-      { entity_type: { contains: s, mode: "insensitive" } },
+      { filename: { contains: s, mode: "insensitive" } },
       { actor: { nama: { contains: s, mode: "insensitive" } } },
-      ...(matchedAksi.length > 0 ? [{ aksi: { in: matchedAksi } }] : []),
+      {
+        details: {
+          some: {
+            OR: [
+              { kode_tiket: { contains: s, mode: "insensitive" } },
+              { project_nama: { contains: s, mode: "insensitive" } },
+              { nama_barang: { contains: s, mode: "insensitive" } },
+              { kode_barang: { contains: s, mode: "insensitive" } },
+              { barang: { nama_barang: { contains: s, mode: "insensitive" } } },
+              { barang: { kode_perangkat: { contains: s, mode: "insensitive" } } },
+            ],
+          },
+        },
+      },
     ];
   }
 
@@ -2741,10 +2755,21 @@ const getReconciliationUploadLogs = async (filters = {}) => {
 
   if (startDate || endDate) {
     where.uploaded_at = {};
-    if (startDate) where.uploaded_at.gte = new Date(startDate);
-    if (endDate) where.uploaded_at.lte = new Date(endDate + "T23:59:59");
+    if (startDate) where.uploaded_at.gte = new Date(startDate + "T00:00:00+07:00");
+    if (endDate) where.uploaded_at.lte = new Date(endDate + "T23:59:59+07:00");
   }
 
+  if (status === "berhasil") { where.success_rows = { gt: 0 }; where.failed_rows = 0; }
+  if (status === "sebagian_gagal") { where.failed_rows = { gt: 0 }; }
+  if (status === "draft") { where.success_rows = 0; where.failed_rows = 0; }
+  if (clusterId) {
+    const tickets = await prisma.tiket_material.findMany({ where: { boq: { cluster_id: BigInt(clusterId) } }, select: { kode_tiket: true } });
+    const codes = tickets.map((t) => t.kode_tiket);
+    where.details = { some: { kode_tiket: { in: codes } } };
+  }
+  if (jenisInput === "manual") where.filename = "manual-input";
+  if (jenisInput === "excel") where.filename = { not: "manual-input" };
+  if (projectName) where.details = { some: { project_nama: { equals: projectName, mode: "insensitive" } } };
   const skip = (Number(page) - 1) * Number(limit);
 
   const [data, total] = await Promise.all([
@@ -2764,6 +2789,15 @@ const getReconciliationUploadLogs = async (filters = {}) => {
         },
         details: {
           orderBy: { detail_id: "asc" },
+          include: {
+            barang: {
+              select: {
+                nama_barang: true,
+                kode_perangkat: true,
+                satuan_default: { select: { kode_satuan: true } },
+              },
+            },
+          },
         },
       },
     }),
@@ -2781,14 +2815,22 @@ const getReconciliationUploadLogs = async (filters = {}) => {
     total_rows: log.total_rows,
     success_rows: log.success_rows,
     failed_rows: log.failed_rows,
+    jumlah_barang: (log.details || []).length,
+    barang_preview: (log.details || []).slice(0, 2).map((d) => ({
+      nama_barang: d.nama_barang || d.barang?.nama_barang || null,
+      kode_barang: d.kode_barang || d.barang?.kode_perangkat || null,
+    })),
     details: log.details.map((d) => ({
-      detail_id: String(d.detail_id),
-      kode_tiket: d.kode_tiket,
-      mos: d.mos ? Number(d.mos) : 0,
-      used: d.used ? Number(d.used) : 0,
-      status: d.status,
-      reason: d.reason,
-      project_nama: d.project_nama || null,
+       detail_id: String(d.detail_id),
+       kode_tiket: d.kode_tiket,
+       mos: d.mos ? Number(d.mos) : 0,
+       used: d.used ? Number(d.used) : 0,
+       status: d.status,
+       reason: d.reason,
+       project_nama: d.project_nama || null,
+       nama_barang: d.nama_barang || d.barang?.nama_barang || null,
+       kode_barang: d.kode_barang || d.barang?.kode_perangkat || null,
+       satuan: d.barang?.satuan_default?.kode_satuan || null,
     })),
   }));
 
@@ -2835,6 +2877,44 @@ const getReconciliationUploadLogs = async (filters = {}) => {
   };
 };
 
+const getReconciliationUploadLogBarang = async (uploadId) => {
+  const log = await prisma.reconciliation_upload_log.findUnique({
+    where: { upload_id: BigInt(uploadId) },
+    select: {
+      details: {
+        orderBy: { detail_id: "asc" },
+        select: {
+          detail_id: true,
+          nama_barang: true,
+          kode_barang: true,
+          used: true,
+          status: true,
+          barang: { select: { nama_barang: true, kode_perangkat: true, satuan_default: { select: { kode_satuan: true } } } },
+        },
+      },
+    },
+  });
+  if (!log) return null;
+  return log.details.map((d) => ({
+    detail_id: String(d.detail_id),
+    nama_barang: d.nama_barang || d.barang?.nama_barang || null,
+    kode_barang: d.kode_barang || d.barang?.kode_perangkat || null,
+    qty: d.used ? Number(d.used) : 0,
+    satuan: d.barang?.satuan_default?.kode_satuan || null,
+    status_baris: d.status,
+  }));
+};
+
+const getReconciliationUploadLogFilterOptions = async () => {
+  const logs = await prisma.reconciliation_upload_log.findMany({
+    select: { uploaded_by: true, actor: { select: { nama: true } }, details: { select: { project_nama: true, kode_tiket: true } } },
+  });
+  const projects = [...new Set(logs.flatMap((l) => l.details.map((d) => d.project_nama).filter(Boolean)))];
+  const actors = [...new Map(logs.map((l) => [String(l.uploaded_by), l.actor?.nama || "-"])).entries()].map(([id, nama]) => ({ id, nama }));
+  const clusters = await prisma.cluster.findMany({ select: { cluster_id: true, nama_cluster: true } });
+  return { statuses: ["berhasil", "sebagian_gagal", "draft"], clusters: clusters.map((c) => ({ id: String(c.cluster_id), nama: c.nama_cluster })), projects: projects.map((p) => ({ id: p, nama: p })), actors };
+};
+
 module.exports = {
   getStockHistory,
   getStockHistoryForExport,
@@ -2847,6 +2927,8 @@ module.exports = {
   getZoneUtilization,
   backfillReconciliation,
   getReconciliationUploadLogs,
+  getReconciliationUploadLogBarang,
+  getReconciliationUploadLogFilterOptions,
   enrichUploadLogs,
   buildTicketInfoMap,
 };

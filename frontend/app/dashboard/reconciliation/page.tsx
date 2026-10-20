@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   Search,
   PackageCheck,
@@ -34,6 +34,7 @@ import { exportReconciliationXlsx } from "@/lib/exportReconciliationXlsx";
 import { AdditionalAdjustmentModal } from "@/components/additional/AdditionalAdjustmentModal";
 import { RemainsNoteForm } from "@/components/reconciliation/RemainsNoteForm";
 import { RemainsNoteBadge } from "@/components/reconciliation/RemainsNoteBadge";
+import { LaporanMitraTable } from "@/components/reconciliation/LaporanMitraTable";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -43,6 +44,27 @@ const RECONCILIATION_ENDPOINT =
 
 const FILTER_OPTIONS_ENDPOINT =
   `${API_BASE}/api/reconciliation/filter-options`;
+
+// Tanggal laporan maksimal hari ini (tidak boleh di masa depan).
+// Memakai tanggal lokal (bukan UTC) agar sesuai dengan aturan server.
+const formatLocalDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const TODAY = formatLocalDate(new Date());
+
+// Pilihan kondisi barang yang sah (sesuai enum kondisi_barang).
+const KONDISI_OPTIONS = [
+  { value: "", label: "Kondisi (opsional)" },
+  { value: "baik", label: "Baik" },
+  { value: "rusak_ringan", label: "Rusak Ringan" },
+  { value: "rusak_berat", label: "Rusak Berat" },
+  { value: "tidak_sesuai_spek", label: "Tidak Sesuai Spek" },
+  { value: "doa", label: "Doa" },
+];
 
 interface ReconciliationRecord {
   id: string;
@@ -178,6 +200,9 @@ function renderMultiValue(values?: string[]) {
 export default function ReconciliationInventoryPage() {
   const { user } = useAuth();
   const { get, post } = useApi();
+
+  // Input laporan mitra (upload Excel + input manual) hanya boleh dilakukan Admin.
+  const isAdmin = mapRole(user?.role) === "admin";
 
   const { showDeactivatedModal, handleReturnToLogin } = useAccountStatusGuard();
 
@@ -319,11 +344,12 @@ export default function ReconciliationInventoryPage() {
     return params;
   }, [selectedProjectId, selectedClusterId]);
   const [exporting, setExporting] = useState(false);
-  const [mitraReportMeta, setMitraReportMeta] = useState({ tanggal_laporan: new Date().toISOString().slice(0, 10), pic_mitra: "" });
+  const [mitraReportMeta, setMitraReportMeta] = useState({ tanggal_laporan: TODAY, pic_mitra: "" });
 
-  const [reconcTab, setReconcTab] = useState<"inventory" | "history">("inventory");
+  const [reconcTab, setReconcTab] = useState<"inventory" | "history" | "laporan-mitra">("inventory");
   const [historyData, setHistoryData] = useState<ReconciliationUploadLog[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyTotalPages, setHistoryTotalPages] = useState(1);
@@ -510,7 +536,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
       const params = new URLSearchParams();
       params.set("page", String(historyPage));
       params.set("limit", "20");
-      if (historyActor) params.set("actorId", historyActor);
+      if (historySearch) params.set("search", historySearch);
       if (historyStartDate) params.set("startDate", historyStartDate);
       if (historyEndDate) params.set("endDate", historyEndDate);
 
@@ -568,12 +594,19 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
 
   const handleMitraUpload = async () => {
     if (!mitraFile) return;
+    if (mitraReportMeta.tanggal_laporan.trim() > TODAY) {
+      setMitraError("Tanggal Laporan tidak boleh melebihi hari ini.");
+      return;
+    }
     setMitraLoading(true);
     setMitraError(null);
     setMitraPreview(null);
     try {
       const formData = new FormData();
       formData.append("file", mitraFile);
+      // Tanggal & PIC mitra ikut dikirim agar backend bisa menolak duplikat sejak preview.
+      formData.append("tanggal_laporan", mitraReportMeta.tanggal_laporan);
+      formData.append("pic_mitra", mitraReportMeta.pic_mitra);
 
       const res = await post(`${API_BASE}/api/reports/reconciliation/upload`, formData);
       const json = await res.json();
@@ -597,6 +630,10 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
 
     if (!mitraReportMeta.tanggal_laporan.trim()) {
       setMitraError("Tanggal Laporan wajib diisi.");
+      return;
+    }
+    if (mitraReportMeta.tanggal_laporan.trim() > TODAY) {
+      setMitraError("Tanggal Laporan tidak boleh melebihi hari ini.");
       return;
     }
     if (!mitraReportMeta.pic_mitra.trim()) {
@@ -624,8 +661,9 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
         setMitraError("Setiap item harus memilih Barang dari daftar BOQ.");
         return;
       }
-      if (Number(row.used) <= 0) {
-        setMitraError("Setiap item harus memiliki Qty Used > 0.");
+      const usedValue = Number(row.used);
+      if (row.used.trim() === "" || !Number.isFinite(usedValue) || usedValue < 0) {
+        setMitraError("Setiap item harus memiliki Qty Used berupa angka dan tidak boleh negatif.");
         return;
       }
     }
@@ -727,6 +765,10 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
   };
 
   const openMitraModal = () => {
+    if (!isAdmin) {
+      setToast({ message: "Hanya Admin yang dapat 입력 laporan mitra.", type: "error" });
+      return;
+    }
     setShowMitraModal(true);
     setMitraFlow("select");
     setMitraFile(null);
@@ -741,7 +783,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
     setSelectedKodeTiket("");
     setClusterBoqs([]);
     setClusterBoqsError(null);
-    setMitraReportMeta({ tanggal_laporan: new Date().toISOString().slice(0, 10), pic_mitra: "" });
+    setMitraReportMeta({ tanggal_laporan: TODAY, pic_mitra: "" });
   };
 
   const closeMitraModal = () => {
@@ -759,7 +801,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
     setSelectedKodeTiket("");
     setClusterBoqs([]);
     setClusterBoqsError(null);
-    setMitraReportMeta({ tanggal_laporan: new Date().toISOString().slice(0, 10), pic_mitra: "" });
+    setMitraReportMeta({ tanggal_laporan: TODAY, pic_mitra: "" });
   };
 
   useEffect(() => {
@@ -776,7 +818,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
     if (reconcTab === "history") {
       fetchHistory();
     }
-  }, [reconcTab, historyPage, historyActor, historyStartDate, historyEndDate]);
+  }, [reconcTab, historyPage, historyActor, historyStartDate, historyEndDate, historySearch]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -952,6 +994,16 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
             <FileClock size={16} />
             Riwayat Input Laporan Mitra
           </button>
+          <button
+            type="button"
+            onClick={() => setReconcTab("laporan-mitra")}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 border-b-2 px-3 py-2 text-sm sm:px-4 sm:py-2.5 font-medium transition-colors whitespace-normal leading-tight min-h-11 text-center ${
+              reconcTab === "laporan-mitra" ? "border-orange-500 text-orange-600" : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <FileText size={16} />
+            Data Laporan Mitra
+          </button>
         </div>
 
         {reconcTab === "inventory" && (
@@ -1090,14 +1142,16 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                   {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
                   {exporting ? "Mengekspor..." : "Ekspor"}
                 </button>
-                <button
-                  type="button"
-                  onClick={openMitraModal}
-                  className="w-full sm:w-auto min-h-11 flex items-center justify-center gap-2 rounded-full bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 whitespace-nowrap"
-                >
-                  <Upload size={16} />
-                  Input laporan mitra
-                </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={openMitraModal}
+                    className="w-full sm:w-auto min-h-11 flex items-center justify-center gap-2 rounded-full bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/20 hover:bg-orange-600 whitespace-nowrap"
+                  >
+                    <Upload size={16} />
+                    Input laporan mitra
+                  </button>
+                )}
 </div>
 </div>
         </div>
@@ -1595,6 +1649,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                       <label className="mb-1 block text-xs font-semibold text-slate-500">Tanggal Laporan</label>
                       <input
                         type="date"
+                        max={TODAY}
                         value={mitraReportMeta.tanggal_laporan}
                         onChange={(e) => setMitraReportMeta({ ...mitraReportMeta, tanggal_laporan: e.target.value })}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-orange-400"
@@ -1731,7 +1786,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                 <div className="space-y-4">
                   <button
                     type="button"
-                    onClick={() => { setMitraFlow("select"); setManualRows([]); setManualRowsResetNotice(false); setMitraError(null); setSelectedProjectId(""); setSelectedClusterId(""); setSelectedBoqId(""); setSelectedKodeTiket(""); setClusterBoqs([]); setClusterBoqsError(null); setMitraReportMeta({ tanggal_laporan: new Date().toISOString().slice(0, 10), pic_mitra: "" }); }}
+                    onClick={() => { setMitraFlow("select"); setManualRows([]); setManualRowsResetNotice(false); setMitraError(null); setSelectedProjectId(""); setSelectedClusterId(""); setSelectedBoqId(""); setSelectedKodeTiket(""); setClusterBoqs([]); setClusterBoqsError(null); setMitraReportMeta({ tanggal_laporan: TODAY, pic_mitra: "" }); }}
                     className="flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-slate-600"
                   >
                     <ArrowUpRight size={12} className="-rotate-90" />
@@ -1743,6 +1798,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                       <label className="mb-1 block text-xs font-semibold text-slate-500">Tanggal Laporan</label>
                       <input
                         type="date"
+                        max={TODAY}
                         value={mitraReportMeta.tanggal_laporan}
                         onChange={(e) => setMitraReportMeta({ ...mitraReportMeta, tanggal_laporan: e.target.value })}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400"
@@ -1956,13 +2012,17 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                                 </div>
                                 <div>
                                   <label className="mb-1 block text-[11px] font-medium text-slate-500">Kondisi</label>
-                                  <input
-                                    type="text"
+                                  <select
                                     value={row.kondisi}
                                     onChange={(e) => updateManualRow(row.id, "kondisi", e.target.value)}
-                                    placeholder="Kondisi (opsional)"
-                                    className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-400"
-                                  />
+                                    className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-400"
+                                  >
+                                    {KONDISI_OPTIONS.map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label}
+                                      </option>
+                                    ))}
+                                  </select>
                                 </div>
                               </div>
                             )}
@@ -2090,7 +2150,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                            {new Date(r.uploaded_at).toLocaleString("id-ID")}
                          </td>
                          <td className="px-3 py-1.5">
-                           <div className="truncate max-w-[220px] font-semibold text-slate-900 text-xs" title={r.filename || "-"}>{r.filename || "-"}</div>
+                           <div className="truncate max-w-[220px] font-semibold text-slate-900 text-xs" title={r.filename || "-"}>{r.filename === "manual-input" ? "Input Manual" : (r.filename || "-")}</div>
                          </td>
                           <td className="px-3 py-1.5">
                             <div className="truncate max-w-[180px] font-semibold text-slate-900 text-xs" title={r.uploaded_by_nama || "-"}>{r.uploaded_by_nama || "-"}</div>
@@ -2154,6 +2214,10 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
             </div>
           )}
         </div>
+      )}
+
+      {reconcTab === "laporan-mitra" && (
+        <LaporanMitraTable onChanged={fetchReconciliation} />
       )}
 
       {historyDetail && (
@@ -2220,28 +2284,43 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
                            </tr>
                          </thead>
                         <tbody className="divide-y divide-slate-50">
-                          {historyDetail.details.map((d: any, idx: number) => {
-                            const duplicate = isDuplicateReason(d.reason);
-                            return (
-                              <tr key={d.detail_id} className="hover:bg-slate-50">
-                                <td className="px-3 py-2 whitespace-nowrap text-center text-xs text-slate-500">{idx + 1}</td>
-                                <td className="px-3 py-2 font-mono font-semibold text-slate-700">{d.kode_tiket}</td>
-                                <td className="px-3 py-2 text-right font-mono text-slate-600">{d.used}</td>
-                                <td className="px-3 py-2">
-                                  {duplicate ? (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-                                      Duplikat
-                                    </span>
-                                  ) : (
-                                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${d.status === "berhasil" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
-                                      {d.status === "berhasil" ? "Berhasil" : "Gagal"}
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="px-3 py-2 text-slate-500">{stripDuplicatePrefix(d.reason)}</td>
-                              </tr>
-                            );
-                          })}
+{historyDetail.details.map((d: any, idx: number) => {
+                             const duplicate = isDuplicateReason(d.reason);
+                             return (
+                               <Fragment key={d.detail_id}>
+                                 <tr className="hover:bg-slate-50">
+                                   <td className="px-3 py-2 whitespace-nowrap text-center text-xs text-slate-500">{idx + 1}</td>
+                                   <td className="px-3 py-2 font-mono font-semibold text-slate-700 break-words min-w-0">{d.kode_tiket}</td>
+                                   <td className="px-3 py-2 text-right font-mono text-slate-600">{d.used}{d.satuan ? ` ${d.satuan}` : ""}</td>
+                                   <td className="px-3 py-2">
+                                     {duplicate ? (
+                                       <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                                         Duplikat
+                                       </span>
+                                     ) : (
+                                       <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${d.status === "berhasil" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+                                         {d.status === "berhasil" ? "Berhasil" : "Gagal"}
+                                       </span>
+                                     )}
+                                   </td>
+                                   <td className="px-3 py-2 text-slate-500 break-words min-w-0">{stripDuplicatePrefix(d.reason)}</td>
+                                 </tr>
+                                 {(d.nama_barang || d.kode_barang || d.satuan) && (
+                                   <tr className="bg-slate-50/60">
+                                     <td colSpan={5} className="px-3 py-1.5 text-[11px] text-slate-500 break-words min-w-0">
+                                       <div className="flex items-center justify-between gap-2">
+                                         <div className="min-w-0">
+                                           <div className="font-semibold text-slate-700 break-words">{d.nama_barang || "-"}</div>
+                                           <div className="text-[10px] font-mono text-slate-400 break-words">{d.kode_barang || "-"}</div>
+                                         </div>
+                                         <div className="shrink-0 font-mono text-slate-600">{d.used}{d.satuan ? ` ${d.satuan}` : ""}</div>
+                                       </div>
+                                     </td>
+                                   </tr>
+                                 )}
+                               </Fragment>
+                             );
+                           })}
                         </tbody>
                     </table>
                   </div>
