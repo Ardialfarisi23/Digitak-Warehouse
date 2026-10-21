@@ -10,8 +10,14 @@ const authorize = require("../../middlewares/role.middleware");
 
 const { createClusterSchema, updateClusterSchema } = require("./cluster.validation");
 
-router.get("/", authenticate, clusterController.listByProject);
-router.get("/all", authenticate, clusterController.listAll);
+// Endpoint manajemen Cluster — hanya Admin & Supervisor (staf → 403 Forbidden).
+router.get("/", authenticate, authorize("ADMIN", "SUPERVISOR"), clusterController.listByProject);
+router.get("/all", authenticate, authorize("ADMIN", "SUPERVISOR"), clusterController.listAll);
+
+// Endpoint READ-ONLY khusus staf: hanya id/kode/nama cluster untuk dropdown
+// pada form Surat Jalan. Tidak ada aksi tambah/ubah/hapus di sini.
+router.get("/options", authenticate, clusterController.listOptions);
+
 router.post(
   "/",
   authenticate,

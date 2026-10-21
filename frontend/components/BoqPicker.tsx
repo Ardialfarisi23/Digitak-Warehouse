@@ -93,7 +93,10 @@ export default function BoqPicker({ projectId, value, onSelect, placeholder = "P
     if (statusFilter) params.set("status", statusFilter);
     if (excludeStatus) params.set("excludeStatus", excludeStatus);
 
-    get(`${API_BASE}/api/boqs?${params.toString()}`)
+    // Endpoint read-only: hanya field seperlunya (id/nomor BOQ, tiket, project,
+    // cluster, status). Endpoint manajemen /api/boqs tidak boleh dipakai role
+    // staf (403 Forbidden).
+    get(`${API_BASE}/api/boqs/options?${params.toString()}`)
       .then(async (res) => {
         if (!res.ok) throw new Error("Gagal memuat data BOQ.");
         const json = await res.json();

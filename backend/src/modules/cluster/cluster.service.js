@@ -22,6 +22,27 @@ const findAll = async (query = {}) => {
   return await clusterRepository.findAll(query);
 };
 
+/**
+ * Daftar cluster read-only (untuk dropdown form staf).
+ * Hanya field minimal: id, kode, nama.
+ */
+const findOptions = async (query = {}) => {
+  const { project_id: projectId, status = "aktif", search } = query;
+  const allowed = ["all", "aktif", "nonaktif"];
+  if (!allowed.includes(status)) {
+    throw new AppError("Status filter tidak valid. Gunakan 'all', 'aktif', atau 'nonaktif'.", 400);
+  }
+
+  const rows = await clusterRepository.findOptions({ projectId, status, search });
+
+  return rows.map((row) => ({
+    cluster_id: row.cluster_id,
+    nama_cluster: row.nama_cluster,
+    project_id: row.project_id,
+    project_name: row.project?.nama_project || "",
+  }));
+};
+
 const create = async (data, userId) => {
   if (!data.project_id) {
     throw new AppError("Project ID wajib diisi.", 400);
@@ -131,6 +152,7 @@ const deleteCluster = async (clusterId) => {
 module.exports = {
   findByProjectId,
   findAll,
+  findOptions,
   create,
   update,
   toggleStatus,

@@ -2,7 +2,6 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
 import {
   AlertCircle,
   AlertTriangle,
@@ -1035,13 +1034,11 @@ export default function InboundDetailPage() {
 
             {data.boq_id && (
               <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4 text-sm">
-                <Link
-                  href="/dashboard/boq"
-                  className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
-                >
-                  <ExternalLink size={12} />
+                {/* Staf Gudang tidak punya akses ke modul BOQ (K7): nomor BOQ
+                    ditampilkan sebagai teks, tanpa tautan ke halaman manajemen. */}
+                <span className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-600">
                   {data.boq?.boq_number || `BOQ #${data.boq_id}`}
-                </Link>
+                </span>
               </div>
             )}
           </div>

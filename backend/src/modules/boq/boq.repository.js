@@ -199,6 +199,141 @@ const findAll = async ({ page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, search, sor
   };
 };
 
+/**
+ * Data minimal BOQ untuk endpoint READ-ONLY (dropdown/picker).
+ * Hanya field yang dipakai form: id, nomor BOQ, tiket, project, cluster, status.
+ */
+const findOptions = async ({
+  search,
+  status,
+  excludeStatus,
+  projectId,
+  clusterIds,
+  limit = 50,
+} = {}) => {
+  const conditions = [];
+
+  if (status && ALLOWED_STATUS.has(String(status).toLowerCase())) {
+    conditions.push({ status: String(status).toLowerCase() });
+  }
+
+  if (excludeStatus) {
+    const excludeList = String(excludeStatus)
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => ALLOWED_STATUS.has(s));
+    if (excludeList.length > 0) {
+      conditions.push({ status: { notIn: excludeList } });
+    }
+  }
+
+  if (projectId) {
+    const projectIdNum = Number(projectId);
+    if (Number.isFinite(projectIdNum) && projectIdNum > 0) {
+      conditions.push({
+        OR: [
+          { tiket: { project_id: projectIdNum } },
+          { cluster: { project_id: projectIdNum } },
+        ],
+      });
+    }
+  }
+
+  if (Array.isArray(clusterIds) && clusterIds.length > 0) {
+    conditions.push({ cluster_id: { in: clusterIds.map(String) } });
+  }
+
+  const normalizedSearch = typeof search === "string" ? search.trim() : "";
+  if (normalizedSearch) {
+    conditions.push({
+      OR: [
+        { boq_number: { contains: normalizedSearch, mode: "insensitive" } },
+        { tiket: { kode_tiket: { contains: normalizedSearch, mode: "insensitive" } } },
+        { cluster: { nama_cluster: { contains: normalizedSearch, mode: "insensitive" } } },
+        { cluster: { project: { nama_project: { contains: normalizedSearch, mode: "insensitive" } } } },
+      ],
+    });
+  }
+
+  const where = conditions.length ? { AND: conditions } : {};
+  const sanitizedLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
+
+  return await prisma.boq.findMany({
+    where,
+    select: {
+      boq_id: true,
+      boq_number: true,
+      status: true,
+      source: true,
+      cluster_id: true,
+      created_at: true,
+      tiket: {
+        select: {
+          kode_tiket: true,
+          project_id: true,
+          project: { select: { project_id: true, nama_project: true } },
+        },
+      },
+      cluster: {
+        select: {
+          cluster_id: true,
+          nama_cluster: true,
+          project: { select: { project_id: true, nama_project: true } },
+        },
+      },
+    },
+    orderBy: { created_at: "desc" },
+    take: sanitizedLimit,
+  });
+};
+
+/**
+ * Detail minimal BOQ untuk endpoint READ-ONLY (form Surat Jalan staf).
+ * Hanya id/nomor/tiket/cluster + daftar item (barang & qty rencana).
+ */
+const findOptionDetail = async (boq_id) => {
+  return await prisma.boq.findUnique({
+    where: { boq_id: BigInt(boq_id) },
+    select: {
+      boq_id: true,
+      boq_number: true,
+      status: true,
+      source: true,
+      cluster_id: true,
+      tiket: {
+        select: {
+          kode_tiket: true,
+          project_id: true,
+          project: { select: { project_id: true, nama_project: true } },
+        },
+      },
+      cluster: {
+        select: {
+          cluster_id: true,
+          nama_cluster: true,
+          project: { select: { project_id: true, nama_project: true } },
+        },
+      },
+      items: {
+        select: {
+          boq_item_id: true,
+          barang_id: true,
+          qty_rencana: true,
+          qty_additional: true,
+          satuan_id: true,
+          barang: {
+            select: {
+              kode_perangkat: true,
+              nama_barang: true,
+              satuan_default: { select: { kode_satuan: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+};
+
 const update = async (boq_id, data) => {
   const { items, created_at, updated_at, ...boqData } = data;
 
@@ -982,6 +1117,8 @@ module.exports = {
   create,
   findById,
   findAll,
+  findOptions,
+  findOptionDetail,
   update,
   updateStatus,
   softDelete,
