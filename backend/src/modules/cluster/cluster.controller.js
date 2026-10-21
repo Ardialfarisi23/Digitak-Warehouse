@@ -21,6 +21,19 @@ const listAll = async (req, res, next) => {
   }
 };
 
+/**
+ * Endpoint read-only khusus staf (dropdown/picker).
+ * Tidak memuat data manajemen cluster, hanya id + kode + nama.
+ */
+const listOptions = async (req, res, next) => {
+  try {
+    const result = await clusterService.findOptions(req.query);
+    return response.success(res, "Daftar cluster berhasil diambil.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 const create = async (req, res, next) => {
   try {
     const result = await clusterService.create(req.body, req.user.id);
@@ -62,6 +75,7 @@ const deleteCluster = async (req, res, next) => {
 module.exports = {
   listByProject,
   listAll,
+  listOptions,
   create,
   update,
   toggleStatus,

@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import { getKondisiLabel, getKondisiUnitRows, formatRingkasanKondisiUnits, type KondisiUnit } from "@/lib/kondisi-barang";
+import { useAuth } from "@/lib/auth-context";
+import { canAccessBoqModule } from "@/lib/navigation";
 
 export interface DetailSuratJalanItem {
   item_id?: number | string;
@@ -125,6 +127,8 @@ export function DetailSuratJalanDocument({
   hideTujuanBadge = false,
   stockStatusByItemId,
 }: DetailSuratJalanDocumentProps) {
+  const { user } = useAuth();
+
   if (!data) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
@@ -188,15 +192,24 @@ export function DetailSuratJalanDocument({
     ) : null;
 
    const hasBoq = data.boq_id !== null && data.boq_id !== undefined && data.boq_id !== "";
+   // Staf Gudang tidak punya akses ke modul BOQ (K7) → nomor BOQ ditampilkan
+   // sebagai teks biasa, tanpa tautan ke halaman manajemen.
+   const canOpenBoq = canAccessBoqModule(user?.role);
    const boqValue = hasBoq ? (
      <span className="inline-flex flex-nowrap items-center gap-2">
-       <Link
-         href="/dashboard/boq"
-         className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
-       >
-         <ExternalLink size={12} />
-         {tampilkan(data.boq?.boq_number, "BOQ Tidak Diketahui")}
-       </Link>
+       {canOpenBoq ? (
+         <Link
+           href="/dashboard/boq"
+           className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
+         >
+           <ExternalLink size={12} />
+           {tampilkan(data.boq?.boq_number, "BOQ Tidak Diketahui")}
+         </Link>
+       ) : (
+         <span className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600">
+           {tampilkan(data.boq?.boq_number, "BOQ Tidak Diketahui")}
+         </span>
+       )}
        <span className="text-xs text-slate-500">
          Tiket: {tampilkan(data.boq?.tiket?.kode_tiket)}
        </span>

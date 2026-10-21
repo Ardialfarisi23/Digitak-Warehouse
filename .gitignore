@@ -27,3 +27,9 @@ test-results/
 *.bak
 *.orig
 *.patch
+
+node_modules/
+.env
+.env.*
+.next/
+dist/

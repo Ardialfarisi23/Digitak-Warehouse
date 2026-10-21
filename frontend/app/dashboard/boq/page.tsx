@@ -188,13 +188,13 @@ const EMPTY_CLUSTER_FORM: ClusterForm = {
 /* ------------------------------------------------------------------ */
 
 function useRoleAccess() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const role = mapRole(user?.role);
 
   const isStaffGudang = role === "staff";
   const canManage = role === "admin" || role === "supervisor";
 
-  return { role, isStaffGudang, canManage };
+  return { role, isStaffGudang, canManage, isLoading };
 }
 
 /* ------------------------------------------------------------------ */
@@ -285,7 +285,16 @@ const TABS: { key: TabType; label: string; icon: React.ElementType }[] = [
 export default function BoqPage() {
   const router = useRouter();
   const { get, post, put, del } = useApi();
-  const { isStaffGudang, canManage } = useRoleAccess();
+  const { isStaffGudang, canManage, isLoading: isAuthLoading } = useRoleAccess();
+
+  // Route guard (K7): modul Cluster & BOQ hanya untuk Admin & Supervisor.
+  // Staf Gudang yang membuka URL secara langsung diarahkan ke beranda staf.
+  useEffect(() => {
+    if (isAuthLoading) return;
+    if (isStaffGudang) {
+      router.replace("/staff/dashboard");
+    }
+  }, [isAuthLoading, isStaffGudang, router]);
 
   // Staf Gudang only ever sees the Aktif tab, read-only.
   const [activeTab, setActiveTab] = useState<SectionType>("aktif");
@@ -604,18 +613,22 @@ export default function BoqPage() {
     }
   }, [isStaffGudang, activeTab]);
 
+  // Jangan memanggil endpoint manajemen BOQ untuk role staf (akan 403).
   useEffect(() => {
+    if (isAuthLoading || isStaffGudang) return;
     fetchBoqs();
-  }, [fetchBoqs, activeTab]);
+  }, [fetchBoqs, activeTab, isAuthLoading, isStaffGudang]);
 
   useEffect(() => {
+    if (isAuthLoading || isStaffGudang) return;
     fetchSummary();
-  }, [fetchSummary]);
+  }, [fetchSummary, isAuthLoading, isStaffGudang]);
 
   useEffect(() => {
+    if (isAuthLoading || isStaffGudang) return;
     fetchMasterData();
     fetchAreas();
-  }, [fetchMasterData, fetchAreas]);
+  }, [fetchMasterData, fetchAreas, isAuthLoading, isStaffGudang]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -1077,6 +1090,15 @@ async function handleUploadReference(file: File) {
   useEffect(() => {
     setPage(1);
   }, [activeTab, search, projectFilter, areaFilter]);
+
+  // Staff Gudang tidak punya akses ke modul ini sama sekali (K7).
+  if (isAuthLoading || isStaffGudang) {
+    return (
+      <div className={`${plusJakartaSans.className} flex min-h-[60vh] items-center justify-center text-sm text-slate-500`}>
+        Memuat...
+      </div>
+    );
+  }
 
   return (
     <div className={`${plusJakartaSans.className}`}>

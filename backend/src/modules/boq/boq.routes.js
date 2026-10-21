@@ -14,6 +14,19 @@ const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
 const { deleteLimiter } = require("../../middlewares/rate-limit");
 
+// ---------------------------------------------------------------------------
+// Endpoint READ-ONLY khusus staf (dropdown/picker form Surat Jalan).
+// Hanya data seperlunya (id/nomor BOQ, kode tiket, project, cluster, item)
+// dan tidak tersedia aksi manajemen.
+// CATATAN: harus didaftarkan SEBELUM "/:id" agar tidak tertangkap route param.
+// ---------------------------------------------------------------------------
+router.get("/options", authenticate, boqController.listOptions);
+router.get("/options/items", authenticate, boqController.listOptionItems);
+router.get("/options/:id", authenticate, boqController.getOptionDetail);
+
+// ---------------------------------------------------------------------------
+// Endpoint manajemen BOQ — hanya Admin & Supervisor (staf → 403 Forbidden).
+// ---------------------------------------------------------------------------
 router.post(
   "/",
   authenticate,
