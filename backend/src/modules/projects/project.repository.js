@@ -158,13 +158,10 @@ const restore = async (projectId) => {
 };
 
 const remove = async (projectId) => {
-  const idNum = Number(projectId);
-  if (!idNum || Number.isNaN(idNum)) {
-    throw new Error("ID tidak valid");
-  }
-
-  return await prisma.project.delete({
-    where: { project_id: idNum },
+  const id = BigInt(projectId);
+  return await prisma.project.update({
+    where: { project_id: id },
+    data: { status_aktif: false },
   });
 };
 

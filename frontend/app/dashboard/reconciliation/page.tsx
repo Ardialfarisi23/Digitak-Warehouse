@@ -56,6 +56,9 @@ const formatLocalDate = (date: Date) => {
 
 const TODAY = formatLocalDate(new Date());
 
+// Input laporan mitra (upload Excel + input manual) hanya boleh oleh Admin (K12).
+const PESAN_ADMIN_ONLY = "Hanya Admin yang dapat menginput laporan mitra.";
+
 // Pilihan kondisi barang yang sah (sesuai enum kondisi_barang).
 const KONDISI_OPTIONS = [
   { value: "", label: "Kondisi (opsional)" },
@@ -569,12 +572,22 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
   };
 
   const handleDownloadTemplate = async () => {
+    if (!isAdmin) {
+      setMitraError(PESAN_ADMIN_ONLY);
+      setToast({ message: PESAN_ADMIN_ONLY, type: "error" });
+      return;
+    }
     setDownloadingTemplate(true);
     setMitraError(null);
     try {
       const response = await get(`${API_BASE}/api/reports/reconciliation/template`);
 
       if (!response.ok) {
+        if (response.status === 403) {
+          setMitraError(PESAN_ADMIN_ONLY);
+          setToast({ message: PESAN_ADMIN_ONLY, type: "error" });
+          return;
+        }
         const text = await response.text();
         throw new Error(text || "Gagal mengunduh template.");
       }
@@ -596,6 +609,11 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
   };
 
   const handleMitraUpload = async () => {
+    if (!isAdmin) {
+      setMitraError(PESAN_ADMIN_ONLY);
+      setToast({ message: PESAN_ADMIN_ONLY, type: "error" });
+      return;
+    }
     if (!mitraFile) return;
     if (mitraReportMeta.tanggal_laporan.trim() > TODAY) {
       setMitraError("Tanggal Laporan tidak boleh melebihi hari ini.");
@@ -615,6 +633,11 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
       const json = await res.json();
 
       if (!res.ok) {
+        if (res.status === 403) {
+          setMitraError(PESAN_ADMIN_ONLY);
+          setToast({ message: PESAN_ADMIN_ONLY, type: "error" });
+          return;
+        }
         throw new Error(json?.message || "Gagal mengunggah file laporan mitra.");
       }
 
@@ -627,6 +650,11 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
   };
 
   const handleMitraConfirm = async () => {
+    if (!isAdmin) {
+      setMitraError(PESAN_ADMIN_ONLY);
+      setToast({ message: PESAN_ADMIN_ONLY, type: "error" });
+      return;
+    }
     if (!mitraPreview && manualRows.length === 0) return;
     if (!user?.id) return;
     setMitraError(null);
@@ -704,6 +732,11 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
       const json = await res.json();
 
       if (!res.ok) {
+        if (res.status === 403) {
+          setMitraError(PESAN_ADMIN_ONLY);
+          setToast({ message: PESAN_ADMIN_ONLY, type: "error" });
+          return;
+        }
         throw new Error(json?.message || "Gagal menyimpan hasil laporan mitra.");
       }
 
@@ -769,7 +802,7 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
 
   const openMitraModal = () => {
     if (!isAdmin) {
-      setToast({ message: "Hanya Admin yang dapat 입력 laporan mitra.", type: "error" });
+      setToast({ message: PESAN_ADMIN_ONLY, type: "error" });
       return;
     }
     setShowMitraModal(true);
@@ -1606,8 +1639,8 @@ const mapped: ReconciliationRecord[] = list.map((item: any) => {
             </div>
 
             <div className="px-6 py-5 space-y-5">
-              {/* Flow Selection */}
-              {mitraFlow === "select" && (
+              {/* Flow Selection - hanya Admin (K12) */}
+              {mitraFlow === "select" && isAdmin && (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <button
                     type="button"

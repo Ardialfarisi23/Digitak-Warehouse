@@ -34,6 +34,7 @@ async function getAdjustmentTotalsByProject(projectIds) {
     by: ["project_id", "barang_id"],
     where: {
       project_id: { in: projectIds.map((id) => BigInt(id)) },
+      cluster_id: null,
     },
     _sum: {
       qty: true,

@@ -37,4 +37,11 @@ router.delete(
   itemController.remove
 );
 
+router.patch(
+  "/:kode_perangkat/restore",
+  authenticate,
+  authorize("ADMIN"),
+  itemController.restore
+);
+
 module.exports = router;

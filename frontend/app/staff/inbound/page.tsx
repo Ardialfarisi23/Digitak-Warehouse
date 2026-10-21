@@ -648,7 +648,7 @@ export default function InboundListPage() {
         </div>
         <div className="relative sm:w-60">
           <select
-            value={statusFilter}
+            value={statusFilter.length > 0 ? statusFilter[0] : ""}
             onChange={(e) => setStatusFilter(e.target.value ? [e.target.value as InboundStatus] : [])}
             className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2.5 pl-3 pr-10 text-sm text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
           >

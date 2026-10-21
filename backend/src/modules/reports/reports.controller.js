@@ -492,7 +492,7 @@ const uploadReconciliationFile = async (req, res, next) => {
             barangId = barangLookupCache.get(namaBarangTrimmed);
           } else {
             const barang = await prisma.barang.findFirst({
-              where: { nama_barang: namaBarangTrimmed },
+              where: { nama_barang: namaBarangTrimmed, is_aktif: true },
               select: { barang_id: true },
             });
             barangId = barang ? String(barang.barang_id) : null;

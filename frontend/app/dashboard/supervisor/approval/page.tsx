@@ -54,7 +54,7 @@ export default function SupervisorApprovalIndexPage() {
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-700">Form Persetujuan Outbound</p>
-              <p className="mt-2 text-sm text-slate-500">Setujui permintaan keluar untuk reservasi stok dan lanjutkan distribusi.</p>
+              <p className="mt-2 text-sm text-slate-500">Setujui permintaan keluar setelah memastikan stok di gudang asal tersedia, lalu lanjutkan distribusi.</p>
             </div>
           </div>
           <div className="mt-6">

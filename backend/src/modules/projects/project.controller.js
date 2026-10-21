@@ -40,7 +40,7 @@ const update = async (req, res, next) => {
 const remove = async (req, res, next) => {
   try {
     const result = await projectService.remove(req.params.project_id, req.user.id);
-    return response.success(res, "Project berhasil dihapus.", result);
+    return response.success(res, "Project berhasil dinonaktifkan.", result);
   } catch (err) {
     next(err);
   }

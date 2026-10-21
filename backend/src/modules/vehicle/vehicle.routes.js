@@ -38,4 +38,11 @@ router.delete(
   vehicleController.remove
 );
 
+router.patch(
+  "/:kendaraan_id/restore",
+  authenticate,
+  authorize("ADMIN", "SUPERVISOR"),
+  vehicleController.restore
+);
+
 module.exports = router;

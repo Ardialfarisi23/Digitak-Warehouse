@@ -10,7 +10,8 @@ router.get("/", authenticate, dashboardController.getStats);
 router.get("/project-summary", authenticate, dashboardController.getProjectSummary);
 router.get("/approvals", authenticate, dashboardController.getApprovalQueue);
 router.get("/reconciliation", authenticate, dashboardController.getHardwareReconciliation);
-router.get("/activities", authenticate, dashboardController.getActivityLog);
+// Audit log hanya boleh diakses Admin (lihat GET /api/reports/audit-log).
+router.get("/activities", authenticate, authorize("ADMIN"), dashboardController.getActivityLog);
 router.get("/warehouse-assessment", authenticate, dashboardController.getWarehouseAssessment);
 // @deprecated since 2026-09-05 (Gelombang 3 task) — endpoint bulk override ini
 // akan dihapus setelah Gelombang 4 frontend selesai migrasi ke endpoint

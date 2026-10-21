@@ -184,7 +184,7 @@ describe("reconciliation.repository", () => {
   });
 
   it("MOS: inbound vendor dengan cluster_id & project_id -> MOS cluster bertambah", async () => {
-    mockPrisma.surat_jalan_item.findMany = async () => [makeShipmentItem()];
+    mockPrisma.surat_jalan_item.findMany = async () => [makeShipmentItem({ status: "diterima_didistribusikan" })];
     const result = await getInventory({ projectId: "17", groupBy: "cluster", clusterId: "all" });
     const row = result.data.find((r) => r.cluster_id === "NET-H-004396" && r.barang_id === "218");
     assert.ok(row, "row untuk cluster NET-H-004396 harus ada");
@@ -192,7 +192,7 @@ describe("reconciliation.repository", () => {
   });
 
   it("MOS: inbound vendor 10 + outbound 15 -> MOS 10 (outbound tidak berpengaruh)", async () => {
-    const inboundItem = makeShipmentItem({ qty: 10 });
+    const inboundItem = makeShipmentItem({ qty: 10, status: "diterima_didistribusikan" });
     const outboundItem = { ...makeShipmentItem(), item_id: 2, qty: 15, surat_jalan: { ...makeShipmentItem().surat_jalan, tipe: "outbound", tujuan_tipe: "lapangan", tipe_pengirim: null } };
     mockPrisma.surat_jalan_item.findMany = async () => [inboundItem, outboundItem];
     const result = await getInventory({ projectId: "17", groupBy: "cluster", clusterId: "all" });
@@ -239,18 +239,23 @@ describe("reconciliation.repository", () => {
   });
 
   it("MOS: inbound vendor external lama (tipe_pengirim=external, gudang_asal_id=null) -> tetap terhitung", async () => {
-    mockPrisma.surat_jalan_item.findMany = async () => [makeShipmentItem({ tipe_pengirim: "external", gudang_asal_id: null })];
+    mockPrisma.surat_jalan_item.findMany = async () => [makeShipmentItem({ tipe_pengirim: "external", gudang_asal_id: null, status: "diterima_didistribusikan" })];
     const result = await getInventory({ projectId: "17", groupBy: "cluster", clusterId: "all" });
     const row = result.data.find((r) => r.cluster_id === "NET-H-004396" && r.barang_id === "218");
     assert.ok(row, "row untuk cluster NET-H-004396 harus ada");
     assert.equal(row.mos, 10, "MOS harus 10 untuk inbound external lama");
   });
 
+<<<<<<< HEAD
   it("MOS: inbound status ready_putaway (belum disetujui/diterima) -> MOS tidak bertambah", async () => {
+=======
+  it("MOS: inbound ready_putaway (belum di-putaway) -> MOS 0", async () => {
+>>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
     mockPrisma.surat_jalan_item.findMany = async () => [makeShipmentItem({ status: "ready_putaway" })];
     const result = await getInventory({ projectId: "17", groupBy: "cluster", clusterId: "all" });
     const row = result.data.find((r) => r.cluster_id === "NET-H-004396" && r.barang_id === "218");
     if (row) {
+<<<<<<< HEAD
       assert.equal(row.mos, 0, "MOS harus 0 untuk inbound ready_putaway");
     }
   });
@@ -263,4 +268,52 @@ describe("reconciliation.repository", () => {
       assert.equal(row.mos, 10, "MOS harus 10 untuk inbound diterima_didistribusikan");
     }
   });
+=======
+      assert.equal(row.mos, 0, "MOS harus 0 untuk inbound belum di-putaway (ready_putaway)");
+    }
+  });
+
+  it("MOS: inbound diterima_didistribusikan (putaway selesai) -> MOS naik tepat qty", async () => {
+    const item = makeShipmentItem({ status: "diterima_didistribusikan" });
+    item.qty = 7;
+    mockPrisma.surat_jalan_item.findMany = async () => [item];
+    const result = await getInventory({ projectId: "17", groupBy: "cluster", clusterId: "all" });
+    const row = result.data.find((r) => r.cluster_id === "NET-H-004396" && r.barang_id === "218");
+    assert.ok(row, "row harus ada untuk inbound yang sudah di-putaway");
+    assert.equal(row.mos, 7, "MOS harus 7 tepat sesuai qty putaway");
+  });
+
+  it("MOS: outbound diterima_didistribusikan (konfirmasi lapangan) -> MOS 0, tidak berubah", async () => {
+    const outboundItem = { ...makeShipmentItem(), item_id: 2, qty: 8, surat_jalan: { ...makeShipmentItem().surat_jalan, tipe: "outbound", tujuan_tipe: "lapangan", tipe_pengirim: null, status: "diterima_didistribusikan" } };
+    mockPrisma.surat_jalan_item.findMany = async () => [outboundItem];
+    const result = await getInventory({ projectId: "17", groupBy: "cluster", clusterId: "all" });
+    const row = result.data.find((r) => r.cluster_id === "NET-H-004396" && r.barang_id === "218");
+    if (row) {
+      assert.equal(row.mos, 0, "MOS harus 0 untuk outbound (bukan bagian MOS)");
+    }
+  });
+
+  it("MOS: inbound putaway + outbound lapangan -> tidak ada double counting, MOS = qty inbound saja", async () => {
+    const inboundItem = makeShipmentItem({ status: "diterima_didistribusikan" });
+    inboundItem.qty = 6;
+    const outboundItem = { ...makeShipmentItem(), item_id: 2, qty: 6, surat_jalan: { ...makeShipmentItem().surat_jalan, tipe: "outbound", tujuan_tipe: "lapangan", tipe_pengirim: null, status: "diterima_didistribusikan" } };
+    mockPrisma.surat_jalan_item.findMany = async () => [inboundItem, outboundItem];
+    const result = await getInventory({ projectId: "17", groupBy: "cluster", clusterId: "all" });
+    const row = result.data.find((r) => r.cluster_id === "NET-H-004396" && r.barang_id === "218");
+    assert.ok(row, "row harus ada");
+    assert.equal(row.mos, 6, "MOS harus 6 (hanya inbound putaway, tidak ditambah outbound)");
+  });
+
+  it("MOS: saldo awal boq_item.qty_mos tetap ditambahkan", async () => {
+    mockPrisma.surat_jalan_item.findMany = async () => [];
+    mockPrisma.boq_item.findMany = async () => [{
+      boq_item_id: 100, barang_id: 218, qty_rencana: 0, qty_mos: 5, qty_additional: null, qty_used: null,
+      boq: { cluster: { cluster_id: "NET-H-004396" }, cluster_id: "NET-H-004396", tiket: { project_id: 17 } },
+    }];
+    const result = await getInventory({ projectId: "17", groupBy: "cluster", clusterId: "all" });
+    const row = result.data.find((r) => r.cluster_id === "NET-H-004396" && r.barang_id === "218");
+    assert.ok(row, "row harus ada dari BOQ");
+    assert.equal(row.mos, 5, "MOS harus 5 dari saldo awal qty_mos import");
+  });
+>>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
 });

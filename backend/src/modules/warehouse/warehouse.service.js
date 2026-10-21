@@ -352,11 +352,57 @@ const softDelete = async (gudang_id) => {
     throw new AppError("Gudang tidak dapat dinonaktifkan karena masih memiliki stok.", 400);
   }
 
-  return await warehouseRepository.softDelete(warehouse.gudang_id);
+  const result = await warehouseRepository.softDelete(warehouse.gudang_id);
+
+  try {
+    await createAuditLog(
+      {
+        entityType: "gudang",
+        entityId: warehouse.gudang_id,
+        aksi: "soft_delete",
+        actorId: warehouse.updated_by,
+        dataSebelum: { is_aktif: true },
+        dataSesudah: { is_aktif: false },
+      },
+      prisma
+    );
+  } catch (auditErr) {
+    console.error("Gagal membuat audit log soft_delete gudang:", auditErr);
+  }
+
+  return result;
 };
 
 const restore = async (gudang_id) => {
-  return await warehouseRepository.restore(gudang_id);
+  const warehouse = await warehouseRepository.findById(gudang_id);
+
+  if (!warehouse) {
+    throw new AppError("Gudang tidak ditemukan.", 404);
+  }
+
+  if (warehouse.is_aktif) {
+    throw new AppError("Gudang sudah aktif.", 400);
+  }
+
+  const result = await warehouseRepository.restore(gudang_id);
+
+  try {
+    await createAuditLog(
+      {
+        entityType: "gudang",
+        entityId: warehouse.gudang_id,
+        aksi: "restore",
+        actorId: warehouse.updated_by,
+        dataSebelum: { is_aktif: false },
+        dataSesudah: { is_aktif: true },
+      },
+      prisma
+    );
+  } catch (auditErr) {
+    console.error("Gagal membuat audit log restore gudang:", auditErr);
+  }
+
+  return result;
 };
 
 const getLayout = async (gudang_id) => {
@@ -450,6 +496,7 @@ const getZoneStockSnapshot = async (gudang_id, zona_id, query = {}) => {
   if (search) {
     const matchingBarangs = await prisma.barang.findMany({
       where: {
+        is_aktif: true,
         OR: [
           { kode_perangkat: { contains: search, mode: "insensitive" } },
           { nama_barang: { contains: search, mode: "insensitive" } },
@@ -489,7 +536,7 @@ const getZoneStockSnapshot = async (gudang_id, zona_id, query = {}) => {
 
   const [barangs, zonas] = await Promise.all([
     prisma.barang.findMany({
-      where: { barang_id: { in: barangIds } },
+      where: { barang_id: { in: barangIds }, is_aktif: true },
       select: {
         barang_id: true,
         kode_perangkat: true,

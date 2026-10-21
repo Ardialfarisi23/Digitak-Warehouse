@@ -646,7 +646,7 @@ Halaman 13
 |---|---|
 |**ID**|FR-009|
 |**Nama**|Upload & Rekonsiliasi Laporan Mitra|
-|**Deskripsi**|Admin/Supervisor upload file Excel laporan dari mitra lapangan. Sistem mem-parsing dan menyimpan data<br>rekonsiliasi per tiket dan barang|
+|**Deskripsi**|Admin upload file Excel laporan dari mitra lapangan (K12: input laporan mitra hanya Admin; Supervisor hanya melihat riwayat). Sistem mem-parsing dan menyimpan data<br>rekonsiliasi per tiket dan barang|
 |**User Story**|Sebagai Admin, saya ingin mengupload laporan mitra dan melakukan rekonsiliasi agar selisih material<br>lapangan teridentifikasi|
 |**Acceptance Criteria**|Upload Excel -> parsing -> preview -> konfirmasi -> data tersimpan di`laporan_mitra`; Export rekonsiliasi<br>tersedia dalam Excel|
 |**File Terkait**|`backend/src/modules/reports/reports.routes.js:23-24`,`frontend/lib/exportReconciliationXlsx.ts`,<br>model`laporan_mitra`|
@@ -796,7 +796,7 @@ Halaman 19
 
 
 <!-- Start of picture text -->
-Admin/Supervisor<br>Download template<br>GET<br>/reports/reconciliation/template<br>Isi data laporan mitra di<br>Excel<br>Upload Excel<br>POST<br>/reports/reconciliation/upload<br>Parsing berhasil?<br>Ada baris gagal Semua sukses<br>Tampilkan detail error Preview hasil upload<br>Konfirmasi tetap lanjut<br>POST<br>/reports/reconciliation/confirm<br>Data tersimpan di<br>laporan_mitra<br>Lihat Rekonsiliasi<br>GET<br>/reconciliation/inventory<br><!-- End of picture text -->
+Admin<br>Download template<br>GET<br>/reports/reconciliation/template<br>Isi data laporan mitra di<br>Excel<br>Upload Excel<br>POST<br>/reports/reconciliation/upload<br>Parsing berhasil?<br>Ada baris gagal Semua sukses<br>Tampilkan detail error Preview hasil upload<br>Konfirmasi tetap lanjut<br>POST<br>/reports/reconciliation/confirm<br>Data tersimpan di<br>laporan_mitra<br>Lihat Rekonsiliasi<br>GET<br>/reconciliation/inventory<br><!-- End of picture text -->
 
 _Gambar 6. Alur rekonsiliasi hardware_ 
 
@@ -3296,16 +3296,21 @@ File sumber: `backend/src/modules/reports/reports.routes.js`
 |`GET`|`/api/reports/stock-history/export`|JWT Authenticated [Role: ADMIN]|`reportsController.exportStockHistoryExcel`|
 |`GET`|`/api/reports/audit-log`|JWT Authenticated [Role: ADMIN]|`reportsController.getAuditLogs`|
 |`GET`|`/api/reports/audit-log/export`|JWT Authenticated [Role: ADMIN]|`reportsController.exportAuditLogExcel`|
-|`GET`|`/api/reports/reconciliation-upload-logs`|JWT Authenticated [Role: ADMIN]|`reportsController.getReconciliationUploadLogs`|
+|`GET`|`/api/reports/reconciliation-upload-logs`|JWT Authenticated [Role: ADMIN,SUPERVISOR]|`reportsController.getReconciliationUploadLogs`|
+|`GET`|`/api/reports/reconciliation-upload-logs/filter-options`|JWT Authenticated [Role: ADMIN,SUPERVISOR]|`reportsController.getReconciliationUploadLogFilterOptions`|
+|`GET`|`/api/reports/reconciliation-upload-logs/:id/barang`|JWT Authenticated [Role: ADMIN,SUPERVISOR]|`reportsController.getReconciliationUploadLogBarang`|
 |`GET`|`/api/reports/hardware-reconciliation`|JWT Authenticated [Role: ADMIN]|`reportsController.getHardwareReconciliation`|
 |`GET`|`/api/reports/hardware-reconciliation/per-tiket`|JWT Authenticated [Role: ADMIN]|`reportsController.getHardwareReconciliationPerTiket`|
 |`GET`|`/api/reports/hardware-reconciliation/detailed`|JWT Authenticated [Role: ADMIN]|`reportsController.getHardwareReconciliationDetailed`|
 |`GET`|`/api/reports/zone-utilization-history`|JWT Authenticated [Role: ADMIN]|`reportsController.getZoneUtilizationHistory`|
 |`GET`|`/api/reports/zone-utilization`|JWT Authenticated [Role: ADMIN]|`reportsController.getZoneUtilization`|
-|`GET`|`/api/reports/reconciliation/template`|JWT Authenticated [Role: ADMIN,SUPERVISOR]|`reportsController.downloadReconciliationTemplate`|
+|`GET`|`/api/reports/reconciliation/template`|JWT Authenticated [Role: ADMIN]|`reportsController.downloadReconciliationTemplate`|
+|`GET`|`/api/reports/reconciliation/laporan-mitra`|JWT Authenticated [Role: ADMIN,SUPERVISOR]|`reportsController.getReconciliationReports`|
 |`POST`|`/api/reports/reconciliation/backfill`|JWT Authenticated [Role: ADMIN]|`reportsController.backfillReconciliation`|
-|`POST`|`/api/reports/reconciliation/upload`|JWT Authenticated [Role: ADMIN,SUPERVISOR] + Multer File Upload|`reportsController.uploadReconciliationFile`|
-|`POST`|`/api/reports/reconciliation/confirm`|JWT Authenticated [Role: ADMIN,SUPERVISOR]|`reportsController.confirmReconciliationUpload`|
+|`POST`|`/api/reports/reconciliation/upload`|JWT Authenticated [Role: ADMIN] + Multer File Upload|`reportsController.uploadReconciliationFile`|
+|`POST`|`/api/reports/reconciliation/confirm`|JWT Authenticated [Role: ADMIN]|`reportsController.confirmReconciliationUpload`|
+
+> Catatan K12: input laporan mitra (template Excel, upload Excel, dan input manual/konfirmasi) hanya boleh dilakukan oleh Admin. Supervisor dan staf gudang hanya boleh melihat riwayat laporan mitra (read-only).
 
 
 

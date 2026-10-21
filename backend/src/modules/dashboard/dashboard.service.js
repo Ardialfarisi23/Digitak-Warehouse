@@ -190,7 +190,7 @@ const getHardwareReconciliation = async (filters = {}) => {
   const { warehouseId = "all", projectId = "all", search = "" } = filters;
 
   const whereBoq = {
-    boq: { status: { in: ["draft", "aktif", "selesai"] } },
+    boq: { status: { in: ["aktif", "selesai"] } },
   };
 
   if (warehouseId !== "all") {

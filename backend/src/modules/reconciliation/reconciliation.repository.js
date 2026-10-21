@@ -1,7 +1,11 @@
 const prisma = require("../../config/prisma");
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
+<<<<<<< HEAD
 const { computeMosSistem, computeRemains, computeReconciliationStatus, buildPickSummary, buildItemPickSummary, isMosEligibleInbound } = require("./reconciliation.utils");
+=======
+const { computeRemains, computeReconciliationStatus, buildPickSummary, buildItemPickSummary, buildInboundMosMap } = require("./reconciliation.utils");
+>>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
 const { surat_jalan_status, boq_status } = require("@prisma/client");
 const additionalRepository = require("../additional/additional.repository");
 const { getBusinessDate, toPrismaDecimal } = require("../return/return.utils");
@@ -173,7 +177,7 @@ const getInventory = async (filters = {}, actor = null) => {
 
   const whereBoq = {
     boq: {
-      status: { in: [boq_status.draft, boq_status.aktif, boq_status.selesai] },
+      status: { in: [boq_status.aktif, boq_status.selesai] },
       source: "top_down",
     },
   };
@@ -341,10 +345,11 @@ const getInventory = async (filters = {}, actor = null) => {
       surat_jalan: {
         select: {
           tipe: true,
+          status: true,
           project_id: true,
           boq_id: true,
           tujuan_tipe: true,
-          status: true,
+          tipe_pengirim: true,
           ...shipmentBoqSelect,
         },
       },
@@ -440,7 +445,6 @@ const getInventory = async (filters = {}, actor = null) => {
   const inboundByProjectBarang = new Map();
   const outboundByProjectBarang = new Map();
   const additionalByProjectBarang = new Map();
-  const inboundMosByProjectBarang = new Map();
   const usedByProjectBarang = new Map();
 
   const projectIdsForAdditional =
@@ -466,9 +470,6 @@ const getInventory = async (filters = {}, actor = null) => {
 
     if (item.surat_jalan?.tipe === "inbound") {
       inboundByProjectBarang.set(key, (inboundByProjectBarang.get(key) || 0) + qty);
-      if (isMosEligibleInbound(item.surat_jalan)) {
-        inboundMosByProjectBarang.set(key, (inboundMosByProjectBarang.get(key) || 0) + qty);
-      }
     }
 
     if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
@@ -476,8 +477,12 @@ const getInventory = async (filters = {}, actor = null) => {
     }
   }
 
-  // MOS = inbound only (external vendor inbound)
-  const mosByProjectBarang = inboundMosByProjectBarang;
+  // MOS = inbound yang sudah di-putaway staf (diterima_didistribusikan), external, punya project/cluster
+  const mosByProjectBarang = buildInboundMosMap(shipmentItems, (item) => {
+    const projectIdNum = Number(item.surat_jalan?.project_id);
+    const barangId = String(item.barang_id);
+    return `${projectIdNum}-${barangId}`;
+  });
 
   for (const [key, val] of additionalTotalsByProject) {
     additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + val);
@@ -582,8 +587,6 @@ const getInventory = async (filters = {}, actor = null) => {
       latestPicMitraByCluster.set(cid, sorted[0].pic_mitra);
     }
 
-    const inboundByClusterBarang = new Map();
-    const outboundByClusterBarang = new Map();
     const additionalByClusterBarang = new Map();
     let mosByClusterBarang = new Map();
     const usedByClusterBarang = new Map();
@@ -700,46 +703,25 @@ const getInventory = async (filters = {}, actor = null) => {
       );
     }
 
-    // Track inbound MOS for cluster mode (inbound only)
-    const inboundMosByClusterBarang = new Map();
-
-    for (const item of shipmentItems) {
+    // MOS = inbound yang sudah di-putaway staf (diterima_didistribusikan), external, punya project/cluster
+    mosByClusterBarang = buildInboundMosMap(shipmentItems, (item) => {
       const itemId = Number(item.item_id);
       const clusterId = clusterByItemId.get(itemId);
       const projectIdNum = Number(item.surat_jalan?.project_id || 0);
       const barangId = String(item.barang_id);
-      const qty = Number(item.qty || 0);
+      if (clusterId) return `${clusterId}-${barangId}`;
+      return `unassigned-${projectIdNum}-${barangId}`;
+    });
 
-      if (clusterId) {
-        const key = `${clusterId}-${barangId}`;
-
-        if (item.surat_jalan?.tipe === "inbound") {
-          inboundByClusterBarang.set(key, (inboundByClusterBarang.get(key) || 0) + qty);
-          if (isMosEligibleInbound(item.surat_jalan)) {
-            inboundMosByClusterBarang.set(key, (inboundMosByClusterBarang.get(key) || 0) + qty);
-          }
-        }
-
-        if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
-          outboundByClusterBarang.set(key, (outboundByClusterBarang.get(key) || 0) + qty);
-        }
-      } else {
-        const key = `unassigned-${projectIdNum}-${barangId}`;
-        if (item.surat_jalan?.tipe === "inbound") {
-          inboundByClusterBarang.set(key, (inboundByClusterBarang.get(key) || 0) + qty);
-          if (isMosEligibleInbound(item.surat_jalan)) {
-            inboundMosByClusterBarang.set(key, (inboundMosByClusterBarang.get(key) || 0) + qty);
-          }
-        }
-        if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
-          outboundByClusterBarang.set(key, (outboundByClusterBarang.get(key) || 0) + qty);
-        }
-        unassignedByProjectBarang.set(key, (unassignedByProjectBarang.get(key) || 0) + 1);
-      }
+    // Track unassigned buckets (untuk fallback cluster legacy)
+    for (const item of shipmentItems) {
+      const clusterId = clusterByItemId.get(Number(item.item_id));
+      if (clusterId) continue;
+      const projectIdNum = Number(item.surat_jalan?.project_id || 0);
+      const barangId = String(item.barang_id);
+      const key = `unassigned-${projectIdNum}-${barangId}`;
+      unassignedByProjectBarang.set(key, (unassignedByProjectBarang.get(key) || 0) + 1);
     }
-
-    // MOS = inbound only (external vendor inbound)
-    mosByClusterBarang = inboundMosByClusterBarang;
 
     for (const laporan of activeLaporans) {
       const clusterId = resolveClusterId(null, null, laporan, projectClusterMap);
@@ -932,8 +914,13 @@ const getInventory = async (filters = {}, actor = null) => {
       const isUnassigned = agg.cluster_id === null && agg.nama_cluster === "Belum ditentukan";
       const key = isUnassigned ? `unassigned-${agg.project_id}-${agg.barang_id}` : `${agg.cluster_id}-${agg.barang_id}`;
       const importVals = importValuesByCluster.get(key) || { additional: 0, mos: 0, used: 0 };
+<<<<<<< HEAD
       const additional = Number(additionalByClusterBarang.get(key) || 0) + importVals.additional;
       const mos = computeMosSistem(mosByClusterBarang.get(key) || 0, importVals.mos);
+=======
+      const additional = Number(additionalByClusterBarang.get(key) || 0) + Number(additionalByClusterBarangFromAdjustment.get(key) || 0) + importVals.additional;
+      const mos = Number(mosByClusterBarang.get(key) || 0) + importVals.mos;
+>>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
       const used = Number(usedByClusterBarang.get(key) || 0) + importVals.used;
       const approvedReturnQty = Number(approvedReturnByClusterBarang.get(key) || 0);
 const remains = computeRemains(mos, agg.boq, additional);

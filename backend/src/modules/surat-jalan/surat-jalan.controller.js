@@ -1,4 +1,4 @@
-const suratJalanService = require("./surat-jalan.service");
+﻿const suratJalanService = require("./surat-jalan.service");
 const response = require("../../shared/response");
 
 const create = async (req, res, next) => {
@@ -184,7 +184,7 @@ const updateDeliveryStatus = async (req, res, next) => {
   }
 };
 
-// Gudang Transit — aksi staf gudang dari halaman staff.
+// Gudang Transit â€” aksi staf gudang dari halaman staff.
 const tibaDiTransit = async (req, res, next) => {
   try {
     const result = await suratJalanService.tibaDiTransit(req.params.id, req.body, req.user.id, req.gudangScope);

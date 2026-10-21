@@ -1,4 +1,4 @@
-const express = require("express");
+﻿const express = require("express");
 const router = express.Router();
 
 const suratJalanController = require("./surat-jalan.controller");
@@ -20,7 +20,7 @@ const authorize = require("../../middlewares/role.middleware");
 const { attachGudangScope } = require("../../middlewares/gudang-scope.middleware");
 const { uploadLimiter, deleteLimiter } = require("../../middlewares/rate-limit");
 
-router.post("/", authenticate, authorize("ADMIN", "STAFF"), validate(createSuratJalanSchema), suratJalanController.create);
+router.post("/", authenticate, authorize("ADMIN", "STAFF"), attachGudangScope, validate(createSuratJalanSchema), suratJalanController.create);
 router.post(
   "/inbound/staff",
   authenticate,
@@ -77,7 +77,7 @@ router.put(
   suratJalanController.updateDeliveryStatus
 );
 
-// Gudang Transit — STAFF ONLY (keputusan bisnis #6: supervisor tidak
+// Gudang Transit â€” STAFF ONLY (keputusan bisnis #6: supervisor tidak
 // ditambahi aksi transit). Scope gudang tetap dipasang di kedua route.
 router.post(
   "/:id/transit/tiba",

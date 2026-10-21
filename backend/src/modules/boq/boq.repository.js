@@ -680,9 +680,9 @@ const findItemsByProject = async (projectId, clusterId, statuses = ["aktif"], se
 
   // Additional = qty inbound yang marked "kelebihan" (di luar alokasi BOQ Plan)
   //             + SUM(additional_adjustment.qty).
-  // MOS = qty yang sudah pernah dikirim (outbound final, bukan transfer antar gudang).
-  // Keduanya dipakai sebagai informasi di form Outbound. Catatan: qty_rencana di
-  // atas sudah NETO karena reduceBoqAllocation() memotongnya saat outbound disetujui.
+  // MOS = qty inbound yang sudah di-putaway staf (status diterima_didistribusikan),
+  //       external, punya project/cluster (+ qty_mos dari saldo awal import).
+  // Keduanya dipakai sebagai informasi di form Outbound.
   const additionalByBarang = new Map();
   const mosByBarang = new Map();
 
@@ -707,7 +707,10 @@ const findItemsByProject = async (projectId, clusterId, statuses = ["aktif"], se
         surat_jalan: {
           select: {
             tipe: true,
-            tujuan_tipe: true,
+            status: true,
+            project_id: true,
+            cluster_id: true,
+            tipe_pengirim: true,
           },
         },
       },
@@ -716,14 +719,16 @@ const findItemsByProject = async (projectId, clusterId, statuses = ["aktif"], se
     for (const item of shipmentItems) {
       const key = String(item.barang_id);
       const qty = Number(item.qty || 0);
+      const sj = item.surat_jalan;
 
-      if (item.surat_jalan?.tipe === "inbound") {
+      if (sj?.tipe === "inbound") {
+        if (isMosEligibleInbound(sj)) {
+          mosByBarang.set(key, (mosByBarang.get(key) || 0) + qty);
+        }
         continue;
       }
 
-      if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
-        mosByBarang.set(key, (mosByBarang.get(key) || 0) + qty);
-      }
+      // Outbound tidak lagi diperhitungkan dalam MOS (MOS hanya inbound yang di-putaway).
     }
 
     for (const [key, val] of additionalTotals) {

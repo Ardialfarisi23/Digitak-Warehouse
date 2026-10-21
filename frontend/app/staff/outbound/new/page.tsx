@@ -1307,27 +1307,28 @@ export default function AjukanSuratJalanPage() {
                   <Loader2 className="h-5 w-5 animate-spin text-[#E8632C]" />
                 </div>
               ) : (
-                <div className="overflow-x-auto overscroll-x-contain">
-                  <table className="w-full min-w-[720px] table-fixed text-sm">
+                <div className="w-full">
+                  <table className="w-full table-fixed text-sm">
                     <colgroup>
-                      <col className="w-[116px]" />
-                      <col />
-                      <col className="w-[84px]" />
-                      <col className="w-[104px]" />
-                      <col className="w-[64px]" />
-                      <col className="w-[150px]" />
-                      <col className="w-[132px]" />
+                      <col className="w-[5%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[24%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[8%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[15%]" />
                     </colgroup>
-                    <thead>
+                    <thead className="max-md:hidden">
                       <tr className="border-b border-gray-100 text-left text-[10px] uppercase leading-tight tracking-wide text-gray-400">
-                        <th className="pb-3 pr-3 font-semibold text-center w-12">No</th>
-                        <th className="pb-3 pr-3 font-semibold">Kode</th>
-                        <th className="pb-3 pr-3 font-semibold">Nama Barang</th>
-                        <th className="pb-3 pr-3 text-right font-semibold">BOQ Plan</th>
-                        <th className="pb-3 pr-3 text-right font-semibold">Sisa Dapat Dikirim</th>
-                        <th className="pb-3 pr-3 text-right font-semibold">MOS</th>
-                        <th className="pb-3 pr-3 text-right font-semibold">Qty</th>
-                        <th className="pb-3 font-semibold">Foto Barang</th>
+                        <th className="pb-3 px-2 font-semibold text-center w-12">No</th>
+                        <th className="pb-3 px-2 font-semibold">Kode</th>
+                        <th className="pb-3 px-2 font-semibold">Nama Barang</th>
+                        <th className="pb-3 px-2 text-right font-semibold">BOQ Plan</th>
+                        <th className="pb-3 px-2 text-right font-semibold">Sisa Dapat Dikirim</th>
+                        <th className="pb-3 px-2 text-right font-semibold">MOS</th>
+                        <th className="pb-3 px-2 text-right font-semibold">Qty</th>
+                        <th className="pb-3 px-2 font-semibold">Foto Barang</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1338,48 +1339,22 @@ export default function AjukanSuratJalanPage() {
                         const sisa = boqPlan + (item.additional ?? 0);
                         const exceedsSisa = qty > sisa;
 return (
-                            <tr key={key} className="border-b border-gray-50 last:border-0 odd:bg-white even:bg-slate-50">
-                              <td className="py-3 pr-3 text-center text-xs text-slate-500">{idx + 1}</td>
-                              <td className="py-3 pr-3 font-medium text-gray-800">{item.kode_perangkat}</td>
-                            <td className="py-3 pr-3 text-gray-600">{item.nama_barang}</td>
-                            <td className="py-3 pr-3 text-right text-xs whitespace-nowrap text-gray-500">{boqPlan > 0 ? `${boqPlan} unit` : "-"}</td>
-                            <td className="py-3 pr-3 text-right text-xs">
-                              <div className="whitespace-nowrap">
-                                <span className={sisa > 0 ? "font-medium text-gray-700" : "text-gray-400"}>
-                                  {sisa > 0 ? `${sisa} unit` : "-"}
-                                </span>
+                            <tr key={key} className="max-md:block max-md:mb-4 max-md:rounded-xl max-md:border max-md:border-gray-100 max-md:p-3 border-b border-gray-50 last:border-0 odd:bg-white even:bg-slate-50">
+                              <td className="py-3 px-2 text-center text-xs text-slate-500 align-top max-md:block max-md:text-left"><span className="md:hidden text-[10px] uppercase text-gray-400">No</span> {idx + 1}</td>
+                              <td className="py-3 px-2 font-medium text-gray-800 align-top min-w-0 break-words max-md:block"><span className="md:hidden block text-[10px] uppercase text-gray-400">Kode</span>{item.kode_perangkat}</td>
+                            <td className="py-3 px-2 text-gray-600 align-top min-w-0 break-words max-md:block"><span className="md:hidden block text-[10px] uppercase text-gray-400">Nama Barang</span>{item.nama_barang}</td>
+                            <td className="py-3 px-2 text-right text-xs whitespace-nowrap text-gray-500 align-top max-md:block max-md:text-left max-md:text-right"><span className="md:hidden block text-[10px] uppercase text-gray-400 text-left">BOQ Plan</span>{boqPlan > 0 ? `${boqPlan} unit` : "-"}</td>
+                            <td className="py-3 px-2 text-right text-xs align-top max-md:block max-md:text-left"><div className="whitespace-nowrap"><span className="md:hidden text-[10px] uppercase text-gray-400">Sisa Dapat Dikirim</span><span className={sisa > 0 ? "font-medium text-gray-700" : "text-gray-400"}>{sisa > 0 ? `${sisa} unit` : "-"}</span></div>{(item.additional ?? 0) > 0 && (<div className="whitespace-nowrap text-[10px] text-gray-400">(+{item.additional} additional)</div>)}</td>
+                            <td className="py-3 px-2 text-right text-xs whitespace-nowrap text-gray-500 align-top max-md:block max-md:text-left"><span className="md:hidden block text-[10px] uppercase text-gray-400">MOS</span>{(item.mos ?? 0) > 0 ? `${item.mos} unit` : "-"}</td>
+                            <td className="py-3 px-2 align-top max-md:block">
+                              <div className="flex items-center justify-end gap-2 max-md:justify-start">
+                                <button onClick={() => setQty(key, qty - 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50">−</button>
+                                <input type="number" min={0} value={qty} onChange={(e) => setQty(key, Number(e.target.value))} className={`w-14 rounded-md border py-1 text-center text-sm ${exceedsSisa ? "border-amber-400 text-amber-700" : "border-gray-200"}`} />
+                                <button onClick={() => setQty(key, qty + 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50">+</button>
                               </div>
-                              {(item.additional ?? 0) > 0 && (
-                                <div className="whitespace-nowrap text-[10px] text-gray-400">(+{item.additional} additional)</div>
-                              )}
+                              {exceedsSisa && (<p className="mt-1 whitespace-nowrap text-right text-[10px] font-medium text-amber-600 max-md:text-left">Melebihi sisa ({sisa} unit)</p>)}
                             </td>
-                            <td className="py-3 pr-3 text-right text-xs whitespace-nowrap text-gray-500">
-                              {(item.mos ?? 0) > 0 ? `${item.mos} unit` : "-"}
-                            </td>
-                            <td className="py-3 pr-3">
-                              <div className="flex items-center justify-end gap-2">
-                                <button onClick={() => setQty(key, qty - 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50">
-                                  −
-                                </button>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={qty}
-                                  onChange={(e) => setQty(key, Number(e.target.value))}
-                                  className={`w-14 rounded-md border py-1 text-center text-sm ${exceedsSisa ? "border-amber-400 text-amber-700" : "border-gray-200"}`}
-                                />
-                                <button onClick={() => setQty(key, qty + 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50">
-                                  +
-                                </button>
-                              </div>
-                              {exceedsSisa && (
-                                <p className="mt-1 whitespace-nowrap text-right text-[10px] font-medium text-amber-600">
-                                  Melebihi sisa ({sisa} unit)
-                                </p>
-                              )}
-                            </td>
-                            <td className="py-3">
-                              <div className="flex flex-wrap items-center gap-1.5">
+                            <td className="py-3 px-2 align-top max-md:block"><span className="md:hidden block text-[10px] uppercase text-gray-400 mb-1">Foto Barang</span><div className="flex flex-wrap items-center gap-1.5">
                                 <label
                                   htmlFor={`foto-${key}`}
                                   className={`inline-flex h-9 cursor-pointer items-center gap-1 rounded-md border border-dashed border-gray-300 px-1.5 text-[10px] font-medium text-gray-500 hover:border-[#E8632C] hover:text-[#E8632C] ${uploadingFotoByItem[key] ? "pointer-events-none opacity-50" : ""}`}

@@ -204,21 +204,55 @@ const update = async (personil_id, data) => {
   });
 };
 
-const remove = async (personil_id) => {
-  try {
-    return await prisma.personil.delete({
-      where: { personil_id: Number(personil_id) },
-    });
-  } catch (err) {
-    if (err && err.code === "P2003") {
-      return await prisma.personil.update({
-        where: { personil_id: Number(personil_id) },
-        data: { is_aktif: false },
-      });
-    }
+const softDelete = async (personil_id, userId) => {
+  const existing = await prisma.personil.findUnique({
+    where: { personil_id: Number(personil_id) },
+    select: { personil_id: true, is_aktif: true },
+  });
 
-    throw err;
+  if (!existing) {
+    return null;
   }
+
+  const now = new Date();
+  await prisma.personil.update({
+    where: { personil_id: Number(personil_id) },
+    data: {
+      is_aktif: false,
+      deleted_at: now,
+      deleted_by: Number(userId),
+      deleter: { connect: { user_id: Number(userId) } },
+    },
+  });
+
+  return { blocked: false };
+};
+
+const restore = async (personil_id, userId) => {
+  const existing = await prisma.personil.findUnique({
+    where: { personil_id: Number(personil_id) },
+    select: { personil_id: true, is_aktif: true },
+  });
+
+  if (!existing) {
+    return null;
+  }
+
+  if (existing.is_aktif) {
+    return { blocked: false, alreadyActive: true };
+  }
+
+  await prisma.personil.update({
+    where: { personil_id: Number(personil_id) },
+    data: {
+      is_aktif: true,
+      deleted_at: null,
+      deleted_by: null,
+      deleter: { disconnect: true },
+    },
+  });
+
+  return { blocked: false };
 };
 
 module.exports = {
@@ -229,5 +263,6 @@ module.exports = {
   findByEmail,
   findAll,
   update,
-  remove,
+  softDelete,
+  restore,
 };

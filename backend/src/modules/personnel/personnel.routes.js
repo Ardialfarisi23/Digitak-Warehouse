@@ -48,4 +48,11 @@ router.delete(
   personnelController.remove
 );
 
+router.patch(
+  "/:personil_id/restore",
+  authenticate,
+  authorize("ADMIN", "SUPERVISOR"),
+  personnelController.restore
+);
+
 module.exports = router;

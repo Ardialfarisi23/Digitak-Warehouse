@@ -69,10 +69,21 @@ export function useApi() {
         headers["Authorization"] = `Bearer ${currentToken}`;
       }
 
-      const response = await fetch(url, {
-        ...fetchOptions,
-        headers,
-      });
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          ...fetchOptions,
+          headers,
+        });
+      } catch (networkErr) {
+        const msg =
+          networkErr instanceof Error
+            ? networkErr.message
+            : "Gagal terhubung ke server.";
+        throw new Error(
+          `Koneksi ke server gagal (${url}). Pastikan backend berjalan. Detail: ${msg}`
+        );
+      }
 
       if (response.status === 401) {
         const err = await response.clone().json().catch(() => null);
@@ -123,11 +134,21 @@ export function useApi() {
           const latestToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
           if (latestToken && latestToken !== currentToken) {
             headers["Authorization"] = `Bearer ${latestToken}`;
-            const retryResponse = await fetch(url, {
-              ...fetchOptions,
-              headers,
-            });
-            return retryResponse;
+            try {
+              const retryResponse = await fetch(url, {
+                ...fetchOptions,
+                headers,
+              });
+              return retryResponse;
+            } catch (retryErr) {
+              const msg =
+                retryErr instanceof Error
+                  ? retryErr.message
+                  : "Gagal terhubung ke server.";
+              throw new Error(
+                `Koneksi ke server gagal saat retry (${url}). Detail: ${msg}`
+              );
+            }
           }
         }
 

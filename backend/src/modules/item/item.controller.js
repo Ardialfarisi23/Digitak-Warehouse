@@ -39,8 +39,17 @@ const update = async (req, res, next) => {
 
 const remove = async (req, res, next) => {
   try {
-    await itemService.remove(req.params.id, req.user.id);
-    return response.success(res, "Barang berhasil dihapus.", null, 200);
+    await itemService.softDelete(req.params.id, req.user.id);
+    return response.success(res, "Barang berhasil dinonaktifkan.", null, 200);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const restore = async (req, res, next) => {
+  try {
+    await itemService.restore(req.params.kode_perangkat, req.user.id);
+    return response.success(res, "Barang berhasil diaktifkan kembali.", null, 200);
   } catch (err) {
     next(err);
   }
@@ -52,4 +61,5 @@ module.exports = {
   findByKode,
   update,
   remove,
+  restore,
 };

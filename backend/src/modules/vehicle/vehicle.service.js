@@ -8,6 +8,12 @@ const create = async (data, userId) => {
   const existing = await vehicleRepository.findByNoPolisi(data.no_polisi, { includeInactive: true });
 
   if (existing) {
+    if (!existing.is_aktif) {
+      throw new AppError(
+        "No polisi sudah dipakai oleh kendaraan yang telah dihapus.",
+        400
+      );
+    }
     throw new AppError(`Nomor polisi ${existing.no_polisi} sudah digunakan oleh kendaraan ${[existing.merk, existing.jenis_kendaraan].filter(Boolean).join(" ") || "lain"}.`, 409);
   }
 
@@ -69,10 +75,10 @@ const findAll = async (query) => {
 };
 
 const findByNoPolisi = async (no_polisi) => {
-  const record = await vehicleRepository.findByNoPolisi(no_polisi, { includeInactive: true });
+  const record = await vehicleRepository.findByNoPolisi(no_polisi);
 
   if (!record) {
-    throw new AppError("Vehicle tidak ditemukan.", 404);
+    throw new AppError("Data tidak ditemukan.", 404);
   }
 
   return record;
@@ -88,6 +94,12 @@ const update = async (no_polisi, data, userId) => {
   if (data.no_polisi && data.no_polisi !== no_polisi) {
     const existing = await vehicleRepository.findByNoPolisi(data.no_polisi, { includeInactive: true });
     if (existing && existing.kendaraan_id !== record.kendaraan_id) {
+      if (!existing.is_aktif) {
+        throw new AppError(
+          "No polisi sudah dipakai oleh kendaraan yang telah dihapus.",
+          400
+        );
+      }
       throw new AppError(`Nomor polisi ${existing.no_polisi} sudah digunakan oleh kendaraan ${[existing.merk, existing.jenis_kendaraan].filter(Boolean).join(" ") || "lain"}.`, 409);
     }
   }
@@ -103,22 +115,63 @@ const update = async (no_polisi, data, userId) => {
   return await vehicleRepository.update(record.kendaraan_id, updateData);
 };
 
-const remove = async (kendaraan_id, userId) => {
-  const record = await vehicleRepository.findByKendaraanId(kendaraan_id, { includeInactive: true });
+const softDelete = async (kendaraan_id, userId) => {
+  const result = await vehicleRepository.softDelete(kendaraan_id, userId);
 
-  if (!record) {
-    throw new AppError("Vehicle tidak ditemukan.", 404);
+  if (!result) {
+    throw new AppError("Kendaraan tidak ditemukan.", 404);
   }
 
-  try {
-    return await vehicleRepository.remove(kendaraan_id);
-  } catch (err) {
-    if (err && err.code === "P2003") {
-      throw new AppError("Vehicle masih terikat dengan data lain dan tidak dapat dihapus permanen.", 400);
-    }
-
-    throw err;
+  if (result.alreadyInactive) {
+    throw new AppError("Kendaraan sudah dinonaktifkan.", 400);
   }
+
+  if (result.blocked) {
+    throw new AppError(
+      "Kendaraan tidak dapat dinonaktifkan karena masih memiliki Surat Jalan yang belum selesai.",
+      400
+    );
+  }
+
+  await createAuditLog(
+    {
+      entityType: "kendaraan",
+      entityId: Number(kendaraan_id),
+      aksi: "soft_delete",
+      actorId: userId,
+      dataSebelum: null,
+      dataSesudah: { kendaraan_id: Number(kendaraan_id), is_aktif: false },
+    },
+    prisma
+  );
+
+  return result;
+};
+
+const restore = async (kendaraan_id, userId) => {
+  const result = await vehicleRepository.restore(kendaraan_id, userId);
+
+  if (!result) {
+    throw new AppError("Kendaraan tidak ditemukan.", 404);
+  }
+
+  if (result.alreadyActive) {
+    throw new AppError("Kendaraan sudah aktif.", 400);
+  }
+
+  await createAuditLog(
+    {
+      entityType: "kendaraan",
+      entityId: Number(kendaraan_id),
+      aksi: "restore",
+      actorId: userId,
+      dataSebelum: null,
+      dataSesudah: { kendaraan_id: Number(kendaraan_id), is_aktif: true },
+    },
+    prisma
+  );
+
+  return result;
 };
 
 module.exports = {
@@ -126,5 +179,6 @@ module.exports = {
   findAll,
   findByNoPolisi,
   update,
-  remove,
+  softDelete,
+  restore,
 };

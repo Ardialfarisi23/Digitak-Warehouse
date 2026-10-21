@@ -159,32 +159,7 @@ const update = async (project_id, data, userId) => {
 };
 
 const remove = async (project_id, userId) => {
-  const record = await projectRepository.findByProjectId(project_id, { includeInactive: true });
-
-  if (!record) {
-    throw new AppError("Project tidak ditemukan.", 404);
-  }
-
-  try {
-    return await projectRepository.remove(project_id);
-  } catch (err) {
-    const message = String(err?.message || "");
-    const isFkRestrict =
-      err &&
-      (err.code === "P2003" ||
-        err.code === "23001" ||
-        err.code === "23503" ||
-        /23001|23503|violates\s+RESTRICT/i.test(message));
-
-    if (isFkRestrict) {
-      throw new AppError(
-        "Project tidak dapat dihapus karena masih memiliki data terkait (tiket/cluster/BOQ). Nonaktifkan project ini sebagai gantinya.",
-        409
-      );
-    }
-
-    throw err;
-  }
+  return await nonaktifkan(project_id, userId);
 };
 
 const nonaktifkan = async (project_id, userId) => {
