@@ -149,18 +149,12 @@ function buildItemPickSummary(picks = []) {
 }
 
 /**
-<<<<<<< HEAD
- * Menentukan apakah inbound SJ layak menambah MOS Sistem (K5).
- * - Hanya inbound (bukan outbound)
- * - Status approved & diterima: `disetujui` / `diterima_didistribusikan`
-=======
  * Menentukan apakah inbound SJ layak menambah MOS.
  * MOS naik saat barang masuk gudang dan di-putaway oleh staf, yaitu
  * status diterima_didistribusikan (hasil putaway), BUKAN saat
  * distribusi ke lapangan dikonfirmasi.
  * - Hanya inbound (bukan outbound)
  * - Status: diterima_didistribusikan (putaway staf selesai)
->>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
  * - Memiliki project_id atau cluster_id (barang ditujukan untuk project/cluster)
  * - WAJIB tipe_pengirim === "external" (vendor/supplier, gudang_asal_id null)
  *
@@ -169,46 +163,13 @@ function buildItemPickSummary(picks = []) {
  */
 function isMosEligibleInbound(sj) {
   if (!sj || sj.tipe !== "inbound") return false;
-<<<<<<< HEAD
-  if (!MOS_INBOUND_STATUSES.includes(sj.status)) return false;
-=======
   if (sj.status !== "diterima_didistribusikan") return false;
->>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
   if (!sj.project_id && !sj.cluster_id) return false;
   if (sj.tipe_pengirim !== "external") return false;
   return true;
 }
 
 /**
-<<<<<<< HEAD
- * Ambil baris terbaru per kunci (semantik snapshot laporan mitra).
- *
- * `laporan_mitra` berisi snapshot per tanggal laporan, bukan akumulasi. Satu
- * (tiket, barang) bisa punya beberapa baris bila mitra meng-upload laporan
- * lebih dari sekali, sehingga MOS/Used harus diambil dari snapshot TERAKHIR,
- * bukan dijumlahkan (mengavoid penghitungan ganda).
- *
- * @param {Array<object>} rows
- * @param {(row: object) => string} keyFn
- * @param {(row: object) => number} dateFn
- * @returns {Map<string, object>}
- */
-function pickLatestPerKey(rows, keyFn, dateFn) {
-  const latest = new Map();
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const key = keyFn(row);
-    if (key === null || key === undefined || key === "") continue;
-    const current = latest.get(key);
-    if (!current) {
-      latest.set(key, row);
-      continue;
-    }
-    const currentTime = Number(dateFn(current) || 0);
-    const rowTime = Number(dateFn(row) || 0);
-    if (rowTime >= currentTime) latest.set(key, row);
-  }
-  return latest;
-=======
  * Bangun Map MOS per key dari daftar item surat jalan, menggunakan fungsi
  * bersama untuk mode project dan cluster. Hanya inbound yang lulus
  * isMosEligibleInbound (diterima_didistribusikan) yang dihitung.
@@ -227,7 +188,6 @@ function buildInboundMosMap(shipmentItems, getKey) {
     mosMap.set(key, (mosMap.get(key) || 0) + qty);
   }
   return mosMap;
->>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
 }
 
 module.exports = {
@@ -241,9 +201,5 @@ module.exports = {
   buildPickSummary,
   buildItemPickSummary,
   isMosEligibleInbound,
-<<<<<<< HEAD
-  pickLatestPerKey,
-=======
   buildInboundMosMap,
->>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
 };

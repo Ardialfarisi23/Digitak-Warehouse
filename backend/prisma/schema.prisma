@@ -388,7 +388,6 @@ model tiket_material {
   area                String?              @db.Text
   mos                 Decimal?             @db.Decimal(14, 2)
   used                Decimal?             @db.Decimal(14, 2)
-  used_terpasang      Decimal?             @db.Decimal(14, 2)
   created_at          DateTime             @default(now())
   created_by          BigInt
   boq                 boq?
@@ -1064,6 +1063,7 @@ enum audit_aksi {
   login_success
   login_failed
   reset_link_created
+  nonaktifkan_laporan_mitra
 }
 
 enum notification_type {
