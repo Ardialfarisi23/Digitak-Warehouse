@@ -162,49 +162,6 @@ const getProjectSummary = async () => {
     },
   });
 
-  const boqStatusByProject = new Map();
-
-  const boqRecords = await prisma.boq.findMany({
-    where: {
-      status: { in: ["draft", "aktif", "selesai"] },
-    },
-    include: {
-      tiket: {
-        select: {
-          project_id: true,
-        },
-      },
-      cluster: {
-        select: {
-          cluster_id: true,
-        },
-      },
-    },
-  });
-
-  const clusterIdByProject = new Map();
-  for (const boq of boqRecords) {
-    const projectId = Number(boq.tiket?.project_id);
-    if (!projectId) continue;
-    if (boq.cluster?.cluster_id && !clusterIdByProject.has(projectId)) {
-      clusterIdByProject.set(projectId, boq.cluster.cluster_id);
-    }
-  }
-
-  for (const boq of boqRecords) {
-    const projectId = Number(boq.tiket?.project_id);
-    if (!projectId) continue;
-
-    if (boq.status === "aktif") {
-      boqStatusByProject.set(projectId, "Aktif");
-      continue;
-    }
-
-    if (!boqStatusByProject.has(projectId)) {
-      boqStatusByProject.set(projectId, "Draft");
-    }
-  }
-
   // --- Aggregasi 5 metric per-project ---
   // Delegate ke reconciliation.repository.getInventory agar nilai di dashboard PERSIS
   // SAMA PERSIS dengan halaman /dashboard/reconciliation (verifikasi konsistensi angka).
@@ -216,6 +173,7 @@ const getProjectSummary = async () => {
   const reconRows = Array.isArray(reconResult?.data) ? reconResult.data : [];
 
   const projectAggregates = new Map();
+  const clusterIdByProject = new Map();
   for (const row of reconRows) {
     const pid = String(row.project_id);
     if (!pid || pid === "0") continue;
@@ -229,6 +187,9 @@ const getProjectSummary = async () => {
         approved_return_qty: 0,
         remains: 0,
         statuses: [],
+        hasBoq: false,
+        boqStatuses: [],
+        itemCount: 0,
       });
     }
 
@@ -240,12 +201,25 @@ const getProjectSummary = async () => {
     agg.approved_return_qty += Number(row.approved_return_qty || 0);
     agg.remains += Number(row.remains || 0);
     if (row.status) agg.statuses.push(row.status);
+    if (Number(row.boq || 0) > 0) agg.hasBoq = true;
+    agg.itemCount += 1;
+
+    // Track BOQ statuses from boq_list for statusBoq determination
+    if (Array.isArray(row.boq_list)) {
+      for (const b of row.boq_list) {
+        if (b.status) agg.boqStatuses.push(b.status);
+      }
+    }
+
+    // Track cluster_id from reconciliation data (uses source: "top_down" filter)
+    if (row.cluster_id && !clusterIdByProject.has(pid)) {
+      clusterIdByProject.set(pid, row.cluster_id);
+    }
   }
 
   return projects.map((project) => {
     const projectId = Number(project.project_id);
     const projectName = project.title || project.nama_project || "Project";
-    const statusBoq = boqStatusByProject.get(projectId) || "Belum Ada";
 
     const agg = projectAggregates.get(String(projectId)) || null;
 
@@ -253,7 +227,10 @@ const getProjectSummary = async () => {
     const additional = agg ? Number(agg.additional) || 0 : 0;
     const mos = agg ? Number(agg.mos) || 0 : 0;
     const used = agg ? Number(agg.used) || 0 : 0;
-    const remains = agg ? reconciliationUtils.computeRemains(mos, boq, additional, used, agg.approved_return_qty) : 0;
+    const remains = agg ? Number(agg.remains) || 0 : 0;
+    const itemCount = agg ? Number(agg.itemCount) || 0 : 0;
+    const boqStatuses = agg?.boqStatuses || [];
+    const statusBoq = boqStatuses.includes("aktif") ? "Aktif" : (boqStatuses.length > 0 ? "Draft" : "Belum Ada");
     const reconStatus = agg
       ? reconciliationUtils.aggregateProjectStatus(agg.statuses)
       : "belum_ada_data";
@@ -279,6 +256,7 @@ const getProjectSummary = async () => {
       additional,
       used,
       remains,
+      itemCount,
       status: reconStatus,
       progress,
     };

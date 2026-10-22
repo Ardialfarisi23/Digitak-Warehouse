@@ -56,6 +56,10 @@ const FALLBACK_WAREHOUSES: Warehouse[] = [
   { gudang_id: 2, nama_gudang: "Gudang Rancamanyar" },
 ];
 
+// Supervisor memiliki akses lintas gudang: ambil seluruh data tanpa filter gudang
+// dan tanpa terpotong paginasi default (limit=10) milik backend.
+const FETCH_LIMIT = 1000;
+
 function EmptyState({ title, description, icon: Icon }: { title: string; description: string; icon: React.ElementType }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
@@ -81,6 +85,9 @@ export default function SupervisorOperasionalPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>(FALLBACK_WAREHOUSES);
   const [warehouseFilter, setWarehouseFilter] = useState<string>("");
 
+  // Total seluruh data lintas gudang (dari meta.total backend, bukan jumlah baris ter-render).
+  const [totals, setTotals] = useState({ personil: 0, kendaraan: 0, perangkat: 0 });
+
   const [personilModalOpen, setPersonilModalOpen] = useState(false);
   const [kendaraanModalOpen, setKendaraanModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -102,11 +109,24 @@ export default function SupervisorOperasionalPage() {
     no_hp: "",
     email: "",
     nik: "",
-    role: "",
     bisa_menyetir: false,
     is_material_handler: false,
     gudang_id: "" as string,
   });
+
+  const isSupervisorPosisi = useMemo(
+    () => (personilForm.posisi || "").trim().toLowerCase() === "supervisor",
+    [personilForm.posisi]
+  );
+
+  const handlePosisiChange = (value: string) => {
+    const supervisorSelected = value.trim().toLowerCase() === "supervisor";
+    setPersonilForm((prev) => ({
+      ...prev,
+      posisi: value,
+      gudang_id: supervisorSelected ? "" : prev.gudang_id,
+    }));
+  };
 
   const [kendaraanForm, setKendaraanForm] = useState({
     jenis_kendaraan: "",
@@ -118,6 +138,12 @@ export default function SupervisorOperasionalPage() {
   });
 
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
+
+  const readMetaTotal = (payload: any, fallback: number) => {
+    const raw = payload?.data?.meta?.total ?? payload?.meta?.total;
+    const num = Number(raw);
+    return Number.isFinite(num) && num > 0 ? num : fallback;
+  };
 
   const parseDecimalInput = (value: string) => {
     const cleaned = (value || "").replace(/[^0-9.,]/g, "").replace(/,/g, ".");
@@ -138,37 +164,72 @@ export default function SupervisorOperasionalPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [personnelRes, vehicleRes, itemsRes, warehousesRes] = await Promise.allSettled([
-        get(`${apiBase}/api/personnels`),
-        get(`${apiBase}/api/vehicles`),
-        get(`${apiBase}/api/items`),
+      const [personnelActiveRes, personnelInactiveRes, vehicleRes, itemsRes, warehousesRes] = await Promise.allSettled([
+        get(`${apiBase}/api/personnels?limit=${FETCH_LIMIT}&is_aktif=true`),
+        get(`${apiBase}/api/personnels?limit=${FETCH_LIMIT}&is_aktif=false`),
+        get(`${apiBase}/api/vehicles?limit=${FETCH_LIMIT}`),
+        get(`${apiBase}/api/items?limit=${FETCH_LIMIT}`),
         get(`${apiBase}/api/warehouses?limit=1000&is_aktif=true&sortBy=nama_gudang&sortOrder=asc`),
       ]);
 
       if (!mountedRef.current) return;
 
-      if (personnelRes.status === "fulfilled" && personnelRes.value?.ok) {
-        const json = await personnelRes.value.json().catch(() => null);
-        setPersonnels(normalizeList(json));
+      // Personil: backend hanya mendukung filter status yang eksklusif (aktif ATAU nonaktif),
+      // jadi ambil keduanya lalu gabungkan agar daftar & total personil benar-benar lengkap
+      // dari semua gudang.
+      let mergedPersonnels: Personnel[] = [];
+      let personilTotal = 0;
+
+      if (personnelActiveRes.status === "fulfilled" && personnelActiveRes.value?.ok) {
+        const json = await personnelActiveRes.value.json().catch(() => null);
+        const list = normalizeList(json);
+        mergedPersonnels = list;
+        personilTotal = readMetaTotal(json, list.length);
       } else {
-        console.warn("Gagal memuat data personil");
-        setPersonnels([]);
+        console.warn("Gagal memuat data personil aktif");
       }
+
+      if (personnelInactiveRes.status === "fulfilled" && personnelInactiveRes.value?.ok) {
+        const json = await personnelInactiveRes.value.json().catch(() => null);
+        const inactiveList = normalizeList(json);
+        personilTotal += readMetaTotal(json, inactiveList.length);
+        const seenIds = new Set(mergedPersonnels.map((p) => String(p.personil_id)));
+        mergedPersonnels = [
+          ...mergedPersonnels,
+          ...inactiveList.filter((p: Personnel) => {
+            const key = String(p.personil_id);
+            if (seenIds.has(key)) return false;
+            seenIds.add(key);
+            return true;
+          }),
+        ];
+      } else {
+        console.warn("Gagal memuat data personil nonaktif");
+      }
+
+      setPersonnels(mergedPersonnels);
+      setTotals((prev) => ({ ...prev, personil: personilTotal }));
 
       if (vehicleRes.status === "fulfilled" && vehicleRes.value?.ok) {
         const json = await vehicleRes.value.json().catch(() => null);
-        setVehicles(normalizeList(json));
+        const list = normalizeList(json);
+        setVehicles(list);
+        setTotals((prev) => ({ ...prev, kendaraan: readMetaTotal(json, list.length) }));
       } else {
         console.warn("Gagal memuat data kendaraan");
         setVehicles([]);
+        setTotals((prev) => ({ ...prev, kendaraan: 0 }));
       }
 
       if (itemsRes.status === "fulfilled" && itemsRes.value?.ok) {
         const json = await itemsRes.value.json().catch(() => null);
-        setItems(normalizeList(json));
+        const list = normalizeList(json);
+        setItems(list);
+        setTotals((prev) => ({ ...prev, perangkat: readMetaTotal(json, list.length) }));
       } else {
         console.warn("Gagal memuat data inventori");
         setItems([]);
+        setTotals((prev) => ({ ...prev, perangkat: 0 }));
       }
 
       if (warehousesRes.status === "fulfilled" && warehousesRes.value?.ok) {
@@ -180,7 +241,7 @@ export default function SupervisorOperasionalPage() {
           : [];
         const list = rawList.map((w: any) => ({
           gudang_id: w.gudang_id,
-          nama_gudang: w.nama_gudang + (w.tipe === "dadakan" ? " (Dadakan)" : ""),
+          nama_gudang: w.nama_gudang + (w.tipe === "dadakan" ? " (Transit)" : ""),
           tipe: w.tipe,
         }));
         if (list.length) {
@@ -272,16 +333,16 @@ export default function SupervisorOperasionalPage() {
 
   const handleEditPersonil = (personil: Personnel) => {
     setSelectedPersonil(personil);
+    const isSupervisor = (personil.posisi || "").trim().toLowerCase() === "supervisor";
     setPersonilForm({
       nama: personil.nama || "",
       posisi: personil.posisi || "",
       no_hp: personil.no_hp || "",
       email: personil.email || "",
       nik: personil.nik || "",
-      role: personil.role || "",
       bisa_menyetir: Boolean(personil.bisa_menyetir),
       is_material_handler: Boolean(personil.is_material_handler),
-      gudang_id: personil.gudang_id ? String(personil.gudang_id) : "",
+      gudang_id: isSupervisor || !personil.gudang_id ? "" : String(personil.gudang_id),
     });
     setFormError(null);
     setIsEditModalOpen(true);
@@ -304,15 +365,18 @@ export default function SupervisorOperasionalPage() {
         no_hp: personilForm.no_hp || null,
         email: personilForm.email || null,
         nik: personilForm.nik || null,
-        role: personilForm.role || null,
         bisa_menyetir: Boolean(personilForm.bisa_menyetir),
         is_material_handler: Boolean(personilForm.is_material_handler),
       };
 
-      const gudangRaw = personilForm.gudang_id || warehouseFilter;
-      const gudangIdNum = Number(gudangRaw);
-      if (gudangRaw && Number.isFinite(gudangIdNum) && gudangIdNum > 0) {
-        payload.gudang_id = gudangIdNum;
+      if (isSupervisorPosisi) {
+        payload.gudang_id = null;
+      } else {
+        const gudangRaw = personilForm.gudang_id || warehouseFilter;
+        const gudangIdNum = Number(gudangRaw);
+        if (gudangRaw && Number.isFinite(gudangIdNum) && gudangIdNum > 0) {
+          payload.gudang_id = gudangIdNum;
+        }
       }
 
       const response = await put(url, payload);
@@ -390,21 +454,22 @@ export default function SupervisorOperasionalPage() {
     return vehicles.filter(matchesWarehouse);
   }, [vehicles, warehouseFilter, selectedWarehouseName]);
 
-  const filteredItems = useMemo(() => {
-    if (!warehouseFilter) return items;
-    return items.filter(matchesWarehouse);
-  }, [items, warehouseFilter, selectedWarehouseName]);
+  // Inventori perangkat (barang) adalah master data global yang tidak terikat gudang,
+  // sehingga daftarnya tetap menampilkan seluruh perangkat walau filter gudang aktif.
+  const filteredItems = useMemo(() => items, [items]);
 
+  // Summary card selalu menampilkan total SELURUH gudang (semantic: "Total ..."),
+  // terlepas dari dropdown filter gudang yang hanya mempengaruhi tabel.
   const summary = useMemo(() => {
     return {
-      personilCount: filteredPersonnels.length,
-      vehicleCount: filteredVehicles.length,
-      itemCount: filteredItems.length,
+      personilCount: totals.personil,
+      vehicleCount: totals.kendaraan,
+      itemCount: totals.perangkat,
     };
-  }, [filteredPersonnels.length, filteredVehicles.length, filteredItems.length]);
+  }, [totals.personil, totals.kendaraan, totals.perangkat]);
 
   const resetPersonilForm = () => {
-    setPersonilForm({ nama: "", posisi: "", no_hp: "", email: "", nik: "", role: "", bisa_menyetir: false, is_material_handler: false, gudang_id: warehouseFilter ? String(warehouseFilter) : "" });
+    setPersonilForm({ nama: "", posisi: "", no_hp: "", email: "", nik: "", bisa_menyetir: false, is_material_handler: false, gudang_id: warehouseFilter ? String(warehouseFilter) : "" });
     setFormError(null);
   };
 
@@ -424,15 +489,18 @@ export default function SupervisorOperasionalPage() {
         no_hp: personilForm.no_hp || null,
         email: personilForm.email || null,
         nik: personilForm.nik || null,
-        role: personilForm.role || null,
         bisa_menyetir: Boolean(personilForm.bisa_menyetir),
         is_material_handler: Boolean(personilForm.is_material_handler),
       };
 
-      const gudangRaw = personilForm.gudang_id || warehouseFilter;
-      const gudangIdNum = Number(gudangRaw);
-      if (gudangRaw && Number.isFinite(gudangIdNum) && gudangIdNum > 0) {
-        payload.gudang_id = gudangIdNum;
+      if (isSupervisorPosisi) {
+        payload.gudang_id = null;
+      } else {
+        const gudangRaw = personilForm.gudang_id || warehouseFilter;
+        const gudangIdNum = Number(gudangRaw);
+        if (gudangRaw && Number.isFinite(gudangIdNum) && gudangIdNum > 0) {
+          payload.gudang_id = gudangIdNum;
+        }
       }
 
       const res = await post(`${apiBase}/api/personnels`, payload);
@@ -556,7 +624,7 @@ export default function SupervisorOperasionalPage() {
               <option value="">Semua Gudang</option>
                     {warehouses.map((wh) => (
                       <option key={wh.gudang_id} value={String(wh.gudang_id)}>
-                        {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Dadakan)" : ""}
+                        {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Transit)" : ""}
                       </option>
                     ))}
             </select>
@@ -571,7 +639,7 @@ export default function SupervisorOperasionalPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
@@ -658,8 +726,8 @@ export default function SupervisorOperasionalPage() {
 
         {/* Tab 1: Personil */}
         {!loading && activeTab === "Personil" && (
-          <div className="w-full">
-             <table className="w-full text-left border-collapse table-auto text-sm text-slate-700">
+          <div className="w-full overflow-x-auto">
+              <table className="min-w-[640px] w-full text-left border-collapse table-auto text-sm text-slate-700">
                 <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
                    <tr>
                      <th className="px-3 py-3">Nama</th>
@@ -762,16 +830,16 @@ export default function SupervisorOperasionalPage() {
                         />
                       </td>
                     </tr>
-                  )}
-                </tbody>
-             </table>
-           </div>
-         )}
+                   )}
+</tbody>
+              </table>
+            </div>
+        )}
 
         {/* Tab 2: Kendaraan */}
         {!loading && activeTab === "Kendaraan" && (
-          <div className="w-full">
-             <table className="w-full text-left border-collapse table-auto text-sm text-slate-700">
+          <div className="w-full overflow-x-auto">
+              <table className="min-w-[640px] w-full text-left border-collapse table-auto text-sm text-slate-700">
                <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
                  <tr>
                    <th className="px-3 py-3">No. Polisi</th>
@@ -821,16 +889,21 @@ export default function SupervisorOperasionalPage() {
                       />
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                   )}
+</tbody>
+               </table>
+            </div>
         )}
 
         {/* Tab 3: Inventori Perangkat */}
         {!loading && activeTab === "Inventori Perangkat" && (
-          <div className="w-full">
-             <table className="w-full text-left border-collapse table-auto text-sm text-slate-700">
+          <div className="w-full overflow-x-auto">
+              {warehouseFilter && (
+                <p className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+                  Inventori perangkat bersifat global (tidak terikat gudang), sehingga tabel berikut tetap menampilkan seluruh perangkat dari semua gudang.
+                </p>
+              )}
+              <table className="w-full text-left border-collapse table-auto text-sm text-slate-700">
                <thead className="border-b border-slate-200 text-xs uppercase tracking-[0.18em] text-slate-400">
                  <tr>
                    <th className="px-3 py-3">Kode Perangkat</th>
@@ -854,25 +927,25 @@ export default function SupervisorOperasionalPage() {
                 ))}
                 {filteredItems.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="px-4 py-8">
-                      <EmptyState
-                        title="Belum ada data inventori"
-                        description={warehouseFilter ? "Gudang ini belum memiliki data inventori perangkat." : "Belum ada inventori perangkat yang tercatat."}
-                        icon={Package}
-                      />
-                    </td>
+                     <td colSpan={3} className="px-4 py-8">
+                       <EmptyState
+                         title="Belum ada data inventori"
+                         description="Belum ada inventori perangkat yang tercatat."
+                         icon={Package}
+                       />
+                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                 )}
+               </tbody>
+             </table>
+            </div>
         )}
       </div>
 
       {/* Modal Tambah Personil */}
       {personilModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => { setPersonilModalOpen(false); resetPersonilForm(); }}>
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Tambah Personil</h3>
@@ -890,7 +963,7 @@ export default function SupervisorOperasionalPage() {
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">Posisi</label>
-                  <select value={personilForm.posisi} onChange={(e) => setPersonilForm((p) => ({ ...p, posisi: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400">
+                  <select value={personilForm.posisi} onChange={(e) => handlePosisiChange(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400">
                     <option value="">Pilih posisi</option>
                     <option value="Supervisor">Supervisor</option>
                     <option value="Staf Gudang">Staf Gudang</option>
@@ -908,14 +981,10 @@ export default function SupervisorOperasionalPage() {
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">NIK</label>
                   <input type="text" value={personilForm.nik} onChange={(e) => setPersonilForm((p) => ({ ...p, nik: e.target.value }))} placeholder="Nomor Induk Karyawan" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">Role</label>
-                  <input type="text" value={personilForm.role} onChange={(e) => setPersonilForm((p) => ({ ...p, role: e.target.value }))} placeholder="Contoh: Admin, Operator" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
-                </div>
                 <div className="sm:col-span-2 flex items-center gap-6">
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={personilForm.bisa_menyetir} onChange={(e) => setPersonilForm((p) => ({ ...p, bisa_menyetir: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#E8632C] focus:ring-[#E8632C]" />
-                    Bisa Menyetir
+                    Punya SIM
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={personilForm.is_material_handler} onChange={(e) => setPersonilForm((p) => ({ ...p, is_material_handler: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#E8632C] focus:ring-[#E8632C]" />
@@ -925,17 +994,26 @@ export default function SupervisorOperasionalPage() {
                 <div className="sm:col-span-2">
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">Gudang</label>
                   <select
-                    value={personilForm.gudang_id}
+                    value={isSupervisorPosisi ? "" : personilForm.gudang_id}
                     onChange={(e) => setPersonilForm((p) => ({ ...p, gudang_id: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                    disabled={isSupervisorPosisi}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                   >
-                    <option value="">Pilih gudang (opsional)</option>
-                    {warehouses.map((wh) => (
-                      <option key={wh.gudang_id} value={String(wh.gudang_id)}>
-                        {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Dadakan)" : ""}
-                      </option>
-                    ))}
+                    <option value="">
+                      {isSupervisorPosisi ? "Semua Gudang" : "Pilih gudang (opsional)"}
+                    </option>
+                    {!isSupervisorPosisi &&
+                      warehouses.map((wh) => (
+                        <option key={wh.gudang_id} value={String(wh.gudang_id)}>
+                          {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Dadakan)" : ""}
+                        </option>
+                      ))}
                   </select>
+                  {isSupervisorPosisi && (
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      Supervisor memiliki akses lintas gudang, pilihan gudang dinonaktifkan.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -962,7 +1040,7 @@ export default function SupervisorOperasionalPage() {
       {/* Modal Detail Personil */}
       {isViewModalOpen && selectedPersonil && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setIsViewModalOpen(false)}>
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-slate-900">Detail Personil</h3>
               <button type="button" onClick={() => setIsViewModalOpen(false)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
@@ -1013,7 +1091,7 @@ export default function SupervisorOperasionalPage() {
       {/* Modal Edit Personil */}
       {isEditModalOpen && selectedPersonil && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => { setIsEditModalOpen(false); resetPersonilForm(); }}>
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Edit Personil</h3>
@@ -1031,7 +1109,7 @@ export default function SupervisorOperasionalPage() {
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">Posisi</label>
-                  <select value={personilForm.posisi} onChange={(e) => setPersonilForm((p) => ({ ...p, posisi: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400">
+                  <select value={personilForm.posisi} onChange={(e) => handlePosisiChange(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400">
                     <option value="">Pilih posisi</option>
                     <option value="Supervisor">Supervisor</option>
                     <option value="Staf Gudang">Staf Gudang</option>
@@ -1049,14 +1127,10 @@ export default function SupervisorOperasionalPage() {
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">NIK</label>
                   <input type="text" value={personilForm.nik} onChange={(e) => setPersonilForm((p) => ({ ...p, nik: e.target.value }))} placeholder="Nomor Induk Karyawan" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">Role</label>
-                  <input type="text" value={personilForm.role} onChange={(e) => setPersonilForm((p) => ({ ...p, role: e.target.value }))} placeholder="Contoh: Admin, Operator" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400" />
-                </div>
                 <div className="sm:col-span-2 flex items-center gap-6">
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={personilForm.bisa_menyetir} onChange={(e) => setPersonilForm((p) => ({ ...p, bisa_menyetir: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#E8632C] focus:ring-[#E8632C]" />
-                    Bisa Menyetir
+                    Punya SIM
                   </label>
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={personilForm.is_material_handler} onChange={(e) => setPersonilForm((p) => ({ ...p, is_material_handler: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[#E8632C] focus:ring-[#E8632C]" />
@@ -1066,17 +1140,26 @@ export default function SupervisorOperasionalPage() {
                 <div className="sm:col-span-2">
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">Gudang</label>
                   <select
-                    value={personilForm.gudang_id}
+                    value={isSupervisorPosisi ? "" : personilForm.gudang_id}
                     onChange={(e) => setPersonilForm((p) => ({ ...p, gudang_id: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+                    disabled={isSupervisorPosisi}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                   >
-                    <option value="">Pilih gudang (opsional)</option>
-                    {warehouses.map((wh) => (
-                      <option key={wh.gudang_id} value={String(wh.gudang_id)}>
-                        {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Dadakan)" : ""}
-                      </option>
-                    ))}
+                    <option value="">
+                      {isSupervisorPosisi ? "Semua Gudang" : "Pilih gudang (opsional)"}
+                    </option>
+                    {!isSupervisorPosisi &&
+                      warehouses.map((wh) => (
+                        <option key={wh.gudang_id} value={String(wh.gudang_id)}>
+                          {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Dadakan)" : ""}
+                        </option>
+                      ))}
                   </select>
+                  {isSupervisorPosisi && (
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      Supervisor memiliki akses lintas gudang, pilihan gudang dinonaktifkan.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -1103,7 +1186,7 @@ export default function SupervisorOperasionalPage() {
       {/* Modal Tambah Kendaraan */}
       {kendaraanModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => { setKendaraanModalOpen(false); resetKendaraanForm(); }}>
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Tambah Kendaraan</h3>
@@ -1145,7 +1228,7 @@ export default function SupervisorOperasionalPage() {
                     <option value="">Pilih gudang (opsional)</option>
                     {warehouses.map((wh) => (
                       <option key={wh.gudang_id} value={String(wh.gudang_id)}>
-                        {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Dadakan)" : ""}
+                        {wh.nama_gudang} {wh.tipe === "dadakan" ? "(Transit)" : ""}
                       </option>
                     ))}
                   </select>
@@ -1175,7 +1258,7 @@ export default function SupervisorOperasionalPage() {
       {/* Modal Konfirmasi Ubah Status Personil */}
       {isToggleModalOpen && personilToToggle && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={closeToggleModal}>
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-slate-900">
                 {(() => {

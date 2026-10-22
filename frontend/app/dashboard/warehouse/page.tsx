@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Warehouse as WarehouseIcon,
@@ -55,6 +55,106 @@ type Zona = {
   kapasitas_belum_diatur?: boolean;
 };
 
+function getCleanZoneCode(zone: Zona) {
+  return zone.kode_zona || "";
+}
+
+function StatusInputModal({ open, onClose, zone, value, onChange, onSave, saving }: { open: boolean; onClose: () => void; zone: Zona | null; value: string; onChange: (v: string) => void; onSave: () => void; saving: boolean }) {
+  useEffect(() => {
+    if (!open) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
+  if (!open || !zone) return null;
+
+  const options = [
+    { value: "CUKUP", label: "Cukup", color: "bg-green-500" },
+    { value: "MENDEKATI_PENUH", label: "Mendekati Penuh", color: "bg-orange-500" },
+    { value: "TIDAK_CUKUP", label: "Tidak Cukup", color: "bg-red-500" },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
+      <div className="w-full max-w-[420px] rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="border-b border-[#edf0f2] px-6 py-4">
+          <h3 className="text-[17px] font-bold text-[#111827]">
+            Input Status Zona {getCleanZoneCode(zone)}
+          </h3>
+          <p className="mt-1 text-[12px] text-[#6b7280]">
+            Pilih status kecukupan untuk zona ini.
+          </p>
+        </div>
+
+        <div className="px-6 py-5">
+          <div className="flex flex-col gap-2">
+            {options.map((opt) => (
+              <label
+                key={opt.value}
+                className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition ${value === opt.value ? "border-[#111827] bg-[#f7f8fa]" : "border-[#e5e7eb] hover:border-[#d0d5dd]"}`}
+              >
+                <input
+                  type="radio"
+                  name="status_kecukupan"
+                  value={opt.value}
+                  checked={value === opt.value}
+                  onChange={(e) => onChange(e.target.value)}
+                  className="h-4 w-4 accent-[#111827]"
+                />
+                <span className={`inline-block h-2.5 w-2.5 rounded-full ${opt.color}`} />
+                <span className="text-[13px] font-semibold text-[#111827]">{opt.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-[#edf0f2] px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-lg border border-[#d0d5dd] px-4 py-2 text-[13px] font-semibold text-[#344054] transition hover:bg-[#f7f8fa] disabled:opacity-60"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="rounded-lg bg-[#111827] px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-black disabled:opacity-60"
+          >
+            {saving ? "Menyimpan..." : "Simpan"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ZoneDetailModal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
+  useEffect(() => {
+    if (!open) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-0 sm:p-3 md:p-4" onClick={onClose}>
+      <div className="flex w-full h-[100dvh] max-h-[100dvh] flex-col rounded-none bg-white shadow-xl sm:w-[min(92vw,640px)] sm:max-h-[calc(100dvh-1.5rem)] sm:rounded-xl md:max-w-[640px] md:h-auto md:max-h-[calc(100dvh-2rem)] md:rounded-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function WarehouseLayoutPage() {
   const router = useRouter();
 
@@ -83,7 +183,6 @@ export default function WarehouseLayoutPage() {
   const [statusModalZone, setStatusModalZone] = useState<Zona | null>(null);
   const [statusFormValue, setStatusFormValue] = useState<string>("CUKUP");
   const [statusSaving, setStatusSaving] = useState(false);
-  const [kapasitasMaksimumInput, setKapasitasMaksimumInput] = useState<string>("");
 
   const [zoneFormOpen, setZoneFormOpen] = useState(false);
   const [zoneFormMode, setZoneFormMode] = useState<"create" | "edit">("create");
@@ -91,7 +190,6 @@ export default function WarehouseLayoutPage() {
   const [zoneFormCode, setZoneFormCode] = useState("");
   const [zoneFormName, setZoneFormName] = useState("");
   const [zoneFormTipe, setZoneFormTipe] = useState("");
-  const [zoneFormKapasitas, setZoneFormKapasitas] = useState("");
   const [zoneFormSaving, setZoneFormSaving] = useState(false);
   const [zoneFormError, setZoneFormError] = useState<string | null>(null);
 
@@ -100,6 +198,8 @@ export default function WarehouseLayoutPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  const canEditStatus = mapRole(user?.role) === "admin" || mapRole(user?.role) === "supervisor";
 
   /* =========================================================
      AUTH
@@ -269,16 +369,6 @@ export default function WarehouseLayoutPage() {
   }
 
   /* =========================================================
-     CLEAN ZONE CODE
-  ========================================================= */
-
-  function getCleanZoneCode(zone: Zona) {
-    return zone.kode_zona || "";
-  }
-
-  const canEditStatus = mapRole(user?.role) === "admin" || mapRole(user?.role) === "supervisor";
-
-  /* =========================================================
      ZONE ORDER (kode_zona A-Z)
   ========================================================= */
 
@@ -332,7 +422,6 @@ export default function WarehouseLayoutPage() {
   function openStatusModal(zone: Zona) {
     setStatusModalZone(zone);
     setStatusFormValue(zone.status_kecukupan || "CUKUP");
-    setKapasitasMaksimumInput(zone.kapasitas_maksimum != null ? String(zone.kapasitas_maksimum) : "");
     setStatusModalOpen(true);
   }
 
@@ -340,7 +429,6 @@ export default function WarehouseLayoutPage() {
     setStatusModalOpen(false);
     setStatusModalZone(null);
     setStatusFormValue("CUKUP");
-    setKapasitasMaksimumInput("");
   }
 
   async function saveStatus() {
@@ -352,9 +440,6 @@ export default function WarehouseLayoutPage() {
       const body: Record<string, unknown> = {};
       if (statusFormValue) {
         body.status_kecukupan = statusFormValue;
-      }
-      if (kapasitasMaksimumInput.trim() !== "") {
-        body.kapasitas_maksimum = Number(kapasitasMaksimumInput);
       }
 
       const res = await request(
@@ -387,7 +472,6 @@ export default function WarehouseLayoutPage() {
     setZoneFormCode("");
     setZoneFormName("");
     setZoneFormTipe("");
-    setZoneFormKapasitas("");
     setZoneFormError(null);
     setZoneFormOpen(true);
   }
@@ -398,9 +482,6 @@ export default function WarehouseLayoutPage() {
     setZoneFormCode(zone.kode_zona);
     setZoneFormName(zone.nama_zona || "");
     setZoneFormTipe(zone.tipe_zona || "");
-    setZoneFormKapasitas(
-      zone.kapasitas_maksimum != null ? String(zone.kapasitas_maksimum) : ""
-    );
     setZoneFormError(null);
     setZoneFormOpen(true);
   }
@@ -424,10 +505,6 @@ export default function WarehouseLayoutPage() {
         name: zoneFormName.trim() || undefined,
         tipe_zona: zoneFormTipe || undefined,
       };
-
-      if (zoneFormKapasitas.trim() !== "") {
-        body.kapasitas_maksimum = Number(zoneFormKapasitas);
-      }
 
       const isEdit = zoneFormMode === "edit" && zoneFormZone;
       const url = isEdit
@@ -504,7 +581,7 @@ export default function WarehouseLayoutPage() {
     }
   }
 
-  async function fetchZoneStock(zone: Zona) {
+  const fetchZoneStock = useCallback(async (zone: Zona) => {
     if (!selectedWarehouseId || !zone) return;
 
     setPanelLoading(true);
@@ -537,7 +614,7 @@ export default function WarehouseLayoutPage() {
     } finally {
       setPanelLoading(false);
     }
-  }
+  }, [selectedWarehouseId, selectedZone, get]);
 
   const zoneStockPollRef = useRef<number | null>(null);
 
@@ -639,21 +716,24 @@ export default function WarehouseLayoutPage() {
 
     if (count === 4) {
       return (
-        <div className="grid min-h-[360px] grid-cols-[1fr_90px_1fr] grid-rows-[1fr_1fr]">
-          <div className="h-full border-b border-r border-white">{renderZone(zones[0], "Zona A")}</div>
-          <div className="relative flex items-center justify-center bg-[#e8fbe8]">
+        <div className="grid min-h-[360px] grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_90px_1fr] lg:grid-rows-[1fr_1fr] gap-3 sm:gap-4 lg:gap-3">
+          <div className="h-full border-b border-r border-white lg:col-start-1 lg:row-start-1">{renderZone(zones[0], "Zona A")}</div>
+          <div className="h-full border-b border-l border-white lg:col-start-3 lg:row-start-1">{renderZone(zones[1], "Zona B")}</div>
+          <div className="lg:hidden sm:col-span-2 h-8 flex items-center justify-center bg-[#e8fbe8] rounded-lg">
+            <span className="text-xs font-bold text-slate-700">Lorong</span>
+          </div>
+          <div className="h-full border-r border-white lg:col-start-1 lg:row-start-2">{renderZone(zones[2], "Zona C")}</div>
+          <div className="h-full border-l border-white lg:col-start-3 lg:row-start-2">{renderZone(zones[3], "Zona D")}</div>
+          <div className="hidden lg:flex relative items-center justify-center bg-[#e8fbe8] lg:col-start-2 lg:row-start-1">
             <div className="absolute inset-y-0 left-0 w-px bg-[#d6efd6]" />
             <div className="absolute inset-y-0 right-0 w-px bg-[#d6efd6]" />
             <span className="rotate-[-90deg] text-[17px] font-extrabold tracking-[-0.2px] text-[#111827]">Lorong</span>
           </div>
-          <div className="h-full border-b border-l border-white">{renderZone(zones[1], "Zona B")}</div>
-          <div className="h-full border-r border-white">{renderZone(zones[2], "Zona C")}</div>
-          <div className="relative flex items-center justify-center bg-[#e8fbe8]">
+          <div className="hidden lg:flex relative items-center justify-center bg-[#e8fbe8] lg:col-start-2 lg:row-start-2">
             <div className="absolute inset-y-0 left-0 w-px bg-[#d6efd6]" />
             <div className="absolute inset-y-0 right-0 w-px bg-[#d6efd6]" />
             <span className="rotate-[-90deg] text-[17px] font-extrabold tracking-[-0.2px] text-[#111827]">Lorong</span>
           </div>
-          <div className="h-full border-l border-white">{renderZone(zones[3], "Zona D")}</div>
         </div>
       );
     }
@@ -857,121 +937,8 @@ export default function WarehouseLayoutPage() {
     );
   }
 
-  function ZoneDetailModal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
-    useEffect(() => {
-      if (!open) return;
-      function handleKey(e: KeyboardEvent) {
-        if (e.key === "Escape") onClose();
-      }
-      document.addEventListener("keydown", handleKey);
-      return () => document.removeEventListener("keydown", handleKey);
-    }, [open, onClose]);
-
-    if (!open) return null;
-
-    return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
-        <div className="w-full max-w-[640px] max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
-          {children}
-        </div>
-      </div>
-    );
-  }
-
-  function StatusInputModal({ open, onClose, zone, value, onChange, onSave, saving, kapasitasMaksimum, onKapasitasChange }: { open: boolean; onClose: () => void; zone: Zona | null; value: string; onChange: (v: string) => void; onSave: () => void; saving: boolean; kapasitasMaksimum: string; onKapasitasChange: (v: string) => void }) {
-    useEffect(() => {
-      if (!open) return;
-      function handleKey(e: KeyboardEvent) {
-        if (e.key === "Escape") onClose();
-      }
-      document.addEventListener("keydown", handleKey);
-      return () => document.removeEventListener("keydown", handleKey);
-    }, [open, onClose]);
-
-    if (!open || !zone) return null;
-
-    const options = [
-      { value: "CUKUP", label: "Cukup", color: "bg-green-500" },
-      { value: "MENDEKATI_PENUH", label: "Mendekati Penuh", color: "bg-orange-500" },
-      { value: "TIDAK_CUKUP", label: "Tidak Cukup", color: "bg-red-500" },
-    ];
-
-    return (
-      <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
-        <div className="w-full max-w-[420px] rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
-          <div className="border-b border-[#edf0f2] px-6 py-4">
-            <h3 className="text-[17px] font-bold text-[#111827]">
-              Input Status Zona {getCleanZoneCode(zone)}
-            </h3>
-            <p className="mt-1 text-[12px] text-[#6b7280]">
-              Pilih status kecukupan untuk zona ini.
-            </p>
-          </div>
-
-          <div className="px-6 py-5">
-            <div className="mb-4">
-              <label className="mb-1 block text-[12px] font-semibold text-[#344054]">
-                Kapasitas Maksimum (unit)
-              </label>
-              <input
-                type="number"
-                min={1}
-                placeholder="Contoh: 1000"
-                value={kapasitasMaksimum}
-                onChange={(e) => onKapasitasChange(e.target.value)}
-                className="h-[38px] w-full rounded-xl border border-[#d0d5dd] bg-white px-3 text-[13px] text-[#111827] outline-none transition focus:border-[#111827]"
-              />
-              <p className="mt-1 text-[10px] text-[#9ca3af]">
-                Kosongkan jika tidak diubah. Hanya angka bulat lebih dari 0.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              {options.map((opt) => (
-                <label
-                  key={opt.value}
-                  className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition ${value === opt.value ? "border-[#111827] bg-[#f7f8fa]" : "border-[#e5e7eb] hover:border-[#d0d5dd]"}`}
-                >
-                  <input
-                    type="radio"
-                    name="status_kecukupan"
-                    value={opt.value}
-                    checked={value === opt.value}
-                    onChange={(e) => onChange(e.target.value)}
-                    className="h-4 w-4 accent-[#111827]"
-                  />
-                  <span className={`inline-block h-2.5 w-2.5 rounded-full ${opt.color}`} />
-                  <span className="text-[13px] font-semibold text-[#111827]">{opt.label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-2 border-t border-[#edf0f2] px-6 py-4">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={saving}
-              className="rounded-lg border border-[#d0d5dd] px-4 py-2 text-[13px] font-semibold text-[#344054] transition hover:bg-[#f7f8fa] disabled:opacity-60"
-            >
-              Batal
-            </button>
-            <button
-              type="button"
-              onClick={onSave}
-              disabled={saving}
-              className="rounded-lg bg-[#111827] px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-black disabled:opacity-60"
-            >
-              {saving ? "Menyimpan..." : "Simpan"}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   /* =========================================================
-     LOADING
+     FLOOR PLAN
   ========================================================= */
 
   if (loading) {
@@ -1102,7 +1069,7 @@ export default function WarehouseLayoutPage() {
 
               {selectedWarehouse?.tipe === "dadakan" && (
                 <span className="inline-flex items-center rounded-full border border-[#d6efd6] bg-[#e8fbe8] px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-[#14532d]">
-                  Dadakan
+                  Transit
                 </span>
               )}
             </div>
@@ -1190,15 +1157,14 @@ export default function WarehouseLayoutPage() {
 
       <ZoneDetailModal open={panelOpen} onClose={closePanel}>
         {/* HEADER */}
-
-        <div className="flex items-start justify-between border-b border-[#edf0f2] px-6 py-4">
-          <div>
-            <h3 className="text-[17px] font-bold text-[#111827]">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shrink-0 border-b border-[#edf0f2] px-4 py-3 sm:px-6 sm:py-4">
+          <div className="min-w-0">
+            <h3 className="text-base sm:text-[17px] font-bold text-[#111827]">
               Detail Zona {selectedZone && getCleanZoneCode(selectedZone)}
             </h3>
 
             {selectedZone && (
-              <p className="mt-1 text-[12px] text-[#6b7280]">
+              <p className="mt-1 text-xs sm:text-[12px] text-[#6b7280] whitespace-normal">
                 {selectedWarehouse?.nama_gudang} — {getZoneType(selectedZone)}
                 {(selectedZone.total_item ?? 0) > 0 && (
                   <span> • {(selectedZone.total_item ?? 0)} barang • {Number(selectedZone.total_qty ?? 0).toLocaleString("id-ID")} unit</span>
@@ -1207,7 +1173,7 @@ export default function WarehouseLayoutPage() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => {
@@ -1215,7 +1181,7 @@ export default function WarehouseLayoutPage() {
                 const target = `/dashboard/reports?tab=stok&warehouseId=${encodeURIComponent(selectedWarehouseId)}`;
                 window.location.href = target;
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#111827]/10 bg-white px-3 py-1.5 text-[11px] font-semibold text-[#111827] shadow-sm transition hover:border-[#111827]/30 hover:bg-[#f7f8fa]"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#111827]/10 bg-white px-3 py-2 min-h-10 text-sm font-semibold text-[#111827] shadow-sm transition hover:border-[#111827]/30 hover:bg-[#f7f8fa] whitespace-nowrap w-full sm:w-auto"
             >
               Lihat Riwayat Stok
             </button>
@@ -1223,7 +1189,7 @@ export default function WarehouseLayoutPage() {
             <button
               type="button"
               onClick={closePanel}
-              className="rounded-lg p-2 text-[#98a2b3] hover:bg-[#f2f4f7] hover:text-[#111827]"
+              className="flex-shrink-0 min-h-10 min-w-10 flex items-center justify-center rounded-lg p-2 text-[#98a2b3] hover:bg-[#f2f4f7] hover:text-[#111827]"
             >
               <X size={19} />
             </button>
@@ -1231,8 +1197,7 @@ export default function WarehouseLayoutPage() {
         </div>
 
         {/* SEARCH */}
-
-        <div className="border-b border-[#edf0f2] px-6 py-3">
+        <div className="shrink-0 border-b border-[#edf0f2] px-4 py-3 sm:px-6">
           <div className="flex items-center gap-2 rounded-[9px] border border-[#d0d5dd] bg-white px-3">
             <Search
               size={16}
@@ -1243,14 +1208,13 @@ export default function WarehouseLayoutPage() {
               value={panelSearch}
               onChange={(e) => setPanelSearch(e.target.value)}
               placeholder="Cari kode perangkat / nama barang…"
-              className="h-[38px] w-full bg-transparent text-[13px] text-[#111827] outline-none placeholder:text-[#98a2b3]"
+              className="h-11 sm:h-[38px] w-full bg-transparent text-base sm:text-[13px] text-[#111827] outline-none placeholder:text-[#98a2b3]"
             />
           </div>
         </div>
 
         {/* CONTENT */}
-
-        <div className="px-6 py-4">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 pb-[env(safe-area-inset-bottom)] sm:px-6">
           {panelError && (
             <div className="mb-4 flex items-center gap-2 rounded-[10px] border border-[#fecaca] bg-[#fef2f2] px-3 py-2.5 text-[13px] text-[#b42318]">
               <AlertCircle size={16} className="shrink-0" />
@@ -1289,6 +1253,7 @@ export default function WarehouseLayoutPage() {
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-[#e5e7eb]">
+                    <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085] text-center w-12">No</th>
                     <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Nama Barang</th>
                     <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Kategori</th>
                     <th className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#667085]">Kondisi</th>
@@ -1297,8 +1262,9 @@ export default function WarehouseLayoutPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#f2f4f7]">
-                  {filteredPanelStock.map((item) => (
-                    <tr key={item.snapshot_id} className="transition hover:bg-[#fafbfc]">
+                  {filteredPanelStock.map((item, idx) => (
+                    <tr key={item.snapshot_id} className="border-b border-gray-50 last:border-0 odd:bg-white even:bg-slate-50 transition hover:bg-[#fafbfc]">
+                      <td className="px-4 py-3 text-center text-xs text-slate-500">{idx + 1}</td>
                       <td className="px-4 py-3">
                         <p className="text-[13px] font-semibold text-[#111827]">{item.nama_barang}</p>
                         <p className="text-[11px] text-[#98a2b3]">{item.kode_perangkat}</p>
@@ -1324,8 +1290,6 @@ export default function WarehouseLayoutPage() {
         onChange={setStatusFormValue}
         onSave={saveStatus}
         saving={statusSaving}
-        kapasitasMaksimum={kapasitasMaksimumInput}
-        onKapasitasChange={setKapasitasMaksimumInput}
       />
 
       {/* =====================================================
@@ -1396,25 +1360,6 @@ export default function WarehouseLayoutPage() {
               <option value="Outdoor">Outdoor</option>
             </select>
           </div>
-
-          <div className="mb-2">
-            <label className="mb-1 block text-[12px] font-semibold text-[#344054]">
-              Kapasitas Maksimum (unit)
-            </label>
-
-            <input
-              type="number"
-              min={1}
-              value={zoneFormKapasitas}
-              onChange={(e) => setZoneFormKapasitas(e.target.value)}
-              placeholder="Kosongkan jika tidak diatur"
-              className="h-[38px] w-full rounded-xl border border-[#d0d5dd] bg-white px-3 text-[13px] text-[#111827] outline-none transition focus:border-[#111827]"
-            />
-
-            <p className="mt-1 text-[10px] text-[#9ca3af]">
-              Hanya angka bulat lebih dari 0. Kosongkan jika belum diatur.
-            </p>
-          </div>
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-[#edf0f2] px-6 py-4">
@@ -1444,7 +1389,7 @@ export default function WarehouseLayoutPage() {
 
       {deleteConfirmOpen && deleteConfirmZone && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/30 p-4" onClick={closeDeleteConfirm}>
-          <div className="w-full max-w-[420px] rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+<div className="w-[calc(100vw-1.5rem)] max-w-[420px] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="border-b border-[#edf0f2] px-6 py-4">
               <h3 className="text-[17px] font-bold text-[#111827]">
                 Hapus Zona {getCleanZoneCode(deleteConfirmZone)}

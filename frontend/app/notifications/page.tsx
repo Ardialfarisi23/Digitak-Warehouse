@@ -8,6 +8,7 @@ import { ProtectedRoute } from "@/lib/protected-route";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import { CompactSidebar } from "@/components/CompactSidebar";
+import { safeUrl } from "@/lib/safe-url";
 import { useSidebar } from "@/components/sidebar-context";
 import { useNotifications } from "@/hooks/use-notifications";
 import { ConfirmModal } from "@/components/ConfirmModal";
@@ -152,7 +153,8 @@ function NotificationsPageContent() {
   const handleNotificationClick = async (notif: { id: number; link: string | null }) => {
     await handleMarkAsRead(notif.id);
     if (notif.link) {
-      router.push(notif.link);
+      const safe = safeUrl(notif.link);
+      if (safe) router.push(safe);
     }
   };
 
@@ -162,8 +164,8 @@ function NotificationsPageContent() {
     <div className="flex min-h-screen bg-[#FAF8F5] overflow-x-hidden">
       <CompactSidebar userRole={userRole} />
       <main
-        className="flex-1 mt-16 p-6 overflow-y-auto transition-all duration-300"
-        style={{ marginLeft: `${width}px` }}
+        className="flex-1 mt-16 p-4 sm:p-6 overflow-y-auto transition-all duration-300 ml-0 md:ml-[var(--sidebar-w)]"
+        style={{ "--sidebar-w": `${width}px` } as React.CSSProperties}
       >
         <div className="mx-auto max-w-4xl">
           <div className="flex items-center justify-between mb-6">

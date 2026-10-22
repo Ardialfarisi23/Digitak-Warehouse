@@ -2,6 +2,7 @@ const boqRepository = require("./boq.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
 const notificationService = require("../../modules/notifications/notifications.service");
+const { normalizeClusterId } = require("../../utils/clusterResolver");
 
 const normalizeStatus = (status) => {
   if (!status) return status;
@@ -37,12 +38,15 @@ const normalizeVerification = (status) => {
   return map[status.toUpperCase()] || status.toLowerCase();
 };
 
+const { getJakartaYear, formatBoqNumber, parseBoqSequence, withBoqNumberRetry } = require("./boq-number.util");
+
 const generateBoqNumber = async () => {
-  const year = new Date().getFullYear();
+  const now = new Date();
+  const year = getJakartaYear(now);
   const lastBoq = await prisma.boq.findFirst({
     where: {
       boq_number: {
-        startsWith: `BOQ-${year}-`,
+        startsWith: `BOQ-${year}`,
       },
     },
     orderBy: { boq_id: 'desc' },
@@ -50,18 +54,37 @@ const generateBoqNumber = async () => {
   });
 
   let nextNumber = 1;
-  if (lastBoq?.boq_number) {
-    const parts = String(lastBoq.boq_number).split('-');
-    const lastNum = parseInt(parts[parts.length - 1] || '0', 10);
-    nextNumber = lastNum + 1;
+  const lastSeq = parseBoqSequence(lastBoq?.boq_number);
+  if (lastSeq !== null) {
+    nextNumber = lastSeq + 1;
   }
 
-  return `BOQ-${year}-${String(nextNumber).padStart(4, "0")}`;
+  return formatBoqNumber(now, nextNumber);
 };
 
 const getBoqIdentifier = (boq) => boq.boq_number || `BOQ-${boq.boq_id}`;
 
 const getBoqProjectName = (boq) => boq?.tiket?.project?.nama_project || null;
+
+const assertTicketNumberUnique = async (ticketNumber, excludeBoqId = null) => {
+  const existingTiket = await prisma.tiket_material.findFirst({
+    where: { kode_tiket: ticketNumber },
+    include: { boq: true },
+  });
+
+  if (!existingTiket) return;
+
+  if (existingTiket.boq) {
+    const usedByBoqId = existingTiket.boq.boq_id;
+    if (excludeBoqId === null || Number(usedByBoqId) !== Number(excludeBoqId)) {
+      const boqIdentifier = getBoqIdentifier(existingTiket.boq);
+      throw new AppError(
+        `Nomor tiket "${ticketNumber}" sudah digunakan pada BOQ ${boqIdentifier}.`,
+        409
+      );
+    }
+  }
+};
 
 const getRelatedUserIdsByGudang = async (gudangIds, roles) => {
   if (!Array.isArray(gudangIds) || gudangIds.length === 0 || !Array.isArray(roles) || roles.length === 0) {
@@ -157,7 +180,7 @@ const create = async (data, userId) => {
   }
 
   const cluster = await prisma.cluster.findUnique({
-    where: { cluster_id: String(clusterId) },
+    where: { cluster_id: normalizeClusterId(clusterId) },
   });
 
   if (!cluster) {
@@ -166,7 +189,7 @@ const create = async (data, userId) => {
 
   const existingActiveBoqForCluster = await prisma.boq.findFirst({
     where: {
-      cluster_id: String(clusterId),
+      cluster_id: normalizeClusterId(clusterId),
       status: "aktif",
     },
   });
@@ -174,6 +197,8 @@ const create = async (data, userId) => {
   if (existingActiveBoqForCluster) {
     throw new AppError("Cluster ini sudah memiliki BOQ aktif.", 400);
   }
+
+  await assertTicketNumberUnique(ticketNumber);
 
   const existingTiket = await prisma.tiket_material.findFirst({
     where: { kode_tiket: ticketNumber },
@@ -188,18 +213,16 @@ const create = async (data, userId) => {
         kode_tiket: ticketNumber,
         project_id: projectId ? Number(projectId) : null,
         area: area || null,
+        cluster_id: normalizeClusterId(clusterId),
         created_by: userId,
       },
     });
   }
 
-  const boqNumber = await generateBoqNumber();
-
-  const boqDataWithMeta = {
+const boqDataWithMeta = {
     ...boqData,
-    boq_number: boqNumber,
     tiket_id: tiket.tiket_id,
-    cluster_id: String(clusterId),
+    cluster_id: normalizeClusterId(clusterId),
     created_by: userId,
     updated_by: userId,
     status: normalizeStatus(boqData.status),
@@ -220,6 +243,7 @@ const create = async (data, userId) => {
     if (items.some((item) => item.itemCode && !item.barang_id)) {
       const barangs = await prisma.barang.findMany({
         where: {
+          is_aktif: true,
           kode_perangkat: {
             in: items.filter((item) => item.itemCode && !item.barang_id).map((item) => item.itemCode),
           },
@@ -242,7 +266,7 @@ const create = async (data, userId) => {
         select: { satuan_id: true, kode_satuan: true },
       });
       for (const s of satuanList) {
-        satuanMap.set(s.kode_satuan, s.satuan_id);
+        satuanMap.set(s.satuan, s.satuan_id);
       }
     }
 
@@ -270,12 +294,16 @@ const create = async (data, userId) => {
           qty_rencana: item.quantity || item.qty_rencana || 0,
           satuan_id: satuanId,
           gudang_tujuan_id: item.destinationWarehouseId ? Number(item.destinationWarehouseId) : null,
+          cluster_id: normalizeClusterId(boqDataWithMeta.cluster_id),
         };
       }),
     };
   }
 
-  const result = await boqRepository.create(boqDataWithMeta);
+  const result = await withBoqNumberRetry(
+    () => generateBoqNumber(),
+    (boqNumber) => boqRepository.create({ ...boqDataWithMeta, boq_number: boqNumber })
+  );
 
   const actor = await prisma.user_account.findUnique({
     where: { user_id: BigInt(userId) },
@@ -448,7 +476,10 @@ const update = async (id, data, userId) => {
     const tiketUpdateData = {};
     if (projectId) tiketUpdateData.project_id = Number(projectId);
     if (area) tiketUpdateData.area = area;
-    if (ticketNumber) tiketUpdateData.kode_tiket = ticketNumber;
+    if (ticketNumber) {
+      await assertTicketNumberUnique(ticketNumber, Number(id));
+      tiketUpdateData.kode_tiket = ticketNumber;
+    }
 
     await prisma.tiket_material.update({
       where: { tiket_id: boq.tiket_id },
@@ -461,6 +492,7 @@ const update = async (id, data, userId) => {
     if (items.some((item) => item.itemCode && !item.barang_id)) {
       const barangs = await prisma.barang.findMany({
         where: {
+          is_aktif: true,
           kode_perangkat: {
             in: items.filter((item) => item.itemCode && !item.barang_id).map((item) => item.itemCode),
           },
@@ -689,7 +721,17 @@ const updateStatus = async (id, status, userId) => {
         aksi: "update",
         actor_id: BigInt(Number(userId)),
         data_sebelum: { status: boq.status },
-        data_sesudah: { status: result.status, boq_id: Number(id) },
+        data_sesudah: {
+          status: result.status,
+          boq_id: Number(id),
+          ...(normalizedStatus === "aktif"
+            ? {
+                keterangan: "Aktivasi BOQ",
+                boq_number: boq.boq_number || null,
+                nama_cluster: boq.cluster?.nama_cluster || null,
+              }
+            : {}),
+        },
       },
     });
   } catch (auditErr) {
@@ -827,14 +869,76 @@ const getExportMatrixData = async () => {
   return await boqRepository.getExportMatrixData();
 };
 
-const getItems = async (projectId) => {
-  return await boqRepository.findItemsByProject(projectId);
+/**
+ * Daftar BOQ read-only (dropdown/picker) — data minimal, tanpa metadata
+ * manajemen. Dipakai staf pada form Surat Jalan.
+ */
+const findOptions = async (query = {}) => {
+  const clusterIds = query.clusterIds
+    ? String(query.clusterIds)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : query.clusterId
+      ? [String(query.clusterId)]
+      : undefined;
+
+  return await boqRepository.findOptions({
+    search: query.search,
+    status: query.status,
+    excludeStatus: query.excludeStatus,
+    projectId: query.projectId,
+    clusterIds,
+    limit: query.limit,
+  });
+};
+
+/**
+ * Detail BOQ read-only (form Surat Jalan staf) — hanya id/nomor/tiket/cluster
+ * dan daftar item (barang + qty rencana).
+ */
+const findOptionDetail = async (id) => {
+  const boq = await boqRepository.findOptionDetail(id);
+  if (!boq) {
+    throw new AppError("BOQ tidak ditemukan.", 404);
+  }
+  return boq;
+};
+
+const getItems = async (projectId, statuses, clusterId = null, searchKeywords = []) => {
+  return await boqRepository.findItemsByProject(projectId, clusterId, statuses, searchKeywords);
+};
+
+const checkTicketAvailability = async (ticketNumber, excludeBoqId = null) => {
+  const existingTiket = await prisma.tiket_material.findFirst({
+    where: { kode_tiket: ticketNumber },
+    include: { boq: true },
+  });
+
+  if (!existingTiket) {
+    return { available: true };
+  }
+
+  if (existingTiket.boq) {
+    const usedByBoqId = existingTiket.boq.boq_id;
+    if (excludeBoqId === null || Number(usedByBoqId) !== Number(excludeBoqId)) {
+      const boqIdentifier = getBoqIdentifier(existingTiket.boq);
+      return {
+        available: false,
+        message: `Nomor tiket "${ticketNumber}" sudah digunakan pada BOQ ${boqIdentifier}.`,
+      };
+    }
+  }
+
+  return { available: true };
 };
 
 module.exports = {
   create,
   findAll,
   findById,
+  findOptions,
+  findOptionDetail,
   update,
   updateStatus,
   softDelete,
@@ -845,4 +949,5 @@ module.exports = {
   getAreas,
   getItems,
   getExportMatrixData,
+  checkTicketAvailability,
 };

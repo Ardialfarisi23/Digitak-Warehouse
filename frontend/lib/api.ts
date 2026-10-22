@@ -10,14 +10,46 @@ interface FetchOptions extends RequestInit {
   skipAuth?: boolean;
 }
 
+let refreshPromise: Promise<string | null> | null = null;
+
 export function useApi() {
   const router = useRouter();
-  const { token, logout, isLoggingOut } = useAuth();
+  const { logout, isLoggingOut } = useAuth();
 
   const isLoggingOutRef = useRef(isLoggingOut);
   useEffect(() => {
     isLoggingOutRef.current = isLoggingOut;
   }, [isLoggingOut]);
+
+  const doRefresh = useCallback(async (): Promise<string | null> => {
+    const refreshToken = typeof window !== "undefined" ? localStorage.getItem("refreshToken") : null;
+    if (!refreshToken) return null;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      if (!res.ok) {
+        await res.json().catch(() => ({}));
+        if (res.status === 401 || res.status === 403) {
+          return "logout";
+        }
+        return null;
+      }
+
+      const resData = await res.json();
+      const newToken = resData?.data?.token;
+      if (newToken && typeof window !== "undefined") {
+        localStorage.setItem("token", newToken);
+      }
+      return newToken;
+    } catch {
+      return "network_error";
+    }
+  }, []);
 
   const request = useCallback(
     async (url: string, options: FetchOptions = {}) => {
@@ -32,16 +64,27 @@ export function useApi() {
         headers["Content-Type"] = "application/json";
       }
 
-      if (!skipAuth && token) {
-        headers["Authorization"] = `Bearer ${token}`;
+      const currentToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      if (!skipAuth && currentToken) {
+        headers["Authorization"] = `Bearer ${currentToken}`;
       }
 
-      const response = await fetch(url, {
-        ...fetchOptions,
-        headers,
-      });
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          ...fetchOptions,
+          headers,
+        });
+      } catch (networkErr) {
+        const msg =
+          networkErr instanceof Error
+            ? networkErr.message
+            : "Gagal terhubung ke server.";
+        throw new Error(
+          `Koneksi ke server gagal (${url}). Pastikan backend berjalan. Detail: ${msg}`
+        );
+      }
 
-      // 1. Sesi kadaluarsa / Token invalid -> Redirect ke login
       if (response.status === 401) {
         const err = await response.clone().json().catch(() => null);
 
@@ -50,12 +93,68 @@ export function useApi() {
           return response;
         }
 
+        const isAuthEndpoint = url.includes("/api/auth/login") || url.includes("/api/auth/refresh") || url.includes("/api/auth/logout") || url.includes("/api/auth/reset-password");
+
+        if (isAuthEndpoint) {
+          logout();
+          if (!isLoggingOutRef.current) {
+            sessionStorage.setItem("flash:session_expired", "Sesi Anda telah berakhir, silakan login kembali.");
+            router.replace("/");
+            throw new Error("Sesi berakhir. Silakan login kembali.");
+          } else {
+            router.replace("/");
+          }
+          return response;
+        }
+
+        if (!refreshPromise) {
+          refreshPromise = doRefresh();
+        }
+
+        const refreshResult = await refreshPromise;
+        refreshPromise = null;
+
+        if (refreshResult === "logout") {
+          logout();
+          if (!isLoggingOutRef.current) {
+            sessionStorage.setItem("flash:session_expired", "Sesi Anda telah berakhir, silakan login kembali.");
+            router.replace("/");
+            throw new Error("Sesi berakhir. Silakan login kembali.");
+          } else {
+            router.replace("/");
+          }
+          return response;
+        }
+
+        if (refreshResult === "network_error") {
+          throw new Error("Gagal memperbarui token. Silakan coba lagi.");
+        }
+
+        if (refreshResult) {
+          const latestToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+          if (latestToken && latestToken !== currentToken) {
+            headers["Authorization"] = `Bearer ${latestToken}`;
+            try {
+              const retryResponse = await fetch(url, {
+                ...fetchOptions,
+                headers,
+              });
+              return retryResponse;
+            } catch (retryErr) {
+              const msg =
+                retryErr instanceof Error
+                  ? retryErr.message
+                  : "Gagal terhubung ke server.";
+              throw new Error(
+                `Koneksi ke server gagal saat retry (${url}). Detail: ${msg}`
+              );
+            }
+          }
+        }
+
         logout();
         if (!isLoggingOutRef.current) {
-          sessionStorage.setItem(
-            "flash:session_expired",
-            "Sesi Anda telah berakhir, silakan login kembali."
-          );
+          sessionStorage.setItem("flash:session_expired", "Sesi Anda telah berakhir, silakan login kembali.");
           router.replace("/");
           throw new Error("Sesi berakhir. Silakan login kembali.");
         } else {
@@ -63,7 +162,6 @@ export function useApi() {
         }
       }
 
-      // 2. Akses ditolak (Role tidak diizinkan) -> Jangan logout, biarkan UI menangani
       if (response.status === 403) {
         console.warn(`[403 Forbidden] Akses ditolak untuk endpoint: ${url}`);
         try {
@@ -78,7 +176,7 @@ export function useApi() {
 
       return response;
     },
-    [token, logout, isLoggingOut, router]
+    [logout, router, doRefresh]
   );
 
   const get = useCallback(
@@ -122,4 +220,35 @@ export function useApi() {
   );
 
   return { request, get, post, put, patch, del };
+}
+
+/**
+ * Ubah response gagal menjadi Error yang pesannya diambil dari body server.
+ *
+ * Dipakai halaman yang sebelumnya membuang pesan asli server dan menampilkan
+ * string generik, sehingga penyebab sebenarnya (mis. 403 "Anda belum ditugaskan
+ * ke gudang mana pun") ikut hilang dan sulit ditelusuri.
+ *
+ * Halaman baru memanggil `ensureOk(res, "pesan cadangan")` alih-alih
+ * `if (!res.ok) throw new Error("pesan cadangan")`. Kalau response-nya sukses,
+ * fungsi ini mengembalikan response sehingga bisa langsung dipakai berikutnya.
+ */
+export async function ensureOk(
+  response: Response,
+  pesanCadangan: string
+): Promise<Response> {
+  if (response.ok) return response;
+
+  let pesanServer: string | null = null;
+
+  try {
+    const data = await response.clone().json();
+    if (typeof data?.message === "string" && data.message.trim() !== "") {
+      pesanServer = data.message;
+    }
+  } catch {
+    pesanServer = null;
+  }
+
+  throw new Error(pesanServer ?? pesanCadangan);
 }

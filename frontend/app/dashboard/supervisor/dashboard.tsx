@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import {
+  AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
   BarChart2,
@@ -28,11 +29,11 @@ import {
   Users,
   Warehouse,
 } from "lucide-react";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole, formatRole } from "@/lib/navigation";
 import { useSupervisorDashboard } from "@/hooks/use-supervisor-dashboard";
 import { getStatusBadgeClass, getStatusLabel, formatSisaCapacity } from "@/lib/capacity";
-import { ConfirmModal } from "@/components/ConfirmModal";
 
 const summaryCards = [
   {
@@ -179,6 +180,62 @@ const chartData = [
   { day: "Min", inbound: 15, outbound: 10 },
 ];
 
+const formatNumber = (value: number) =>
+  new Intl.NumberFormat("id-ID").format(value || 0);
+
+const STATUS_META: Record<
+  "sesuai" | "perhatian" | "belum_ada_data",
+  { label: string; badge: string; icon: typeof CheckCircle2 }
+> = {
+  sesuai: {
+    label: "Sesuai",
+    badge: "bg-emerald-50 text-emerald-600",
+    icon: CheckCircle2,
+  },
+  perhatian: {
+    label: "Perhatian",
+    badge: "bg-amber-50 text-amber-600",
+    icon: AlertTriangle,
+  },
+  belum_ada_data: {
+    label: "Belum Ada Data",
+    badge: "bg-slate-50 text-slate-500",
+    icon: Package,
+  },
+};
+
+const METRIC_TONE: Record<
+  "slate" | "emerald" | "orange" | "rose",
+  { box: string; label: string }
+> = {
+  slate: { box: "bg-slate-50 text-slate-700", label: "text-slate-400" },
+  emerald: { box: "bg-emerald-50 text-emerald-800", label: "text-emerald-600" },
+  orange: { box: "bg-orange-50 text-orange-800", label: "text-orange-600" },
+  rose: { box: "bg-rose-50 text-rose-600 border border-rose-200", label: "text-rose-600" },
+};
+
+function MetricBox({
+  label,
+  value,
+  tone,
+  highlight,
+}: {
+  label: string;
+  value: number;
+  tone: keyof typeof METRIC_TONE;
+  highlight?: boolean;
+}) {
+  const t = METRIC_TONE[tone];
+  return (
+    <div className={`rounded-lg px-1 py-2 ${t.box}`}>
+      <span className={`block text-[10px] font-medium ${t.label}`}>{label}</span>
+      <span className={`block text-xs font-bold ${highlight ? "font-extrabold" : ""}`}>
+        {formatNumber(value)}
+      </span>
+    </div>
+  );
+}
+
 export default function SupervisorDashboard() {
   const router = useRouter();
   const { user, logout, isLoading, isAuthenticated } = useAuth();
@@ -207,7 +264,7 @@ export default function SupervisorDashboard() {
     );
   }
 
-  const { kapasitasPerGudang, showDeactivatedModal, handleReturnToLogin } = useSupervisorDashboard();
+  const { kapasitasPerGudang, projectSummary, showDeactivatedModal, handleReturnToLogin } = useSupervisorDashboard();
 
   return (
     <div className={`flex min-h-screen bg-[#F8F6F0] text-slate-800`}>
@@ -384,7 +441,7 @@ export default function SupervisorDashboard() {
                   </h3>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+                <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                   {approvalCards.map((card) => (
                     <div
                       key={card.title}
@@ -543,6 +600,81 @@ export default function SupervisorDashboard() {
                 </div>
               </div>
 
+              {/* RINGKASAN PER PROJECT/CLUSTER */}
+              <section className="rounded-2xl border border-stone-100 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">
+                      Ringkasan per Project/Cluster
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Status BOQ dan realisasi hardware tiap proyek.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  {projectSummary.length === 0 ? (
+                    <div className="py-6 text-center text-sm text-slate-400 md:col-span-2">
+                      Belum ada data project.
+                    </div>
+                  ) : (
+                    projectSummary.map((p) => {
+                      const statusMeta = STATUS_META[p.status];
+                      const StatusIcon = statusMeta.icon;
+                      const maxVal = Math.max(1, p.boq + p.additional);
+                      const remWidth = Math.max(0, p.remains);
+
+                      return (
+                        <div
+                          key={p.projectId}
+                          className="rounded-2xl border border-stone-100 bg-white p-3 transition-colors hover:border-stone-200"
+                        >
+                          {/* Header baris */}
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <h4 className="text-sm font-bold text-slate-900">
+                                {p.projectName}
+                              </h4>
+                              <p className="text-[10px] text-slate-500">
+                                {p.clusterLabel || "-"}
+                              </p>
+                            </div>
+                            <StatusIcon size={14} className={statusMeta.badge} />
+                          </div>
+
+                          <div className="space-y-1 text-[10px]">
+                            <div className="flex justify-between text-slate-600">
+                              <span>BOQ Plan</span>
+                              <span>{formatNumber(p.boq)}</span>
+                            </div>
+                            <div className="flex justify-between text-slate-600">
+                              <span>Additional</span>
+                              <span>{formatNumber(p.additional)}</span>
+                            </div>
+                            <div className="flex justify-between text-slate-600">
+                              <span>Used</span>
+                              <span>{formatNumber(p.hardwareOnSite)}</span>
+                            </div>
+                            <div className="flex justify-between text-slate-600">
+                              <span>Remains</span>
+                              <span>{formatNumber(p.remains)}</span>
+                            </div>
+                          </div>
+
+                          <div className="mt-2 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-emerald-600"
+                              style={{ width: `${Math.min(100, (p.hardwareOnSite / maxVal) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </section>
+
               {/* TWO COLUMNS BOTTOM */}
               <div className="grid gap-6 md:grid-cols-2">
                 {/* MENUNGGU APPROVAL */}
@@ -620,7 +752,7 @@ export default function SupervisorDashboard() {
                     </button>
                   </div>
 
-                  <div className="overflow-x-auto">
+                  <div className="w-full overflow-x-auto">
                     <table className="w-full text-left text-xs">
                       <thead>
                         <tr className="border-b border-stone-100 text-slate-400 font-bold">
@@ -751,12 +883,12 @@ export default function SupervisorDashboard() {
                 </div>
               </div>
 
-              {/* GUDANG DADAKAN AKTIF */}
+              {/* GUDANG TRANSIT AKTIF */}
               <div className="rounded-2xl bg-white p-6 shadow-sm border border-stone-100 space-y-4">
                 <div className="flex items-center gap-2">
                   <Radio className="text-orange-500" size={20} />
                   <h3 className="text-lg font-bold text-slate-900">
-                    Gudang Dadakan Aktif
+                    Gudang Transit Aktif
                   </h3>
                 </div>
 
@@ -772,7 +904,7 @@ export default function SupervisorDashboard() {
 
                   <div className="flex flex-wrap gap-2 text-xs font-bold">
                     <span className="rounded-md bg-stone-200/70 px-2.5 py-1 text-slate-700">
-                      Gudang Dadakan
+                      Gudang Transit
                     </span>
                     <span className="rounded-md bg-orange-100 px-2.5 py-1 text-orange-700 flex items-center gap-1">
                       <Clock size={14} /> Aktif

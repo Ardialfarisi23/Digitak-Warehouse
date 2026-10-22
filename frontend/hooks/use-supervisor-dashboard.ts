@@ -19,6 +19,25 @@ type ApprovalItem = {
   status: "Menunggu" | "Disetujui" | "Ditolak";
   createdAt?: string;
 };
+
+export type InboundMonitoringApiRow = {
+  surat_jalan_id?: string | number;
+  id?: string | number;
+  nomor_surat_jalan?: string;
+  gudang_tujuan?: { nama_gudang?: string } | null;
+  status?: string;
+  tanggal?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type InboundMonitoringItem = {
+  id: string;
+  nomorSuratJalan: string;
+  gudangTujuan: string;
+  status: string;
+  tanggal: string;
+};
 type ActivityLogItem = {
   auditId?: string;
   time: string;
@@ -38,28 +57,49 @@ const FALLBACK_PROJECTS: Project[] = [
   { id: "prj-2", nama_project: "Backbone JKT", area: "Jakarta Pusat" },
 ];
 
-const FALLBACK_APPROVAL_LIST: ApprovalItem[] = [
-  { id: "inbound::SJ-2024001", rawId: "SJ-2024001", isOutbound: false, direction: "Inbound", partner: "PT Supplier A", status: "Menunggu" },
-  { id: "outbound::SJ-2024002", rawId: "SJ-2024002", isOutbound: true, tag: "KRITIS", direction: "Outbound", partner: "Project RW 05", status: "Menunggu" },
-  { id: "inbound::SJ-2024003", rawId: "SJ-2024003", isOutbound: false, direction: "Inbound", partner: "Gudang Transit", status: "Menunggu" },
-];
-
 const FALLBACK_ACTIVITY_LOG: ActivityLogItem[] = [
   { auditId: "fb-1", time: "10:42 WIB", activity: "Approve SJ-2024000", actor: "Andi P.", result: "Sukses", resultTone: "bg-emerald-100 text-emerald-700" },
   { auditId: "fb-2", time: "10:15 WIB", activity: "Scan Inbound Pallet A", actor: "Budi", result: "Selesai", resultTone: "bg-emerald-100 text-emerald-700" },
 ];
 
-type TicketReconciliation = {
-  ticketCode: string;
+type ProjectApiResponse = {
+  project_id?: string | number;
+  projectId?: string | number;
+  projectName?: string;
+  nama_project?: string;
+  title?: string;
+  clusterId?: string;
+  cluster_id?: string;
+  clusterLabel?: string;
+  area?: string;
+  statusBoq?: string;
+  hardwareOnSite?: string | number;
+  mos?: string | number;
+  boq?: string | number;
+  additional?: string | number;
+  used?: string | number;
+  remains?: string | number;
+  status?: string;
+  progress?: string | number;
+};
+
+import { ClusterReconciliation, buildClusterReconciliation } from "@/lib/cluster-reconciliation";
+
+type ProjectSummaryRow = {
+  projectId: number;
   projectName: string;
-  boqPlan: number;
-  additional: number;
+  clusterId: string | null;
+  clusterLabel: string;
+  area: string;
+  statusBoq: string;
+  hardwareOnSite: number;
   mos: number;
+  boq: number;
+  additional: number;
   used: number;
   remains: number;
-  totalUnit: string;
-  status: string;
-  items: number;
+  status: "sesuai" | "perhatian" | "belum_ada_data";
+  progress: number;
 };
 
 export type WarehouseAssessment = "CUKUP" | "MENDEKATI_PENUH" | "TIDAK_CUKUP" | null;
@@ -78,10 +118,6 @@ export type SupervisorQueue = {
   suratJalanPending: number | null;
   boqNewRequests: number | null;
   discrepancyCount: number | null;
-  inboundOldestLabel: string;
-  outboundOldestLabel: string;
-  suratJalanOldestLabel: string;
-  discrepancyOldestLabel: string;
 };
 
 export type WarehouseCapacityRow = {
@@ -103,21 +139,18 @@ export type SupervisorDashboardReturn = {
   isLoading: boolean;
   warehouses: Warehouse[];
   projects: Project[];
-  approvalList: ApprovalItem[];
+  inboundMonitoring: InboundMonitoringItem[];
   activityLog: ActivityLogItem[];
-  ticketReconciliation: TicketReconciliation[];
+  clusterReconciliation: ClusterReconciliation[];
+  projectSummary: ProjectSummaryRow[];
   metrics: SupervisorMetrics;
   queue: SupervisorQueue;
   assessment: WarehouseAssessment;
   kapasitasPerGudang: WarehouseCapacityRow[];
   currentTimeLabel: string;
   boqStats: { draft: number | null; active: number | null; total: number | null };
-  activeBoqTickets: Set<string>;
   stagingSites: Warehouse[];
-  approvingId: string | null;
-  approveError: string | null;
   handleFilterChange: (type: "warehouse" | "project", value: string) => void;
-  handleApprove: (compositeId: string) => Promise<void>;
   showDeactivatedModal: boolean;
   handleReturnToLogin: () => void;
 };
@@ -136,20 +169,7 @@ const FALLBACK_QUEUE: SupervisorQueue = {
   suratJalanPending: 5,
   boqNewRequests: 3,
   discrepancyCount: 2,
-  inboundOldestLabel: "1 hari",
-  outboundOldestLabel: "3 jam",
-  suratJalanOldestLabel: "4 hari",
-  discrepancyOldestLabel: "5 jam",
 };
-
-function formatAge(ms: number): string {
-  const minutes = Math.floor(ms / 60000);
-  if (minutes < 60) return `${minutes} mnt`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} jam`;
-  const days = Math.floor(hours / 24);
-  return `${days} hari`;
-}
 
 const PENDING_STATUSES = new Set([
   "menunggu",
@@ -206,7 +226,7 @@ function normalizeResult(action: string): { label: "Sukses" | "Gagal" | "Menungg
 }
 
 export function useSupervisorDashboard() {
-  const { get, put } = useApi();
+  const { get } = useApi();
   const { showDeactivatedModal, handleReturnToLogin } = useAccountStatusGuard(60000);
 
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>("all");
@@ -214,11 +234,7 @@ export function useSupervisorDashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [warehouses, setWarehouses] = useState<Warehouse[]>(FALLBACK_WAREHOUSES);
   const [projects, setProjects] = useState<Project[]>(FALLBACK_PROJECTS);
-  const [approvalList, setApprovalList] = useState<ApprovalItem[]>(FALLBACK_APPROVAL_LIST);
-  const approvalListRef = useRef<ApprovalItem[]>(FALLBACK_APPROVAL_LIST);
-  useEffect(() => {
-    approvalListRef.current = approvalList;
-  }, [approvalList]);
+  const [inboundMonitoring, setInboundMonitoring] = useState<InboundMonitoringItem[]>([]);
 
   const selectedWarehouseRef = useRef<string>("all");
   const selectedProjectRef = useRef<string>("all");
@@ -231,7 +247,8 @@ export function useSupervisorDashboard() {
 
   const fetchDashboardDataRef = useRef<((warehouseId: string, projectId: string) => Promise<void>) | null>(null);
   const [activityLog, setActivityLog] = useState<ActivityLogItem[]>(FALLBACK_ACTIVITY_LOG);
-  const [ticketReconciliation, setTicketReconciliation] = useState<TicketReconciliation[]>([]);
+  const [clusterReconciliation, setClusterReconciliation] = useState<ClusterReconciliation[]>([]);
+  const [projectSummary, setProjectSummary] = useState<ProjectSummaryRow[]>([]);
   const [metrics, setMetrics] = useState<SupervisorMetrics>(FALLBACK_METRICS);
   const [queue, setQueue] = useState<SupervisorQueue>(FALLBACK_QUEUE);
   const [assessment, setAssessment] = useState<WarehouseAssessment>(null);
@@ -242,10 +259,7 @@ export function useSupervisorDashboard() {
     active: 28,
     total: 43,
   });
-  const [activeBoqTickets, setActiveBoqTickets] = useState<Set<string>>(new Set());
   const [stagingSites, setStagingSites] = useState<Warehouse[]>([]);
-  const [approvingId, setApprovingId] = useState<string | null>(null);
-  const [approveError, setApproveError] = useState<string | null>(null);
 
   const fetchWarehouses = useCallback(async () => {
     try {
@@ -310,8 +324,11 @@ export function useSupervisorDashboard() {
       if (warehouseId !== "all") qs.set("warehouseId", warehouseId);
       if (projectId !== "all") qs.set("projectId", projectId);
       qs.set("status", "all");
+      // Backend mendukung pengelompokan per cluster; dashboard menampilkan
+      // rekonsiliasi per cluster (bukan per kode tiket).
+      qs.set("groupBy", "cluster");
 
-      const [approvalsRes, reconRes, activitiesRes, assessmentRes, statsRes, itemsRes, projectsRes, boqRes] = await Promise.all([
+      const [approvalsRes, reconRes, activitiesRes, assessmentRes, statsRes, itemsRes, projectsRes, boqStatsRes] = await Promise.all([
         get(`${API_BASE}/api/dashboard/approvals`),
         get(`${API_BASE}/api/reconciliation/inventory?${qs.toString()}`),
         get(`${API_BASE}/api/dashboard/activities`),
@@ -319,7 +336,7 @@ export function useSupervisorDashboard() {
         get(`${API_BASE}/api/dashboard/`),
         get(`${API_BASE}/api/items?limit=1`),
         get(`${API_BASE}/api/dashboard/project-summary`),
-        get(`${API_BASE}/api/boqs?limit=1000`),
+        get(`${API_BASE}/api/boqs/stats`),
       ]);
 
       if (approvalsRes.ok) {
@@ -360,30 +377,32 @@ export function useSupervisorDashboard() {
               createdAt: it.createdAt,
             });
           }
-          if (mapped.length) setApprovalList(mapped);
 
-          const now = Date.now();
-          const pendingInbound = mapped.filter((it) => !it.isOutbound && it.status === "Menunggu");
-          const pendingOutbound = mapped.filter((it) => it.isOutbound && it.status === "Menunggu");
+          const backendQueue = json?.data || {};
+          const inboundPending = typeof backendQueue.inboundCount === "number"
+            ? backendQueue.inboundCount
+            : mapped.filter((it) => !it.isOutbound && it.status === "Menunggu").length;
+          const outboundPending = typeof backendQueue.outboundCount === "number"
+            ? backendQueue.outboundCount
+            : mapped.filter((it) => it.isOutbound && it.status === "Menunggu").length;
+          const suratJalanPending = typeof backendQueue.verificationCount === "number"
+            ? backendQueue.verificationCount
+            : inboundPending + outboundPending;
+          const discrepancyCount = typeof backendQueue.discrepancyCount === "number"
+            ? backendQueue.discrepancyCount
+            : null;
+
           const criticalOutbound = mapped.filter(
             (it) => it.isOutbound && (it.tag === "KRITIS" || it.status === "Ditolak")
           );
 
-          const oldest = (arr: { createdAt?: string }[]) => {
-            const valid = arr
-              .map((x) => (x.createdAt ? new Date(x.createdAt).getTime() : null))
-              .filter((t): t is number => typeof t === "number" && !isNaN(t));
-            if (!valid.length) return null;
-            return now - Math.min(...valid);
-          };
-
           setQueue((prev) => ({
             ...prev,
-            inboundPending: pendingInbound.length,
-            outboundPending: pendingOutbound.length,
+            inboundPending,
+            outboundPending,
             outboundCritical: criticalOutbound.length,
-            inboundOldestLabel: oldest(pendingInbound) ? formatAge(oldest(pendingInbound)!) : prev.inboundOldestLabel,
-            outboundOldestLabel: oldest(pendingOutbound) ? formatAge(oldest(pendingOutbound)!) : prev.outboundOldestLabel,
+            suratJalanPending,
+            discrepancyCount: discrepancyCount ?? prev.discrepancyCount,
           }));
         }
       }
@@ -393,12 +412,14 @@ export function useSupervisorDashboard() {
         if (contentType && contentType.includes("application/json")) {
           const json = await reconRes.json();
           const raw: unknown = json?.data;
+          // Mode groupBy=cluster: satu baris = satu (cluster, barang). Nilai
+          // boq/additional/mos/used/remains pada setiap baris sudah berupa
+          // KUANTITAS barang tersebut.
           const data: Array<{
-            kode_tiket?: string;
-            project_nama?: string;
-            project_id?: string;
-            barang_id?: string;
-            nama_barang?: string;
+            cluster_id?: string | null;
+            nama_cluster?: string | null;
+            projectNama?: string;
+            projectnama?: string;
             boq?: number;
             additional?: number;
             mos?: number;
@@ -409,11 +430,10 @@ export function useSupervisorDashboard() {
             ? raw
             : Array.isArray((raw as { data?: unknown[] })?.data)
               ? ((raw as { data: unknown[] }).data as Array<{
-                  kode_tiket?: string;
-                  project_nama?: string;
-                  project_id?: string;
-                  barang_id?: string;
-                  nama_barang?: string;
+                  cluster_id?: string | null;
+                  nama_cluster?: string | null;
+                  projectNama?: string;
+                  projectnama?: string;
                   boq?: number;
                   additional?: number;
                   mos?: number;
@@ -423,73 +443,7 @@ export function useSupervisorDashboard() {
                 }>)
               : [];
 
-          const grouped = new Map<string, {
-            ticketCode: string;
-            boqPlan: number;
-            additional: number;
-            mos: number;
-            used: number;
-            remains: number;
-            totalUnit: string;
-            status: string;
-            projectName: string;
-            items: number;
-          }>();
-          for (const row of data) {
-            const projectName = row.project_nama || "-";
-            const tickets = (row.kode_tiket || "-")
-              .split(",")
-              .map((t: string) => t.trim())
-              .filter(Boolean);
-            const ticketList = tickets.length ? tickets : ["-"];
-            const boq = Number(row.boq || 0);
-            const additional = Number(row.additional || 0);
-            const mos = Number(row.mos || 0);
-            const used = Number(row.used || 0);
-            const remains = Number(row.remains || 0);
-
-            const shareBoq = tickets.length ? boq / ticketList.length : boq;
-            const shareAdd = tickets.length ? additional / ticketList.length : additional;
-            const shareMos = tickets.length ? mos / ticketList.length : mos;
-            const shareUsed = tickets.length ? used / ticketList.length : used;
-            const shareRem = tickets.length ? remains / ticketList.length : remains;
-
-            for (const tkt of ticketList) {
-              const key = `${projectName}::${tkt}`;
-              if (!grouped.has(key)) {
-                const total = shareBoq + shareAdd;
-                grouped.set(key, {
-                  ticketCode: tkt,
-                  boqPlan: shareBoq,
-                  additional: shareAdd,
-                  mos: shareMos,
-                  used: shareUsed,
-                  remains: shareRem,
-                  totalUnit: `${total.toLocaleString("id-ID")} Unit Total`,
-                  status: row.status || "berjalan",
-                  projectName,
-                  items: 1,
-                });
-              } else {
-                const g = grouped.get(key)!;
-                g.boqPlan += shareBoq;
-                g.additional += shareAdd;
-                g.mos += shareMos;
-                g.used += shareUsed;
-                g.remains += shareRem;
-                g.items += 1;
-                g.totalUnit = `${(g.boqPlan + g.additional).toLocaleString("id-ID")} Unit Total`;
-              }
-            }
-          }
-          if (grouped.size) {
-            const list = Array.from(grouped.values()).sort((a, b) =>
-              a.ticketCode.localeCompare(b.ticketCode, "id-ID", { numeric: true })
-            );
-            setTicketReconciliation(list);
-          } else {
-            setTicketReconciliation([]);
-          }
+          setClusterReconciliation(buildClusterReconciliation(data));
         }
       }
 
@@ -587,31 +541,42 @@ export function useSupervisorDashboard() {
           const arr = Array.isArray(json?.data) ? json.data : [];
           if (arr.length) {
             setMetrics((prev) => ({ ...prev, activeProjects: arr.length }));
+
+            // Parse project summary data from the same response
+            const mapped: ProjectSummaryRow[] = arr.map((p: ProjectApiResponse) => ({
+              projectId: Number(p.project_id || p.projectId || 0),
+              projectName: p.projectName || p.nama_project || p.title || "Project",
+              clusterId: p.clusterId || p.cluster_id || null,
+              clusterLabel: p.clusterLabel || (p.clusterId || p.cluster_id ? `RW ${p.clusterId || p.cluster_id}` : "-"),
+              area: p.area || "-",
+              statusBoq: p.statusBoq || "Belum Ada",
+              hardwareOnSite: Number(p.hardwareOnSite || p.mos || 0),
+              mos: Number(p.mos || p.hardwareOnSite || 0),
+              boq: Number(p.boq || 0),
+              additional: Number(p.additional || 0),
+              used: Number(p.used || 0),
+              remains: Number(p.remains || 0),
+              status: p.status || "belum_ada_data",
+              progress: Number(p.progress || 0),
+            }));
+            setProjectSummary(mapped);
           }
         }
       }
 
-      if (boqRes && boqRes.ok) {
-        const ct = boqRes.headers.get("content-type");
+      // Angka "Status BOQ Overall" memakai endpoint statistik BOQ resmi
+      // (/api/boqs/stats) supaya hitungan Draft/Aktif akurat sesuai data BOQ,
+      // bukan hasil parsing daftar yang terpotong paginasi.
+      if (boqStatsRes && boqStatsRes.ok) {
+        const ct = boqStatsRes.headers.get("content-type");
         if (ct && ct.includes("application/json")) {
-          const json = await boqRes.json();
-          const list: Array<{ status?: string; ticketNumber?: string; ticket?: { kode_tiket?: string }; project?: { nama_project?: string } }> = Array.isArray(json?.data)
-            ? json.data
-            : Array.isArray(json)
-              ? json
-              : [];
-          if (list.length || typeof json?.total === "number") {
-            const draft = list.filter((b) => (b.status || "").toLowerCase() === "draft").length;
-            const active = list.filter((b) => (b.status || "").toLowerCase() === "aktif").length;
-            const total = typeof json?.total === "number" ? json.total : list.length;
+          const json = await boqStatsRes.json();
+          const stats = json?.data || {};
+          const draft = typeof stats.draft === "number" ? stats.draft : null;
+          const active = typeof stats.aktif === "number" ? stats.aktif : null;
+          const total = typeof stats.total === "number" ? stats.total : null;
+          if (draft !== null || active !== null || total !== null) {
             setBoqStats({ draft, active, total });
-            const activeTickets = new Set(
-              list
-                .filter((b) => (b.status || "").toLowerCase() === "aktif")
-                .map((b) => b.ticketNumber || b.ticket?.kode_tiket || "")
-                .filter((ticket) => Boolean(ticket))
-            );
-            setActiveBoqTickets(activeTickets);
           }
         }
       }
@@ -635,11 +600,6 @@ export function useSupervisorDashboard() {
   }, [warehouses]);
 
   useEffect(() => {
-    void fetchWarehouses();
-    void fetchProjects();
-  }, [fetchWarehouses, fetchProjects]);
-
-  useEffect(() => {
     if (warehouses.length && projects.length) {
       void fetchDashboardData(selectedWarehouse, selectedProject);
     }
@@ -653,66 +613,35 @@ export function useSupervisorDashboard() {
     }
   }, []);
 
-  const handleApprove = useCallback(
-    async (compositeId: string) => {
-      const target = approvalListRef.current.find((it) => it.id === compositeId);
-      if (!target) return;
-      const numericId = target.numericId || target.rawId;
-      if (!numericId || !/^\d+$/.test(String(numericId))) {
-        setApproveError("ID surat jalan tidak valid untuk diproses.");
-        return;
-      }
+  const fetchInboundMonitoring = useCallback(async () => {
+    try {
+      const res = await get(`${API_BASE}/api/surat-jalan/inbound`);
+      if (!res.ok) return;
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) return;
+      const json = await res.json();
+      const rawList: unknown[] = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
+      const mapped: InboundMonitoringItem[] = rawList.map((entry) => {
+        const r = entry as InboundMonitoringApiRow;
+        return {
+          id: String(r.surat_jalan_id ?? r.id ?? ""),
+          nomorSuratJalan: r.nomor_surat_jalan || "-",
+          gudangTujuan: r.gudang_tujuan?.nama_gudang || "-",
+          status: r.status || "-",
+          tanggal: r.tanggal || r.created_at || r.updated_at || "",
+        };
+      });
+      setInboundMonitoring(mapped);
+    } catch {
+      // keep existing state on failure
+    }
+  }, [get]);
 
-      setApprovingId(compositeId);
-      setApproveError(null);
-      const endpoint = target.isOutbound
-        ? `${API_BASE}/api/surat-jalan/${numericId}/approve-outbound`
-        : `${API_BASE}/api/surat-jalan/${numericId}/approve-inbound`;
-
-      try {
-        const res = await put(endpoint, { itemAdjustments: [] });
-        if (!res.ok) {
-          let detail = `HTTP ${res.status}`;
-          try {
-            const errJson = await res.json();
-            if (errJson?.message) detail = errJson.message;
-            else if (errJson?.error) detail = errJson.error;
-          } catch {
-            // body bukan JSON
-          }
-          throw new Error(detail);
-        }
-        setApprovalList((prev) =>
-          prev.map((item) =>
-            item.id === compositeId ? { ...item, status: "Disetujui" } : item
-          )
-        );
-        const now = new Date();
-        const timeString = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")} WIB`;
-        const actionLabel = target.isOutbound ? "Approve Outbound" : "Approve Inbound";
-        setActivityLog((prev) => [
-          {
-            auditId: `local-${Date.now()}`,
-            time: timeString,
-            activity: `${actionLabel} ${target.rawId}`,
-            actor: "Anda",
-            result: "Sukses",
-            resultTone: "bg-emerald-100 text-emerald-700",
-          },
-          ...prev,
-        ]);
-        if (fetchDashboardDataRef.current) {
-          await fetchDashboardDataRef.current(selectedWarehouseRef.current, selectedProjectRef.current);
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Gagal memproses approval.";
-        setApproveError(`Gagal approve ${target.rawId}: ${message}`);
-      } finally {
-        setApprovingId(null);
-      }
-    },
-    [put]
-  );
+  useEffect(() => {
+    void fetchWarehouses();
+    void fetchProjects();
+    void fetchInboundMonitoring();
+  }, [fetchWarehouses, fetchProjects, fetchInboundMonitoring]);
 
   useEffect(() => {
     const formatNow = () => {
@@ -732,21 +661,18 @@ export function useSupervisorDashboard() {
     isLoading,
     warehouses,
     projects,
-    approvalList,
+    inboundMonitoring,
     activityLog,
-    ticketReconciliation,
+    clusterReconciliation,
+    projectSummary,
     metrics,
     queue,
     assessment,
     kapasitasPerGudang,
     currentTimeLabel,
     boqStats,
-    activeBoqTickets,
     stagingSites,
-    approvingId,
-    approveError,
     handleFilterChange,
-    handleApprove,
     showDeactivatedModal,
     handleReturnToLogin,
   };

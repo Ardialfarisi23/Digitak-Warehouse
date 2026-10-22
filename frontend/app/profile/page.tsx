@@ -9,6 +9,7 @@ import { mapRole, formatRole } from "@/lib/navigation";
 import { CompactSidebar } from "@/components/CompactSidebar";
 import { useSidebar } from "@/components/sidebar-context";
 import { useApi } from "@/lib/api";
+import { safeUrl } from "@/lib/safe-url";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { PhotoCropModal } from "@/components/profile/PhotoCropModal";
@@ -326,8 +327,8 @@ function ProfilePageContent() {
     <div className="flex min-h-screen bg-[#FAF8F5] overflow-x-hidden">
       <CompactSidebar userRole={userRole} />
       <main
-        className="flex-1 mt-16 p-6 overflow-y-auto transition-all duration-300"
-        style={{ marginLeft: `${width}px` }}
+        className="flex-1 mt-16 p-4 sm:p-6 overflow-y-auto transition-all duration-300 ml-0 md:ml-[var(--sidebar-w)]"
+        style={{ "--sidebar-w": `${width}px` } as React.CSSProperties}
       >
         <div className="mx-auto max-w-5xl">
           <div className="mb-6">
@@ -340,7 +341,7 @@ function ProfilePageContent() {
             <div className="lg:col-span-1">
               <div className="rounded-3xl border border-slate-100 bg-white shadow-xs p-6">
                 <div className="flex flex-col items-center text-center">
-                  <UserAvatar src={previewUrl || user?.avatar_url} name={displayName} size={120} />
+                  <UserAvatar src={safeUrl(previewUrl || user?.avatar_url) ?? "#"} name={displayName} size={120} />
 
                   <div className="mt-4">
                     <p className="text-base font-bold text-slate-900">{displayName}</p>

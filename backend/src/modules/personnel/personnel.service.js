@@ -2,6 +2,7 @@ const personnelRepository = require("./personnel.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
 const notificationService = require("../../modules/notifications/notifications.service");
+const { createAuditLog } = require("../../utils/audit-log");
 
 
 const create = async (data, userId) => {
@@ -35,7 +36,26 @@ const create = async (data, userId) => {
     updated_by: Number(userId),
   };
 
-  const result = await personnelRepository.create(createData);
+  const result = await prisma.$transaction(async (tx) => {
+    const personil = await tx.personil.create({
+      data: createData,
+      include: { gudang: true },
+    });
+
+    await createAuditLog(
+      {
+        entityType: "personil",
+        entityId: personil.personil_id,
+        aksi: "create",
+        actorId: userId,
+        dataSebelum: null,
+        dataSesudah: personil,
+      },
+      tx
+    );
+
+    return personil;
+  });
 
   const actor = await prisma.user_account.findUnique({
     where: { user_id: BigInt(userId) },
@@ -82,7 +102,7 @@ const findByPersonilId = async (personil_id) => {
   return record;
 };
 
-const update = async (personil_id, data, userId) => {
+const update = async (personil_id, data, actor) => {
   const record = await personnelRepository.findByPersonilId(
     personil_id,
     {
@@ -142,16 +162,33 @@ const update = async (personil_id, data, userId) => {
 
   const updateData = {
     ...data,
-    updated_by: Number(userId),
+    updated_by: Number(actor.id),
   };
 
-  return await personnelRepository.update(
-    personil_id,
-    updateData
-  );
+  const isAktifDikirim = data.is_aktif !== undefined;
+
+  return await prisma.$transaction(async (tx) => {
+    const personil = await tx.personil.update({
+      where: { personil_id: Number(personil_id) },
+      data: updateData,
+    });
+
+    if (isAktifDikirim && data.is_aktif === false && personil.user_id && Number(personil.user_id) === Number(actor.id)) {
+      throw new AppError("Tidak dapat menonaktifkan akun Anda sendiri.", 400);
+    }
+
+    if (isAktifDikirim && personil.user_id && actor.role === "admin_general") {
+      await tx.user_account.update({
+        where: { user_id: BigInt(personil.user_id) },
+        data: { is_aktif: data.is_aktif },
+      });
+    }
+
+    return personil;
+  });
 };
 
-const remove = async (personil_id, userId) => {
+const softDelete = async (personil_id, userId) => {
   const record = await personnelRepository.findByPersonilId(
     personil_id,
     {
@@ -168,12 +205,69 @@ const remove = async (personil_id, userId) => {
 
   if (record.is_aktif) {
     throw new AppError(
-      "Gagal menghapus! Personil harus dinonaktifkan terlebih dahulu di Halaman Operasional.",
+      "Nonaktifkan personil terlebih dahulu di Halaman Operasional sebelum menghapus.",
       400
     );
   }
 
-  return await personnelRepository.remove(personil_id);
+  const result = await personnelRepository.softDelete(personil_id, userId);
+
+  if (!result) {
+    throw new AppError(
+      "Personnel tidak ditemukan.",
+      404
+    );
+  }
+
+  await createAuditLog(
+    {
+      entityType: "personil",
+      entityId: Number(personil_id),
+      aksi: "soft_delete",
+      actorId: userId,
+      dataSebelum: null,
+      dataSesudah: { personil_id: Number(personil_id), is_aktif: false },
+    },
+    prisma
+  );
+
+  return result;
+};
+
+const restore = async (personil_id, userId) => {
+  const record = await personnelRepository.findByPersonilId(
+    personil_id,
+    {
+      includeInactive: true,
+    }
+  );
+
+  if (!record) {
+    throw new AppError(
+      "Personnel tidak ditemukan.",
+      404
+    );
+  }
+
+  const result = await personnelRepository.restore(personil_id, userId);
+
+  if (result.alreadyActive) {
+    throw new AppError("Personil sudah aktif.", 400);
+  }
+
+  await createAuditLog(
+    {
+      entityType: "personil",
+      entityId: Number(personil_id),
+      aksi: "restore",
+      actorId: userId,
+      dataSebelum: null,
+      dataSesudah: { personil_id: Number(personil_id), is_aktif: true },
+    },
+    prisma
+  );
+
+  return result;
 };
 
 module.exports = {
@@ -181,5 +275,6 @@ module.exports = {
   findAll,
   findByPersonilId,
   update,
-  remove,
+  softDelete,
+  restore,
 };

@@ -3,20 +3,92 @@ const response = require("../../shared/response");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const XLSX = require("xlsx");
+const { parseReconciliationFileExceljs } = require("./upload-parse");
+const { validateUploadFile } = require("./upload-validate");
 const ExcelJS = require("exceljs");
 const prisma = require("../../config/prisma");
 const reportsRepository = require("./reports.repository");
 const reconciliationService = require("../reconciliation/reconciliation.service");
+const {
+  normalizeKondisi,
+  validateReportRow,
+  validateReportDateValue,
+  validateKondisiValue,
+} = require("./report-row-validator");
 
 const RECONCILIATION_REQUIRED_COLUMNS = [
   { name: "Kode Tiket", aliases: ["Kode Tiket", "kode_tiket", "KODE_TIKET"] },
-  { name: "Project", aliases: ["Project", "project", "Nama Project"] },
+  { name: "Project Name", aliases: ["Project Name", "Project", "project", "Nama Project"] },
   { name: "Nama Barang", aliases: ["Nama Barang", "nama_barang", "Barang"] },
-  { name: "Used", aliases: ["Used", "used"] },
+  { name: "Angka Used", aliases: ["Angka Used", "Used", "used"] },
   { name: "Kondisi", aliases: ["Kondisi", "kondisi", "KONDISI"] },
-  { name: "Catatan", aliases: ["Catatan", "catatan", "Keterangan"] },
+  { name: "Keterangan", aliases: ["Keterangan", "Catatan", "catatan"] },
 ];
+
+// Kolom opsional: hanya informasi di file upload, tidak dipakai untuk mencocokkan data sistem.
+const RECONCILIATION_OPTIONAL_COLUMNS = [
+  { name: "Cluster ID", aliases: ["Cluster ID", "cluster_id"] },
+  { name: "Cluster Name", aliases: ["Cluster Name", "cluster_name", "Nama Cluster", "nama_cluster"] },
+];
+
+// Pencocokan nama header tidak sensitif huruf besar/kecil dan spasi berlebih.
+const normalizeHeaderKey = (value) =>
+  String(value ?? "")
+    .normalize("NFKC")
+    .replace(/[\u00A0\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+
+const RECONCILIATION_COLUMN_ALIASES = {};
+[...RECONCILIATION_REQUIRED_COLUMNS, ...RECONCILIATION_OPTIONAL_COLUMNS].forEach((col) => {
+  RECONCILIATION_COLUMN_ALIASES[col.name] = col.aliases;
+});
+
+const findMissingReconciliationColumns = (rowKeys) => {
+  const normalizedKeys = rowKeys.map(normalizeHeaderKey);
+  return RECONCILIATION_REQUIRED_COLUMNS.filter(
+    (col) => !col.aliases.some((alias) => normalizedKeys.includes(normalizeHeaderKey(alias)))
+  ).map((col) => col.name);
+};
+
+const pickRowValue = (row, aliases) => {
+  for (const alias of aliases) {
+    const normalizedAlias = normalizeHeaderKey(alias);
+    for (const key of Object.keys(row)) {
+      if (normalizeHeaderKey(key) === normalizedAlias) {
+        const value = row[key];
+        if (value !== undefined && value !== null && value !== "") return value;
+      }
+    }
+  }
+  return null;
+};
+
+const readReconciliationRow = (row) => {
+  const usedRaw = pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Angka Used"]);
+  return {
+    kodeTiket: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Kode Tiket"]),
+    projectName: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Project Name"]),
+    namaBarang: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Nama Barang"]),
+    // Nilai Used disimpan apa adanya; validasi angka dilakukan di report-row-validator.
+    used: usedRaw,
+    kondisi: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Kondisi"]),
+    catatan: pickRowValue(row, RECONCILIATION_COLUMN_ALIASES["Keterangan"]),
+  };
+};
+
+// Normalisasi kunci kode_tiket agar pencocokan tahan terhadap spasi/karakter tak terlihat
+// dan perbedaan huruf besar/kecil (pola yang sama dipakai saat parsing file upload).
+const normalizeTicketKey = (value) =>
+  String(value ?? "")
+    .normalize("NFKC")
+    .replace(/[\u00A0\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .toUpperCase();
+
+// Pesan penanda bahwa tiket dibuat otomatis dari BOQ (mis. masuk audit_log).
+const AUTO_TIKET_FROM_BOQ_NOTE = "Dibuat otomatis dari BOQ";
 
 const getStockHistory = async (req, res, next) => {
   try {
@@ -54,7 +126,7 @@ const exportAuditLogExcel = async (req, res, next) => {
       right: { style: "thin" },
     };
 
-    const headers = ["Waktu", "Pengguna", "Peran", "Aksi", "Entitas Terkait", "Referensi Tambahan"];
+    const headers = ["Waktu", "Pengguna", "Peran", "Aksi", "Entitas Terkait", "Referensi Tambahan", "Detail"];
     headers.forEach((header, index) => {
       const cell = worksheet.getCell(1, index + 1);
       cell.value = header;
@@ -66,36 +138,15 @@ const exportAuditLogExcel = async (req, res, next) => {
 
     rows.forEach((row, rowIndex) => {
       const excelRow = rowIndex + 2;
-      const ds = row.data_sesudah || {};
-      const entityLabel = (() => {
-        const kode = ds.kode_tiket || row.data_sebelum?.kode_tiket;
-        if (kode) return kode;
-        if (row.entity_type && row.entity_id && row.entity_id !== "0") {
-          return `${row.entity_type} #${row.entity_id}`;
-        }
-        return row.entity_type || "-";
-      })();
-      const extraRef = (() => {
-        const parts = [];
-        if (ds.source_file || ds.filename || ds.nama_file) {
-          parts.push(ds.source_file || ds.filename || ds.nama_file);
-        }
-        if (ds.username_target || ds.target_user || ds.user_target) {
-          parts.push(`user: ${ds.username_target || ds.target_user || ds.user_target}`);
-        }
-        if (ds.catatan) {
-          parts.push(ds.catatan);
-        }
-        return parts.length > 0 ? parts.join(" | ") : "—";
-      })();
 
       const values = [
         row.created_at ? new Date(row.created_at).toLocaleString("id-ID") : "-",
-        row.actor_nama || "-",
-        row.actor_role || "-",
+        row.actor_nama || "Tidak dikenal",
+        row.actor_role || "Tidak dikenal",
         row.aksi || "-",
-        entityLabel,
-        extraRef,
+        row.entity_name || "-",
+        row.extra_ref || "—",
+        row.detail || "-",
       ];
 
       values.forEach((value, colIndex) => {
@@ -143,7 +194,7 @@ const exportStockHistoryExcel = async (req, res, next) => {
       right: { style: "thin" },
     };
 
-    const headers = ["Tanggal", "Kode Tiket", "Jenis Transaksi", "Status", "Diproses Oleh", "Kode Perangkat", "Nama Barang", "Qty", "Zona", "Asal", "Tujuan"];
+    const headers = ["Tanggal", "Kode Tiket", "No. Surat Jalan", "Jenis Transaksi", "Status", "Diproses Oleh", "Kode Perangkat", "Nama Barang", "Qty", "Zona", "Asal", "Tujuan"];
     headers.forEach((header, index) => {
       const cell = worksheet.getCell(1, index + 1);
       cell.value = header;
@@ -158,6 +209,7 @@ const exportStockHistoryExcel = async (req, res, next) => {
       const values = [
         row.waktu_mutasi ? new Date(row.waktu_mutasi).toLocaleString("id-ID") : "-",
         row.kode_tiket || "-",
+        row.nomor_surat_jalan && row.nomor_surat_jalan !== "-" ? row.nomor_surat_jalan : row.return_transaction_id ? `Return #${row.return_transaction_id}` : "",
         row.tipe_surat_jalan || "-",
         row.status_surat_jalan || "-",
         row.diproses_oleh || "-",
@@ -166,7 +218,7 @@ const exportStockHistoryExcel = async (req, res, next) => {
         `${row.qty}${row.satuan && row.satuan !== "-" ? ` ${row.satuan}` : ""}`,
         row.zona_kode && row.zona_kode !== "-" ? `${row.zona_gudang} / ${row.zona_kode}` : "—",
         row.gudang_asal || "-",
-        row.gudang_tujuan || "-",
+        row.gudang_tujuan && row.gudang_tujuan !== "-" ? row.gudang_tujuan : (row.lapangan_tujuan || "-"),
       ];
 
       values.forEach((value, colIndex) => {
@@ -306,11 +358,25 @@ const uploadReconciliationFile = async (req, res, next) => {
       return response.error(res, "No file uploaded.", 400);
     }
 
+    const validation = validateUploadFile({
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      buffer: fs.readFileSync(req.file.path),
+    });
+    if (!validation.ok) {
+      fs.unlinkSync(req.file.path);
+      console.error(
+        `[upload-validate] ditolak: ${req.file.originalname} | mimetype=${req.file.mimetype} | reason=${validation.reason}`,
+      );
+      return response.error(
+        res,
+        `File tidak valid: ${validation.reason}`,
+        400,
+      );
+    }
+
     try {
-      const workbook = XLSX.readFile(req.file.path);
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+      const { jsonData } = await parseReconciliationFileExceljs(req.file.path);
 
       if (!jsonData.length) {
         fs.unlinkSync(req.file.path);
@@ -318,9 +384,7 @@ const uploadReconciliationFile = async (req, res, next) => {
       }
 
       const firstRowKeys = Object.keys(jsonData[0] || {});
-      const missingColumns = RECONCILIATION_REQUIRED_COLUMNS
-        .filter((col) => !col.aliases.some((alias) => firstRowKeys.includes(alias)))
-        .map((col) => col.name);
+      const missingColumns = findMissingReconciliationColumns(firstRowKeys);
 
       if (missingColumns.length > 0) {
         fs.unlinkSync(req.file.path);
@@ -341,7 +405,6 @@ const uploadReconciliationFile = async (req, res, next) => {
             },
           },
           boq: {
-            where: { status: { in: ["draft", "aktif", "selesai"] } },
             include: {
               cluster: {
                 select: {
@@ -353,28 +416,72 @@ const uploadReconciliationFile = async (req, res, next) => {
         },
       });
 
-      const tiketMap = new Map(tikets.map((t) => [t.kode_tiket, t]));
+      const normalizedTiketsFromDb = tikets
+        .map((t) => ({
+          ...t,
+          normalizedKodeTiket: String(t.kode_tiket)
+            .normalize("NFKC")
+            .replace(/[\u00A0\u200B-\u200D\uFEFF]/g, "")
+            .trim()
+            .toUpperCase(),
+        }))
+        .filter((t) => {
+          const status = t.boq?.status;
+          return typeof status === "string" && ["draft", "aktif", "selesai"].includes(status);
+        });
+      const tiketMap = new Map(normalizedTiketsFromDb.map((t) => [t.normalizedKodeTiket, t]));
       const barangLookupCache = new Map();
 
       const preview = [];
       const failed = [];
 
+      // Tanggal & PIC mitra (dikirim bersama file) dipakai untuk deteksi duplikat saat preview.
+      const tanggalLaporanPreview = req.body?.tanggal_laporan ? parseReportDate(req.body.tanggal_laporan) : null;
+      const picMitraPreview = req.body?.pic_mitra ? String(req.body.pic_mitra).trim() || null : null;
+      const seenLaporanKeys = new Set();
+
       for (let i = 0; i < jsonData.length; i++) {
         const row = jsonData[i];
-        const kodeTiket = row["Kode Tiket"] || row["kode_tiket"] || row["KODE_TIKET"];
-        const projectName = row["Project"] || row["project"] || row["Nama Project"] || null;
-        const used = Number(row["Used"] || row["used"] || 0);
-        const namaBarang = row["Nama Barang"] || row["nama_barang"] || row["Barang"] || null;
-        const kondisi = row["Kondisi"] || row["kondisi"] || row["KONDISI"] || null;
+        const {
+          kodeTiket: rawKodeTiket,
+          projectName,
+          namaBarang,
+          used,
+          kondisi,
+          catatan,
+        } = readReconciliationRow(row);
+        const kodeTiket = rawKodeTiket
+          ? String(rawKodeTiket)
+              .normalize("NFKC")
+              .replace(/[\u00A0\u200B-\u200D\uFEFF]/g, "")
+              .trim()
+              .toUpperCase()
+          : null;
+
+        // Validasi angka Used dan kondisi barang sebelum baris masuk ke preview.
+        const rowValidation = validateReportRow({ used, kondisi });
+        const usedValue = rowValidation.values.used;
 
         if (!kodeTiket) {
-          failed.push({ row: i + 2, used, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak ditemukan" });
+          failed.push({ row: i + 2, used: usedValue, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak ditemukan" });
           continue;
         }
 
-        const tiket = tiketMap.get(String(kodeTiket).trim());
+        if (!rowValidation.valid) {
+          failed.push({
+            row: i + 2,
+            kode_tiket: kodeTiket,
+            used: usedValue,
+            nama_barang: namaBarang,
+            kondisi,
+            reason: rowValidation.errors.join(" "),
+          });
+          continue;
+        }
+
+        const tiket = tiketMap.get(kodeTiket || "");
         if (!tiket) {
-          failed.push({ row: i + 2, kode_tiket: kodeTiket, used, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak terdaftar" });
+          failed.push({ row: i + 2, kode_tiket: kodeTiket, used: usedValue, nama_barang: namaBarang, kondisi, reason: "Kode Tiket tidak terdaftar" });
           continue;
         }
 
@@ -385,7 +492,7 @@ const uploadReconciliationFile = async (req, res, next) => {
             barangId = barangLookupCache.get(namaBarangTrimmed);
           } else {
             const barang = await prisma.barang.findFirst({
-              where: { nama_barang: namaBarangTrimmed },
+              where: { nama_barang: namaBarangTrimmed, is_aktif: true },
               select: { barang_id: true },
             });
             barangId = barang ? String(barang.barang_id) : null;
@@ -393,26 +500,57 @@ const uploadReconciliationFile = async (req, res, next) => {
           }
         }
 
-        if (barangId) {
-          const boq = await prisma.boq.findFirst({
-            where: { tiket_id: BigInt(tiketId), status: { in: ["draft", "aktif", "selesai"] } },
-            include: { items: { where: { barang_id: BigInt(barangId) } } },
+        if (!barangId) {
+          failed.push({ row: i + 2, kode_tiket: kodeTiket, used: usedValue, nama_barang: namaBarang, kondisi, reason: `Barang "${namaBarangTrimmed}" tidak terdaftar` });
+          continue;
+        }
+
+        const boq = await prisma.boq.findFirst({
+          where: { tiket_id: BigInt(tiket.tiket_id), status: { in: ["aktif", "selesai"] } },
+          include: { items: { where: { barang_id: BigInt(barangId) } } },
+        });
+        if (!boq || !boq.items.length) {
+          failed.push({ row: i + 2, kode_tiket: kodeTiket, used: usedValue, nama_barang: namaBarang, kondisi, reason: `Barang "${namaBarangTrimmed}" tidak terdaftar di BOQ tiket ${tiket.kode_tiket}` });
+          continue;
+        }
+
+        // Deteksi duplikat: laporan aktif yang sama sudah ada, atau duplikat di dalam file ini.
+        if (tanggalLaporanPreview) {
+          const laporanKey = buildLaporanMitraKey({
+            tiketId: String(tiket.tiket_id),
+            kodeTiket: kodeTiket,
+            tanggalLaporan: tanggalLaporanPreview,
+            picMitra: picMitraPreview,
+            barangId,
           });
-          if (!boq || !boq.items.length) {
-            failed.push({ row: i + 2, kode_tiket, used, nama_barang: namaBarang, kondisi, reason: `Barang "${namaBarangTrimmed}" tidak terdaftar di BOQ tiket ${tiket.kode_tiket}` });
+          if (seenLaporanKeys.has(laporanKey)) {
+            failed.push({ row: i + 2, kode_tiket: kodeTiket, used: usedValue, nama_barang: namaBarang, kondisi, reason: "Laporan mitra duplikat dalam file yang sama" });
+            continue;
+          }
+          seenLaporanKeys.add(laporanKey);
+
+          const duplikat = await findActiveLaporanMitra(prisma, {
+            tiketId: BigInt(tiket.tiket_id),
+            tanggalLaporan: tanggalLaporanPreview,
+            picMitra: picMitraPreview,
+            barangId,
+          });
+          if (duplikat) {
+            failed.push({ row: i + 2, kode_tiket: kodeTiket, used: usedValue, nama_barang: namaBarang, kondisi, reason: "Laporan mitra untuk tiket, tanggal, PIC, dan barang yang sama sudah ada" });
             continue;
           }
         }
 
         preview.push({
-          tiket_id: tiket.tiket_id,
+          tiket_id: String(tiket.tiket_id),
           kode_tiket: tiket.kode_tiket,
           project_nama: projectName || tiket.project?.nama_project || "-",
           cluster_id: tiket.boq?.cluster?.cluster_id || tiket.project?.cluster_id || "-",
           area: tiket.project?.area || "-",
           nama_barang: namaBarang,
           barang_id: barangId,
-          used,
+          used: usedValue,
+          catatan,
           kondisi,
         });
       }
@@ -433,6 +571,346 @@ const uploadReconciliationFile = async (req, res, next) => {
       return response.error(res, "Gagal memproses file Excel: " + parseErr.message, 400);
     }
   });
+};
+
+// Payload baris reconciliation_upload_detail berstatus gagal (dipakai beberapa jalur).
+const buildFailedUploadDetail = ({
+  uploadId,
+  kodeTiket,
+  used,
+  kondisi,
+  namaBarang,
+  projectNama,
+  tanggalLaporan,
+  picMitra,
+  catatan,
+  reason,
+}) => ({
+  upload_id: uploadId,
+  kode_tiket: kodeTiket || "-",
+  mos: 0,
+  remains_lapangan: 0,
+  used: toSafeNumber(used),
+  status: "gagal",
+  reason,
+  kondisi: normalizeKondisi(kondisi),
+  nama_barang: namaBarang || null,
+  kode_barang: null,
+  project_nama: projectNama || null,
+  tanggal_laporan: tanggalLaporan ? new Date(tanggalLaporan) : new Date(),
+  pic_mitra: picMitra || null,
+  catatan: catatan || null,
+});
+
+// Menyelesaikan tiket untuk baris laporan manual yang hanya punya boq_id/boq_number.
+// Idempoten: pemanggilan berikutnya memakai tiket yang sama tanpa membuat duplikat.
+const resolveOrCreateTiketForBoq = async (tx, { boqId, actorId }) => {
+  if (!boqId) {
+    return { error: "BOQ tidak ditemukan" };
+  }
+
+  const boq = await tx.boq.findUnique({
+    where: { boq_id: BigInt(boqId) },
+    include: {
+      cluster: { select: { cluster_id: true, project_id: true } },
+    },
+  });
+
+  if (!boq) {
+    return { error: "BOQ tidak ditemukan" };
+  }
+
+  if (boq.tiket_id) {
+    const existingOnBoq = await tx.tiket_material.findUnique({
+      where: { tiket_id: BigInt(boq.tiket_id) },
+      select: {
+        tiket_id: true,
+        kode_tiket: true,
+        project_id: true,
+        mos: true,
+        used: true,
+        cluster_id: true,
+        project: { select: { nama_project: true } },
+      },
+    });
+    if (existingOnBoq) {
+      return { tiket: existingOnBoq };
+    }
+  }
+
+  const boqNumber = boq.boq_number ? String(boq.boq_number).trim() : "";
+  if (!boqNumber) {
+    return { error: "BOQ tidak memiliki nomor tiket" };
+  }
+
+  // Cari tiket dengan kode yang sama. Karena kolom kode_tiket bertipe Text + unique,
+  // normalisasi dilakukan di sisi aplikasi: pakai `contains` (case-insensitive) sebagai
+  // filter superset, lalu Wajib lolos pemeriksaan normalizeTicketKey di bawah.
+  const normalizedKey = normalizeTicketKey(boqNumber);
+  const BOQ_TIKET_SELECT = {
+    tiket_id: true,
+    kode_tiket: true,
+    project_id: true,
+    mos: true,
+    used: true,
+    cluster_id: true,
+    project: { select: { nama_project: true } },
+  };
+  const candidateRows = await tx.tiket_material.findMany({
+    where: { kode_tiket: { contains: boqNumber, mode: "insensitive" } },
+    select: BOQ_TIKET_SELECT,
+  });
+
+  const matchByKey = candidateRows.find(
+    (candidate) => normalizeTicketKey(candidate.kode_tiket) === normalizedKey
+  );
+
+  if (matchByKey) {
+    if (matchByKey.cluster_id && boq.cluster_id && matchByKey.cluster_id !== boq.cluster_id) {
+      return { error: "Kode tiket bentrok dengan cluster lain" };
+    }
+
+    // cluster_id tiket null/belum diisi: lengkapi agar rekonsiliasi per cluster terhitung.
+    if (!matchByKey.cluster_id && boq.cluster_id) {
+      await tx.tiket_material.update({
+        where: { tiket_id: BigInt(matchByKey.tiket_id) },
+        data: { cluster_id: boq.cluster_id },
+      });
+      matchByKey.cluster_id = boq.cluster_id;
+    }
+
+    if (!boq.tiket_id) {
+      await tx.boq.update({
+        where: { boq_id: boq.boq_id },
+        data: { tiket_id: BigInt(matchByKey.tiket_id) },
+      });
+    }
+
+    return { tiket: matchByKey, note: AUTO_TIKET_FROM_BOQ_NOTE };
+  }
+
+  if (!boq.cluster?.project_id) {
+    return { error: "Cluster BOQ tidak memiliki project" };
+  }
+
+  // Kolom NOT NULL tiket_material: kode_tiket, project_id, created_by.
+  // Kolom lain (cluster_id, area, mos, used) nullable -> null.
+  let created;
+  try {
+    created = await tx.tiket_material.create({
+      data: {
+        kode_tiket: boqNumber,
+        project_id: BigInt(boq.cluster.project_id),
+        cluster_id: boq.cluster_id,
+        created_by: BigInt(actorId),
+      },
+      select: {
+        tiket_id: true,
+        kode_tiket: true,
+        project_id: true,
+        mos: true,
+        used: true,
+        cluster_id: true,
+        project: { select: { nama_project: true } },
+      },
+    });
+  } catch (createErr) {
+    // P2002 = unique violation: tiket sudah dibuat oleh request lain, ambil ulang.
+    if (createErr?.code === "P2002") {
+      const existing = await tx.tiket_material.findMany({
+        where: { kode_tiket: { contains: boqNumber, mode: "insensitive" } },
+        select: BOQ_TIKET_SELECT,
+      });
+      const match = existing.find(
+        (candidate) => normalizeTicketKey(candidate.kode_tiket) === normalizedKey
+      );
+      if (!match) {
+        return { error: "Gagal menyiapkan tiket dari BOQ" };
+      }
+      return { tiket: match, note: AUTO_TIKET_FROM_BOQ_NOTE };
+    }
+    throw createErr;
+  }
+
+  await tx.boq.update({
+    where: { boq_id: boq.boq_id },
+    data: { tiket_id: BigInt(created.tiket_id) },
+  });
+
+  return { tiket: created, note: AUTO_TIKET_FROM_BOQ_NOTE };
+};
+
+// Angka pada payload laporan selalu disimpan sebagai angka valid (0 bila tidak valid).
+const toSafeNumber = (value) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+};
+
+// Resolusi tanggal laporan: dipakai untuk cek duplikat dan penyimpanan agar konsisten.
+const parseReportDate = (value) => {
+  if (!value) return new Date();
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    value = value.toISOString();
+  }
+  // Normalisasi ke tanggal saja berdasarkan timezone Asia/Jakarta (WIB).
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const wib = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(parsed);
+  return new Date(`${wib}T00:00:00+07:00`);
+};
+
+
+// Kunci unik laporan mitra aktif: tiket + tanggal laporan + PIC mitra + barang.
+// Sesuai unique index parsial "laporan_mitra_active_unique" di database.
+const buildLaporanMitraKey = ({ tiketId, kodeTiket, tanggalLaporan, picMitra, barangId }) =>
+  [
+    tiketId ? `tiket:${tiketId}` : `kode:${normalizeTicketKey(kodeTiket)}`,
+    tanggalLaporan ? new Date(tanggalLaporan).toISOString().slice(0, 10) : "",
+    (picMitra || "").trim().toLowerCase(),
+    barangId ? `barang:${barangId}` : "barang:-",
+  ].join("|");
+
+const REPORT_TIKET_SELECT = {
+  tiket_id: true,
+  kode_tiket: true,
+  project_id: true,
+  cluster_id: true,
+  mos: true,
+  used: true,
+  project: { select: { nama_project: true } },
+};
+
+// Pencarian laporan mitra aktif untuk mendeteksi duplikat.
+const findActiveLaporanMitra = async (client, { tiketId, tanggalLaporan, picMitra, barangId }) => {
+  const picFilter = picMitra ? { pic_mitra: picMitra } : { OR: [{ pic_mitra: null }, { pic_mitra: "" }] };
+
+  return client.laporan_mitra.findFirst({
+    where: {
+      is_aktif: true,
+      tiket_id: tiketId,
+      tanggal_laporan: tanggalLaporan,
+      barang_id: barangId ? BigInt(barangId) : null,
+      AND: [picFilter],
+    },
+    select: { laporan_id: true },
+  });
+};
+
+// TAHAP 1 (di luar transaksi): validasi seluruh baris laporan sebelum disimpan.
+// Semua query pada tahap ini hanya membaca data, sehingga baris bermasalah tidak pernah
+// ditulis ke dalam transaksi dan tidak dapat membuat transaksi gagal (tx aborted).
+const prepareReportRows = async ({ rows, tanggalLaporan, picMitra, kondisi }) => {
+  const kodeTikets = [...new Set(rows.map((row) => (row.kode_tiket ? String(row.kode_tiket) : "")).filter(Boolean))];
+  const ticketsByKode = new Map();
+  if (kodeTikets.length > 0) {
+    const tickets = await prisma.tiket_material.findMany({
+      where: { kode_tiket: { in: kodeTikets } },
+      select: REPORT_TIKET_SELECT,
+    });
+    tickets.forEach((tiket) => ticketsByKode.set(tiket.kode_tiket, tiket));
+  }
+
+  const ticketIds = [...new Set(rows.map((row) => (row.tiket_id ? String(row.tiket_id) : "")).filter(Boolean))];
+  const ticketsById = new Map();
+  if (ticketIds.length > 0) {
+    const tickets = await prisma.tiket_material.findMany({
+      where: { tiket_id: { in: ticketIds.map((id) => BigInt(id)) } },
+      select: REPORT_TIKET_SELECT,
+    });
+    tickets.forEach((tiket) => ticketsById.set(String(tiket.tiket_id), tiket));
+  }
+
+  const prepared = [];
+  const seenKeys = new Map();
+
+  for (const item of rows) {
+    // Validasi angka Used, kondisi barang, dan tanggal laporan.
+    const rowValidation = validateReportRow({
+      used: item.used,
+      kondisi: kondisi || item.kondisi,
+      tanggal_laporan: tanggalLaporan,
+    });
+    const usedValue = rowValidation.values.used;
+    if (!rowValidation.valid) {
+      prepared.push({ item, tiket: null, used: null, reject: rowValidation.errors.join(" ") });
+      continue;
+    }
+
+    let tiket = item.tiket_id ? ticketsById.get(String(item.tiket_id)) || null : null;
+    if (!tiket && item.kode_tiket) {
+      tiket = ticketsByKode.get(String(item.kode_tiket)) || null;
+    }
+
+    if (!tiket && !item.boq_id) {
+      prepared.push({ item, tiket: null, used: usedValue, reject: "Tiket tidak terdaftar" });
+      continue;
+    }
+
+    // Validasi barang terdaftar di BOQ tiket (hanya untuk tiket yang sudah ada).
+    let boqItem = null;
+    if (tiket) {
+      if (!item.barang_id) {
+        prepared.push({ item, tiket, used: usedValue, reject: "Barang tidak terdaftar" });
+        continue;
+      }
+      const boq = await prisma.boq.findFirst({
+        where: { tiket_id: BigInt(tiket.tiket_id), status: { in: ["aktif", "selesai"] } },
+        include: { items: { where: { barang_id: BigInt(item.barang_id) }, include: { barang: { select: { kode_perangkat: true } } } } },
+      });
+      if (!boq || !boq.items.length) {
+        prepared.push({
+          item,
+          tiket,
+          used: usedValue,
+          reject: `Barang tidak terdaftar di BOQ tiket ${tiket.kode_tiket}`,
+        });
+        continue;
+      }
+      boqItem = boq.items[0];
+    }
+
+    // Deteksi duplikat: terhadap laporan aktif yang sudah ada dan duplikat di dalam file yang sama.
+    const key = buildLaporanMitraKey({
+      tiketId: tiket ? String(tiket.tiket_id) : null,
+      kodeTiket: item.kode_tiket,
+      tanggalLaporan,
+      picMitra,
+      barangId: item.barang_id,
+    });
+    if (seenKeys.has(key)) {
+      prepared.push({ item, tiket, used: usedValue, reject: "Laporan mitra duplikat dalam file yang sama" });
+      continue;
+    }
+    seenKeys.set(key, true);
+
+    if (tiket) {
+      const duplikat = await findActiveLaporanMitra(prisma, {
+        tiketId: BigInt(tiket.tiket_id),
+        tanggalLaporan,
+        picMitra,
+        barangId: item.barang_id,
+      });
+      if (duplikat) {
+        prepared.push({
+          item,
+          tiket,
+          used: usedValue,
+          reject: "Laporan mitra untuk tiket, tanggal, PIC, dan barang yang sama sudah ada",
+        });
+        continue;
+      }
+    }
+
+    prepared.push({ item, tiket, used: usedValue, boqItem, reject: null });
+  }
+
+  return prepared;
 };
 
 const confirmReconciliationUpload = async (req, res, next) => {
@@ -464,142 +942,305 @@ const confirmReconciliationUpload = async (req, res, next) => {
 
     const jenisLaporan = filename === "manual-input" ? "manual" : "excel";
 
-    const uploadLog = await prisma.reconciliation_upload_log.create({
-      data: {
-        filename,
-        file_url: `/uploads/reconciliation/${filename}`,
-        uploaded_by: BigInt(actorId),
-        total_rows: preview.length + failed.length,
-        success_rows: 0,
-        failed_rows: 0,
-      },
-    });
+    // --- MOS Mitra: sumber angka tunggal -------------------------------
+    // Angka MOS pada laporan mitra harus PERSIS sama dengan angka MOS pada
+    // tabel/ringkasan rekonsiliasi (BUG-06). Karena itu metrik rekonsiliasi
+    // (MOS + Remains) diambil dari tabel rekonsiliasi SEBELUM baris laporan
+    // disimpan, lalu disimpan bersama laporan mitra & detail upload.
+    const preTiketIds = preview
+      .map((item) => item.tiket_id)
+      .filter((id) => id !== null && id !== undefined && id !== "");
+    const preKodeTikets = preview.map((item) => item.kode_tiket).filter(Boolean);
+    const preBoqIds = preview
+      .map((item) => item.boq_id)
+      .filter((id) => id !== null && id !== undefined && id !== "");
 
+    const preTiketFilters = [];
+    if (preTiketIds.length) {
+      preTiketFilters.push({ tiket_id: { in: preTiketIds.map((id) => BigInt(id)) } });
+    }
+    if (preKodeTikets.length) {
+      preTiketFilters.push({ kode_tiket: { in: preKodeTikets } });
+    }
+
+    const preTikets = preTiketFilters.length
+      ? await prisma.tiket_material.findMany({
+          where: { OR: preTiketFilters },
+          select: {
+            tiket_id: true,
+            kode_tiket: true,
+            project_id: true,
+            cluster_id: true,
+            boq: { select: { cluster_id: true, cluster: { select: { project_id: true } } } },
+          },
+        })
+      : [];
+
+    const preBoqs = preBoqIds.length
+      ? await prisma.boq.findMany({
+          where: { boq_id: { in: preBoqIds.map((id) => BigInt(id)) } },
+          select: { boq_id: true, cluster_id: true, cluster: { select: { project_id: true } } },
+        })
+      : [];
+
+    const preProjectIds = new Set();
+    for (const t of preTikets) {
+      if (t.project_id) preProjectIds.add(String(t.project_id));
+      if (t.boq?.cluster?.project_id) preProjectIds.add(String(t.boq.cluster.project_id));
+    }
+    for (const b of preBoqs) {
+      if (b.cluster?.project_id) preProjectIds.add(String(b.cluster.project_id));
+    }
+
+    const rekonsiliasiMetrics = await reconciliationService.getRekonsiliasiMetricsByCluster(
+      Array.from(preProjectIds)
+    );
+
+    // MOS & Remains kanonik untuk satu baris laporan (cluster + barang).
+    const resolveMosMetrics = (barangId, clusterId) => {
+      if (!barangId || !clusterId) return { mos: 0, remains: 0 };
+      const metrics = rekonsiliasiMetrics.get(`${clusterId}-${String(barangId)}`);
+      return {
+        mos: Number(metrics?.mos || 0),
+        remains: Number(metrics?.remains || 0),
+      };
+    };
+
+    let uploadLog;
     let successCount = 0;
     let failedCount = 0;
-    let replacedCount = 0;
     const updatedTikets = [];
     const affectedTiketIds = new Set();
+    const failedItems = [];
 
-    await prisma.$transaction(async (tx) => {
-      for (const item of preview) {
-        let tiketId = item.tiket_id;
-        let kodeTiket = item.kode_tiket;
+    try {
+      await prisma.$transaction(async (tx) => {
+      uploadLog = await tx.reconciliation_upload_log.create({
+        data: {
+          filename,
+          file_url: `/uploads/reconciliation/${filename}`,
+          uploaded_by: BigInt(actorId),
+          total_rows: preview.length + failedRows.length,
+          success_rows: 0,
+          failed_rows: 0,
+        },
+      });
 
-        if (!tiketId && kodeTiket) {
-          const tiket = await tx.tiket_material.findUnique({
-            where: { kode_tiket: kodeTiket },
-            select: { tiket_id: true, kode_tiket: true, project_id: true },
+      // Catat baris gagal (hasil validasi tahap 1) sebagai detail upload berstatus "gagal".
+      const catatGagal = async (row) => {
+        await tx.reconciliation_upload_detail.create({
+          data: buildFailedUploadDetail({
+            uploadId: uploadLog.upload_id,
+            kodeTiket: row.kode_tiket,
+            used: row.used,
+            kondisi: row.kondisi,
+            namaBarang: row.nama_barang,
+            projectNama: row.project_nama,
+            tanggalLaporan,
+            picMitra,
+            catatan: row.catatan,
+            reason: row.reason,
+          }),
+        });
+        failedCount += 1;
+        failedItems.push({
+          kode_tiket: row.kode_tiket || "-",
+          nama_barang: row.nama_barang || "-",
+          used: toSafeNumber(row.used),
+          reason: row.reason,
+        });
+      };
+
+      for (const prepared of preparedRows) {
+        const { item } = prepared;
+        let tiket = prepared.tiket;
+        let kodeTiket = item.kode_tiket || (tiket ? tiket.kode_tiket : null);
+        let autoTiketNote = null;
+        let boqItem = prepared.boqItem || null;
+
+        // Baris yang sudah ditolak pada tahap validasi (angka tidak valid, duplikat, dsb).
+        if (prepared.reject) {
+          await catatGagal({
+            kode_tiket: kodeTiket,
+            used: prepared.used ?? item.used,
+            kondisi: item.kondisi,
+            nama_barang: item.nama_barang,
+            project_nama: tiket ? tiket.project?.nama_project || null : null,
+            catatan: catatan || item.catatan || null,
+            reason: prepared.reject,
           });
-          if (tiket) {
-            tiketId = tiket.tiket_id;
-            kodeTiket = tiket.kode_tiket;
-          }
-        }
-
-        if (!tiketId) {
-          await tx.reconciliation_upload_detail.create({
-            data: {
-              upload_id: uploadLog.upload_id,
-              kode_tiket: kodeTiket || "-",
-              mos: 0,
-              remains_lapangan: 0,
-              used: Number(item.used || 0),
-              status: "gagal",
-              reason: "Tiket tidak terdaftar",
-            },
-          });
-          failedCount++;
           continue;
         }
 
-        const tiket = await tx.tiket_material.findUnique({
+        // Baris manual yang hanya membawa boq_id/boq_number: siapkan tiket otomatis.
+        // Alur upload file dan manual dengan tiket asli tetap melewati blok di atas.
+        if (!tiket && item.boq_id) {
+          const resolved = await resolveOrCreateTiketForBoq(tx, {
+            boqId: item.boq_id,
+            actorId,
+          });
+          if (resolved.error || !resolved.tiket) {
+            await catatGagal({
+              kode_tiket: kodeTiket,
+              used: prepared.used ?? item.used,
+              kondisi: item.kondisi,
+              nama_barang: item.nama_barang,
+              project_nama: null,
+              catatan: catatan || item.catatan || null,
+              reason: resolved.error || "Tiket tidak terdaftar",
+            });
+            continue;
+          }
+
+          tiket = resolved.tiket;
+          kodeTiket = resolved.tiket.kode_tiket;
+          autoTiketNote = resolved.note || null;
+
+          if (!item.barang_id) {
+            await catatGagal({
+              kode_tiket: kodeTiket,
+              used: prepared.used ?? item.used,
+              kondisi: item.kondisi,
+              nama_barang: item.nama_barang,
+              project_nama: tiket.project?.nama_project || null,
+              catatan: catatan || item.catatan || null,
+              reason: "Barang tidak terdaftar",
+            });
+            continue;
+          }
+
+          const boq = await tx.boq.findFirst({
+            where: { tiket_id: BigInt(tiket.tiket_id), status: { in: ["aktif", "selesai"] } },
+            include: { items: { where: { barang_id: BigInt(item.barang_id) }, include: { barang: { select: { kode_perangkat: true } } } } },
+          });
+          if (!boq || !boq.items.length) {
+            await catatGagal({
+              kode_tiket: kodeTiket,
+              used: prepared.used ?? item.used,
+              kondisi: item.kondisi,
+              nama_barang: item.nama_barang,
+              project_nama: tiket.project?.nama_project || null,
+              catatan: catatan || item.catatan || null,
+              reason: `Barang tidak terdaftar di BOQ tiket ${tiket.kode_tiket}`,
+            });
+            continue;
+          }
+          boqItem = boq.items[0];
+        }
+
+        const tiketMaterial = await tx.tiket_material.findUnique({
           where: { tiket_id: BigInt(tiketId) },
           select: {
             tiket_id: true,
             kode_tiket: true,
             project_id: true,
+            cluster_id: true,
             mos: true,
             used: true,
+            project: { select: { nama_project: true } },
           },
         });
-
-        if (!tiket) {
-          await tx.reconciliation_upload_detail.create({
-            data: {
-              upload_id: uploadLog.upload_id,
-              kode_tiket: kodeTiket || "-",
-              mos: 0,
-              remains_lapangan: 0,
-              used: Number(item.used || 0),
-              status: "gagal",
-              reason: "Tiket tidak terdaftar",
-            },
+        if (duplikat) {
+          await catatGagal({
+            kode_tiket: kodeTiket,
+            used: prepared.used ?? item.used,
+            kondisi: item.kondisi,
+            nama_barang: item.nama_barang,
+            project_nama: tiketMaterial.project?.nama_project || null,
+            catatan: catatan || item.catatan || null,
+            reason: "Laporan mitra untuk tiket, tanggal, PIC, dan barang yang sama sudah ada",
           });
-          failedCount++;
           continue;
         }
 
         const dataSebelum = {
-          mos: tiket.mos ? Number(tiket.mos) : null,
-          used: tiket.used ? Number(tiket.used) : null,
+          mos: tiketMaterial.mos ? Number(tiketMaterial.mos) : null,
+          used: tiketMaterial.used ? Number(tiketMaterial.used) : null,
         };
 
-        if (item.barang_id) {
-          const boq = await tx.boq.findFirst({
-            where: { tiket_id: BigInt(tiketId), status: { in: ["draft", "aktif", "selesai"] } },
-            include: { items: { where: { barang_id: BigInt(item.barang_id) } } },
+        if (!item.barang_id) {
+          await tx.reconciliation_upload_detail.create({
+            data: {
+              upload_id: uploadLog.upload_id,
+              kode_tiket: tiketMaterial.kode_tiket,
+              mos: 0,
+              remains_lapangan: 0,
+              used: Number(item.used || 0),
+              status: "gagal",
+              reason: "Barang tidak terdaftar",
+              kondisi: normalizeKondisi(item.kondisi),
+              nama_barang: item.nama_barang || null,
+              kode_barang: null,
+              project_nama: tiketMaterial.project?.nama_project || null,
+              tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+              pic_mitra: pic_mitra || null,
+              catatan: catatan || item.catatan || null,
+            },
           });
-          if (!boq || !boq.items.length) {
+          failedCount++;
+          failedItems.push({ kode_tiket: tiketMaterial.kode_tiket, nama_barang: item.nama_barang || "-", used: Number(item.used || 0), reason: "Barang tidak terdaftar" });
+          continue;
+        }
+
+        const boq = await tx.boq.findFirst({
+          where: { tiket_id: BigInt(tiketId), status: { in: ["draft", "aktif", "selesai"] } },
+          select: {
+            cluster_id: true,
+            items: {
+              where: { barang_id: BigInt(item.barang_id) },
+              select: { barang: { select: { kode_perangkat: true } } },
+            },
+          },
+        });
+        if (!boq || !boq.items.length) {
             await tx.reconciliation_upload_detail.create({
               data: {
                 upload_id: uploadLog.upload_id,
-                kode_tiket: tiket.kode_tiket,
+                kode_tiket: tiketMaterial.kode_tiket,
                 mos: 0,
                 remains_lapangan: 0,
                 used: Number(item.used || 0),
                 status: "gagal",
-                reason: `Barang tidak terdaftar di BOQ tiket ${tiket.kode_tiket}`,
+                reason: `Barang tidak terdaftar di BOQ tiket ${tiketMaterial.kode_tiket}`,
+                kondisi: normalizeKondisi(item.kondisi),
+                nama_barang: item.nama_barang || null,
+                kode_barang: null,
+                project_nama: tiketMaterial.project?.nama_project || null,
+                tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+                pic_mitra: pic_mitra || null,
+                catatan: catatan || item.catatan || null,
               },
             });
             failedCount++;
+            failedItems.push({ kode_tiket: tiketMaterial.kode_tiket, nama_barang: item.nama_barang || "-", used: Number(item.used || 0), reason: `Barang tidak terdaftar di BOQ tiket ${tiketMaterial.kode_tiket}` });
             continue;
           }
-        }
 
-        const existingLaporans = await tx.laporan_mitra.findMany({
-          where: {
-            tiket_id: BigInt(tiketId),
-            tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
-            pic_mitra: pic_mitra || null,
-            is_aktif: true,
-          },
-        });
-
-        for (const existing of existingLaporans) {
-          await tx.laporan_mitra.update({
-            where: { laporan_id: existing.laporan_id },
-            data: { is_aktif: false },
-          });
-        }
-        replacedCount += existingLaporans.length;
-
+        let mosValue = 0;
+        let remainsValue = 0;
         try {
+          const clusterFromTiket = await tx.cluster.findFirst({ where: { cluster_id: tiketMaterial.cluster_id }, select: { cluster_id: true } });
+          const clusterIdBarang = tiketMaterial.cluster_id || boq.cluster_id || null;
+          const metrics = resolveMosMetrics(item.barang_id, clusterIdBarang);
+          mosValue = metrics.mos;
+          remainsValue = metrics.remains;
+
           await tx.laporan_mitra.create({
             data: {
               tiket_id: BigInt(tiketId),
-              kode_tiket: tiket.kode_tiket,
-              project_id: tiket.project_id,
+              kode_tiket: tiketMaterial.kode_tiket,
+              project_id: tiketMaterial.project_id,
               jenis_laporan: jenisLaporan,
               tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
               pic_mitra: pic_mitra || null,
               nama_barang: nama_barang || item.nama_barang || null,
               barang_id: item.barang_id ? BigInt(item.barang_id) : null,
-              mos: 0,
-              remains_lapangan: 0,
+              mos: mosValue,
+              remains_lapangan: remainsValue,
               used: Number(item.used || 0),
-              catatan: catatan || null,
-              kondisi: kondisi || null,
+              catatan: catatan || item.catatan || null,
+              kondisi: normalizeKondisi(kondisi || item.kondisi),
+              cluster_id: clusterFromTiket?.cluster_id || clusterIdBarang || null,
               uploaded_by: BigInt(actorId),
               is_aktif: true,
             },
@@ -608,85 +1249,132 @@ const confirmReconciliationUpload = async (req, res, next) => {
           await tx.reconciliation_upload_detail.create({
             data: {
               upload_id: uploadLog.upload_id,
-              kode_tiket: tiket.kode_tiket,
-              mos: 0,
-              remains_lapangan: 0,
+              kode_tiket: tiketMaterial.kode_tiket,
+              mos: mosValue,
+              remains_lapangan: remainsValue,
               used: Number(item.used || 0),
               status: "berhasil",
               reason: null,
+              kondisi: normalizeKondisi(kondisi || item.kondisi),
+              nama_barang: nama_barang || item.nama_barang || null,
+              kode_barang: boq.items[0]?.barang?.kode_perangkat || null,
+              project_nama: tiketMaterial.project?.nama_project || null,
+              tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+              pic_mitra: pic_mitra || null,
+              catatan: catatan || item.catatan || null,
             },
           });
           successCount++;
           affectedTiketIds.add(String(tiketId));
           updatedTikets.push({
             tiket_id: tiketId,
-            kode_tiket: tiket.kode_tiket,
-            remains_lapangan: 0,
+            kode_tiket: tiketMaterial.kode_tiket,
+            remains_lapangan: remainsValue,
             used: item.used,
           });
         } catch (insertErr) {
           await tx.reconciliation_upload_detail.create({
             data: {
               upload_id: uploadLog.upload_id,
-              kode_tiket: tiket.kode_tiket,
+              kode_tiket: tiketMaterial.kode_tiket,
               mos: 0,
               remains_lapangan: 0,
               used: Number(item.used || 0),
               status: "gagal",
               reason: insertErr.message || "Gagal menyimpan laporan mitra",
+              kondisi: normalizeKondisi(kondisi || item.kondisi),
+              nama_barang: nama_barang || item.nama_barang || null,
+              kode_barang: boq.items[0]?.barang?.kode_perangkat || null,
+              project_nama: tiketMaterial.project?.nama_project || null,
+              tanggal_laporan: tanggal_laporan ? new Date(tanggal_laporan) : new Date(),
+              pic_mitra: pic_mitra || null,
+              catatan: catatan || item.catatan || null,
             },
           });
           failedCount++;
+          failedItems.push({ kode_tiket: tiketMaterial.kode_tiket, nama_barang: item.nama_barang || "-", used: Number(item.used || 0), reason: insertErr.message || "Gagal menyimpan laporan mitra" });
         }
 
         await tx.audit_log.create({
           data: {
             entity_type: "reconciliation",
-            entity_id: BigInt(tiketId),
-            aksi: "update",
+            entity_id: BigInt(tiketMaterial.tiket_id),
+            aksi: "input_rekonsiliasi",
             actor_id: BigInt(actorId),
             data_sebelum: dataSebelum,
             data_sesudah: {
-              remains_lapangan: 0,
+              mos: mosValue,
+              remains_lapangan: remainsValue,
               used: item.used,
               source_file: filename,
               jenis_laporan: jenisLaporan,
+              ...(autoTiketNote ? { catatan: autoTiketNote } : {}),
             },
           },
         });
+
+        successCount += 1;
+        affectedTiketIds.add(String(tiketMaterial.tiket_id));
+        updatedTikets.push({
+          tiket_id: String(tiketMaterial.tiket_id),
+          kode_tiket: tiketMaterial.kode_tiket,
+          remains_lapangan: 0,
+          used: prepared.used,
+        });
       }
 
-        for (const item of failed) {
-          await tx.reconciliation_upload_detail.create({
-            data: {
-              upload_id: uploadLog.upload_id,
-              kode_tiket: item.kode_tiket || "-",
-              mos: 0,
-              remains_lapangan: 0,
-              used: Number(item.used || 0),
-              status: "gagal",
-              reason: item.reason || "Gagal memproses baris",
-            },
-          });
-        failedCount++;
+      for (const item of failedRows) {
+        await tx.reconciliation_upload_detail.create({
+          data: {
+            upload_id: uploadLog.upload_id,
+            kode_tiket: item.kode_tiket || "-",
+            mos: 0,
+            remains_lapangan: 0,
+            used: toSafeNumber(item.used),
+            status: "gagal",
+            reason: item.reason || "Gagal memproses baris",
+            kondisi: normalizeKondisi(item.kondisi),
+            nama_barang: item.nama_barang || null,
+            kode_barang: null,
+            project_nama: null,
+            tanggal_laporan: tanggalLaporan,
+            pic_mitra: picMitra,
+            catatan: null,
+          },
+        });
+        failedCount += 1;
+        failedItems.push({
+          kode_tiket: item.kode_tiket || "-",
+          nama_barang: item.nama_barang || "-",
+          used: toSafeNumber(item.used),
+          reason: item.reason || "Gagal memproses baris",
+        });
       }
 
       for (const tiketId of affectedTiketIds) {
         await reconciliationService.refreshTiketMosUsed(tiketId, tx);
       }
-    });
 
-    await prisma.reconciliation_upload_log.update({
-      where: { upload_id: uploadLog.upload_id },
-      data: {
-        success_rows: successCount,
-        failed_rows: failedCount,
-      },
+      await tx.reconciliation_upload_log.update({
+        where: { upload_id: uploadLog.upload_id },
+        data: {
+          success_rows: successCount,
+          failed_rows: failedCount,
+        },
+      });
     });
+    } catch (err) {
+      // P2002 = pelanggaran unique index laporan_mitra (tiket+tanggal+PIC+barang).
+      if (err?.code === "P2002") {
+        return response.error(res, "Laporan mitra untuk tiket, tanggal, PIC, dan barang yang sama sudah ada.", 409);
+      }
+      throw err;
+    }
 
     return response.success(res, "Rekonsiliasi berhasil disimpan.", {
       updatedCount: updatedTikets.length,
-      replacedCount,
+      failedCount,
+      failedItems: failedItems.slice(0, 10),
       updatedTikets,
       uploadedBy: actor.nama,
       filename,
@@ -710,28 +1398,69 @@ const downloadReconciliationTemplate = async (req, res, next) => {
       right: { style: "thin" },
     };
 
-    const headers = ["Kode Tiket", "Project", "Nama Barang", "Used", "Kondisi", "Catatan"];
-    headers.forEach((header, index) => {
+    const templateColumns = [
+      { header: "Cluster ID", example: "CL-0001", width: 18 },
+      { header: "Cluster Name", example: "Cluster Contoh", width: 24 },
+      { header: "Project Name", example: "Project A", width: 24 },
+      { header: "Kode Tiket", example: "TIKET-001", width: 18 },
+      { header: "Nama Barang", example: "Kabel Fiber Optik", width: 28 },
+      { header: "Angka Used", example: 3, width: 14, numeric: true },
+      { header: "Kondisi", example: "Baik", width: 16 },
+      { header: "Keterangan", example: "Contoh catatan opsional", width: 32 },
+    ];
+
+    templateColumns.forEach((column, index) => {
       const cell = worksheet.getCell(1, index + 1);
-      cell.value = header;
+      cell.value = column.header;
       cell.font = headerFont;
       cell.fill = headerFill;
       cell.alignment = { horizontal: "center", vertical: "middle" };
       cell.border = borderStyle;
     });
 
-    const exampleRow = ["TIKET-001", "Project A", "Kabel Fiber Optik", 3, "Baik", "Contoh catatan opsional"];
-    exampleRow.forEach((value, colIndex) => {
-      const cell = worksheet.getCell(2, colIndex + 1);
-      cell.value = value;
+    templateColumns.forEach((column, index) => {
+      const cell = worksheet.getCell(2, index + 1);
+      cell.value = column.example;
       cell.border = borderStyle;
       cell.alignment = { vertical: "middle" };
+      if (column.numeric) {
+        cell.numFmt = "0";
+      }
     });
 
     worksheet.getRow(1).height = 22;
-    for (let i = 1; i <= headers.length; i++) {
-      worksheet.getColumn(i).width = 28;
-    }
+    templateColumns.forEach((column, index) => {
+      worksheet.getColumn(index + 1).width = column.width;
+    });
+
+    // Sheet petunjuk — menegaskan bahwa MOS dihitung sistem (satu-satunya acuan)
+    // dan tidak boleh diisi mitra, sehingga angka MOS pada ringkasan
+    // rekonsiliasi, form input, dan template Excel selalu sama.
+    const guideSheet = workbook.addWorksheet("Petunjuk");
+    const guideRows = [
+      ["Kolom", "Keterangan"],
+      ["Angka Used", "Diisi mitra. Jumlah material yang sudah terpasang di lapangan."],
+      ["MOS", "DIHITUNG OTOMATIS oleh sistem (tidak diisi). MOS = inbound vendor eksternal yang sudah disetujui/diterima + saldo awal import."],
+      ["Remains", "DIHITUNG OTOMATIS oleh sistem. Remains = MOS - (BoQ Plan + Additional)."],
+      ["Kondisi", "Baik / Rusak / Rusak Ringan / Rusak Berat."],
+      ["Keterangan", "Catatan opsional."],
+    ];
+    guideRows.forEach((row, index) => {
+      const guideRow = guideSheet.getRow(index + 1);
+      row.forEach((value, colIndex) => {
+        const cell = guideRow.getCell(colIndex + 1);
+        cell.value = value;
+        cell.border = borderStyle;
+        cell.alignment = { vertical: "middle", wrapText: true };
+        if (index === 0) {
+          cell.font = headerFont;
+          cell.fill = headerFill;
+          cell.alignment = { horizontal: "center", vertical: "middle" };
+        }
+      });
+    });
+    guideSheet.getColumn(1).width = 18;
+    guideSheet.getColumn(2).width = 96;
 
     const buffer = await workbook.xlsx.writeBuffer();
     const filename = "Template_Rekonsiliasi.xlsx";
@@ -750,12 +1479,197 @@ const getReconciliationUploadLogs = async (req, res, next) => {
       actorId: req.query.actorId || "all",
       startDate: req.query.startDate || "",
       endDate: req.query.endDate || "",
+      status: req.query.status || "",
+      clusterId: req.query.clusterId || "",
+      projectName: req.query.projectName || "",
+      jenisInput: req.query.jenisInput || "",
       page: req.query.page || 1,
       limit: req.query.limit || 20,
     };
 
     const result = await reportsRepository.getReconciliationUploadLogs(filters);
     return response.success(res, "Data riwayat upload berhasil diambil.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const getReconciliationUploadLogBarang = async (req, res, next) => {
+  try {
+    const data = await reportsRepository.getReconciliationUploadLogBarang(req.params.id);
+    if (!data) return response.error(res, "Data tidak ditemukan.", 404);
+    return response.success(res, "Data barang berhasil diambil.", data);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const getReconciliationUploadLogFilterOptions = async (req, res, next) => {
+  try {
+    const data = await reportsRepository.getReconciliationUploadLogFilterOptions();
+    return response.success(res, "OK", data);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Daftar laporan mitra untuk Riwayat: menampilkan status aktif/nonaktif tiap laporan.
+const getReconciliationReports = async (req, res, next) => {
+  try {
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
+    const search = String(req.query.search || "").trim();
+
+    // Laporan yang sudah dinonaktifkan (is_aktif=false) tidak lagi dihitung pada
+    // rekonsiliasi. Secara default endpoint ini hanya mengembalikan laporan aktif.
+    // Admin boleh meminta laporan nonaktif (include_inactive=true) untuk keperluan audit.
+    const isAdmin = String(req.user?.role || "") === "admin_general";
+    const includeInactive =
+      isAdmin && String(req.query.include_inactive || "").toLowerCase() === "true";
+
+    const where = {};
+    if (!includeInactive) {
+      where.is_aktif = true;
+    }
+    if (search) {
+      where.OR = [
+        { kode_tiket: { contains: search, mode: "insensitive" } },
+        { nama_barang: { contains: search, mode: "insensitive" } },
+        { pic_mitra: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    const [total, rows] = await Promise.all([
+      prisma.laporan_mitra.count({ where }),
+      prisma.laporan_mitra.findMany({
+        where,
+        orderBy: [{ uploaded_at: "desc" }, { laporan_id: "desc" }],
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          laporan_id: true,
+          kode_tiket: true,
+          nama_barang: true,
+          pic_mitra: true,
+          tanggal_laporan: true,
+          used: true,
+          mos: true,
+          kondisi: true,
+          jenis_laporan: true,
+          is_aktif: true,
+          uploaded_at: true,
+          project: { select: { nama_project: true } },
+          cluster: { select: { cluster_id: true, nama_cluster: true } },
+          barang: { select: { nama_barang: true, kode_perangkat: true } },
+        },
+      }),
+    ]);
+
+    return response.success(res, "Daftar laporan mitra berhasil diambil.", {
+      data: rows.map((row) => ({
+        ...row,
+        laporan_id: String(row.laporan_id),
+        used: Number(row.used || 0),
+        mos: Number(row.mos || 0),
+        tanggal_laporan: row.tanggal_laporan
+          ? new Date(row.tanggal_laporan).toISOString().slice(0, 10)
+          : null,
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Nonaktifkan laporan mitra: set is_aktif=false, hitung ulang agregasi Used/MOS, catat audit log.
+const deactivateReconciliationReport = async (req, res, next) => {
+  try {
+    const actorId = req.user?.id;
+    const laporanId = req.params.laporan_id;
+    const alasan = String(req.body?.alasan || "").trim();
+
+    if (!actorId) {
+      return response.error(res, "Pengguna tidak dikenal.", 401);
+    }
+    if (!alasan) {
+      return response.error(res, "Alasan wajib diisi untuk menonaktifkan laporan.", 400);
+    }
+
+    let laporanIdBig;
+    try {
+      laporanIdBig = BigInt(laporanId);
+    } catch (err) {
+      return response.error(res, "ID laporan tidak valid.", 400);
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const laporan = await tx.laporan_mitra.findUnique({ where: { laporan_id: laporanIdBig } });
+      if (!laporan) {
+        return { error: "Laporan mitra tidak ditemukan.", status: 404 };
+      }
+      if (!laporan.is_aktif) {
+        // Idempoten: menonaktifkan laporan yang sudah nonaktif tidak menghasilkan error.
+        return { alreadyInactive: true, updated: laporan };
+      }
+
+      const updated = await tx.laporan_mitra.update({
+        where: { laporan_id: laporanIdBig },
+        data: { is_aktif: false },
+      });
+
+      await tx.audit_log.create({
+        data: {
+          entity_type: "laporan_mitra",
+          entity_id: laporanIdBig,
+          aksi: "soft_delete",
+          actor_id: BigInt(actorId),
+          data_sebelum: {
+            is_aktif: true,
+            tiket_id: String(laporan.tiket_id),
+            kode_tiket: laporan.kode_tiket,
+            project_id: String(laporan.project_id),
+            barang_id: laporan.barang_id ? String(laporan.barang_id) : null,
+            nama_barang: laporan.nama_barang || null,
+            pic_mitra: laporan.pic_mitra,
+            tanggal_laporan: laporan.tanggal_laporan
+              ? new Date(laporan.tanggal_laporan).toISOString().slice(0, 10)
+              : null,
+            jenis_laporan: laporan.jenis_laporan,
+            used: Number(laporan.used || 0),
+            mos: Number(laporan.mos || 0),
+          },
+          data_sesudah: {
+            is_aktif: false,
+            alasan,
+          },
+        },
+      });
+
+      // Agregasi Used/MOS tiket dihitung ulang agar laporan nonaktif tidak ikut terhitung.
+      await reconciliationService.refreshTiketMosUsed(String(laporan.tiket_id), tx);
+
+      return { updated };
+    });
+
+    if (result.error) {
+      return response.error(res, result.error, result.status);
+    }
+
+    if (result.alreadyInactive) {
+      return response.success(res, "Laporan mitra sudah berstatus nonaktif.", {
+        laporan_id: String(result.updated.laporan_id),
+        is_aktif: false,
+      });
+    }
+
+    return response.success(res, "Laporan mitra berhasil dinonaktifkan.", {
+      laporan_id: String(result.updated.laporan_id),
+      is_aktif: result.updated.is_aktif,
+    });
   } catch (err) {
     next(err);
   }
@@ -774,6 +1688,15 @@ module.exports = {
   backfillReconciliation,
   uploadReconciliationFile,
   confirmReconciliationUpload,
+  getReconciliationReports,
+  deactivateReconciliationReport,
   getReconciliationUploadLogs,
+  getReconciliationUploadLogBarang,
+  getReconciliationUploadLogFilterOptions,
   downloadReconciliationTemplate,
+  RECONCILIATION_REQUIRED_COLUMNS,
+  RECONCILIATION_OPTIONAL_COLUMNS,
+  findMissingReconciliationColumns,
+  readReconciliationRow,
+  resolveOrCreateTiketForBoq,
 };

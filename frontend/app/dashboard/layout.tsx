@@ -40,7 +40,7 @@ export default function DashboardLayout({
     <ProtectedRoute>
       <div className="flex min-h-screen bg-[#FAF8F5] overflow-visible">
         {isLoading || !user ? <SidebarSkeleton /> : <CompactSidebar userRole={userRole} />}
-        <main className="flex-1 mt-16 p-6 overflow-y-auto transition-all duration-300" style={{ marginLeft: `${width}px` }}>
+        <main className="flex-1 min-w-0 overflow-x-hidden px-4 pb-4 pt-[72px] sm:px-6 sm:pb-6 sm:pt-20 overflow-y-auto transition-all duration-300 ml-0 md:ml-[var(--sidebar-w)]" style={{ "--sidebar-w": `${width}px` } as React.CSSProperties}>
           {children}
         </main>
       </div>

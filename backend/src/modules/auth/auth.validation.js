@@ -1,34 +1,34 @@
 const { z } = require("zod");
+const { strongPasswordSchema } = require("../../validators/password.validator");
 
 const loginSchema = z.object({
     email: z
-        .string({
-            required_error: "Email wajib diisi"
-        })
+        .string()
+        .nonempty("Email wajib diisi")
         .email("Format email tidak valid"),
-    password: z
-        .string({
-            required_error: "Password wajib diisi"
-        })
-        .min(6, "Password minimal 6 karakter")
+    password: z.string().nonempty("Password wajib diisi"),
 });
 
 const changePasswordSchema = z.object({
     currentPassword: z
-        .string({
-            required_error: "Password saat ini wajib diisi"
-        })
+        .string()
+        .nonempty("Password saat ini wajib diisi")
         .min(6, "Password minimal 6 karakter"),
-    newPassword: z
-        .string({
-            required_error: "Password baru wajib diisi"
-        })
-        .min(8, "Password minimal 8 karakter")
-        .regex(/[A-Za-z]/, "Password harus mengandung minimal 1 huruf")
-        .regex(/[0-9]/, "Password harus mengandung minimal 1 angka"),
+    newPassword: strongPasswordSchema,
+    refreshToken: z.string().optional(),
+});
+
+const resetPasswordSchema = z.object({
+    email: z
+        .string()
+        .nonempty("Email wajib diisi")
+        .email("Format email tidak valid"),
+    token: z.string().nonempty("Token wajib diisi"),
+    newPassword: strongPasswordSchema,
 });
 
 module.exports = {
     loginSchema,
-    changePasswordSchema
+    changePasswordSchema,
+    resetPasswordSchema
 };

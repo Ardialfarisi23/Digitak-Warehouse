@@ -24,7 +24,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   isLoggingOut: boolean;
-  login: (user: User, token: string) => void;
+  login: (user: User, token: string, refreshToken?: string | null) => void;
   logout: () => void;
   updateUser: (data: Partial<User>) => void;
 }
@@ -46,23 +46,78 @@ export function AuthProvider({
   // ============================================================
 
   useEffect(() => {
+    let isMounted = true;
+
     const validateSession = async () => {
       try {
         const storedToken = localStorage.getItem("token");
         const storedUser = localStorage.getItem("user");
 
-        if (storedToken && storedUser) {
-          const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+        if (!storedToken || !storedUser) {
+          if (isMounted) setIsLoading(false);
+          return;
+        }
 
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        try {
           const res = await fetch(`${baseUrl}/api/auth/me`, {
             headers: { Authorization: `Bearer ${storedToken}` },
+            signal: controller.signal,
           });
 
+          clearTimeout(timeoutId);
+
+          if (!isMounted) return;
+
           if (!res.ok) {
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
-            setToken(null);
-            setUser(null);
+            if (res.status === 401 || res.status === 403) {
+              const refreshToken = localStorage.getItem("refreshToken");
+              if (refreshToken) {
+                try {
+                  const refreshRes = await fetch(`${baseUrl}/api/auth/refresh`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ refreshToken }),
+                  });
+                  if (refreshRes.ok) {
+                    const refreshData = await refreshRes.json();
+                    const newToken = refreshData?.data?.token;
+                    if (newToken) {
+                      localStorage.setItem("token", newToken);
+                      const retryRes = await fetch(`${baseUrl}/api/auth/me`, {
+                        headers: { Authorization: `Bearer ${newToken}` },
+                        signal: controller.signal,
+                      });
+                      if (retryRes.ok) {
+                        const parsedUser: User = JSON.parse(storedUser);
+                        let restoredUser = parsedUser;
+                        try {
+                          const responseData = await retryRes.json();
+                          if (responseData?.success && responseData?.data) {
+                            restoredUser = { ...restoredUser, ...responseData.data };
+                            localStorage.setItem("user", JSON.stringify(restoredUser));
+                          }
+                        } catch {}
+                        if (isMounted) {
+                          setToken(newToken);
+                          setUser(restoredUser);
+                          setIsLoading(false);
+                          return;
+                        }
+                      }
+                    }
+                  }
+                } catch {}
+              }
+              localStorage.removeItem("token");
+              localStorage.removeItem("user");
+              localStorage.removeItem("refreshToken");
+              setToken(null);
+              setUser(null);
+            }
             setIsLoading(false);
             return;
           }
@@ -78,48 +133,99 @@ export function AuthProvider({
             }
           } catch {}
 
-          setToken(storedToken);
-          setUser(restoredUser);
+          if (isMounted) {
+            setToken(storedToken);
+            setUser(restoredUser);
+          }
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+
+          if (!isMounted) return;
+
+          if (fetchError instanceof DOMException && fetchError.name === "AbortError") {
+            console.warn("Validasi session timeout, menggunakan data lokal");
+          } else if (fetchError instanceof TypeError && fetchError.message === "Failed to fetch") {
+            console.warn("Backend tidak tersedia, menggunakan data session lokal");
+          } else {
+            console.error("Gagal validasi session:", fetchError);
+          }
+
+          const parsedUser: User = JSON.parse(storedUser);
+          if (isMounted) {
+            setToken(storedToken);
+            setUser(parsedUser);
+          }
         }
       } catch (error) {
         console.error("Gagal membaca session:", error);
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        setToken(null);
-        setUser(null);
+        if (isMounted) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          setToken(null);
+          setUser(null);
+        }
       } finally {
-        setIsLoading(false);
+        if (isMounted) setIsLoading(false);
       }
     };
 
     validateSession();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // ============================================================
   // LOGIN
   // ============================================================
 
-  const login = (user: User, token: string) => {
-    setIsLoggingOut(false);
-    localStorage.setItem("token", token);
-    localStorage.setItem("user", JSON.stringify(user));
+const login = (user: User, token: string, refreshToken: string | null = null) => {
+  setIsLoggingOut(false);
+  localStorage.setItem("token", token);
+  localStorage.setItem("user", JSON.stringify(user));
+  if (refreshToken) {
+    localStorage.setItem("refreshToken", refreshToken);
+  }
 
-    setToken(token);
-    setUser(user);
-  };
+  setToken(token);
+  setUser(user);
+};
 
   // ============================================================
   // LOGOUT
   // ============================================================
 
-  const logout = () => {
-    setIsLoggingOut(true);
+const logout = async () => {
+  setIsLoggingOut(true);
+  const token = localStorage.getItem("token");
+  const refreshToken = localStorage.getItem("refreshToken");
+
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    await fetch(`${baseUrl}/api/auth/logout`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        refreshToken: refreshToken,
+      }),
+    });
+  } catch (err) {
+    // Ignore errors, we still want to log out locally
+    console.error("Logout request failed:", err);
+  } finally {
+    // Clear localStorage and state
     localStorage.removeItem("token");
     localStorage.removeItem("user");
-
+    localStorage.removeItem("refreshToken");
     setToken(null);
     setUser(null);
-  };
+    setIsLoggingOut(false);
+  }
+};
 
   const updateUser = (data: Partial<User>) => {
     setUser((prev) => {

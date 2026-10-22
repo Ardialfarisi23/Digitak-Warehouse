@@ -2,6 +2,7 @@ const warehouseRepository = require("./warehouse.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
 const notificationService = require("../../modules/notifications/notifications.service");
+const { createAuditLog } = require("../../utils/audit-log");
 
 const canEditType = async (gudang_id) => {
   const warehouse = await warehouseRepository.findById(gudang_id);
@@ -80,6 +81,18 @@ const create = async (data, userId, userRole) => {
       });
     }
 
+    await createAuditLog(
+      {
+        entityType: "warehouse",
+        entityId: warehouse.gudang_id,
+        aksi: "create",
+        actorId: userId,
+        dataSebelum: null,
+        dataSesudah: warehouse,
+      },
+      tx
+    );
+
     return warehouse;
   });
 
@@ -131,15 +144,41 @@ const create = async (data, userId, userRole) => {
 const findAll = async (query) => {
   const result = await warehouseRepository.findAll(query);
 
-  const dataWithFlag = await Promise.all(
-    result.data.map(async (warehouse) => {
-      const check = await canEditType(warehouse.gudang_id);
-      return {
-        ...warehouse,
-        dapat_ubah_tipe: check.dapat_ubah_tipe,
-      };
-    })
+  // Flag `dapat_ubah_tipe` dihitung per gudang. Sebelumnya memakai canEditType()
+  // untuk tiap baris (2 query x N gudang); sekarang limit default gudang jauh lebih
+  // besar, jadi cukup dihitung sekali lewat dua query agregat.
+  const gudangIds = result.data.map((warehouse) => warehouse.gudang_id);
+
+  if (gudangIds.length === 0) {
+    return { ...result, data: [] };
+  }
+
+  const [zonaCounts, gudangBerstok] = await Promise.all([
+    prisma.zona_gudang.groupBy({
+      by: ["gudang_id"],
+      where: { gudang_id: { in: gudangIds } },
+      _count: { _all: true },
+    }),
+    prisma.stok_gudang.groupBy({
+      by: ["gudang_id"],
+      where: { gudang_id: { in: gudangIds }, qty: { gt: 0 } },
+    }),
+  ]);
+
+  const zonaCountMap = new Map(
+    zonaCounts.map((row) => [String(row.gudang_id), row._count._all])
   );
+  const gudangBerstokSet = new Set(gudangBerstok.map((row) => String(row.gudang_id)));
+
+  const dataWithFlag = result.data.map((warehouse) => {
+    const zonaCount = zonaCountMap.get(String(warehouse.gudang_id)) || 0;
+    const hasStock = gudangBerstokSet.has(String(warehouse.gudang_id));
+
+    return {
+      ...warehouse,
+      dapat_ubah_tipe: zonaCount <= 1 && !hasStock,
+    };
+  });
 
   return {
     ...result,
@@ -313,11 +352,57 @@ const softDelete = async (gudang_id) => {
     throw new AppError("Gudang tidak dapat dinonaktifkan karena masih memiliki stok.", 400);
   }
 
-  return await warehouseRepository.softDelete(warehouse.gudang_id);
+  const result = await warehouseRepository.softDelete(warehouse.gudang_id);
+
+  try {
+    await createAuditLog(
+      {
+        entityType: "gudang",
+        entityId: warehouse.gudang_id,
+        aksi: "soft_delete",
+        actorId: warehouse.updated_by,
+        dataSebelum: { is_aktif: true },
+        dataSesudah: { is_aktif: false },
+      },
+      prisma
+    );
+  } catch (auditErr) {
+    console.error("Gagal membuat audit log soft_delete gudang:", auditErr);
+  }
+
+  return result;
 };
 
 const restore = async (gudang_id) => {
-  return await warehouseRepository.restore(gudang_id);
+  const warehouse = await warehouseRepository.findById(gudang_id);
+
+  if (!warehouse) {
+    throw new AppError("Gudang tidak ditemukan.", 404);
+  }
+
+  if (warehouse.is_aktif) {
+    throw new AppError("Gudang sudah aktif.", 400);
+  }
+
+  const result = await warehouseRepository.restore(gudang_id);
+
+  try {
+    await createAuditLog(
+      {
+        entityType: "gudang",
+        entityId: warehouse.gudang_id,
+        aksi: "restore",
+        actorId: warehouse.updated_by,
+        dataSebelum: { is_aktif: false },
+        dataSesudah: { is_aktif: true },
+      },
+      prisma
+    );
+  } catch (auditErr) {
+    console.error("Gagal membuat audit log restore gudang:", auditErr);
+  }
+
+  return result;
 };
 
 const getLayout = async (gudang_id) => {
@@ -411,6 +496,7 @@ const getZoneStockSnapshot = async (gudang_id, zona_id, query = {}) => {
   if (search) {
     const matchingBarangs = await prisma.barang.findMany({
       where: {
+        is_aktif: true,
         OR: [
           { kode_perangkat: { contains: search, mode: "insensitive" } },
           { nama_barang: { contains: search, mode: "insensitive" } },
@@ -450,7 +536,7 @@ const getZoneStockSnapshot = async (gudang_id, zona_id, query = {}) => {
 
   const [barangs, zonas] = await Promise.all([
     prisma.barang.findMany({
-      where: { barang_id: { in: barangIds } },
+      where: { barang_id: { in: barangIds }, is_aktif: true },
       select: {
         barang_id: true,
         kode_perangkat: true,

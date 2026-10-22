@@ -1,9 +1,11 @@
 export type SuratJalanItemFoto = {
-  foto_id: number;
+  // Backend men-serialize BigInt menjadi string (lihat app.js), jadi nomor bisa
+  // datang sebagai string maupun number.
+  foto_id: number | string;
   url: string;
   filename?: string;
   mimetype?: string;
-  ukuran_bytes?: number;
+  ukuran_bytes?: number | string;
 };
 
 export type SuratJalanItemForFoto = {

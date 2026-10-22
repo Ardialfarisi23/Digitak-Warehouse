@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Bell, MapPin, ArrowRight, PackageCheck, Truck } from "lucide-react";
@@ -88,6 +88,11 @@ function StatusBadge({ children }: { children: React.ReactNode }) {
 }
 
 type ZoneRow = {
+  zonaId: string;
+  gudangId: string;
+  gudangNama: string;
+  projectNama?: string | null;
+  area?: string | null;
   namaZona: string;
   kodeZona: string;
   statusKecukupan: string;
@@ -96,6 +101,23 @@ type ZoneRow = {
   sisa: number | null;
   dinilaiOleh: string | null;
   dinilaiPada: string | null;
+};
+
+// Bentuk apa adanya dari /api/dashboard/warehouse-assessment sebelum dipetakan ke ZoneRow.
+type ZonaApiItem = {
+  zonaId?: string | null;
+  gudangId?: string | null;
+  gudangNama?: string | null;
+  projectNama?: string | null;
+  area?: string | null;
+  namaZona?: string | null;
+  kodeZona?: string | null;
+  statusKecukupan?: string | null;
+  kapasitasMaksimum?: number | null;
+  totalQty?: number | string | null;
+  sisa?: number | null;
+  dinilaiOleh?: string | null;
+  dinilaiPada?: string | null;
 };
 
 type NextTaskRow = {
@@ -136,7 +158,10 @@ export default function StaffDashboardPage() {
   const [zones, setZones] = useState<ZoneRow[]>([]);
   const [zonesLoading, setZonesLoading] = useState(true);
   const [zonesError, setZonesError] = useState<string | null>(null);
-  const [staffGudangId, setStaffGudangId] = useState<string | null>(null);
+  // Satu staf boleh ditugaskan ke satu atau beberapa gudang. Semua kartu yang
+  // butuh scope gudang memakai daftar ini, bukan satu ID saja.
+  const [staffGudangIds, setStaffGudangIds] = useState<string[]>([]);
+  const [belumDitugaskan, setBelumDitugaskan] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const [showDeactivatedModal, setShowDeactivatedModal] = useState(false);
   const profilePollRef = useRef<number | null>(null);
@@ -156,6 +181,17 @@ export default function StaffDashboardPage() {
 
   const staffName = user?.name || user?.username || "Staf Gudang";
 
+  const [warehouseNameMap, setWarehouseNameMap] = useState<Record<string, string>>({});
+
+  const zonesByGudang = useMemo(() => {
+    return zones.reduce<Record<string, ZoneRow[]>>((acc, zone) => {
+      const key = zone.gudangId || "-";
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(zone);
+      return acc;
+    }, {});
+  }, [zones]);
+
   useEffect(() => {
     async function loadProfile() {
       setProfileLoading(true);
@@ -168,11 +204,27 @@ export default function StaffDashboardPage() {
         }
         const json = await response.json();
         const data = json?.data ?? json;
-        const gudangId = data?.gudang_id ? String(data.gudang_id) : null;
-        setStaffGudangId(gudangId);
+
+        // Fallback berjenjang, supaya staf yang punya beberapa gudang tetap
+        // punya scope dan staf tanpa penugasan pun tidak membuat halaman kosong:
+        //   1. gudang_ids        -> daftar lengkap hasil union penugasan
+        //   2. gudang_utama_id   -> gudang bawaan dari backend
+        //   3. gudang_id         -> penugasan lama (personil.gudang_id)
+        const dariDaftar: string[] = Array.isArray(data?.gudang_ids)
+          ? data.gudang_ids.map((id: unknown) => String(id)).filter((id: string) => id !== "" && id !== "null")
+          : [];
+
+        const utama = data?.gudang_utama_id ? String(data.gudang_utama_id) : null;
+        const lama = data?.gudang_id ? String(data.gudang_id) : null;
+
+        const gabungan = [...new Set([...(utama ? [utama] : []), ...dariDaftar, ...(lama ? [lama] : [])])];
+
+        setStaffGudangIds(gabungan);
+        setBelumDitugaskan(gabungan.length === 0);
       } catch (err) {
         console.error("Gagal memuat profil staff:", err);
-        setStaffGudangId(null);
+        setStaffGudangIds([]);
+        setBelumDitugaskan(false);
       } finally {
         setProfileLoading(false);
       }
@@ -182,18 +234,17 @@ export default function StaffDashboardPage() {
   }, [get]);
 
   useEffect(() => {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    if (profilePollRef.current) {
+      clearInterval(profilePollRef.current);
+      profilePollRef.current = null;
+    }
 
     profilePollRef.current = window.setInterval(async () => {
       if (document.visibilityState !== "visible") return;
 
       try {
-        const token = localStorage.getItem("token");
-        if (!token) return;
-
-        const response = await fetch(`${baseUrl}/api/profile`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+        const response = await get(`${baseUrl}/api/profile`);
 
         if (response.status === 401) {
           const err = await response.json().catch(() => null);
@@ -214,11 +265,35 @@ export default function StaffDashboardPage() {
         profilePollRef.current = null;
       }
     };
-  }, []);
+  }, [get]);
+
+  useEffect(() => {
+    async function loadWarehouseNames() {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      try {
+        const response = await get(`${baseUrl}/api/warehouses?limit=1000`);
+        if (response.ok) {
+          const json = await response.json();
+          const data = json?.data ?? json ?? [];
+          const list = Array.isArray(data) ? data : (data?.data || []);
+          const map: Record<string, string> = {};
+          for (const w of list) {
+            if (w.gudang_id && w.nama_gudang) {
+              map[String(w.gudang_id)] = w.nama_gudang;
+            }
+          }
+          setWarehouseNameMap(map);
+        }
+      } catch {
+        // silent fail, will fall back to ID
+      }
+    }
+    loadWarehouseNames();
+  }, [get]);
 
   useEffect(() => {
     async function loadZones() {
-      if (!staffGudangId) {
+      if (staffGudangIds.length === 0) {
         setZones([]);
         setZonesLoading(false);
         return;
@@ -228,17 +303,32 @@ export default function StaffDashboardPage() {
       setZonesError(null);
       try {
         const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-        const response = await get(
-          `${baseUrl}/api/dashboard/warehouse-assessment?gudangId=${staffGudangId}`
+        const responses = await Promise.all(
+          staffGudangIds.map((gudangId) =>
+            get(`${baseUrl}/api/dashboard/warehouse-assessment?gudangId=${gudangId}`)
+          )
         );
-        if (!response.ok) {
-          const err = await response.json().catch(() => null);
-          throw new Error(err?.message || "Gagal memuat status zona.");
+
+        const list: ZonaApiItem[] = [];
+        let pesanGagal: string | null = null;
+        for (const response of responses) {
+          if (!response.ok) {
+            const err = await response.json().catch(() => null);
+            pesanGagal = pesanGagal || err?.message || "Gagal memuat status zona.";
+            continue;
+          }
+          const json = await response.json();
+          const data = json?.data ?? json;
+          if (Array.isArray(data)) list.push(...data);
         }
-        const json = await response.json();
-        const data = json?.data ?? json;
-        const list = Array.isArray(data) ? data : [];
-        const mapped: ZoneRow[] = list.map((z: any) => ({
+        if (pesanGagal) throw new Error(pesanGagal);
+
+        const mapped: ZoneRow[] = list.map((z) => ({
+          zonaId: String(z.zonaId ?? crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)),
+          gudangId: String(z.gudangId ?? ""),
+          gudangNama: z.gudangNama || "-",
+          projectNama: z.projectNama ?? null,
+          area: z.area ?? null,
           namaZona: z.namaZona || z.kodeZona || "-",
           kodeZona: z.kodeZona || "-",
           statusKecukupan: z.statusKecukupan || "CUKUP",
@@ -258,7 +348,7 @@ export default function StaffDashboardPage() {
     }
 
     loadZones();
-  }, [get, staffGudangId]);
+  }, [get, staffGudangIds]);
 
   useEffect(() => {
     async function loadActivities() {
@@ -291,7 +381,7 @@ export default function StaffDashboardPage() {
 
   useEffect(() => {
     async function loadNextTask() {
-      if (!staffGudangId) {
+      if (staffGudangIds.length === 0) {
         setNextTask(null);
         setNextTaskLoading(false);
         return;
@@ -302,53 +392,60 @@ export default function StaffDashboardPage() {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-        const [outboundRes, inboundRes] = await Promise.all([
-          get(
-            `${baseUrl}/api/surat-jalan/outbound/queue?gudangTujuanId=${staffGudangId}&status=disetujui`
-          ),
-          get(
-            `${baseUrl}/api/surat-jalan/inbound?gudangTujuanId=${staffGudangId}&status=ready_putaway`
-          ),
-        ]);
+        const perGudang = await Promise.all(
+          staffGudangIds.map(async (gudangId) => {
+            const [outboundRes, inboundRes] = await Promise.all([
+              get(
+                `${baseUrl}/api/surat-jalan/outbound/queue?gudangTujuanId=${gudangId}&status=disetujui`
+              ),
+              get(`${baseUrl}/api/surat-jalan/inbound?gudangTujuanId=${gudangId}&status=ready_putaway`),
+            ]);
 
-        const outboundCandidates: NextTaskRow[] = [];
-        const inboundCandidates: NextTaskRow[] = [];
+            const outbound: NextTaskRow[] = [];
+            const inbound: NextTaskRow[] = [];
 
-        if (outboundRes.ok) {
-          const outboundJson = await outboundRes.json();
-          const outboundData = outboundJson?.data ?? outboundJson ?? [];
-          const outboundList = Array.isArray(outboundData) ? outboundData : [];
-          for (const sj of outboundList) {
-            outboundCandidates.push({
-              suratJalanId: sj.surat_jalan_id,
-              nomorSuratJalan: sj.nomor_surat_jalan,
-              tipe: "outbound",
-              status: sj.status,
-              created_at: sj.created_at,
-              gudangAsal: sj.gudang_asal?.nama_gudang || null,
-              gudangTujuan: sj.gudang_tujuan?.nama_gudang || null,
-              project: sj.project?.nama_project || null,
-            });
-          }
-        }
+            if (outboundRes.ok) {
+              const outboundJson = await outboundRes.json();
+              const outboundData = outboundJson?.data ?? outboundJson ?? [];
+              const outboundList = Array.isArray(outboundData) ? outboundData : [];
+              for (const sj of outboundList) {
+                outbound.push({
+                  suratJalanId: sj.surat_jalan_id,
+                  nomorSuratJalan: sj.nomor_surat_jalan,
+                  tipe: "outbound",
+                  status: sj.status,
+                  created_at: sj.created_at,
+                  gudangAsal: sj.gudang_asal?.nama_gudang || null,
+                  gudangTujuan: sj.gudang_tujuan?.nama_gudang || null,
+                  project: sj.project?.nama_project || null,
+                });
+              }
+            }
 
-        if (inboundRes.ok) {
-          const inboundJson = await inboundRes.json();
-          const inboundData = inboundJson?.data ?? inboundJson ?? [];
-          const inboundList = Array.isArray(inboundData) ? inboundData : [];
-          for (const sj of inboundList) {
-            inboundCandidates.push({
-              suratJalanId: sj.surat_jalan_id,
-              nomorSuratJalan: sj.nomor_surat_jalan,
-              tipe: "inbound",
-              status: sj.status,
-              created_at: sj.created_at,
-              gudangAsal: sj.gudang_asal?.nama_gudang || null,
-              gudangTujuan: sj.gudang_tujuan?.nama_gudang || null,
-              project: sj.project?.nama_project || null,
-            });
-          }
-        }
+            if (inboundRes.ok) {
+              const inboundJson = await inboundRes.json();
+              const inboundData = inboundJson?.data ?? inboundJson ?? [];
+              const inboundList = Array.isArray(inboundData) ? inboundData : [];
+              for (const sj of inboundList) {
+                inbound.push({
+                  suratJalanId: sj.surat_jalan_id,
+                  nomorSuratJalan: sj.nomor_surat_jalan,
+                  tipe: "inbound",
+                  status: sj.status,
+                  created_at: sj.created_at,
+                  gudangAsal: sj.gudang_asal?.nama_gudang || null,
+                  gudangTujuan: sj.gudang_tujuan?.nama_gudang || null,
+                  project: sj.project?.nama_project || null,
+                });
+              }
+            }
+
+            return { outbound, inbound };
+          })
+        );
+
+        const outboundCandidates = perGudang.flatMap((r) => r.outbound);
+        const inboundCandidates = perGudang.flatMap((r) => r.inbound);
 
         const allCandidates = [...outboundCandidates, ...inboundCandidates];
         if (allCandidates.length === 0) {
@@ -372,11 +469,11 @@ export default function StaffDashboardPage() {
     }
 
     loadNextTask();
-  }, [get, staffGudangId]);
+  }, [get, staffGudangIds]);
 
   useEffect(() => {
     async function loadPendingCounts() {
-      if (!staffGudangId) {
+      if (staffGudangIds.length === 0) {
         setInboundPendingCount(0);
         setOutboundPendingCount(0);
         setPendingCountsLoading(false);
@@ -387,31 +484,38 @@ export default function StaffDashboardPage() {
       setPendingCountsError(null);
       try {
         const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-        const [inboundRes, outboundRes] = await Promise.all([
-          get(
-            `${baseUrl}/api/surat-jalan/inbound?gudangTujuanId=${staffGudangId}&status=ready_putaway`
-          ),
-          get(
-            `${baseUrl}/api/surat-jalan/outbound/queue?gudangTujuanId=${staffGudangId}&status=disetujui`
-          ),
-        ]);
+        const hasilPerGudang = await Promise.all(
+          staffGudangIds.map(async (gudangId) => {
+            const [inboundRes, outboundRes] = await Promise.all([
+              get(
+                `${baseUrl}/api/surat-jalan/inbound?gudangTujuanId=${gudangId}&status=ready_putaway`
+              ),
+              get(
+                `${baseUrl}/api/surat-jalan/outbound/queue?gudangTujuanId=${gudangId}&status=disetujui`
+              ),
+            ]);
 
-        let inboundCount = 0;
-        let outboundCount = 0;
+            let inbound = 0;
+            let outbound = 0;
 
-        if (inboundRes.ok) {
-          const inboundJson = await inboundRes.json();
-          const inboundData = inboundJson?.data ?? inboundJson ?? [];
-          const inboundList = Array.isArray(inboundData) ? inboundData : [];
-          inboundCount = inboundList.length;
-        }
+            if (inboundRes.ok) {
+              const inboundJson = await inboundRes.json();
+              const inboundData = inboundJson?.data ?? inboundJson ?? [];
+              inbound = Array.isArray(inboundData) ? inboundData.length : 0;
+            }
 
-        if (outboundRes.ok) {
-          const outboundJson = await outboundRes.json();
-          const outboundData = outboundJson?.data ?? outboundJson ?? [];
-          const outboundList = Array.isArray(outboundData) ? outboundData : [];
-          outboundCount = outboundList.length;
-        }
+            if (outboundRes.ok) {
+              const outboundJson = await outboundRes.json();
+              const outboundData = outboundJson?.data ?? outboundJson ?? [];
+              outbound = Array.isArray(outboundData) ? outboundData.length : 0;
+            }
+
+            return { inbound, outbound };
+          })
+        );
+
+        const inboundCount = hasilPerGudang.reduce((total, r) => total + r.inbound, 0);
+        const outboundCount = hasilPerGudang.reduce((total, r) => total + r.outbound, 0);
 
         setInboundPendingCount(inboundCount);
         setOutboundPendingCount(outboundCount);
@@ -423,7 +527,7 @@ export default function StaffDashboardPage() {
     }
 
     loadPendingCounts();
-  }, [get, staffGudangId]);
+  }, [get, staffGudangIds]);
 
   useEffect(() => {
     async function loadMySubmissions() {
@@ -513,6 +617,8 @@ export default function StaffDashboardPage() {
         return "bg-blue-50 text-blue-600";
       case "sedang_dikirim":
         return "bg-amber-50 text-amber-600";
+      case "tiba_di_transit":
+        return "bg-purple-50 text-purple-700";
       case "tiba_menunggu_konfirmasi":
         return "bg-blue-50 text-blue-600";
       case "diterima_didistribusikan":
@@ -524,12 +630,23 @@ export default function StaffDashboardPage() {
 
   return (
     <div className="px-8 py-6">
-      {/* Header */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
           Selamat Datang, {staffName}
         </h1>
-        <p className="mt-1 text-sm text-gray-500">Staf Gudang • Digitak WMS</p>
+        <p className="mt-1 text-sm text-gray-500">
+          {(() => {
+            if (profileLoading || staffGudangIds.length === 0) {
+              return belumDitugaskan ? "Staf Gudang • Belum ditugaskan ke gudang" : "Staf Gudang";
+            }
+            const names = staffGudangIds
+              .map((id) => warehouseNameMap[id] || id)
+              .filter(Boolean);
+            return names.length === 0
+              ? "Staf Gudang"
+              : `Staf Gudang • ${names.join(", ")}`;
+          })()}
+        </p>
       </div>
 
       {/* KPI Row — Antrean Barang Masuk & Keluar */}
@@ -583,22 +700,32 @@ export default function StaffDashboardPage() {
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
               Status Zona Live
             </p>
-            <span className="rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600">
-              {profileLoading
-                ? "Memuat..."
-                : staffGudangId
-                  ? `Gudang #${staffGudangId}`
-                  : "Belum ditugaskan"}
-            </span>
+            {Object.keys(zonesByGudang).length > 1 && (
+              <span className="rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600">
+                {Object.keys(zonesByGudang).length} gudang
+              </span>
+            )}
           </div>
 
           {profileLoading ? (
             <div className="flex h-32 items-center justify-center">
               <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#E8632C]" />
             </div>
-          ) : !staffGudangId ? (
+          ) : staffGudangIds.length === 0 ? (
             <div className="py-6 text-center text-sm text-gray-500">
-              Anda belum ditugaskan ke gudang manapun. Hubungi Admin.
+              {belumDitugaskan ? (
+                <>
+                  <p className="font-medium text-gray-700">
+                    Anda belum ditugaskan ke gudang mana pun.
+                  </p>
+                  <p className="mt-1 text-xs text-gray-400">
+                    Hubungi admin atau supervisor untuk penugasan gudang. Pengajuan dan riwayat
+                    Anda tetap dapat diakses di halaman ini.
+                  </p>
+                </>
+              ) : (
+                "Belum ada data zona untuk gudang Anda."
+              )}
             </div>
           ) : zonesLoading ? (
             <div className="flex h-32 items-center justify-center">
@@ -611,48 +738,72 @@ export default function StaffDashboardPage() {
               Belum ada data zona untuk gudang Anda.
             </p>
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {zones.map((zone) => (
-                <div
-                  key={zone.kodeZona}
-                  className="rounded-xl border border-slate-100 p-4"
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      {zone.namaZona}
-                    </p>
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${getStatusBadgeClass(
-                        zone.statusKecukupan
-                      )}`}
-                    >
-                      {getStatusLabel(zone.statusKecukupan)}
-                    </span>
+            <>
+              {Object.entries(zonesByGudang).map(([gudangId, items]) => {
+                const representative = items[0];
+                return (
+                  <div key={gudangId} className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          {representative.gudangNama}
+                        </p>
+                        {(representative.projectNama || representative.area) && (
+                          <p className="mt-0.5 text-[11px] text-gray-400">
+                            {representative.projectNama}
+                            {representative.projectNama && representative.area ? " · " : ""}
+                            {representative.area}
+                          </p>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-gray-400">{items.length} zona</span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {items.map((zone) => (
+                        <div
+                          key={zone.zonaId}
+                          className="rounded-xl border border-slate-100 p-4"
+                        >
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              {zone.namaZona}
+                            </p>
+                            <span
+                              className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${getStatusBadgeClass(
+                                zone.statusKecukupan
+                              )}`}
+                            >
+                              {getStatusLabel(zone.statusKecukupan)}
+                            </span>
+                          </div>
+                          <div className="mt-2 text-xs text-gray-500">
+                            {formatSisaCapacity(zone.sisa, zone.kapasitasMaksimum) || (
+                              <span className="text-gray-400">Kapasitas belum diatur</span>
+                            )}
+                          </div>
+                          {zone.dinilaiOleh && (
+                            <p className="mt-1 text-[10px] text-gray-400">
+                              Dinilai oleh {zone.dinilaiOleh}
+                              {zone.dinilaiPada
+                                ? ` pada ${new Date(zone.dinilaiPada).toLocaleDateString("id-ID")}`
+                                : ""}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="mt-2 text-xs text-gray-500">
-                    {formatSisaCapacity(zone.sisa, zone.kapasitasMaksimum) || (
-                      <span className="text-gray-400">Kapasitas belum diatur</span>
-                    )}
-                  </div>
-                  {zone.dinilaiOleh && (
-                    <p className="mt-1 text-[10px] text-gray-400">
-                      Dinilai oleh {zone.dinilaiOleh}
-                      {zone.dinilaiPada
-                        ? ` pada ${new Date(zone.dinilaiPada).toLocaleDateString("id-ID")}`
-                        : ""}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
+                );
+              })}
+            </>
           )}
         </div>
       </div>
 
-      {/* Baris bawah — 2/3 + 1/3 */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+      {/* Baris bawah — Aktivitas Terkini & Tugas Prioritas Berikutnya */}
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
         {/* Aktivitas Terkini */}
-        <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6 lg:col-span-2">
+        <div className="flex-1 rounded-2xl border border-[#F3D9C7] bg-white p-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
             Aktivitas Terkini
           </p>
@@ -667,38 +818,61 @@ export default function StaffDashboardPage() {
               Belum ada aktivitas tercatat untuk akun Anda.
             </p>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
-                  <th className="pb-3 font-semibold">Waktu</th>
-                  <th className="pb-3 font-semibold">Aktivitas</th>
-                  <th className="pb-3 font-semibold">Lokasi</th>
-                  <th className="pb-3 font-semibold">Status</th>
-                </tr>
-              </thead>
-              <tbody>
+            <>
+              {/* Mobile card view */}
+              <div className="space-y-3 md:hidden">
                 {activities.map((row, i) => (
-                  <tr
-                    key={i}
-                    className="border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30"
-                  >
-                    <td className="py-3 pr-4 text-gray-500">{row.time}</td>
-                    <td className="py-3 pr-4 font-medium text-gray-800">
-                      {row.activity}
-                    </td>
-                    <td className="py-3 pr-4 text-gray-500">{row.location}</td>
-                    <td className="py-3">
+                  <div key={`card-activity-${i}`} className="rounded-xl border border-gray-200 bg-white p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-gray-800">{row.activity}</p>
                       <StatusBadge>{row.status}</StatusBadge>
-                    </td>
-                  </tr>
+                    </div>
+                    <div className="mt-3 space-y-1 text-sm text-gray-600">
+                      <p><span className="text-gray-400">Waktu:</span> {row.time}</p>
+                      <p><span className="text-gray-400">Lokasi:</span> {row.location}</p>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+
+              {/* Desktop table view */}
+              <div className="hidden md:block overflow-x-auto overscroll-x-contain">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+                      <th className="pb-3 font-semibold text-center w-12">No</th>
+                      <th className="pb-3 font-semibold">Waktu</th>
+                      <th className="pb-3 font-semibold">Aktivitas</th>
+                      <th className="pb-3 font-semibold">Lokasi</th>
+                      <th className="pb-3 font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activities.map((row, i) => (
+                      <tr
+                        key={i}
+                        className="border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30"
+                      >
+                        <td className="py-3 pr-4 text-center text-xs text-slate-500">{i + 1}</td>
+                        <td className="py-3 pr-4 text-gray-500">{row.time}</td>
+                        <td className="py-3 pr-4 font-medium text-gray-800">
+                          {row.activity}
+                        </td>
+                        <td className="py-3 pr-4 text-gray-500">{row.location}</td>
+                        <td className="py-3">
+                          <StatusBadge>{row.status}</StatusBadge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
 
         {/* Tugas Prioritas Berikutnya */}
-        <div className="flex flex-col justify-between rounded-2xl bg-gray-900 p-6 text-white">
+        <div className="flex w-full flex-col justify-between rounded-2xl bg-gray-900 p-6 text-white lg:w-96 lg:flex-shrink-0">
           <div>
             <div className="mb-4 flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
@@ -713,9 +887,11 @@ export default function StaffDashboardPage() {
               </div>
             ) : nextTaskError ? (
               <p className="py-6 text-center text-sm text-red-400">{nextTaskError}</p>
-            ) : !staffGudangId ? (
+            ) : staffGudangIds.length === 0 ? (
               <p className="py-6 text-center text-sm text-gray-400">
-                Anda belum ditugaskan ke gudang manapun. Hubungi Admin.
+                {belumDitugaskan
+                  ? "Anda belum ditugaskan ke gudang mana pun. Hubungi admin atau supervisor."
+                  : "Gudang Anda belum memiliki zona aktif."}
               </p>
             ) : !nextTask ? (
               <p className="py-6 text-center text-sm text-gray-400">
@@ -773,7 +949,7 @@ export default function StaffDashboardPage() {
                 key={i}
                 href={
                   submission.tipe === "inbound"
-                    ? `/staff/inbound/${submission.suratJalanId}`
+                    ? `/staff/putaway/${submission.suratJalanId}`
                     : `/staff/outbound/${submission.suratJalanId}`
                 }
                 className="flex items-center justify-between rounded-xl border border-slate-100 p-3 transition-colors hover:border-slate-200"

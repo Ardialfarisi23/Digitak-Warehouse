@@ -1,25 +1,26 @@
-const express = require("express");
-
+﻿const express = require("express");
 const router = express.Router();
 
 const suratJalanController = require("./surat-jalan.controller");
 const {
   createSuratJalanSchema,
   receiveInboundSchema,
-  approveInboundSchema,
-  rejectInboundSchema,
   rejectOutboundSchema,
   cancelDraftSchema,
   putawaySchema,
   retrieveSchema,
   deliveryStatusSchema,
-  itemFotoSchema
+  itemFotoSchema,
+  tibaTransitSchema,
+  lanjutDariTransitSchema
 } = require("./surat-jalan.validation");
 const validate = require("../../middlewares/validation.middleware");
 const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
+const { attachGudangScope } = require("../../middlewares/gudang-scope.middleware");
+const { uploadLimiter, deleteLimiter } = require("../../middlewares/rate-limit");
 
-router.post("/", authenticate, authorize("ADMIN", "STAFF"), validate(createSuratJalanSchema), suratJalanController.create);
+router.post("/", authenticate, authorize("ADMIN", "STAFF"), attachGudangScope, validate(createSuratJalanSchema), suratJalanController.create);
 router.post(
   "/inbound/staff",
   authenticate,
@@ -29,6 +30,7 @@ router.post(
 router.post(
   "/:id/receive-inbound",
   authenticate,
+  attachGudangScope,
   validate(receiveInboundSchema),
   suratJalanController.receiveInbound
 );
@@ -36,28 +38,20 @@ router.get("/outbound/queue", authenticate, suratJalanController.findOutboundQue
 router.get("/outbound/approval", authenticate, authorize("SUPERVISOR"), suratJalanController.findOutboundForApproval);
 router.get("/outbound/delivery", authenticate, authorize("SUPERVISOR"), suratJalanController.findOutboundForDelivery);
 router.get("/outbound/riwayat-approval", authenticate, authorize("SUPERVISOR"), suratJalanController.findOutboundApprovalHistory);
-router.get("/outbound/:id", authenticate, suratJalanController.findOutboundDetail);
-
+router.get(
+  "/outbound/:id",
+  authenticate,
+  attachGudangScope,
+  suratJalanController.findOutboundDetail
+);
 router.get("/inbound", authenticate, suratJalanController.findInboundList);
-router.get("/verification/queue", authenticate, suratJalanController.findVerificationQueue);
 router.get("/staff/history", authenticate, suratJalanController.findStaffHistory);
 router.get("/rejected", authenticate, authorize("SUPERVISOR"), suratJalanController.findRejectedList);
-router.get("/:id", authenticate, suratJalanController.findById);
-
-router.put(
-  "/:id/approve-inbound",
+router.get(
+  "/:id",
   authenticate,
-  authorize("SUPERVISOR"),
-  validate(approveInboundSchema),
-  suratJalanController.approveInbound
-);
-
-router.post(
-  "/:id/approve-inbound",
-  authenticate,
-  authorize("SUPERVISOR"),
-  validate(approveInboundSchema),
-  suratJalanController.approveInbound
+  attachGudangScope,
+  suratJalanController.findById
 );
 
 router.put(
@@ -78,16 +72,29 @@ router.put(
   "/:id/delivery-status",
   authenticate,
   authorize("STAFF", "SUPERVISOR"),
+  attachGudangScope,
   validate(deliveryStatusSchema),
   suratJalanController.updateDeliveryStatus
 );
 
-router.put(
-  "/:id/reject-inbound",
+// Gudang Transit â€” STAFF ONLY (keputusan bisnis #6: supervisor tidak
+// ditambahi aksi transit). Scope gudang tetap dipasang di kedua route.
+router.post(
+  "/:id/transit/tiba",
   authenticate,
-  authorize("SUPERVISOR"),
-  validate(rejectInboundSchema),
-  suratJalanController.rejectInbound
+  authorize("STAFF"),
+  attachGudangScope,
+  validate(tibaTransitSchema),
+  suratJalanController.tibaDiTransit
+);
+
+router.post(
+  "/:id/transit/lanjut",
+  authenticate,
+  authorize("STAFF"),
+  attachGudangScope,
+  validate(lanjutDariTransitSchema),
+  suratJalanController.lanjutDariTransit
 );
 
 router.put(
@@ -110,6 +117,7 @@ router.post(
   "/:id/putaway",
   authenticate,
   authorize("STAFF", "SUPERVISOR"),
+  attachGudangScope,
   validate(putawaySchema),
   suratJalanController.putaway
 );
@@ -118,6 +126,7 @@ router.post(
   "/:id/retrieve",
   authenticate,
   authorize("STAFF", "SUPERVISOR"),
+  attachGudangScope,
   validate(retrieveSchema),
   suratJalanController.retrieve
 );
@@ -126,6 +135,8 @@ router.post(
   "/:id/items/:itemId/fotos",
   authenticate,
   authorize("STAFF", "SUPERVISOR"),
+  uploadLimiter,
+  attachGudangScope,
   validate(itemFotoSchema),
   suratJalanController.addItemFoto
 );
@@ -134,6 +145,8 @@ router.delete(
   "/:id/items/:itemId/fotos/:fotoId",
   authenticate,
   authorize("STAFF", "SUPERVISOR"),
+  attachGudangScope,
+  deleteLimiter,
   suratJalanController.deleteItemFoto
 );
 

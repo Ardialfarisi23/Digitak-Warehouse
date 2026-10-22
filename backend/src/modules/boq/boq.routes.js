@@ -1,5 +1,4 @@
 const express = require("express");
-
 const router = express.Router();
 
 const boqController = require("./boq.controller");
@@ -13,7 +12,21 @@ const {
 const validate = require("../../middlewares/validation.middleware");
 const authenticate = require("../../middlewares/auth.middleware");
 const authorize = require("../../middlewares/role.middleware");
+const { deleteLimiter } = require("../../middlewares/rate-limit");
 
+// ---------------------------------------------------------------------------
+// Endpoint READ-ONLY khusus staf (dropdown/picker form Surat Jalan).
+// Hanya data seperlunya (id/nomor BOQ, kode tiket, project, cluster, item)
+// dan tidak tersedia aksi manajemen.
+// CATATAN: harus didaftarkan SEBELUM "/:id" agar tidak tertangkap route param.
+// ---------------------------------------------------------------------------
+router.get("/options", authenticate, boqController.listOptions);
+router.get("/options/items", authenticate, boqController.listOptionItems);
+router.get("/options/:id", authenticate, boqController.getOptionDetail);
+
+// ---------------------------------------------------------------------------
+// Endpoint manajemen BOQ — hanya Admin & Supervisor (staf → 403 Forbidden).
+// ---------------------------------------------------------------------------
 router.post(
   "/",
   authenticate,
@@ -22,14 +35,16 @@ router.post(
   boqController.create
 );
 
-router.get("/", authenticate, boqController.findAll);
-router.get("/stats", authenticate, boqController.getStats);
-router.get("/areas", authenticate, boqController.getAreas);
-router.get("/items", authenticate, boqController.getItems);
-router.get("/export", authenticate, boqController.exportBoqs);
-router.get("/export-matrix", authenticate, boqController.exportMatrixExcel);
-router.get("/:id", authenticate, boqController.findById);
-router.get("/:id/summary", authenticate, boqController.getSummary);
+// Endpoint baca management BOQ -> Admin & Supervisor saja (staf memakai /options).
+router.get("/", authenticate, authorize("ADMIN", "SUPERVISOR"), boqController.findAll);
+router.get("/stats", authenticate, authorize("ADMIN", "SUPERVISOR"), boqController.getStats);
+router.get("/areas", authenticate, authorize("ADMIN", "SUPERVISOR"), boqController.getAreas);
+router.get("/items", authenticate, authorize("ADMIN", "SUPERVISOR"), boqController.getItems);
+router.get("/check-ticket", authenticate, authorize("ADMIN", "SUPERVISOR"), boqController.checkTicketAvailability);
+router.get("/export", authenticate, authorize("ADMIN", "SUPERVISOR"), boqController.exportBoqs);
+router.get("/export-matrix", authenticate, authorize("ADMIN", "SUPERVISOR"), boqController.exportMatrixExcel);
+router.get("/:id", authenticate, authorize("ADMIN", "SUPERVISOR"), boqController.findById);
+router.get("/:id/summary", authenticate, authorize("ADMIN", "SUPERVISOR"), boqController.getSummary);
 
 router.put(
   "/:id",
@@ -73,6 +88,7 @@ router.delete(
   "/:id",
   authenticate,
   authorize("ADMIN"),
+  deleteLimiter,
   boqController.softDelete
 );
 

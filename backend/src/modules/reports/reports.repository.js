@@ -1,8 +1,11 @@
 const prisma = require("../../config/prisma");
+const { getAksiLabel, getEntityTypeLabel, getRoleLabel, formatAuditMetadata } = require("../../utils/audit-labels");
 const AppError = require("../../shared/errors");
 const reconciliationService = require("../reconciliation/reconciliation.service");
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
+const additionalRepository = require("../additional/additional.repository");
+const { isMosEligibleInbound, computeMosSistem, computeRemains } = require("../reconciliation/reconciliation.utils");
 
 const AUDIT_AKSI_VALUES = [
   "create",
@@ -37,6 +40,16 @@ const enrichAuditEntityNames = async (logs) => {
     zona_id: new Set(),
     barang_id: new Set(),
     surat_jalan_item_id: new Set(),
+    created_by: new Set(),
+    updated_by: new Set(),
+    kategori_id: new Set(),
+    satuan_default_id: new Set(),
+    gudang_id: new Set(),
+    personil_id: new Set(),
+    kendaraan_id: new Set(),
+    supplier_id: new Set(),
+    user_id: new Set(),
+    pic_id: new Set(),
   };
 
   for (const log of logs) {
@@ -70,6 +83,16 @@ const enrichAuditEntityNames = async (logs) => {
     zona_id: new Map(),
     barang_id: new Map(),
     surat_jalan_item_id: new Map(),
+    created_by: new Map(),
+    updated_by: new Map(),
+    kategori_id: new Map(),
+    satuan_default_id: new Map(),
+    gudang_id: new Map(),
+    personil_id: new Map(),
+    kendaraan_id: new Map(),
+    supplier_id: new Map(),
+    user_id: new Map(),
+    pic_id: new Map(),
   };
 
   for (const [entityType, idSet] of groupedEntity) {
@@ -107,6 +130,56 @@ const enrichAuditEntityNames = async (logs) => {
         }
         break;
       }
+      case "item": {
+        const rows = await prisma.barang.findMany({
+          where: { barang_id: { in: ids } },
+          select: { barang_id: true, nama_barang: true, kode_perangkat: true },
+        });
+        for (const row of rows) {
+          nameMap.set(`item:${row.barang_id}`, row.nama_barang || row.kode_perangkat || `Barang ${row.barang_id}`);
+        }
+        break;
+      }
+      case "personil": {
+        const rows = await prisma.personil.findMany({
+          where: { personil_id: { in: ids } },
+          select: { personil_id: true, nama: true },
+        });
+        for (const row of rows) {
+          nameMap.set(`personil:${row.personil_id}`, row.nama || `Personil ${row.personil_id}`);
+        }
+        break;
+      }
+      case "vehicle": {
+        const rows = await prisma.kendaraan.findMany({
+          where: { kendaraan_id: { in: ids } },
+          select: { kendaraan_id: true, no_polisi: true, jenis_kendaraan: true },
+        });
+        for (const row of rows) {
+          nameMap.set(`vehicle:${row.kendaraan_id}`, row.no_polisi || row.jenis_kendaraan || `Kendaraan ${row.kendaraan_id}`);
+        }
+        break;
+      }
+      case "supplier": {
+        const rows = await prisma.supplier.findMany({
+          where: { supplier_id: { in: ids } },
+          select: { supplier_id: true, nama: true, kode: true },
+        });
+        for (const row of rows) {
+          nameMap.set(`supplier:${row.supplier_id}`, row.nama || row.kode || `Supplier ${row.supplier_id}`);
+        }
+        break;
+      }
+      case "warehouse": {
+        const rows = await prisma.gudang.findMany({
+          where: { gudang_id: { in: ids } },
+          select: { gudang_id: true, nama_gudang: true },
+        });
+        for (const row of rows) {
+          nameMap.set(`warehouse:${row.gudang_id}`, row.nama_gudang || `Gudang ${row.gudang_id}`);
+        }
+        break;
+      }
       case "titik_lapangan": {
         const rows = await prisma.titik_lapangan.findMany({
           where: { titik_lapangan_id: { in: ids } },
@@ -127,10 +200,31 @@ const enrichAuditEntityNames = async (logs) => {
         }
         break;
       }
-      case "reconciliation": {
-        // Tidak ada tabel reconciliation tersendiri; entity_id di sini
-        // adalah tiket_id yang merujuk ke tiket_material. Dikecualikan
-        // sesuai permintaan investigasi.
+      case "reconciliation":
+      case "reconciliation_remains_note": {
+        // `reconciliation` tidak punya tabel tersendiri (entity_id = tiket_id).
+        // `reconciliation_remains_note` punya tabel sendiri tapi hanya berisi
+        // keterangan bebas, jadi tetap ditampilkan sebagai judul catatan.
+        if (entityType === "reconciliation") break;
+
+        const rows = await prisma.reconciliation_remains_note.findMany({
+          where: { id: { in: ids } },
+          select: {
+            id: true,
+            keterangan: true,
+            project: { select: { nama_project: true } },
+            barang: { select: { nama_barang: true } },
+          },
+        });
+        for (const row of rows) {
+          const projectName = row.project?.nama_project || "-";
+          const barangName = row.barang?.nama_barang || "-";
+          const note = row.keterangan ? String(row.keterangan).trim() : "";
+          nameMap.set(
+            `reconciliation_remains_note:${row.id}`,
+            note ? `${barangName} - ${projectName}: ${note}` : `${barangName} - ${projectName}`
+          );
+        }
         break;
       }
       default:
@@ -237,6 +331,116 @@ const enrichAuditEntityNames = async (logs) => {
     }
   }
 
+  if (refGroups.created_by.size) {
+    const ids = Array.from(refGroups.created_by);
+    const rows = await prisma.user_account.findMany({
+      where: { user_id: { in: ids } },
+      select: { user_id: true, nama: true },
+    });
+    for (const row of rows) {
+      refMaps.created_by.set(Number(row.user_id), row.nama || `User ${row.user_id}`);
+    }
+  }
+
+  if (refGroups.updated_by.size) {
+    const ids = Array.from(refGroups.updated_by);
+    const rows = await prisma.user_account.findMany({
+      where: { user_id: { in: ids } },
+      select: { user_id: true, nama: true },
+    });
+    for (const row of rows) {
+      refMaps.updated_by.set(Number(row.user_id), row.nama || `User ${row.user_id}`);
+    }
+  }
+
+  if (refGroups.kategori_id.size) {
+    const ids = Array.from(refGroups.kategori_id);
+    const rows = await prisma.kategori_barang.findMany({
+      where: { kategori_id: { in: ids } },
+      select: { kategori_id: true, nama_kategori: true },
+    });
+    for (const row of rows) {
+      refMaps.kategori_id.set(Number(row.kategori_id), row.nama_kategori || `Kategori ${row.kategori_id}`);
+    }
+  }
+
+  if (refGroups.satuan_default_id.size) {
+    const ids = Array.from(refGroups.satuan_default_id);
+    const rows = await prisma.satuan.findMany({
+      where: { satuan_id: { in: ids } },
+      select: { satuan_id: true, kode_satuan: true },
+    });
+    for (const row of rows) {
+      refMaps.satuan_default_id.set(Number(row.satuan_id), row.kode_satuan || `Satuan ${row.satuan_id}`);
+    }
+  }
+
+  if (refGroups.gudang_id.size) {
+    const ids = Array.from(refGroups.gudang_id);
+    const rows = await prisma.gudang.findMany({
+      where: { gudang_id: { in: ids } },
+      select: { gudang_id: true, nama_gudang: true },
+    });
+    for (const row of rows) {
+      refMaps.gudang_id.set(Number(row.gudang_id), row.nama_gudang || `Gudang ${row.gudang_id}`);
+    }
+  }
+
+  if (refGroups.personil_id.size) {
+    const ids = Array.from(refGroups.personil_id);
+    const rows = await prisma.personil.findMany({
+      where: { personil_id: { in: ids } },
+      select: { personil_id: true, nama: true },
+    });
+    for (const row of rows) {
+      refMaps.personil_id.set(Number(row.personil_id), row.nama || `Personil ${row.personil_id}`);
+    }
+  }
+
+  if (refGroups.kendaraan_id.size) {
+    const ids = Array.from(refGroups.kendaraan_id);
+    const rows = await prisma.kendaraan.findMany({
+      where: { kendaraan_id: { in: ids } },
+      select: { kendaraan_id: true, no_polisi: true, jenis_kendaraan: true },
+    });
+    for (const row of rows) {
+      refMaps.kendaraan_id.set(Number(row.kendaraan_id), row.no_polisi || row.jenis_kendaraan || `Kendaraan ${row.kendaraan_id}`);
+    }
+  }
+
+  if (refGroups.supplier_id.size) {
+    const ids = Array.from(refGroups.supplier_id);
+    const rows = await prisma.supplier.findMany({
+      where: { supplier_id: { in: ids } },
+      select: { supplier_id: true, nama: true, kode: true },
+    });
+    for (const row of rows) {
+      refMaps.supplier_id.set(Number(row.supplier_id), row.nama || row.kode || `Supplier ${row.supplier_id}`);
+    }
+  }
+
+  if (refGroups.user_id.size) {
+    const ids = Array.from(refGroups.user_id);
+    const rows = await prisma.user_account.findMany({
+      where: { user_id: { in: ids } },
+      select: { user_id: true, nama: true },
+    });
+    for (const row of rows) {
+      refMaps.user_id.set(Number(row.user_id), row.nama || `User ${row.user_id}`);
+    }
+  }
+
+  if (refGroups.pic_id.size) {
+    const ids = Array.from(refGroups.pic_id);
+    const rows = await prisma.personil.findMany({
+      where: { personil_id: { in: ids } },
+      select: { personil_id: true, nama: true },
+    });
+    for (const row of rows) {
+      refMaps.pic_id.set(Number(row.personil_id), row.nama || `Personil ${row.personil_id}`);
+    }
+  }
+
   return logs.map((log) => {
     const entity_refs_resolved = {};
     for (const key of Object.keys(refGroups)) {
@@ -251,7 +455,7 @@ const enrichAuditEntityNames = async (logs) => {
 
     return {
       ...log,
-      entity_name: nameMap.get(`${log.entity_type}:${String(log.entity_id)}`) ?? null,
+      entity_name: nameMap.get(`${log.entity_type}:${String(log.entity_id)}`) ?? (log.entity_type === "cluster" ? (log.data_sesudah?.nama_cluster || log.data_sebelum?.nama_cluster || null) : null),
       entity_refs_resolved,
     };
   });
@@ -278,6 +482,227 @@ const parseIdFilter = (value, fieldName) => {
   return BigInt(raw);
 };
 
+const buildZonaFallbackMap = async (rows, prisma) => {
+  const candidates = rows.filter(
+    (r) =>
+      r.surat_jalan_item?.surat_jalan?.tipe === "inbound" &&
+      r.surat_jalan_item?.surat_jalan?.status === "diterima_didistribusikan" &&
+      !r.surat_jalan_item?.zona_id &&
+      r.surat_jalan_item?.surat_jalan?.gudang_tujuan_id
+  );
+
+  if (!candidates.length) {
+    return new Map();
+  }
+
+  const uniqueKeys = new Set();
+  for (const r of candidates) {
+    uniqueKeys.add(`${r.barang_id}:${r.surat_jalan_item.surat_jalan.gudang_tujuan_id}`);
+  }
+
+  if (!uniqueKeys.size) {
+    return new Map();
+  }
+
+  const orConditions = Array.from(uniqueKeys).map((key) => {
+    const [barang_id, gudang_id] = key.split(":").map(Number);
+    return { barang_id, gudang_id };
+  });
+
+  const stokRecords = await prisma.stok_gudang.findMany({
+    where: { OR: orConditions },
+    select: { barang_id: true, gudang_id: true, zona_id: true },
+  });
+
+  const grouped = new Map();
+  for (const record of stokRecords) {
+    const key = `${record.barang_id}:${record.gudang_id}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, new Set());
+    }
+    if (record.zona_id != null) {
+      grouped.get(key).add(Number(record.zona_id));
+    }
+  }
+
+  const fallbackMap = new Map();
+  for (const [key, zonaIds] of grouped) {
+    if (zonaIds.size === 1) {
+      fallbackMap.set(key, Array.from(zonaIds)[0]);
+    }
+  }
+
+  return fallbackMap;
+};
+
+const buildPickZonaMap = async (rows, prisma) => {
+  const allZonaIds = new Set();
+  for (const r of rows) {
+    const picks = r.surat_jalan_item?.picks;
+    if (Array.isArray(picks)) {
+      for (const p of picks) {
+        if (p?.zona_id != null) {
+          allZonaIds.add(Number(p.zona_id));
+        }
+      }
+    }
+  }
+
+  if (!allZonaIds.size) {
+    return new Map();
+  }
+
+  const zonaRecords = await prisma.zona_gudang.findMany({
+    where: { zona_id: { in: Array.from(allZonaIds) } },
+    select: {
+      zona_id: true,
+      kode_zona: true,
+      nama_zona: true,
+      tipe_zona: true,
+      gudang: {
+        select: {
+          nama_gudang: true,
+        },
+      },
+    },
+  });
+
+  const zonaMap = new Map();
+  for (const z of zonaRecords) {
+    zonaMap.set(Number(z.zona_id), z);
+  }
+
+  const result = new Map();
+  for (const r of rows) {
+    const picks = r.surat_jalan_item?.picks;
+    if (!Array.isArray(picks) || !picks.length) {
+      result.set(Number(r.ledger_id), null);
+      continue;
+    }
+
+    const uniqueZonaIds = [...new Set(picks.map((p) => Number(p.zona_id)).filter((id) => !Number.isNaN(id)))];
+    if (uniqueZonaIds.length === 0) {
+      result.set(Number(r.ledger_id), null);
+      continue;
+    }
+
+    if (uniqueZonaIds.length === 1) {
+      result.set(Number(r.ledger_id), zonaMap.get(uniqueZonaIds[0]) || null);
+      continue;
+    }
+
+    const labels = uniqueZonaIds
+      .map((id) => {
+        const z = zonaMap.get(id);
+        if (!z) return null;
+        const nama = z.nama_zona || z.kode_zona || `Zona ${id}`;
+        const gudang = z.gudang?.nama_gudang || "";
+        return gudang ? `${nama} / ${gudang}` : nama;
+      })
+      .filter(Boolean);
+
+    result.set(Number(r.ledger_id), labels.join(", "));
+  }
+
+  return result;
+};
+
+const resolveAsal = (ledger) => {
+  const item = ledger.surat_jalan_item;
+  const suratJalan = item?.surat_jalan;
+
+  if (!suratJalan) {
+    return { asal_label: null, asal_tipe: null };
+  }
+
+  if (suratJalan.tipe === "inbound") {
+    if (suratJalan.gudang_asal?.nama_gudang) {
+      return { asal_label: suratJalan.gudang_asal.nama_gudang, asal_tipe: "gudang" };
+    }
+    if (suratJalan.tipe_pengirim === "external") {
+      const nama = suratJalan.supplier?.nama || suratJalan.pengirim_eksternal_nama || null;
+      if (nama) {
+        return { asal_label: nama, asal_tipe: "pemasok" };
+      }
+    }
+    if (suratJalan.project?.nama_project) {
+      return { asal_label: suratJalan.project.nama_project, asal_tipe: "project" };
+    }
+    return { asal_label: null, asal_tipe: null };
+  }
+
+  if (suratJalan.tipe === "outbound") {
+    if (suratJalan.gudang_asal?.nama_gudang) {
+      return { asal_label: suratJalan.gudang_asal.nama_gudang, asal_tipe: "gudang" };
+    }
+    const zonaGudang = item?.zona?.gudang?.nama_gudang;
+    if (zonaGudang) {
+      return { asal_label: zonaGudang, asal_tipe: "gudang_stok" };
+    }
+    return { asal_label: null, asal_tipe: null };
+  }
+
+  if (ledger.return_transaction) {
+    const rt = ledger.return_transaction;
+    const zonaGudang = rt.surat_jalan_item?.zona?.gudang?.nama_gudang;
+    if (zonaGudang) {
+      return { asal_label: zonaGudang, asal_tipe: "return" };
+    }
+    if (rt.project?.nama_project) {
+      return { asal_label: rt.project.nama_project, asal_tipe: "project" };
+    }
+    return { asal_label: null, asal_tipe: null };
+  }
+
+  if (suratJalan.gudang_asal?.nama_gudang) {
+    return { asal_label: suratJalan.gudang_asal.nama_gudang, asal_tipe: "gudang" };
+  }
+  return { asal_label: null, asal_tipe: null };
+};
+
+const getPutawayLedgerIds = async (prismaOrTx) => {
+  const putawayRows = await prismaOrTx.$queryRaw`
+    WITH pairs AS (
+      SELECT
+        a.ledger_id AS out_id,
+        b.ledger_id AS in_id
+      FROM stok_ledger a
+      JOIN stok_ledger b ON a.surat_jalan_item_id = b.surat_jalan_item_id
+      WHERE a.jenis_mutasi = 'out'
+        AND b.jenis_mutasi = 'in'
+        AND a.return_transaction_id IS NULL
+        AND b.return_transaction_id IS NULL
+        AND (
+          (a.waktu_mutasi < b.waktu_mutasi AND ABS(EXTRACT(EPOCH FROM (b.waktu_mutasi - a.waktu_mutasi))) <= 1.0)
+          OR (a.waktu_mutasi = b.waktu_mutasi AND a.ledger_id < b.ledger_id)
+        )
+    ),
+    out_counts AS (
+      SELECT out_id, COUNT(*) AS cnt FROM pairs GROUP BY out_id
+    ),
+    in_counts AS (
+      SELECT in_id, COUNT(*) AS cnt FROM pairs GROUP BY in_id
+    ),
+    unique_pairs AS (
+      SELECT p.out_id, p.in_id
+      FROM pairs p
+      JOIN out_counts oc ON p.out_id = oc.out_id AND oc.cnt = 1
+      JOIN in_counts ic ON p.in_id = ic.in_id AND ic.cnt = 1
+    )
+    SELECT out_id AS ledger_id FROM unique_pairs
+    UNION
+    SELECT in_id AS ledger_id FROM unique_pairs
+  `;
+  return Array.isArray(putawayRows)
+    ? putawayRows.map((row) => {
+        const raw = row.ledger_id;
+        if (typeof raw === 'bigint') return raw;
+        if (typeof raw === 'number' && Number.isFinite(raw)) return BigInt(Math.trunc(raw));
+        return null;
+      }).filter((val) => val !== null)
+    : [];
+};
+
 const getStockHistory = async (filters = {}) => {
   const {
     search = "",
@@ -291,9 +716,17 @@ const getStockHistory = async (filters = {}) => {
     endDate,
     page = 1,
     limit = 50,
+    include_putaway = "false",
   } = filters;
 
   const where = {};
+
+  if (include_putaway !== "true") {
+    const putawayIds = await getPutawayLedgerIds(prisma);
+    if (putawayIds.length > 0) {
+      where.ledger_id = { notIn: putawayIds };
+    }
+  }
 
   if (search.trim()) {
     const s = search.trim();
@@ -383,6 +816,31 @@ const getStockHistory = async (filters = {}) => {
       take: Number(limit),
       orderBy: { waktu_mutasi: "desc" },
       include: {
+        return_transaction: {
+          include: {
+            surat_jalan_item: {
+              include: {
+                zona: {
+                  select: {
+                    zona_id: true,
+                    nama_zona: true,
+                    gudang: {
+                      select: {
+                        nama_gudang: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            project: {
+              select: {
+                project_id: true,
+                nama_project: true,
+              },
+            },
+          },
+        },
         barang: {
           select: {
             kode_perangkat: true,
@@ -398,7 +856,23 @@ const getStockHistory = async (filters = {}) => {
         surat_jalan_item: {
           include: {
             surat_jalan: {
-              include: {
+              select: {
+                surat_jalan_id: true,
+                nomor_surat_jalan: true,
+                alamat_lapangan: true,
+                tipe: true,
+                status: true,
+                gudang_asal_id: true,
+                gudang_tujuan_id: true,
+                tipe_pengirim: true,
+                pengirim_eksternal_nama: true,
+                supplier: {
+                  select: {
+                    supplier_id: true,
+                    nama: true,
+                    kode: true,
+                  },
+                },
                 project: {
                   select: {
                     nama_project: true,
@@ -413,6 +887,11 @@ const getStockHistory = async (filters = {}) => {
                 gudang_tujuan: {
                   select: {
                     nama_gudang: true,
+                  },
+                },
+                titik_lapangan: {
+                  select: {
+                    nama_lokasi: true,
                   },
                 },
                 boq: {
@@ -467,6 +946,16 @@ const getStockHistory = async (filters = {}) => {
                 },
               },
             },
+            picks: {
+              select: {
+                zona_id: true,
+                qty: true,
+                picked_at: true,
+              },
+              orderBy: {
+                picked_at: "asc",
+              },
+            },
           },
         },
       },
@@ -474,12 +963,112 @@ const getStockHistory = async (filters = {}) => {
     prisma.stok_ledger.count({ where }),
   ]);
 
+  const zonaFallbackMap = await buildZonaFallbackMap(data, prisma);
+  const pickZonaMap = await buildPickZonaMap(data, prisma);
+
+  const putawayLedgerIds = new Set();
+  const uniqueSjiIds = Array.from(
+    new Set(
+      data
+        .map((ledger) => ledger.surat_jalan_item_id)
+        .filter((sji) => sji != null && Number.isFinite(Number(sji)))
+    )
+  );
+
+  if (uniqueSjiIds.length > 0) {
+    const candidateLedgers = await prisma.stok_ledger.findMany({
+      where: {
+        surat_jalan_item_id: { in: uniqueSjiIds.map((id) => Number(id)) },
+        return_transaction_id: null,
+      },
+      select: {
+        ledger_id: true,
+        surat_jalan_item_id: true,
+        jenis_mutasi: true,
+        waktu_mutasi: true,
+      },
+    });
+
+    const groupedBySji = new Map();
+    for (const ledger of candidateLedgers) {
+      const sji = ledger.surat_jalan_item_id;
+      if (!sji) continue;
+      if (!groupedBySji.has(sji)) groupedBySji.set(sji, []);
+      groupedBySji.get(sji).push(ledger);
+    }
+
+    for (const [sji, ledgers] of groupedBySji) {
+      const outCandidates = ledgers.filter((l) => l.jenis_mutasi === "out");
+      const inCandidates = ledgers.filter((l) => l.jenis_mutasi === "in");
+
+      const outMatches = new Map();
+      const inMatches = new Map();
+
+      for (const out of outCandidates) {
+        const outTime = new Date(out.waktu_mutasi).getTime();
+        for (const inEntry of inCandidates) {
+          const inTime = new Date(inEntry.waktu_mutasi).getTime();
+          if (inTime > outTime && Math.abs(inTime - outTime) <= 1000) {
+            if (!outMatches.has(out.ledger_id)) outMatches.set(out.ledger_id, []);
+            outMatches.get(out.ledger_id).push(inEntry);
+            if (!inMatches.has(inEntry.ledger_id)) inMatches.set(inEntry.ledger_id, []);
+            inMatches.get(inEntry.ledger_id).push(out);
+          }
+        }
+      }
+
+      let unique = true;
+      for (const matches of outMatches.values()) {
+        if (matches.length !== 1) { unique = false; break; }
+      }
+      if (unique) {
+        for (const matches of inMatches.values()) {
+          if (matches.length !== 1) { unique = false; break; }
+        }
+      }
+
+      if (unique) {
+        for (const [outId, ins] of outMatches) {
+          putawayLedgerIds.add(String(outId));
+          for (const inEntry of ins) {
+            putawayLedgerIds.add(String(inEntry.ledger_id));
+          }
+        }
+      }
+    }
+  }
+
+  const zonaMap = new Map();
+  for (const ledger of data) {
+    const z = ledger.surat_jalan_item?.zona;
+    if (z?.zona_id) {
+      zonaMap.set(Number(z.zona_id), z);
+    }
+  }
+
   const rows = data.map((ledger) => {
     const item = ledger.surat_jalan_item;
     const suratJalan = item?.surat_jalan;
     const barang = item?.barang ?? ledger.barang;
     const tiket = suratJalan?.boq?.tiket;
-    const zona = item?.zona;
+
+    const fallbackZonaId =
+      !item?.zona_id &&
+      suratJalan?.tipe === "inbound" &&
+      suratJalan?.status === "diterima_didistribusikan"
+        ? zonaFallbackMap.get(`${ledger.barang_id}:${suratJalan?.gudang_tujuan_id}`)
+        : null;
+
+    const effectiveZonaId = item?.zona_id || fallbackZonaId || null;
+    const pickZona = pickZonaMap.get(Number(ledger.ledger_id));
+    const zona =
+      suratJalan?.tipe === "outbound" && pickZona
+        ? typeof pickZona === "string"
+          ? { kode_zona: pickZona, nama_zona: pickZona, tipe_zona: null, gudang: { nama_gudang: null }, zona_id: null }
+          : pickZona
+        : effectiveZonaId && zonaMap.get(Number(effectiveZonaId))
+          ? zonaMap.get(Number(effectiveZonaId))
+          : item?.zona || null;
 
     const gudangAsal = suratJalan?.gudang_asal?.nama_gudang || null;
     const gudangTujuan = suratJalan?.gudang_tujuan?.nama_gudang || null;
@@ -499,20 +1088,18 @@ const getStockHistory = async (filters = {}) => {
       kondisi: item?.kondisi || "-",
       surat_jalan_id: suratJalan ? String(suratJalan.surat_jalan_id) : "-",
       nomor_surat_jalan: suratJalan?.nomor_surat_jalan || "-",
+      return_transaction_id: ledger.return_transaction_id ? String(ledger.return_transaction_id) : null,
       tipe_surat_jalan: suratJalan?.tipe || "-",
       status_surat_jalan: suratJalan?.status || "-",
       project_nama: suratJalan?.project?.nama_project || "-",
       area: suratJalan?.project?.area || "-",
-      // `gudang` dipertahankan untuk kompatibilitas konsumen lama.
       gudang: gudangAsal || gudangTujuan || "-",
-      // Asal & tujuan dipisah: level GUDANG (antar/keluar-masuk gudang).
       gudang_asal: gudangAsal || "-",
       gudang_tujuan: gudangTujuan || "-",
       gudang_asal_id: suratJalan?.gudang_asal_id ? String(suratJalan.gudang_asal_id) : null,
       gudang_tujuan_id: suratJalan?.gudang_tujuan_id ? String(suratJalan.gudang_tujuan_id) : null,
-      // Zona: sub-lokasi DI DALAM satu gudang (granularitas lebih kecil dari
-      // gudang_asal/gudang_tujuan, bukan duplikatnya).
-      zona_id: zona?.zona_id ? String(zona.zona_id) : null,
+      lapangan_tujuan: suratJalan?.titik_lapangan?.nama_lokasi ?? suratJalan?.alamat_lapangan ?? null,
+      zona_id: effectiveZonaId ? String(effectiveZonaId) : null,
       zona_kode: zona?.kode_zona || "-",
       zona_nama: zona?.nama_zona || "-",
       zona_tipe: zona?.tipe_zona || "-",
@@ -522,6 +1109,8 @@ const getStockHistory = async (filters = {}) => {
       is_kelebihan: item?.is_kelebihan || false,
       diproses_oleh: suratJalan?.creator?.nama || "-",
       diproses_oleh_role: suratJalan?.creator?.role || "-",
+      is_putaway: putawayLedgerIds.has(String(ledger.ledger_id)),
+      ...resolveAsal(ledger),
     };
   });
 
@@ -547,9 +1136,17 @@ const getStockHistoryForExport = async (filters = {}) => {
     status = "all",
     startDate,
     endDate,
+    include_putaway = "false",
   } = filters;
 
   const where = {};
+
+  if (include_putaway !== "true") {
+    const putawayIds = await getPutawayLedgerIds(prisma);
+    if (putawayIds.length > 0) {
+      where.ledger_id = { notIn: putawayIds };
+    }
+  }
 
   if (search.trim()) {
     const s = search.trim();
@@ -630,6 +1227,31 @@ const getStockHistoryForExport = async (filters = {}) => {
       take: EXPORT_LIMIT,
       orderBy: { waktu_mutasi: "desc" },
       include: {
+        return_transaction: {
+          include: {
+            surat_jalan_item: {
+              include: {
+                zona: {
+                  select: {
+                    zona_id: true,
+                    nama_zona: true,
+                    gudang: {
+                      select: {
+                        nama_gudang: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            project: {
+              select: {
+                project_id: true,
+                nama_project: true,
+              },
+            },
+          },
+        },
         barang: {
           select: {
             kode_perangkat: true,
@@ -645,7 +1267,23 @@ const getStockHistoryForExport = async (filters = {}) => {
         surat_jalan_item: {
           include: {
             surat_jalan: {
-              include: {
+              select: {
+                surat_jalan_id: true,
+                nomor_surat_jalan: true,
+                alamat_lapangan: true,
+                tipe: true,
+                status: true,
+                gudang_asal_id: true,
+                gudang_tujuan_id: true,
+                tipe_pengirim: true,
+                pengirim_eksternal_nama: true,
+                supplier: {
+                  select: {
+                    supplier_id: true,
+                    nama: true,
+                    kode: true,
+                  },
+                },
                 project: {
                   select: {
                     nama_project: true,
@@ -660,6 +1298,11 @@ const getStockHistoryForExport = async (filters = {}) => {
                 gudang_tujuan: {
                   select: {
                     nama_gudang: true,
+                  },
+                },
+                titik_lapangan: {
+                  select: {
+                    nama_lokasi: true,
                   },
                 },
                 boq: {
@@ -710,6 +1353,16 @@ const getStockHistoryForExport = async (filters = {}) => {
                 },
               },
             },
+            picks: {
+              select: {
+                zona_id: true,
+                qty: true,
+                picked_at: true,
+              },
+              orderBy: {
+                picked_at: "asc",
+              },
+            },
           },
         },
       },
@@ -717,12 +1370,64 @@ const getStockHistoryForExport = async (filters = {}) => {
     prisma.stok_ledger.count({ where }),
   ]);
 
+  const zonaFallbackMap = await buildZonaFallbackMap(data, prisma);
+  const pickZonaMap = await buildPickZonaMap(data, prisma);
+
+  const zonaMap = new Map();
+  for (const ledger of data) {
+    const z = ledger.surat_jalan_item?.zona;
+    if (z?.zona_id) {
+      zonaMap.set(Number(z.zona_id), z);
+    }
+  }
+
+  const putawayLedgerIds = new Set();
+  const groupedBySji = new Map();
+  for (const ledger of data) {
+    const sji = ledger.surat_jalan_item_id;
+    if (!sji) continue;
+    if (!groupedBySji.has(sji)) groupedBySji.set(sji, []);
+    groupedBySji.get(sji).push(ledger);
+  }
+
+  for (const [sji, ledgers] of groupedBySji) {
+    const outCandidates = ledgers.filter((l) => l.jenis_mutasi === "out" && !l.return_transaction_id);
+    const inCandidates = ledgers.filter((l) => l.jenis_mutasi === "in" && !l.return_transaction_id);
+    for (const out of outCandidates) {
+      const outTime = new Date(out.waktu_mutasi).getTime();
+      for (const inEntry of inCandidates) {
+        const inTime = new Date(inEntry.waktu_mutasi).getTime();
+        if (inTime > outTime && Math.abs(inTime - outTime) <= 1000) {
+          putawayLedgerIds.add(String(out.ledger_id));
+          putawayLedgerIds.add(String(inEntry.ledger_id));
+        }
+      }
+    }
+  }
+
   const rows = data.map((ledger) => {
     const item = ledger.surat_jalan_item;
     const suratJalan = item?.surat_jalan;
     const barang = item?.barang ?? ledger.barang;
     const tiket = suratJalan?.boq?.tiket;
-    const zona = item?.zona;
+
+    const fallbackZonaId =
+      !item?.zona_id &&
+      suratJalan?.tipe === "inbound" &&
+      suratJalan?.status === "diterima_didistribusikan"
+        ? zonaFallbackMap.get(`${ledger.barang_id}:${suratJalan?.gudang_tujuan_id}`)
+        : null;
+
+    const effectiveZonaId = item?.zona_id || fallbackZonaId || null;
+    const pickZona = pickZonaMap.get(Number(ledger.ledger_id));
+    const zona =
+      suratJalan?.tipe === "outbound" && pickZona
+        ? typeof pickZona === "string"
+          ? { kode_zona: pickZona, nama_zona: pickZona, tipe_zona: null, gudang: { nama_gudang: null }, zona_id: null }
+          : pickZona
+        : effectiveZonaId && zonaMap.get(Number(effectiveZonaId))
+          ? zonaMap.get(Number(effectiveZonaId))
+          : item?.zona || null;
 
     const gudangAsal = suratJalan?.gudang_asal?.nama_gudang || null;
     const gudangTujuan = suratJalan?.gudang_tujuan?.nama_gudang || null;
@@ -742,6 +1447,7 @@ const getStockHistoryForExport = async (filters = {}) => {
       kondisi: item?.kondisi || "-",
       surat_jalan_id: suratJalan ? String(suratJalan.surat_jalan_id) : "-",
       nomor_surat_jalan: suratJalan?.nomor_surat_jalan || "-",
+      return_transaction_id: ledger.return_transaction_id ? String(ledger.return_transaction_id) : null,
       tipe_surat_jalan: suratJalan?.tipe || "-",
       status_surat_jalan: suratJalan?.status || "-",
       project_nama: suratJalan?.project?.nama_project || "-",
@@ -751,7 +1457,8 @@ const getStockHistoryForExport = async (filters = {}) => {
       gudang_tujuan: gudangTujuan || "-",
       gudang_asal_id: suratJalan?.gudang_asal_id ? String(suratJalan.gudang_asal_id) : null,
       gudang_tujuan_id: suratJalan?.gudang_tujuan_id ? String(suratJalan.gudang_tujuan_id) : null,
-      zona_id: zona?.zona_id ? String(zona.zona_id) : null,
+      lapangan_tujuan: suratJalan?.titik_lapangan?.nama_lokasi ?? suratJalan?.alamat_lapangan ?? null,
+      zona_id: effectiveZonaId ? String(effectiveZonaId) : null,
       zona_kode: zona?.kode_zona || "-",
       zona_nama: zona?.nama_zona || "-",
       zona_tipe: zona?.tipe_zona || "-",
@@ -761,6 +1468,8 @@ const getStockHistoryForExport = async (filters = {}) => {
       is_kelebihan: item?.is_kelebihan || false,
       diproses_oleh: suratJalan?.creator?.nama || "-",
       diproses_oleh_role: suratJalan?.creator?.role || "-",
+      is_putaway: putawayLedgerIds.has(String(ledger.ledger_id)),
+      ...resolveAsal(ledger),
     };
   });
 
@@ -773,6 +1482,10 @@ const getStockHistoryForExport = async (filters = {}) => {
     },
   };
 };
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const normalTanggalAwal = (val) => (DATE_ONLY.test(val) ? `${val}T00:00:00+07:00` : val);
+const normalTanggalAkhir = (val) => (DATE_ONLY.test(val) ? `${val}T23:59:59.999+07:00` : val);
 
 const getAuditLogs = async (filters = {}) => {
   const {
@@ -838,10 +1551,14 @@ const getAuditLogs = async (filters = {}) => {
     where.entity_id = BigInt(tiketId);
   }
 
+  if (startDate && endDate && new Date(endDate) < new Date(startDate)) {
+    throw new AppError("Tanggal akhir tidak boleh lebih awal dari tanggal mulai.", 400);
+  }
+
   if (startDate || endDate) {
     where.created_at = {};
-    if (startDate) where.created_at.gte = new Date(startDate);
-    if (endDate) where.created_at.lte = new Date(endDate + "T23:59:59");
+    if (startDate) where.created_at.gte = new Date(normalTanggalAwal(startDate));
+    if (endDate) where.created_at.lte = new Date(normalTanggalAkhir(endDate));
   }
 
   const skip = (Number(page) - 1) * Number(limit);
@@ -962,10 +1679,14 @@ const getAuditLogForExport = async (filters = {}) => {
     where.entity_id = BigInt(tiketId);
   }
 
+  if (startDate && endDate && new Date(endDate) < new Date(startDate)) {
+    throw new AppError("Tanggal akhir tidak boleh lebih awal dari tanggal mulai.", 400);
+  }
+
   if (startDate || endDate) {
     where.created_at = {};
-    if (startDate) where.created_at.gte = new Date(startDate);
-    if (endDate) where.created_at.lte = new Date(endDate + "T23:59:59");
+    if (startDate) where.created_at.gte = new Date(normalTanggalAwal(startDate));
+    if (endDate) where.created_at.lte = new Date(normalTanggalAkhir(endDate));
   }
 
   const EXPORT_LIMIT = 10000;
@@ -996,21 +1717,52 @@ const getAuditLogForExport = async (filters = {}) => {
 
   const enrichedData = await enrichAuditEntityNames(data);
 
-  const rows = enrichedData.map((log) => ({
-    audit_id: String(log.audit_id),
-    created_at: log.created_at,
-    aksi: log.aksi,
-    entity_type: log.entity_type,
-    entity_id: String(log.entity_id),
-    actor_id: String(log.actor_id),
-    actor_nama: log.actor?.personils?.[0]?.nama || log.actor?.nama || "-",
-    actor_email: log.actor?.email || "-",
-    actor_role: log.actor?.role || "-",
-    data_sebelum: log.data_sebelum,
-    data_sesudah: log.data_sesudah,
-    entity_name: log.entity_name ?? null,
-    entity_refs_resolved: log.entity_refs_resolved ?? {},
-  }));
+  const rows = enrichedData.map((log) => {
+    const isLogin = ["login_success", "login_failed", "reset_link_created"].includes(log.aksi);
+    const hasActor = log.actor_id && String(log.actor_id) !== "0" && log.actor_id !== "null";
+    const entityLabel = (() => {
+      const kode = log.data_sesudah?.kode_tiket || log.data_sebelum?.kode_tiket;
+      if (kode) return String(kode);
+      if (log.entity_type === "user_account" && (!log.entity_id || String(log.entity_id) === "0")) {
+        return "Akun tidak dikenal";
+      }
+      if (log.entity_type && log.entity_id && String(log.entity_id) !== "0") {
+        return `${getEntityTypeLabel(log.entity_type)} #${log.entity_id}`;
+      }
+      return getEntityTypeLabel(log.entity_type || "-");
+    })();
+
+    return {
+      audit_id: String(log.audit_id),
+      created_at: log.created_at,
+      aksi: getAksiLabel(log.aksi || "-"),
+      entity_type: getEntityTypeLabel(log.entity_type || "-"),
+      entity_id: String(log.entity_id),
+      actor_id: String(log.actor_id),
+      actor_nama: hasActor ? (log.actor?.personils?.[0]?.nama || log.actor?.nama || "Tidak dikenal") : "Tidak dikenal",
+      actor_email: log.actor?.email || "-",
+      actor_role: hasActor ? getRoleLabel(log.actor?.role || "-") : "Tidak dikenal",
+      detail: formatAuditMetadata(log.aksi, log.data_sebelum, log.data_sesudah),
+      entity_name: entityLabel,
+      extra_ref: (() => {
+        const ds = log.data_sesudah || {};
+        const parts = [];
+        if (ds.source_file || ds.filename || ds.nama_file) {
+          parts.push(ds.source_file || ds.filename || ds.nama_file);
+        }
+        if (ds.username_target || ds.target_user || ds.user_target) {
+          parts.push(`user: ${ds.username_target || ds.target_user || ds.user_target}`);
+        }
+        if (ds.catatan) {
+          parts.push(ds.catatan);
+        }
+        return parts.length > 0 ? parts.join(" | ") : "—";
+      })(),
+      data_sebelum: log.data_sebelum,
+      data_sesudah: log.data_sesudah,
+      entity_refs_resolved: log.entity_refs_resolved ?? {},
+    };
+  });
 
   return {
     data: rows,
@@ -1042,32 +1794,26 @@ const getHardwareReconciliation = async (filters = {}) => {
 
   const boqRecords = await prisma.boq.findMany({
     where: {
-      status: { in: ["draft", "aktif", "selesai"] },
+      status: { in: ["aktif", "selesai"] },
       ...(projectId !== "all" && {
-        tiket: { project_id: BigInt(projectId) },
+        cluster: { project_id: BigInt(projectId) },
       }),
     },
     include: {
       tiket: {
         select: {
-          project_id: true,
+          tiket_id: true,
         },
       },
       cluster: {
         select: {
           cluster_id: true,
+          project_id: true,
         },
       },
       items: {
         select: {
-          barang_id: true,
           qty_rencana: true,
-          barang: {
-            select: {
-              nama_barang: true,
-              kode_perangkat: true,
-            },
-          },
         },
       },
     },
@@ -1075,7 +1821,7 @@ const getHardwareReconciliation = async (filters = {}) => {
 
   const clusterIdByProject = new Map();
   for (const boq of boqRecords) {
-    const projectIdNum = Number(boq.tiket?.project_id);
+    const projectIdNum = Number(boq.cluster?.project_id);
     if (!projectIdNum) continue;
     if (boq.cluster?.cluster_id && !clusterIdByProject.has(projectIdNum)) {
       clusterIdByProject.set(projectIdNum, boq.cluster.cluster_id);
@@ -1089,13 +1835,14 @@ const getHardwareReconciliation = async (filters = {}) => {
     },
     select: {
       tipe: true,
+      status: true,
       project_id: true,
+      cluster_id: true,
       tujuan_tipe: true,
+      tipe_pengirim: true,
       items: {
         select: {
           qty: true,
-          barang_id: true,
-          is_kelebihan: true,
         },
       },
     },
@@ -1105,9 +1852,26 @@ const getHardwareReconciliation = async (filters = {}) => {
   const additionalByProject = new Map();
   const hardwareOnSiteByProject = new Map();
   const usedByProject = new Map();
+  const openingBalanceByProject = new Map();
+
+  // Saldo awal (import BOQ) per project — bagian dari definisi MOS Sistem (K5).
+  const openingBalanceRows = await prisma.boq_item.findMany({
+    where: {
+      boq: {
+        status: { in: ["draft", "aktif", "selesai"] },
+        ...(projectId !== "all" ? { cluster: { project_id: BigInt(projectId) } } : {}),
+      },
+    },
+    select: { qty_mos: true, boq: { select: { cluster: { select: { project_id: true } } } } },
+  });
+  for (const row of openingBalanceRows) {
+    const pid = Number(row.boq?.cluster?.project_id || 0);
+    if (!pid) continue;
+    openingBalanceByProject.set(pid, (openingBalanceByProject.get(pid) || 0) + Number(row.qty_mos || 0));
+  }
 
   for (const boq of boqRecords) {
-    const projectIdNum = Number(boq.tiket?.project_id);
+    const projectIdNum = Number(boq.cluster?.project_id);
     if (!projectIdNum) continue;
 
     const currentBoq = boqByProject.get(projectIdNum) || 0;
@@ -1115,31 +1879,26 @@ const getHardwareReconciliation = async (filters = {}) => {
     boqByProject.set(projectIdNum, currentBoq + itemQty);
   }
 
-  const additionalRecords = await prisma.surat_jalan_item.findMany({
-    where: {
-      is_kelebihan: true,
-      surat_jalan: {
-        status: "diterima_didistribusikan",
-        ...(projectId !== "all" && { project_id: BigInt(projectId) }),
-      },
-    },
-    select: {
-      qty: true,
-      surat_jalan: {
-        select: {
-          project_id: true,
-        },
-      },
-    },
-  });
+  const projectIdsForAdditional =
+    projectId !== "all"
+      ? [BigInt(projectId)]
+      : Array.from(
+          new Set(
+            boqRecords
+              .map((boq) => boq.cluster?.project_id)
+              .filter((id) => id != null)
+          )
+        );
 
-  for (const item of additionalRecords) {
-    const projectIdNum = Number(item.surat_jalan?.project_id);
-    if (!projectIdNum) continue;
-    additionalByProject.set(
-      projectIdNum,
-      (additionalByProject.get(projectIdNum) || 0) + Number(item.qty || 0)
-    );
+  const additionalTotals =
+    projectIdsForAdditional.length > 0
+      ? await additionalRepository.getAdditionalTotalsByProjectOnly(
+          projectIdsForAdditional.map((id) => Number(id))
+        )
+      : new Map();
+
+  for (const [projectIdNum, total] of additionalTotals) {
+    additionalByProject.set(projectIdNum, total);
   }
 
   for (const shipment of shipmentTotals) {
@@ -1148,13 +1907,16 @@ const getHardwareReconciliation = async (filters = {}) => {
 
     const totalQty = shipment.items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
 
-    if (shipment.tipe === "outbound" && shipment.tujuan_tipe !== "gudang") {
+    // MOS Sistem (K5) = inbound vendor eksternal (disetujui/diterima).
+    if (isMosEligibleInbound(shipment)) {
       hardwareOnSiteByProject.set(
         projectIdNum,
         (hardwareOnSiteByProject.get(projectIdNum) || 0) + totalQty
       );
     }
 
+    // Outbound ke lapangan dipakai sebagai fallback `used` bila laporan mitra
+    // belum tersedia (sama seperti aturan pada tabel rekonsiliasi).
     if (shipment.tipe === "outbound" && shipment.tujuan_tipe !== "gudang") {
       usedByProject.set(
         projectIdNum,
@@ -1163,13 +1925,28 @@ const getHardwareReconciliation = async (filters = {}) => {
     }
   }
 
+  // Used = input laporan mitra (sumber utama), dijumlahkan per project.
+  const laporanRows = await prisma.laporan_mitra.findMany({
+    where: { is_aktif: true, ...(projectId !== "all" ? { project_id: BigInt(projectId) } : {}) },
+    select: { project_id: true, used: true },
+  });
+  const usedFromLaporanByProject = new Map();
+  for (const row of laporanRows) {
+    const pid = Number(row.project_id || 0);
+    if (!pid) continue;
+    usedFromLaporanByProject.set(pid, (usedFromLaporanByProject.get(pid) || 0) + Number(row.used || 0));
+  }
+  for (const [pid, total] of usedFromLaporanByProject.entries()) {
+    if (total > 0) usedByProject.set(pid, total);
+  }
+
   // Compute approved returns per project from the Return module.
   const approvedReturnByProject = new Map();
 
   for (const project of projects) {
     const projectIdNum = Number(project.project_id);
     const projectBoqRecords = boqRecords.filter(
-      (b) => Number(b.tiket?.project_id || 0) === projectIdNum
+      (b) => Number(b.cluster?.project_id || 0) === projectIdNum
     );
 
     const projectTickets = new Set();
@@ -1206,10 +1983,14 @@ const getHardwareReconciliation = async (filters = {}) => {
     const projectIdNum = Number(project.project_id);
     const boq = Number(boqByProject.get(projectIdNum) || 0);
     const additional = Number(additionalByProject.get(projectIdNum) || 0);
-    const hardwareOnSite = Number(hardwareOnSiteByProject.get(projectIdNum) || 0);
+    // MOS Sistem (K5) — sama dengan angka pada tabel rekonsiliasi.
+    const hardwareOnSite = computeMosSistem(
+      hardwareOnSiteByProject.get(projectIdNum) || 0,
+      openingBalanceByProject.get(projectIdNum) || 0
+    );
     const used = Number(usedByProject.get(projectIdNum) || 0);
     const approvedReturnQty = Number(approvedReturnByProject.get(projectIdNum) || 0);
-    const remains = hardwareOnSite - (boq + additional) - used - approvedReturnQty;
+    const remains = computeRemains(hardwareOnSite, boq, additional) - used - approvedReturnQty;
 
     let status = "berjalan";
     if (remains < 0) {
@@ -1254,7 +2035,7 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
         },
       },
       boq: {
-        where: { status: { in: ["draft", "aktif", "selesai"] } },
+        where: { status: { in: ["aktif", "selesai"] } },
         include: {
           items: {
             select: {
@@ -1271,20 +2052,48 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
     },
   });
 
-  const shipmentWhere = {
+  // Query outbound Surat Jalan
+  const outboundShipmentWhere = {
     status: { in: ["disetujui", "diterima_didistribusikan"] },
+    tipe: "outbound",
   };
   if (projectId !== "all") {
-    shipmentWhere.project_id = BigInt(projectId);
+    outboundShipmentWhere.project_id = BigInt(projectId);
   }
   if (startDate || endDate) {
-    shipmentWhere.tanggal = {};
-    if (startDate) shipmentWhere.tanggal.gte = new Date(startDate);
-    if (endDate) shipmentWhere.tanggal.lte = new Date(endDate + "T23:59:59");
+    outboundShipmentWhere.tanggal = {};
+    if (startDate) outboundShipmentWhere.tanggal.gte = new Date(startDate);
+    if (endDate) outboundShipmentWhere.tanggal.lte = new Date(endDate + "T23:59:59");
   }
 
-  const suratJalans = await prisma.surat_jalan.findMany({
-    where: shipmentWhere,
+  const outboundSuratJalans = await prisma.surat_jalan.findMany({
+    where: outboundShipmentWhere,
+    include: {
+      items: {
+        select: {
+          qty: true,
+          is_kelebihan: true,
+        },
+      },
+    },
+  });
+
+  // Query inbound Surat Jalan with approved statuses
+  const inboundShipmentWhere = {
+    status: { in: ["ready_putaway", "disetujui", "diterima_didistribusikan"] },
+    tipe: "inbound",
+  };
+  if (projectId !== "all") {
+    inboundShipmentWhere.project_id = BigInt(projectId);
+  }
+  if (startDate || endDate) {
+    inboundShipmentWhere.tanggal = {};
+    if (startDate) inboundShipmentWhere.tanggal.gte = new Date(startDate);
+    if (endDate) inboundShipmentWhere.tanggal.lte = new Date(endDate + "T23:59:59");
+  }
+
+  const inboundSuratJalans = await prisma.surat_jalan.findMany({
+    where: inboundShipmentWhere,
     include: {
       items: {
         select: {
@@ -1298,24 +2107,56 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
   const inboundByProject = new Map();
   const outboundByProject = new Map();
   const additionalByProject = new Map();
+  const inboundMosByProject = new Map();
 
-  for (const sj of suratJalans) {
+  const additionalTotalsByProject =
+    projectId !== "all"
+      ? await additionalRepository.getAdditionalTotalsByProjectOnly([Number(projectId)])
+      : new Map();
+
+  // Build inbound MOS map using isMosEligibleInbound
+  for (const sj of inboundSuratJalans) {
     const pid = Number(sj.project_id);
     if (!pid) continue;
     for (const item of sj.items) {
       const qty = Number(item.qty || 0);
-      if (sj.tipe === "inbound") {
-        if (item.is_kelebihan) {
-          additionalByProject.set(pid, (additionalByProject.get(pid) || 0) + qty);
-        } else {
-          inboundByProject.set(pid, (inboundByProject.get(pid) || 0) + qty);
-        }
+      if (isMosEligibleInbound(sj)) {
+        inboundMosByProject.set(pid, (inboundMosByProject.get(pid) || 0) + qty);
       }
+    }
+  }
+
+  // Build outbound map (for Used/other calculations, NOT for MOS)
+  for (const sj of outboundSuratJalans) {
+    const pid = Number(sj.project_id);
+    if (!pid) continue;
+    for (const item of sj.items) {
+      const qty = Number(item.qty || 0);
       if (sj.tipe === "outbound" && sj.tujuan_tipe !== "gudang") {
         outboundByProject.set(pid, (outboundByProject.get(pid) || 0) + qty);
       }
     }
   }
+
+  // Saldo awal (import BOQ) per project — bagian dari definisi MOS Sistem (K5).
+  const openingBalanceByProject = new Map();
+  const openingBalanceRows = await prisma.boq_item.findMany({
+    where: {
+      boq: {
+        status: { in: ["draft", "aktif", "selesai"] },
+        ...(projectId !== "all" ? { cluster: { project_id: BigInt(projectId) } } : {}),
+      },
+    },
+    select: { qty_mos: true, boq: { select: { cluster: { select: { project_id: true } } } } },
+  });
+  for (const row of openingBalanceRows) {
+    const pid = Number(row.boq?.cluster?.project_id || 0);
+    if (!pid) continue;
+    openingBalanceByProject.set(pid, (openingBalanceByProject.get(pid) || 0) + Number(row.qty_mos || 0));
+  }
+
+  // MOS = inbound only (external vendor inbound) + saldo awal (import BOQ)
+  const mosByProject = inboundMosByProject;
 
   // Compute approved returns per tiket from the Return module.
   const approvedReturnByTiket = new Map();
@@ -1344,8 +2185,11 @@ const getHardwareReconciliationPerTiket = async (filters = {}) => {
   let rows = tikets.map((tiket) => {
     const projectIdNum = Number(tiket.project_id);
     const boqPlan = tiket.boq?.items?.reduce((sum, item) => sum + Number(item.qty_rencana || 0), 0) || 0;
-    const additional = Number(additionalByProject.get(projectIdNum) || 0);
-    const mos = Number(outboundByProject.get(projectIdNum) || 0);
+    const additional = Number(additionalTotalsByProject.get(projectIdNum) || 0);
+    const mos = computeMosSistem(
+      mosByProject.get(projectIdNum) || 0,
+      openingBalanceByProject.get(projectIdNum) || 0
+    );
     const used = tiket.used ? Number(tiket.used) : Number(outboundByProject.get(projectIdNum) || 0);
     const approvedReturnQty = Number(approvedReturnByTiket.get(tiket.tiket_id) || 0);
     const remains = mos - (boqPlan + additional) - used - approvedReturnQty;
@@ -1403,12 +2247,11 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
   const { projectId = "all", search = "" } = filters;
 
   const whereBoq = {
-    status: { in: ["draft", "aktif", "selesai"] },
+    boq: {
+      status: { in: ["aktif", "selesai"] },
+      ...(projectId !== "all" ? { tiket: { project_id: BigInt(projectId) } } : {}),
+    },
   };
-
-  if (projectId !== "all") {
-    whereBoq.tiket = { project_id: BigInt(projectId) };
-  }
 
   const boqItems = await prisma.boq_item.findMany({
     where: whereBoq,
@@ -1418,9 +2261,14 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
           tiket: {
             select: {
               project_id: true,
-              nama_project: true,
-              area: true,
+              kode_tiket: true,
               cluster_id: true,
+              project: {
+                select: {
+                  nama_project: true,
+                  area: true,
+                },
+              },
             },
           },
           cluster: {
@@ -1467,29 +2315,43 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
   const outboundByBarang = new Map();
   const additionalByBarang = new Map();
 
+  const projectIdsForAdditional =
+    projectId !== "all"
+      ? [Number(projectId)]
+      : Array.from(
+          new Set(
+            shipmentItems
+              .map((item) => item.surat_jalan?.project_id)
+              .filter((id) => id != null)
+          )
+        );
+
+  const additionalTotalsByProject =
+    projectIdsForAdditional.length > 0
+      ? await additionalRepository.getAdditionalTotalsByProject(projectIdsForAdditional)
+      : new Map();
+
+  for (const [key, val] of additionalTotalsByProject) {
+    additionalByBarang.set(key, (additionalByBarang.get(key) || 0) + val);
+  }
+
   for (const item of shipmentItems) {
     const barangId = String(item.barang_id);
     const qty = Number(item.qty || 0);
     const projectIdNum = Number(item.surat_jalan?.project_id);
+    const key = `${projectIdNum}-${barangId}`;
 
     if (item.surat_jalan?.tipe === "inbound") {
-      if (item.is_kelebihan) {
-        additionalByBarang.set(
-          `${projectIdNum}-${barangId}`,
-          (additionalByBarang.get(`${projectIdNum}-${barangId}`) || 0) + qty
-        );
-      } else {
-        inboundByBarang.set(
-          `${projectIdNum}-${barangId}`,
-          (inboundByBarang.get(`${projectIdNum}-${barangId}`) || 0) + qty
-        );
-      }
+      inboundByBarang.set(
+        key,
+        (inboundByBarang.get(key) || 0) + qty
+      );
     }
 
     if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
       outboundByBarang.set(
-        `${projectIdNum}-${barangId}`,
-        (outboundByBarang.get(`${projectIdNum}-${barangId}`) || 0) + qty
+        key,
+        (outboundByBarang.get(key) || 0) + qty
       );
     }
   }
@@ -1514,7 +2376,7 @@ const getHardwareReconciliationDetailed = async (filters = {}) => {
     for (const item of boqItems) {
       const tiket = item.boq?.tiket;
       const project = tiket?.project;
-      if (Number(project?.project_id || 0) === projectIdNum) {
+      if (Number(project?.project_id || 0) === projectIdNum && tiket?.tiket_id) {
         projectTickets.add(tiket.tiket_id);
       }
     }
@@ -1743,32 +2605,37 @@ const backfillReconciliation = async (actorId) => {
       items: {
         select: {
           qty: true,
-          is_kelebihan: true,
         },
       },
     },
   });
 
-  const inboundByProject = new Map();
-  const outboundByProject = new Map();
-  const additionalByProject = new Map();
+  const inboundMosByProject = new Map();
 
   for (const sj of allSuratJalans) {
     const pid = Number(sj.project_id);
     if (!pid) continue;
     for (const item of sj.items) {
       const qty = Number(item.qty || 0);
-      if (sj.tipe === "inbound") {
-        if (item.is_kelebihan) {
-          additionalByProject.set(pid, (additionalByProject.get(pid) || 0) + qty);
-        } else {
-          inboundByProject.set(pid, (inboundByProject.get(pid) || 0) + qty);
-        }
-      }
-      if (sj.tipe === "outbound" && sj.tujuan_tipe !== "gudang") {
-        outboundByProject.set(pid, (outboundByProject.get(pid) || 0) + qty);
+      if (sj.tipe === "inbound" && isMosEligibleInbound(sj)) {
+        inboundMosByProject.set(pid, (inboundMosByProject.get(pid) || 0) + qty);
       }
     }
+  }
+
+  // MOS = inbound only (external vendor inbound)
+  const mosByProject = inboundMosByProject;
+
+  // Saldo awal (import BOQ) per project — bagian dari definisi MOS Sistem (K5).
+  const openingBalanceByProject = new Map();
+  const openingBalanceRows = await prisma.boq_item.findMany({
+    where: { boq: { status: { in: ["draft", "aktif", "selesai"] } } },
+    select: { qty_mos: true, boq: { select: { cluster: { select: { project_id: true } } } } },
+  });
+  for (const row of openingBalanceRows) {
+    const pid = Number(row.boq?.cluster?.project_id || 0);
+    if (!pid) continue;
+    openingBalanceByProject.set(pid, (openingBalanceByProject.get(pid) || 0) + Number(row.qty_mos || 0));
   }
 
   const affectedTiketIds = [];
@@ -1786,10 +2653,17 @@ const backfillReconciliation = async (actorId) => {
     }
 
     const pid = Number(tiket.project_id);
-    // TODO: backfill ini masih pakai proxy dari surat jalan untuk migrasi data lama.
-    // Untuk data baru, Used harus SELALU dari input manual laporan mitra, bukan dari fungsi ini.
-    const mos = Number(outboundByProject.get(pid) || 0);
-    const used = Number(inboundByProject.get(pid) || 0);
+    // MOS memakai definisi kanonik (K5) yang sama dengan tabel rekonsiliasi:
+    // inbound vendor eksternal (disetujui/diterima) + saldo awal import.
+    //
+    // Used TIDAK boleh memakai proxy surat jalan. Used selalu berasal dari input
+    // laporan mitra, sehingga untuk data migrasi nilainya 0 sampai mitra
+    // mengonfirmasi laporannya.
+    const mos = computeMosSistem(
+      mosByProject.get(pid) || 0,
+      openingBalanceByProject.get(pid) || 0
+    );
+    const used = 0;
 
     await prisma.laporan_mitra.create({
       data: {
@@ -1801,6 +2675,7 @@ const backfillReconciliation = async (actorId) => {
         mos,
         used,
         catatan: "Data migrasi otomatis dari sistem lama — belum dikonfirmasi mitra",
+        cluster_id: tiket.cluster_id || null,
         uploaded_by: BigInt(actorId || 0),
         is_aktif: true,
       },
@@ -1816,12 +2691,99 @@ const backfillReconciliation = async (actorId) => {
   return { updated: affectedTiketIds.length };
 };
 
+// Normalisasi kunci kode_tiket agar cocok walau data tersimpan dengan spasi/karakter tak terlihat.
+// Pola yang sama dipakai saat parsing file upload di reports.controller.js.
+const normalizeTicketKey = (value) =>
+  String(value ?? "")
+    .normalize("NFKC")
+    .replace(/[\u00A0\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .toUpperCase();
+
+// Memetakan row tiket_material (batch query) menjadi Map kode_tiket -> info cluster/project.
+// Dipakai untuk memperkaya riwayat upload laporan mitra tanpa query N+1.
+const buildTicketInfoMap = (tikets = []) => {
+  const map = new Map();
+  for (const tiket of tikets) {
+    const key = normalizeTicketKey(tiket?.kode_tiket);
+    if (!key || map.has(key)) continue;
+    const boq = tiket.boq || null;
+    const cluster = boq?.cluster || null;
+    // Urutan fallback cluster: BOQ (wajib ber-cluster) -> kolom cluster_id pada tiket.
+    const clusterId = cluster?.cluster_id || boq?.cluster_id || tiket.cluster_id || null;
+    map.set(key, {
+      project_nama: tiket.project?.nama_project || null,
+      cluster_id: clusterId,
+      nama_cluster: cluster?.nama_cluster || null,
+    });
+  }
+  return map;
+};
+
+// Menambahkan project_nama/cluster_id/nama_cluster pada setiap detail dan
+// ringkasan unik tingkat log. Fungsi murni (tanpa DB) agar mudah diuji.
+const enrichUploadLogs = (logs = [], ticketMap = new Map()) => {
+  // Kumpulkan nilai unik sesuai urutan kemunculan; nilai tampil apa adanya,
+  // tapi perbandingan memakai kunci ternormalisasi agar tidak ganda karena spasi.
+  const collectUnique = (values) => {
+    const seen = new Map();
+    for (const { value, key } of values) {
+      if (value === null || value === undefined) continue;
+      const display = String(value);
+      if (!display) continue;
+      const dedupeKey = key || normalizeTicketKey(display);
+      if (seen.has(dedupeKey)) continue;
+      seen.set(dedupeKey, display);
+    }
+    return [...seen.values()];
+  };
+
+  return logs.map((log) => {
+    const details = (log.details || []).map((detail) => {
+      const info = detail.kode_tiket ? ticketMap.get(normalizeTicketKey(detail.kode_tiket)) : null;
+      return {
+        ...detail,
+        project_nama: detail.project_nama || info?.project_nama || null,
+        cluster_id: info?.cluster_id ?? null,
+        nama_cluster: info?.nama_cluster ?? null,
+      };
+    });
+
+    // Nilai tampil kode_tiket tetap apa adanya (mis. mempertahankan spasi),
+    // hanya dedupe-nya yang memakai kunci ternormalisasi.
+    const kode_tikets = [];
+    const seenKodeTiket = new Set();
+    for (const detail of details) {
+      if (detail.kode_tiket === null || detail.kode_tiket === undefined) continue;
+      const display = String(detail.kode_tiket);
+      if (!display) continue;
+      const key = normalizeTicketKey(detail.kode_tiket);
+      if (seenKodeTiket.has(key)) continue;
+      seenKodeTiket.add(key);
+      kode_tikets.push(display);
+    }
+
+    return {
+      ...log,
+      details,
+      cluster_ids: collectUnique(details.map((d) => ({ value: d.cluster_id, key: null }))),
+      cluster_names: collectUnique(details.map((d) => ({ value: d.nama_cluster, key: null }))),
+      project_names: collectUnique(details.map((d) => ({ value: d.project_nama, key: null }))),
+      kode_tikets,
+    };
+  });
+};
+
 const getReconciliationUploadLogs = async (filters = {}) => {
   const {
     search = "",
     actorId = "all",
     startDate,
     endDate,
+    status = "",
+    clusterId = "",
+    projectName = "",
+    jenisInput = "",
     page = 1,
     limit = 20,
   } = filters;
@@ -1829,14 +2791,24 @@ const getReconciliationUploadLogs = async (filters = {}) => {
   const where = {};
 
   if (search.trim()) {
-    const s = search.trim();
-    const matchedAksi = AUDIT_AKSI_VALUES.filter((aksi) =>
-      aksi.toLowerCase().includes(s.toLowerCase())
-    );
+    const s = search.trim().slice(0, 100);
     where.OR = [
-      { entity_type: { contains: s, mode: "insensitive" } },
+      { filename: { contains: s, mode: "insensitive" } },
       { actor: { nama: { contains: s, mode: "insensitive" } } },
-      ...(matchedAksi.length > 0 ? [{ aksi: { in: matchedAksi } }] : []),
+      {
+        details: {
+          some: {
+            OR: [
+              { kode_tiket: { contains: s, mode: "insensitive" } },
+              { project_nama: { contains: s, mode: "insensitive" } },
+              { nama_barang: { contains: s, mode: "insensitive" } },
+              { kode_barang: { contains: s, mode: "insensitive" } },
+              { barang: { nama_barang: { contains: s, mode: "insensitive" } } },
+              { barang: { kode_perangkat: { contains: s, mode: "insensitive" } } },
+            ],
+          },
+        },
+      },
     ];
   }
 
@@ -1846,10 +2818,21 @@ const getReconciliationUploadLogs = async (filters = {}) => {
 
   if (startDate || endDate) {
     where.uploaded_at = {};
-    if (startDate) where.uploaded_at.gte = new Date(startDate);
-    if (endDate) where.uploaded_at.lte = new Date(endDate + "T23:59:59");
+    if (startDate) where.uploaded_at.gte = new Date(startDate + "T00:00:00+07:00");
+    if (endDate) where.uploaded_at.lte = new Date(endDate + "T23:59:59+07:00");
   }
 
+  if (status === "berhasil") { where.success_rows = { gt: 0 }; where.failed_rows = 0; }
+  if (status === "sebagian_gagal") { where.failed_rows = { gt: 0 }; }
+  if (status === "draft") { where.success_rows = 0; where.failed_rows = 0; }
+  if (clusterId) {
+    const tickets = await prisma.tiket_material.findMany({ where: { boq: { cluster_id: BigInt(clusterId) } }, select: { kode_tiket: true } });
+    const codes = tickets.map((t) => t.kode_tiket);
+    where.details = { some: { kode_tiket: { in: codes } } };
+  }
+  if (jenisInput === "manual") where.filename = "manual-input";
+  if (jenisInput === "excel") where.filename = { not: "manual-input" };
+  if (projectName) where.details = { some: { project_nama: { equals: projectName, mode: "insensitive" } } };
   const skip = (Number(page) - 1) * Number(limit);
 
   const [data, total] = await Promise.all([
@@ -1869,6 +2852,15 @@ const getReconciliationUploadLogs = async (filters = {}) => {
         },
         details: {
           orderBy: { detail_id: "asc" },
+          include: {
+            barang: {
+              select: {
+                nama_barang: true,
+                kode_perangkat: true,
+                satuan_default: { select: { kode_satuan: true } },
+              },
+            },
+          },
         },
       },
     }),
@@ -1886,18 +2878,59 @@ const getReconciliationUploadLogs = async (filters = {}) => {
     total_rows: log.total_rows,
     success_rows: log.success_rows,
     failed_rows: log.failed_rows,
+    jumlah_barang: (log.details || []).length,
+    barang_preview: (log.details || []).slice(0, 2).map((d) => ({
+      nama_barang: d.nama_barang || d.barang?.nama_barang || null,
+      kode_barang: d.kode_barang || d.barang?.kode_perangkat || null,
+    })),
     details: log.details.map((d) => ({
-      detail_id: String(d.detail_id),
-      kode_tiket: d.kode_tiket,
-      mos: d.mos ? Number(d.mos) : 0,
-      used: d.used ? Number(d.used) : 0,
-      status: d.status,
-      reason: d.reason,
+       detail_id: String(d.detail_id),
+       kode_tiket: d.kode_tiket,
+       mos: d.mos ? Number(d.mos) : 0,
+       used: d.used ? Number(d.used) : 0,
+       status: d.status,
+       reason: d.reason,
+       project_nama: d.project_nama || null,
+       nama_barang: d.nama_barang || d.barang?.nama_barang || null,
+       kode_barang: d.kode_barang || d.barang?.kode_perangkat || null,
+       satuan: d.barang?.satuan_default?.kode_satuan || null,
     })),
   }));
 
+  // Batch tunggal: kumpulkan semua kode_tiket pada halaman ini, lalu ambil info cluster/project-nya.
+  // Kunci dinormalisasi agar cocok dengan data yang tersimpan memiliki spasi tak sengaja.
+  const kodeTiketList = [
+    ...new Set(rows.flatMap((log) => (log.details || []).map((d) => normalizeTicketKey(d.kode_tiket)).filter(Boolean))),
+  ];
+
+  let ticketMap = new Map();
+  if (kodeTiketList.length > 0) {
+    const tikets = await prisma.tiket_material.findMany({
+      where: { kode_tiket: { in: kodeTiketList } },
+      include: {
+        project: {
+          select: {
+            nama_project: true,
+          },
+        },
+        boq: {
+          select: {
+            cluster_id: true,
+            cluster: {
+              select: {
+                cluster_id: true,
+                nama_cluster: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    ticketMap = buildTicketInfoMap(tikets);
+  }
+
   return {
-    data: rows,
+    data: enrichUploadLogs(rows, ticketMap),
     meta: {
       total,
       page: Number(page),
@@ -1905,6 +2938,44 @@ const getReconciliationUploadLogs = async (filters = {}) => {
       totalPages: Math.ceil(total / Number(limit)) || 1,
     },
   };
+};
+
+const getReconciliationUploadLogBarang = async (uploadId) => {
+  const log = await prisma.reconciliation_upload_log.findUnique({
+    where: { upload_id: BigInt(uploadId) },
+    select: {
+      details: {
+        orderBy: { detail_id: "asc" },
+        select: {
+          detail_id: true,
+          nama_barang: true,
+          kode_barang: true,
+          used: true,
+          status: true,
+          barang: { select: { nama_barang: true, kode_perangkat: true, satuan_default: { select: { kode_satuan: true } } } },
+        },
+      },
+    },
+  });
+  if (!log) return null;
+  return log.details.map((d) => ({
+    detail_id: String(d.detail_id),
+    nama_barang: d.nama_barang || d.barang?.nama_barang || null,
+    kode_barang: d.kode_barang || d.barang?.kode_perangkat || null,
+    qty: d.used ? Number(d.used) : 0,
+    satuan: d.barang?.satuan_default?.kode_satuan || null,
+    status_baris: d.status,
+  }));
+};
+
+const getReconciliationUploadLogFilterOptions = async () => {
+  const logs = await prisma.reconciliation_upload_log.findMany({
+    select: { uploaded_by: true, actor: { select: { nama: true } }, details: { select: { project_nama: true, kode_tiket: true } } },
+  });
+  const projects = [...new Set(logs.flatMap((l) => l.details.map((d) => d.project_nama).filter(Boolean)))];
+  const actors = [...new Map(logs.map((l) => [String(l.uploaded_by), l.actor?.nama || "-"])).entries()].map(([id, nama]) => ({ id, nama }));
+  const clusters = await prisma.cluster.findMany({ select: { cluster_id: true, nama_cluster: true } });
+  return { statuses: ["berhasil", "sebagian_gagal", "draft"], clusters: clusters.map((c) => ({ id: String(c.cluster_id), nama: c.nama_cluster })), projects: projects.map((p) => ({ id: p, nama: p })), actors };
 };
 
 module.exports = {
@@ -1919,4 +2990,8 @@ module.exports = {
   getZoneUtilization,
   backfillReconciliation,
   getReconciliationUploadLogs,
+  getReconciliationUploadLogBarang,
+  getReconciliationUploadLogFilterOptions,
+  enrichUploadLogs,
+  buildTicketInfoMap,
 };

@@ -1,5 +1,23 @@
 const { z } = require("zod");
 
+const safeUrlSchema = z
+  .string()
+  .optional()
+  .nullable()
+  .refine(
+    (val) => {
+      if (!val) return true;
+      const trimmed = val.trim();
+      try {
+        const url = new URL(trimmed);
+        return url.protocol === "http:" || url.protocol === "https:";
+      } catch {
+        return trimmed.startsWith("/") && !trimmed.startsWith("//") && !trimmed.includes("\\");
+      }
+    },
+    { message: "Format URL foto tidak valid." }
+  );
+
 const createPersonnelSchema = z.object({
   nama: z
     .string()
@@ -42,11 +60,7 @@ const createPersonnelSchema = z.object({
     .boolean()
     .optional(),
 
-  foto: z
-    .string()
-    .url("Format URL foto tidak valid.")
-    .optional()
-    .nullable(),
+  foto: safeUrlSchema,
 
   gudang_id: z
     .union([z.number().int().positive(), z.string()])

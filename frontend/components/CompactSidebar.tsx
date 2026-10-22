@@ -21,9 +21,11 @@ const SECTION_LABELS: Record<string, string> = {
 
 const SUPERVISOR_ORDER = [
   "/dashboard/supervisor",
+  "/master-data",
+  "/dashboard/supervisor/boq",
   "/dashboard/supervisor/approval",
   "/dashboard/supervisor/operasional",
-  "/master-data",
+  "/dashboard/supervisor/warehousespv",
   "/dashboard/supervisor/reconciliation",
 ];
 
@@ -70,10 +72,8 @@ export function CompactSidebar({ userRole }: CompactSidebarProps) {
   }
 
   useEffect(() => {
-    if (isMobile && mobileOpen) {
-      setMobileOpen(false);
-    }
-  }, [pathname, isMobile, mobileOpen, setMobileOpen]);
+    setMobileOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -97,84 +97,86 @@ export function CompactSidebar({ userRole }: CompactSidebarProps) {
 
   const sectionOrder = Object.keys(grouped);
 
-  const renderNavItems = (isMobileSidebar: boolean) => (
+const renderNavItems = (isMobileSidebar: boolean) => (
     <>
-      {sectionOrder.map((section, idx) => (
-        <div key={section} className={`${isMobileSidebar ? "mb-4" : "mb-4 w-full last:mb-0"}`}>
-          {!collapsed && !isMobileSidebar && SECTION_LABELS[section] && (
-            <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-              {SECTION_LABELS[section]}
-            </p>
-          )}
-          {isMobileSidebar && SECTION_LABELS[section] && (
-            <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-              {SECTION_LABELS[section]}
-            </p>
-          )}
-          <div className={`flex w-full flex-col justify-start gap-2 ${isMobileSidebar ? "" : collapsed ? "items-center" : ""}`}>
-            {grouped[section].map((item) => {
-              const Icon = item.icon;
-              const isActive = item.href === activeRoute;
+      <div className={`flex w-full flex-col ${isMobileSidebar ? "" : "items-center"}`}>
+        {sectionOrder.map((section, idx) => (
+          <div key={section} className="flex w-full flex-col">
+            {!collapsed && !isMobileSidebar && SECTION_LABELS[section] && (
+              <p className="px-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                {SECTION_LABELS[section]}
+              </p>
+            )}
+            {isMobileSidebar && SECTION_LABELS[section] && (
+              <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                {SECTION_LABELS[section]}
+              </p>
+            )}
+            <div className={`flex w-full flex-col justify-start gap-2 ${isMobileSidebar ? "" : collapsed ? "items-center" : ""}`}>
+              {grouped[section].map((item) => {
+                const Icon = item.icon;
+                const isActive = item.href === activeRoute;
 
-              return (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  onClick={() => isMobileSidebar && setMobileOpen(false)}
-                  className={`group relative flex items-center rounded-xl transition-all duration-200 ${
-                    isMobileSidebar
-                      ? `w-full px-3 py-2.5 ${
-                          isActive
-                            ? "bg-[#FF5500] text-white shadow-md shadow-orange-500/30"
-                            : "text-slate-600 hover:bg-stone-200/60 hover:text-[#FF5500]"
-                        }`
-                      : collapsed
-                        ? `h-11 w-11 items-center justify-center ${
+                return (
+                  <Link
+                    key={item.id}
+                    href={item.href}
+                    onClick={() => isMobileSidebar && setMobileOpen(false)}
+                    className={`group relative flex items-center rounded-xl transition-all duration-200 ${
+                      isMobileSidebar
+                        ? `w-full px-3 py-2.5 ${
                             isActive
                               ? "bg-[#FF5500] text-white shadow-md shadow-orange-500/30"
-                              : "text-slate-500 hover:bg-stone-200/60 hover:text-[#FF5500]"
-                          }`
-                        : `w-full px-3 py-2.5 justify-start ${
-                            isActive
-                              ? "bg-[#FF5500]/10 text-[#FF5500] shadow-sm"
                               : "text-slate-600 hover:bg-stone-200/60 hover:text-[#FF5500]"
                           }`
-                  }`}
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      window.location.href = item.href;
-                    }
-                  }}
-                  onMouseEnter={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setHoveredItem({ title: item.title, top: rect.top + rect.height / 2, left: rect.right + 8 });
-                  }}
-                  onMouseLeave={() => setHoveredItem(null)}
-                >
-                  {!collapsed && !isMobileSidebar && isActive && (
-                    <div className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-[#FF5500]" />
-                  )}
-                  <Icon
-                    className={`h-5 w-5 shrink-0 ${!collapsed && !isMobileSidebar ? "mr-3" : ""}`}
-                    strokeWidth={2.2}
-                  />
-                  {!collapsed && !isMobileSidebar && (
-                    <span className="truncate text-sm font-medium">{item.title}</span>
-                  )}
-                  {isMobileSidebar && (
-                    <span className="truncate text-sm font-medium">{item.title}</span>
-                  )}
-                </Link>
-              );
-            })}
+                        : collapsed
+                          ? `h-11 w-11 items-center justify-center ${
+                              isActive
+                                ? "bg-[#FF5500] text-white shadow-md shadow-orange-500/30"
+                                : "text-slate-500 hover:bg-stone-200/60 hover:text-[#FF5500]"
+                            }`
+                          : `w-full px-3 py-2.5 justify-start ${
+                              isActive
+                                ? "bg-[#FF5500]/10 text-[#FF5500] shadow-sm"
+                                : "text-slate-600 hover:bg-stone-200/60 hover:text-[#FF5500]"
+                            }`
+                    }`}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        window.location.href = item.href;
+                      }
+                    }}
+                    onMouseEnter={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setHoveredItem({ title: item.title, top: rect.top + rect.height / 2, left: rect.right + 8 });
+                    }}
+                    onMouseLeave={() => setHoveredItem(null)}
+                  >
+                    {!collapsed && !isMobileSidebar && isActive && (
+                      <div className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-[#FF5500]" />
+                    )}
+                    <Icon
+                      className={`h-5 w-5 shrink-0 ${!collapsed && !isMobileSidebar ? "mr-3" : ""}`}
+                      strokeWidth={2.2}
+                    />
+                    {!collapsed && !isMobileSidebar && (
+                      <span className="truncate text-sm font-medium">{item.title}</span>
+                    )}
+                    {isMobileSidebar && (
+                      <span className="truncate text-sm font-medium">{item.title}</span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+            {isMobileSidebar && idx < sectionOrder.length - 1 && (
+              <div className="my-3 border-t border-stone-200/60" />
+            )}
           </div>
-          {isMobileSidebar && idx < sectionOrder.length - 1 && (
-            <div className="my-3 border-t border-stone-200/60" />
-          )}
-        </div>
-      ))}
+        ))}
+      </div>
     </>
   );
 
@@ -188,7 +190,7 @@ export function CompactSidebar({ userRole }: CompactSidebarProps) {
           />
         )}
         <aside
-          className={`fixed left-0 top-0 z-50 h-screen w-64 transform bg-[#F5F3EF] transition-transform duration-300 ease-in-out ${
+          className={`fixed left-0 top-0 z-50 h-dvh w-64 transform bg-[#F5F3EF] transition-transform duration-300 ease-in-out md:hidden ${
             mobileOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -204,7 +206,7 @@ export function CompactSidebar({ userRole }: CompactSidebarProps) {
               />
             </div>
           </div>
-          <nav className="flex h-[calc(100vh-4rem)] flex-col overflow-y-auto px-3 py-4 scrollbar-thin">
+          <nav className="flex h-[calc(100dvh-4rem)] flex-col overflow-hidden px-3 py-[clamp(8px,2vh,16px)] gap-[clamp(3px,0.8vh,6px)]">
             {renderNavItems(true)}
           </nav>
         </aside>
@@ -230,7 +232,7 @@ export function CompactSidebar({ userRole }: CompactSidebarProps) {
   return (
     <>
       <aside
-        className={`fixed left-0 top-0 z-30 flex h-screen flex-col bg-[#F5F3EF] border-r border-stone-200/60 shadow-xs transition-all duration-300 ease-in-out overflow-x-hidden ${
+        className={`hidden md:flex fixed left-0 top-0 z-30 h-screen flex-col bg-[#F5F3EF] border-r border-stone-200/60 shadow-xs transition-all duration-300 ease-in-out overflow-hidden ${
           collapsed ? "w-20" : "w-60"
         }`}
       >
@@ -247,7 +249,7 @@ export function CompactSidebar({ userRole }: CompactSidebarProps) {
           </div>
         </div>
 
-        <nav className="flex w-full flex-1 flex-col justify-start items-center overflow-y-auto px-2 py-4 scrollbar-thin scrollbar-thumb-stone-300 scrollbar-track-transparent">
+        <nav className="flex w-full flex-1 flex-col justify-start items-center overflow-hidden px-2 py-2 gap-2">
           {renderNavItems(false)}
         </nav>
 

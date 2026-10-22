@@ -1,5 +1,6 @@
 const prisma = require("../../config/prisma");
 const AppError = require("../../shared/errors");
+const { resolveFromTiket, resolveFromSuratJalanItem, warnNull } = require("../../utils/clusterResolver");
 const { getBusinessDate, toPrismaDecimal, withSerializableRetry } = require("./return.utils");
 
 const resolveMasterBarang = async (barangId) => {
@@ -272,7 +273,7 @@ const getReturnProjectConsistency = async (returnId) => {
     };
   }
 
-  const consistent = rt.project_id === rt.tiket.project_id;
+  const consistent = rt.tiket?.project_id != null && rt.project_id === rt.tiket.project_id;
 
   return {
     checked: true,
@@ -329,6 +330,15 @@ const createReturn = async (data) => {
       barang_id: BigInt(data.barangId),
       baseline_laporan_id: BigInt(data.baselineLaporanId),
       surat_jalan_item_id: data.suratJalanItemId ? BigInt(data.suratJalanItemId) : null,
+      cluster_id: (async () => {
+        const fromTiket = await resolveFromTiket(prisma, data.tiketId);
+        if (fromTiket) return fromTiket;
+        if (data.suratJalanItemId) {
+          const fromSji = await resolveFromSuratJalanItem(prisma, data.suratJalanItemId);
+          if (fromSji) return fromSji;
+        }
+        return null;
+      })(),
       qty: qtyDecimal,
       status: "draft",
       effective_return_at: effectiveReturnAt,
@@ -461,9 +471,9 @@ const approveReturn = async (returnId, actorId) => {
           throw new AppError(`Return tidak dalam status diajukan. Status saat ini: ${returnRecord.status}`, 400);
         }
 
-        if (returnRecord.project_id !== returnRecord.tiket.project_id) {
-          throw new AppError("Return project_id tidak konsisten dengan ticket.", 400);
-        }
+if (returnRecord.tiket?.project_id != null && returnRecord.project_id !== returnRecord.tiket.project_id) {
+    throw new AppError("Return project_id tidak konsisten dengan ticket.", 400);
+  }
 
         const baselineValidation = await validateBaselineLaporan(returnRecord.baseline_laporan_id, returnRecord.tiket_id, returnRecord.barang_id);
         if (!baselineValidation.valid) {
@@ -560,11 +570,11 @@ const rejectReturn = async (returnId, actorId, reason = null) => {
     throw new AppError("Return tidak ditemukan.", 404);
   }
 
-  if (returnRecord.status !== "diajukan") {
-    throw new AppError(`Return tidak dalam status diajukan. Status saat ini: ${returnRecord.status}`, 400);
-  }
+if (returnRecord.status !== "diajukan") {
+      throw new AppError(`Return tidak dalam status diajukan. Status saat ini: ${returnRecord.status}`, 400);
+    }
 
-  if (returnRecord.project_id !== returnRecord.tiket.project_id) {
+  if (returnRecord.tiket?.project_id != null && returnRecord.project_id !== returnRecord.tiket.project_id) {
     throw new AppError("Return project_id tidak konsisten dengan ticket.", 400);
   }
 
@@ -647,8 +657,8 @@ const addReturnStock = async (returnRecord, gudangTujuanId, tx) => {
       barang_id: barangId,
       kondisi: "baik",
       zona_id: null,
-      project_id: projectId,
     },
+    orderBy: { stok_id: "asc" },
   });
 
   let saldoSetelah;
@@ -670,7 +680,7 @@ const addReturnStock = async (returnRecord, gudangTujuanId, tx) => {
       data: {
         gudang_id: gudangId,
         barang_id: barangId,
-        project_id: projectId,
+        project_id: null,
         kondisi: "baik",
         qty: qtyDecimal,
         zona_id: null,
@@ -685,6 +695,14 @@ const addReturnStock = async (returnRecord, gudangTujuanId, tx) => {
       surat_jalan_item_id: returnRecord.surat_jalan_item_id ? Number(returnRecord.surat_jalan_item_id) : null,
       return_transaction_id: Number(returnRecord.return_id),
       barang_id: barangId,
+      cluster_id: (async () => {
+        const fromSji = returnRecord.surat_jalan_item_id
+          ? await prisma.surat_jalan_item.findUnique({ where: { item_id: Number(returnRecord.surat_jalan_item_id) }, select: { cluster_id: true } })
+          : null;
+        if (fromSji?.cluster_id) return fromSji.cluster_id;
+        const fromRt = await prisma.return_transaction.findUnique({ where: { return_id: Number(returnRecord.return_id) }, select: { cluster_id: true } });
+        return fromRt?.cluster_id || null;
+      })(),
       jenis_mutasi: "in",
       qty: qtyDecimal,
       saldo_setelah: saldoSetelah,
@@ -717,11 +735,11 @@ const receiveReturn = async (returnId, actorId, gudangTujuanId) => {
     throw new AppError("Return tidak ditemukan.", 404);
   }
 
-  if (returnRecord.status !== "disetujui") {
-    throw new AppError(`Return tidak dalam status disetujui. Status saat ini: ${returnRecord.status}`, 400);
-  }
+if (returnRecord.status !== "disetujui") {
+      throw new AppError(`Return tidak dalam status disetujui. Status saat ini: ${returnRecord.status}`, 400);
+    }
 
-  if (returnRecord.project_id !== returnRecord.tiket.project_id) {
+  if (returnRecord.tiket?.project_id != null && returnRecord.project_id !== returnRecord.tiket.project_id) {
     throw new AppError("Return project_id tidak konsisten dengan ticket.", 400);
   }
 
@@ -1057,6 +1075,9 @@ const getBaselineReference = async (filters = {}) => {
   const candidates = await prisma.laporan_mitra.findMany({
     where: {
       tiket_id: tiketIdNum,
+      // Laporan yang sudah dinonaktifkan (soft delete) tidak boleh dipakai sebagai
+      // baseline fisik untuk return.
+      is_aktif: true,
       OR: [
         { barang_id: barangIdNum },
         {
@@ -1104,7 +1125,8 @@ const getSuratJalanItemReference = async (filters = {}) => {
     where: {
       barang_id: barangIdNum,
       surat_jalan: {
-        status: { in: ["disetujui", "diterima_didistribusikan", "sedang_dikirim"] },
+        // Status transit tetap dianggap pengiriman aktif untuk referensi return.
+        status: { in: ["disetujui", "diterima_didistribusikan", "sedang_dikirim", "tiba_di_transit"] },
       },
     },
     select: {

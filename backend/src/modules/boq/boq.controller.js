@@ -5,17 +5,22 @@ const ExcelJS = require("exceljs");
 const transformBoq = (boq) => {
   if (!boq) return null;
   
+  const tiketProject = boq.tiket?.project;
+  const clusterProject = boq.cluster?.project;
+  const project = tiketProject || clusterProject;
+  const area = boq.tiket?.area || clusterProject?.area || "";
+  
   return {
     ...boq,
     id: String(boq.boq_id),
     boqNumber: boq.boq_number || `BOQ-${boq.boq_id}`,
     ticketNumber: boq.tiket?.kode_tiket || "",
-    projectId: boq.tiket?.project?.project_id ? String(boq.tiket.project.project_id) : "",
-    project: boq.tiket?.project ? {
-      projectId: String(boq.tiket.project.project_id),
-      projectName: boq.tiket.project.nama_project,
-      title: boq.tiket.project.title,
-      status_aktif: boq.tiket.project.status_aktif,
+    projectId: project?.project_id ? String(project.project_id) : "",
+    project: project ? {
+      projectId: String(project.project_id),
+      projectName: project.nama_project,
+      title: project.title,
+      status_aktif: project.status_aktif,
     } : null,
     clusterId: boq.cluster?.cluster_id || boq.cluster?.project?.cluster_id || boq.tiket?.project?.cluster_id || "",
     cluster: boq.cluster ? {
@@ -28,7 +33,7 @@ const transformBoq = (boq) => {
         area: boq.cluster.project.area,
       } : null,
     } : null,
-    area: boq.tiket?.area || "",
+    area,
     status: boq.status,
     source: boq.source,
     externalVerificationStatus: boq.external_verification_status,
@@ -37,8 +42,8 @@ const transformBoq = (boq) => {
     emailReference: boq.email_reference || "",
     createdAt: boq.created_at,
     updatedAt: boq.updated_at,
-    createdBy: boq.creator?.nama || boq.created_by ? String(boq.created_by) : "",
-    updatedBy: boq.updater?.nama || boq.updated_by ? String(boq.updated_by) : "",
+    createdBy: boq.creator?.nama || (boq.created_by ? String(boq.created_by) : ""),
+    updatedBy: boq.updater?.nama || (boq.updated_by ? String(boq.updated_by) : ""),
     items: (boq.items || []).map((item) => ({
       ...item,
       id: String(item.boq_item_id),
@@ -64,6 +69,81 @@ const transformBoq = (boq) => {
 const transformBoqList = (data) => {
   if (!Array.isArray(data)) return [];
   return data.map(transformBoq);
+};
+
+/**
+ * Bentuk payload minimal untuk endpoint read-only (dropdown/picker).
+ * Mengembalikan alias snake_case & camelCase agar kompatibel dengan
+ * normalizer di frontend.
+ */
+const transformBoqOption = (boq) => {
+  if (!boq) return null;
+  const project = boq.tiket?.project || boq.cluster?.project;
+  const projectId = project?.project_id ? String(project.project_id) : "";
+  const boqNumber = boq.boq_number || `BOQ-${boq.boq_id}`;
+  const kodeTiket = boq.tiket?.kode_tiket || "";
+
+  return {
+    boq_id: String(boq.boq_id),
+    id: String(boq.boq_id),
+    boq_number: boqNumber,
+    boqNumber,
+    kode_tiket: kodeTiket,
+    ticketNumber: kodeTiket,
+    status: boq.status,
+    source: boq.source,
+    cluster_id: boq.cluster_id || boq.cluster?.cluster_id || "",
+    clusterId: boq.cluster_id || boq.cluster?.cluster_id || "",
+    nama_cluster: boq.cluster?.nama_cluster || "",
+    project_id: projectId,
+    projectId,
+    project_name: project?.nama_project || "",
+    projectName: project?.nama_project || "",
+  };
+};
+
+const transformBoqOptionDetail = (boq) => {
+  const base = transformBoqOption(boq);
+  return {
+    ...base,
+    items: (boq.items || []).map((item) => ({
+      boq_item_id: String(item.boq_item_id),
+      barang_id: String(item.barang_id || ""),
+      id: String(item.barang_id || ""),
+      itemCode: item.barang?.kode_perangkat || "",
+      itemName: item.barang?.nama_barang || "",
+      kode_perangkat: item.barang?.kode_perangkat || "",
+      nama_barang: item.barang?.nama_barang || "",
+      unit: item.barang?.satuan_default?.kode_satuan || "",
+      quantity: Number(item.qty_rencana || 0),
+      qty_rencana: Number(item.qty_rencana || 0),
+      qty_additional: Number(item.qty_additional || 0),
+    })),
+  };
+};
+
+/**
+ * Endpoint READ-ONLY khusus staf: daftar BOQ minimal untuk dropdown/picker.
+ */
+const listOptions = async (req, res, next) => {
+  try {
+    const result = await boqService.findOptions(req.query);
+    return response.success(res, "Daftar BOQ berhasil diambil.", result.map(transformBoqOption));
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Endpoint READ-ONLY khusus staf: detail BOQ minimal (item + qty rencana).
+ */
+const getOptionDetail = async (req, res, next) => {
+  try {
+    const result = await boqService.findOptionDetail(req.params.id);
+    return response.success(res, "Detail BOQ berhasil diambil.", transformBoqOptionDetail(result));
+  } catch (err) {
+    next(err);
+  }
 };
 
 const create = async (req, res, next) => {
@@ -164,6 +244,8 @@ const exportBoqs = async (req, res, next) => {
 
     const headers = [
       "Nomor BOQ",
+      "Cluster ID",
+      "Cluster",
       "Tiket",
       "Status",
       "Sumber",
@@ -178,6 +260,8 @@ const exportBoqs = async (req, res, next) => {
 
     const rows = transformed.map((row) => [
       escapeCsv(row.boqNumber),
+      escapeCsv(row.clusterId || ""),
+      escapeCsv(row.cluster?.nama_cluster || ""),
       escapeCsv(row.ticketNumber),
       escapeCsv(row.status),
       escapeCsv(row.source),
@@ -218,14 +302,83 @@ const getAreas = async (req, res, next) => {
   }
 };
 
+/**
+ * Normalisasi query item BOQ (dipakai endpoint management & read-only).
+ */
+const parseItemsQuery = (query = {}) => {
+  const projectId = query.projectId;
+  const statusesParam = query.statuses;
+  const clusterId = query.clusterId || undefined;
+  const clusterIds = query.clusterIds || undefined;
+  // Kata kunci pencarian barang: dipotong 100 karakter, dipecah per spasi,
+  // setiap kata harus cocok (AND) pada nama_barang ATAU kode_perangkat.
+  const searchKeywords = String(query.search || "")
+    .trim()
+    .slice(0, 100)
+    .split(/\s+/)
+    .filter(Boolean);
+  const statuses = statusesParam
+    ? String(statusesParam)
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter((s) => ["draft", "aktif", "selesai"].includes(s))
+    : ["aktif"];
+  if (!statuses.length) {
+    statuses.push("aktif");
+  }
+
+  let effectiveClusterId = clusterId;
+  if (!effectiveClusterId && clusterIds) {
+    effectiveClusterId = String(clusterIds)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  return { projectId, statuses, effectiveClusterId, searchKeywords };
+};
+
 const getItems = async (req, res, next) => {
   try {
-    const projectId = req.query.projectId;
-    if (!projectId) {
+    const { projectId, statuses, effectiveClusterId, searchKeywords } = parseItemsQuery(req.query);
+    const clusterId = req.query.clusterId || undefined;
+    const clusterIds = req.query.clusterIds || undefined;
+    if (!projectId && !clusterId && !clusterIds) {
       return response.success(res, "Daftar item BOQ berhasil diambil.", []);
     }
-    const result = await boqService.getItems(projectId);
+    const result = await boqService.getItems(projectId, statuses, effectiveClusterId, searchKeywords);
     return response.success(res, "Daftar item BOQ berhasil diambil.", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Endpoint READ-ONLY khusus staf: item BOQ (barang + qty rencana + additional
+ * + MOS) untuk form Surat Jalan.
+ */
+const listOptionItems = async (req, res, next) => {
+  try {
+    const { projectId, statuses, effectiveClusterId, searchKeywords } = parseItemsQuery(req.query);
+    const clusterId = req.query.clusterId || undefined;
+    const clusterIds = req.query.clusterIds || undefined;
+    if (!projectId && !clusterId && !clusterIds) {
+      return response.success(res, "Daftar item BOQ berhasil diambil.", []);
+    }
+    const result = await boqService.getItems(projectId, statuses, effectiveClusterId, searchKeywords);
+    const data = result.map((row) => ({
+      barang_id: String(row.barang_id || ""),
+      id: String(row.barang_id || ""),
+      kode_perangkat: row.kode_perangkat || "",
+      nama_barang: row.nama_barang || "",
+      unit: row.satuan_kode || "",
+      satuan_kode: row.satuan_kode || "",
+      satuan_id: row.satuan_id || "",
+      qty_rencana: Number(row.qty_rencana || 0),
+      additional: Number(row.additional || 0),
+      mos: Number(row.mos || 0),
+    }));
+    return response.success(res, "Daftar item BOQ berhasil diambil.", data);
   } catch (err) {
     next(err);
   }
@@ -353,10 +506,33 @@ const exportMatrixExcel = async (req, res, next) => {
   }
 };
 
+const checkTicketAvailability = async (req, res, next) => {
+  try {
+    const ticketNumber = String(req.query.ticketNumber || "").trim();
+    const excludeBoqId = req.query.excludeBoqId ? Number(req.query.excludeBoqId) : null;
+
+    if (!ticketNumber) {
+      return response.success(res, "Nomor tiket kosong.", { available: true });
+    }
+
+    const result = await boqService.checkTicketAvailability(ticketNumber, excludeBoqId);
+    if (result.available) {
+      return response.success(res, "Nomor tiket tersedia.", { available: true });
+    }
+
+    return response.error(res, result.message || `Nomor tiket "${ticketNumber}" sudah digunakan.`, 409);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   create,
   findAll,
   findById,
+  listOptions,
+  getOptionDetail,
+  listOptionItems,
   update,
   updateStatus,
   softDelete,
@@ -368,4 +544,5 @@ module.exports = {
   getItems,
   getExportMatrixData,
   exportMatrixExcel,
+  checkTicketAvailability,
 };

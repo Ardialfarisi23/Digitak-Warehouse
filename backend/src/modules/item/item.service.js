@@ -2,11 +2,18 @@ const itemRepository = require("./item.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
 const notificationService = require("../../modules/notifications/notifications.service");
+const { createAuditLog } = require("../../utils/audit-log");
 
 const create = async (data, userId) => {
   const existing = await itemRepository.findByKode(data.kode_perangkat, { includeInactive: true });
 
   if (existing) {
+    if (!existing.is_aktif) {
+      throw new AppError(
+        "Kode sudah dipakai oleh barang yang telah dihapus.",
+        400
+      );
+    }
     throw new AppError("Kode item sudah digunakan.", 400);
   }
 
@@ -16,7 +23,23 @@ const create = async (data, userId) => {
     updated_by: Number(userId),
   };
 
-  const result = await itemRepository.create(createData);
+  const result = await prisma.$transaction(async (tx) => {
+    const item = await tx.barang.create({ data: createData });
+
+    await createAuditLog(
+      {
+        entityType: "item",
+        entityId: item.barang_id,
+        aksi: "create",
+        actorId: userId,
+        dataSebelum: null,
+        dataSesudah: item,
+      },
+      tx
+    );
+
+    return item;
+  });
 
   const actor = await prisma.user_account.findUnique({
     where: { user_id: BigInt(userId) },
@@ -46,10 +69,10 @@ const findAll = async (query) => {
 };
 
 const findByKode = async (kode_perangkat) => {
-  const record = await itemRepository.findByKode(kode_perangkat, { includeInactive: true });
+  const record = await itemRepository.findByKode(kode_perangkat);
 
   if (!record) {
-    throw new AppError("Item tidak ditemukan.", 404);
+    throw new AppError("Data tidak ditemukan.", 404);
   }
 
   return record;
@@ -65,6 +88,12 @@ const update = async (kode_perangkat, data, userId) => {
   if (data.kode_perangkat && data.kode_perangkat !== kode_perangkat) {
     const existing = await itemRepository.findByKode(data.kode_perangkat, { includeInactive: true });
     if (existing) {
+      if (!existing.is_aktif) {
+        throw new AppError(
+          "Kode sudah dipakai oleh barang yang telah dihapus.",
+          400
+        );
+      }
       throw new AppError("Kode item sudah digunakan.", 400);
     }
   }
@@ -109,19 +138,69 @@ const update = async (kode_perangkat, data, userId) => {
   return result;
 };
 
-const remove = async (barang_id, userId) => {
-  const result = await itemRepository.remove(barang_id);
+const softDelete = async (barang_id, userId) => {
+  const result = await itemRepository.softDelete(barang_id, userId);
 
   if (!result) {
     throw new AppError("Item tidak ditemukan.", 404);
   }
 
+  if (result.alreadyInactive) {
+    throw new AppError("Barang sudah dinonaktifkan.", 400);
+  }
+
   if (result.blocked) {
     throw new AppError(
-      "Barang tidak dapat dihapus karena masih digunakan di transaksi lain.",
+      "Barang tidak dapat dinonaktifkan karena masih memiliki stok aktif di gudang.",
       400
     );
   }
+
+  await createAuditLog(
+    {
+      entityType: "item",
+      entityId: Number(barang_id),
+      aksi: "soft_delete",
+      actorId: userId,
+      dataSebelum: null,
+      dataSesudah: { barang_id: Number(barang_id), is_aktif: false },
+    },
+    prisma
+  );
+
+  return result;
+};
+
+const restore = async (kode_perangkat, userId) => {
+  const record = await itemRepository.findByKode(kode_perangkat, {
+    includeInactive: true,
+  });
+
+  if (!record) {
+    throw new AppError("Item tidak ditemukan.", 404);
+  }
+
+  const result = await itemRepository.restore(record.barang_id, userId);
+
+  if (!result) {
+    throw new AppError("Item tidak ditemukan.", 404);
+  }
+
+  if (result.alreadyActive) {
+    throw new AppError("Barang sudah aktif.", 400);
+  }
+
+  await createAuditLog(
+    {
+      entityType: "item",
+      entityId: Number(record.barang_id),
+      aksi: "restore",
+      actorId: userId,
+      dataSebelum: null,
+      dataSesudah: { barang_id: Number(record.barang_id), is_aktif: true },
+    },
+    prisma
+  );
 
   return result;
 };
@@ -131,5 +210,6 @@ module.exports = {
   findAll,
   findByKode,
   update,
-  remove,
+  softDelete,
+  restore,
 };

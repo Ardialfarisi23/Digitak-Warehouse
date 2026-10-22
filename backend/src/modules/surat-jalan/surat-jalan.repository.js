@@ -1,12 +1,23 @@
 const prisma = require("../../config/prisma");
 const AppError = require("../../shared/errors");
 const capacityService = require("../capacity/capacity.service");
+const {
+  resolveFromBoq,
+  resolveFromProjectSingleCluster,
+  assertClusterExists,
+  warnNull,
+} = require("../../utils/clusterResolver");
 
 const baseInclude = {
   items: {
     include: {
       // baseInclude TIDAK diubah — tetap dipakai inbound/verifikasi
       fotos: true,
+      units: {
+        orderBy: {
+          nomor_unit: "asc",
+        },
+      },
       zona: {
         select: {
           zona_id: true,
@@ -43,6 +54,12 @@ const baseInclude = {
   boq: {
     include: {
       tiket: true,
+      cluster: {
+        select: {
+          cluster_id: true,
+          nama_cluster: true,
+        },
+      },
       items: {
         include: {
           barang: {
@@ -61,6 +78,11 @@ const baseInclude = {
             select: {
               satuan_id: true,
               kode_satuan: true,
+            },
+          },
+          cluster: {
+            select: {
+              cluster_id: true,
             },
           },
         },
@@ -91,12 +113,43 @@ const baseInclude = {
 
 const findByIdInclude = {
   ...baseInclude,
+  personil_pengantar: {
+    select: {
+      personil_id: true,
+      nama: true,
+      jenis: true,
+      no_hp: true,
+    },
+  },
+  // Cluster tujuan pembacaan barang (nama + id) supaya halaman detail bisa
+  // menampilkan Cluster Name tanpa join manual di frontend.
+  cluster: {
+    select: {
+      cluster_id: true,
+      nama_cluster: true,
+    },
+  },
   items: {
     ...baseInclude.items,
     include: {
       ...baseInclude.items.include,
+      picks: {
+        select: {
+          pick_id: true,
+          gudang_id: true,
+          zona_id: true,
+          kondisi_diminta: true,
+          kondisi_diambil: true,
+          qty: true,
+          is_override: true,
+          catatan_override: true,
+          picked_by: true,
+          picked_at: true,
+        },
+      },
       diperiksa_oleh_user: {
         select: {
+          user_id: true,
           nama: true,
         },
       },
@@ -108,6 +161,13 @@ const stokKritisConfig = require("../../config/stok-kritis.config");
 
 const outboundInclude = {
   ...baseInclude,
+  // Cluster tujuan pembacaan barang (nama + id) untuk halaman detail outbound.
+  cluster: {
+    select: {
+      cluster_id: true,
+      nama_cluster: true,
+    },
+  },
   items: {
     ...baseInclude.items,
     include: {
@@ -152,8 +212,41 @@ const modalListInclude = {
   },
 };
 
+const outboundQueueInclude = {
+  ...modalListInclude,
+  items: {
+    ...modalListInclude.items,
+    include: {
+      ...modalListInclude.items.include,
+      barang: {
+        ...modalListInclude.items.include.barang,
+        include: {
+          ...modalListInclude.items.include.barang.include,
+          stok_gudangs: {
+            select: {
+              qty: true,
+              gudang_id: true,
+              zona_id: true,
+              kondisi: true,
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
 const APPROVAL_STATUS = "draft_diajukan";
-const DELIVERY_STATUSES = ["disetujui", "sedang_dikirim", "tiba_menunggu_konfirmasi", "diterima_didistribusikan"];
+// Dipakai daftar pengiriman supervisor. `tiba_di_transit` ikut disertakan supaya
+// Surat Jalan yang sedang dititipkan di Gudang Transit tidak hilang dari daftar
+// itu (regresi visibilitas), tanpa mengubah keputusan approve/confirm siapapun.
+const DELIVERY_STATUSES = [
+  "disetujui",
+  "sedang_dikirim",
+  "tiba_di_transit",
+  "tiba_menunggu_konfirmasi",
+  "diterima_didistribusikan",
+];
 
 const parseIdFilter = (value, fieldName) => {
   if (value === undefined || value === null) return null;
@@ -202,6 +295,45 @@ const buildListMeta = (total, { page, limit }) => ({
   totalPages: Math.ceil(total / limit),
 });
 
+// Fallback tampilan kendaraan & driver.
+//
+// Aturan: kolom free text (isi manual, mis. vendor eksternal) adalah sumber utama.
+// Kalau kosong, turunkan dari relasi master data supaya record lama / outbound yang
+// masih pakai dropdown tidak kehilangan informasi di PDF maupun halaman detail.
+//
+// Menghasilkan field turunan (bukan menimpa `kendaraan` / `personil_pengantar`) supaya
+// konsumen lama yang membaca `record.kendaraan.no_polisi` tetap bekerja apa adanya.
+function withKendaraanDriverFallback(record) {
+  if (!record) return record;
+
+  const namaKendaraan = (record.kendaraan_nama_teks || "").trim();
+  const jenisKendaraan = (record.kendaraan_jenis_teks || "").trim();
+  const noPolisi = (record.kendaraan_no_polisi_teks || "").trim();
+  const namaDriver = (record.driver_nama_teks || "").trim();
+
+  const kendaraan = record.kendaraan;
+  const personil = record.personil_pengantar;
+
+  return {
+    ...record,
+    kendaraan_teks: namaKendaraan || null,
+    kendaraan_jenis_teks: jenisKendaraan || null,
+    no_polisi_teks: noPolisi || null,
+    driver_teks: namaDriver || null,
+    // Label siap pakai supaya frontend tidak perlu logika fallback berulang.
+    kendaraan_label:
+      [namaKendaraan || [kendaraan?.merk, kendaraan?.jenis_kendaraan].filter(Boolean).join(" - "), noPolisi || kendaraan?.no_polisi]
+        .filter(Boolean)
+        .join(" — ") || null,
+    kendaraan_jenis_label: jenisKendaraan || kendaraan?.jenis_kendaraan || null,
+    driver_label: namaDriver || personil?.nama || null,
+  };
+}
+
+function withKendaraanDriverFallbackList(records) {
+  return Array.isArray(records) ? records.map(withKendaraanDriverFallback) : records;
+}
+
 const create = async (data, actorId, tx = prisma) => {
   const count = await tx.surat_jalan.count();
   const year = new Date().getFullYear();
@@ -209,6 +341,20 @@ const create = async (data, actorId, tx = prisma) => {
 
   const status = data.status || (data.tipe === "inbound" ? "menunggu_verifikasi" : "draft_diajukan");
   const tanggal = data.tanggal ? new Date(data.tanggal) : new Date();
+
+  // Resolve cluster_id: payload -> boq -> single-cluster project
+  let clusterId = data.cluster_id ? String(data.cluster_id).trim() : null;
+  if (clusterId) {
+    await assertClusterExists(tx, clusterId);
+  } else if (data.boq_id) {
+    clusterId = await resolveFromBoq(tx, data.boq_id);
+  }
+  if (!clusterId && data.project_id) {
+    clusterId = await resolveFromProjectSingleCluster(tx, data.project_id);
+  }
+  if (!clusterId) {
+    warnNull("surat_jalan", { boq_id: data.boq_id, project_id: data.project_id });
+  }
 
   const suratJalan = await tx.surat_jalan.create({
     data: {
@@ -219,12 +365,17 @@ const create = async (data, actorId, tx = prisma) => {
       gudang_tujuan_id: data.gudang_tujuan_id ? Number(data.gudang_tujuan_id) : null,
       kendaraan_id: data.kendaraan_id ? Number(data.kendaraan_id) : null,
       personil_pengantar_id: data.personil_pengantar_id ? Number(data.personil_pengantar_id) : null,
+      kendaraan_nama_teks: data.kendaraan_nama_teks || null,
+      kendaraan_jenis_teks: data.kendaraan_jenis_teks || null,
+      kendaraan_no_polisi_teks: data.kendaraan_no_polisi_teks || null,
+      driver_nama_teks: data.driver_nama_teks || null,
       status: status,
       kategori_approval: data.kategori_approval || null,
       pic_pemohon_nama: data.pic_pemohon_nama || null,
       project_id: data.project_id ? Number(data.project_id) : null,
       surat_jalan_url: data.surat_jalan_url || null,
       tanggal: tanggal,
+      cluster_id: clusterId,
       created_by: Number(actorId),
       updated_by: Number(actorId),
       titik_lapangan_id: data.titik_lapangan_id ? Number(data.titik_lapangan_id) : null,
@@ -237,14 +388,18 @@ const create = async (data, actorId, tx = prisma) => {
         create: data.items.map((item) => ({
           barang_id: Number(item.barang_id),
           qty: Number(item.qty),
+          qty_diterima: item.qty_diterima != null && item.qty_diterima !== "" ? Number(item.qty_diterima) : null,
           satuan_id: Number(item.satuan_id),
           kondisi: item.kondisi || null,
+          kondisi_diterima: item.kondisi_diterima || null,
           serial_number: item.serial_number || null,
           foto_url: item.foto_url || null,
           is_kelebihan: Boolean(item.is_kelebihan),
           is_di_luar_boq: Boolean(item.is_di_luar_boq),
           catatan: item.catatan || null,
+          catatan_penerimaan: item.catatan_penerimaan || null,
           zona_id: item.zona_id ? Number(item.zona_id) : null,
+          cluster_id: clusterId,
         })),
       },
     },
@@ -252,6 +407,44 @@ const create = async (data, actorId, tx = prisma) => {
   });
 
   return suratJalan;
+};
+
+/**
+ * Membuat record barang di master data untuk item inbound "non-master"
+ * (barang di luar master data yang diinput staf lewat form).
+ * kode_perangkat digenerate otomatis & dijamin unik.
+ */
+const createAdhocBarang = async ({ nama_barang, kategori_id, satuan_id, actorId, tx = prisma }) => {
+  const baseName = String(nama_barang || "").trim().slice(0, 150) || "Barang Tanpa Nama";
+  const kategoriId = Number(kategori_id);
+  const satuanId = Number(satuan_id);
+  const actor = BigInt(actorId);
+
+  const attempts = 5;
+  for (let i = 0; i < attempts; i += 1) {
+    const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
+    const kode = `DI-LUAR-BOQ-${suffix}`;
+
+    try {
+      return await tx.barang.create({
+        data: {
+          kode_perangkat: kode,
+          nama_barang: baseName,
+          kategori_id: kategoriId,
+          satuan_default_id: satuanId,
+          wajib_sn: false,
+          created_by: actor,
+          updated_by: actor,
+        },
+      });
+    } catch (err) {
+      // Retry hanya kalau bentrok kode unik.
+      if (err?.code === "P2002" && i < attempts - 1) continue;
+      throw err;
+    }
+  }
+
+  throw new AppError("Gagal membuat barang non-master. Silakan coba lagi.", 500);
 };
 
 const findOutboundQueue = async (filters = {}) => {
@@ -299,16 +492,18 @@ const findOutboundQueue = async (filters = {}) => {
 
   const data = await prisma.surat_jalan.findMany({
     where,
-    include: modalListInclude,
+    include: outboundQueueInclude,
     orderBy: [{ updated_at: "desc" }],
   });
 
   const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
 
-  return data.map((item) => ({
-    ...item,
-    approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
-  }));
+  return withKendaraanDriverFallbackList(
+    data.map((item) => ({
+      ...item,
+      approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+    }))
+  );
 };
 
 const findInboundList = async (filters = {}) => {
@@ -366,41 +561,12 @@ const findInboundList = async (filters = {}) => {
 
   const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
 
-  return data.map((item) => ({
-    ...item,
-    approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
-  }));
-};
-
-const findVerificationQueue = async ({ status, tipe, kategori_approval, search, startDate, endDate, page = 1, limit = 10 } = {}) => {
-  const where = {};
-
-  if (status) {
-    where.status = status;
-  } else {
-    where.status = "draft_diajukan";
-  }
-
-  if (tipe && ["inbound", "outbound"].includes(tipe)) {
-    where.tipe = tipe;
-  }
-
-  applyListFilters(where, { kategori_approval, search, startDate, endDate });
-
-  const { page: sanitizedPage, limit: sanitizedLimit } = sanitizePagination(page, limit);
-
-  const [total, data] = await Promise.all([
-    prisma.surat_jalan.count({ where }),
-    prisma.surat_jalan.findMany({
-      where,
-      include: modalListInclude,
-      orderBy: [{ created_at: "desc" }],
-      skip: (sanitizedPage - 1) * sanitizedLimit,
-      take: sanitizedLimit,
-    }),
-  ]);
-
-  return { data, meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }) };
+  return withKendaraanDriverFallbackList(
+    data.map((item) => ({
+      ...item,
+      approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+    }))
+  );
 };
 
 const findOutboundForApproval = async (params = {}) => {
@@ -427,10 +593,12 @@ const findOutboundForApproval = async (params = {}) => {
   const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
 
   return {
-    data: data.map((item) => ({
-      ...item,
-      approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
-    })),
+    data: withKendaraanDriverFallbackList(
+      data.map((item) => ({
+        ...item,
+        approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+      }))
+    ),
     meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }),
   };
 };
@@ -459,30 +627,77 @@ const findOutboundForDelivery = async (params = {}) => {
   const verifications = await getBatchApprovalVerifications(data.map((item) => Number(item.surat_jalan_id)));
 
   return {
-    data: data.map((item) => ({
-      ...item,
-      approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
-    })),
+    data: withKendaraanDriverFallbackList(
+      data.map((item) => ({
+        ...item,
+        approval_verification: verifications.get(String(item.surat_jalan_id)) || null,
+      }))
+    ),
     meta: buildListMeta(total, { page: sanitizedPage, limit: sanitizedLimit }),
   };
 };
 
+/**
+ * Sisipkan info zona (nama/kode) ke setiap pick.
+ * `surat_jalan_item_pick` hanya menyimpan `zona_id` polos (tanpa relasi Prisma
+ * ke `zona_gudang`), jadi namanya di-lookup terpisah sekali di sini — dipakai
+ * tabel halaman staf (distribusi & picking) untuk readback zona pengambilan.
+ */
+const attachPickZonaInfo = async (record) => {
+  if (!record || !Array.isArray(record.items)) return record;
+
+  const zonaIds = [
+    ...new Set(
+      record.items
+        .flatMap((item) => (Array.isArray(item.picks) ? item.picks : []))
+        .map((pick) => Number(pick.zona_id))
+        .filter((zonaId) => Number.isFinite(zonaId) && zonaId > 0)
+    ),
+  ];
+  if (zonaIds.length === 0) return record;
+
+  const zonas = await prisma.zona_gudang.findMany({
+    where: { zona_id: { in: zonaIds } },
+    select: { zona_id: true, nama_zona: true, kode_zona: true },
+  });
+  const zonaMap = new Map(zonas.map((z) => [Number(z.zona_id), z]));
+
+  return {
+    ...record,
+    items: record.items.map((item) =>
+      Array.isArray(item.picks) && item.picks.length > 0
+        ? {
+            ...item,
+            picks: item.picks.map((pick) => {
+              const zona = zonaMap.get(Number(pick.zona_id));
+              return zona ? { ...pick, zona } : pick;
+            }),
+          }
+        : item
+    ),
+  };
+};
+
 const findById = async (id) => {
-  return await prisma.surat_jalan.findUnique({
+  const record = await prisma.surat_jalan.findUnique({
     where: {
       surat_jalan_id: Number(id),
     },
     include: findByIdInclude,
   });
+
+  return withKendaraanDriverFallback(await attachPickZonaInfo(record));
 };
 
 const findOutboundDetail = async (id) => {
-  return await prisma.surat_jalan.findUnique({
+  const record = await prisma.surat_jalan.findUnique({
     where: {
       surat_jalan_id: Number(id),
     },
     include: outboundInclude,
   });
+
+  return withKendaraanDriverFallback(record);
 };
 
 const updateStatus = async (id, status, options = {}, tx = prisma) => {
@@ -528,27 +743,188 @@ const claimPicking = async (id, tx = prisma) => {
   return result.count === 1;
 };
 
-const updateInboundItems = async (adjustments) => {
-  for (const item of adjustments) {
-    await prisma.surat_jalan_item.update({
-      where: {
-        item_id: Number(item.item_id),
-      },
-      data: {
-        catatan: item.catatan || null,
-      },
-    });
-  }
+// Claim transisi status secara atomik. Tepat satu request boleh melewati
+// status yang diharapkan; request ganda akan melihat count = 0.
+const claimStatusTransit = async (id, dariStatus, keStatus, tx = prisma) => {
+  const result = await tx.surat_jalan.updateMany({
+    where: {
+      surat_jalan_id: Number(id),
+      tipe: "outbound",
+      status: dariStatus,
+    },
+    data: { status: keStatus },
+  });
+  return result.count === 1;
 };
 
-const addInboundStock = async (suratJalan, tx = prisma) => {
-  const gudangTujuanId = Number(suratJalan.gudang_tujuan_id);
+// Claim approval outbound secara atomik. Hanya satu request boleh mengubah
+// status dari draft_diajukan menjadi disetujui; request lain melihat count = 0.
+const claimApproveOutbound = async (id, dariStatus, tx = prisma) => {
+  const result = await tx.surat_jalan.updateMany({
+    where: {
+      surat_jalan_id: Number(id),
+      tipe: "outbound",
+      status: dariStatus,
+    },
+    data: {
+      status: "disetujui",
+      tanggal_disetujui: new Date(),
+    },
+  });
+
+  return result.count === 1;
+};
+
+const createTransitCheckpoint = async (data, tx = prisma) =>
+  tx.surat_jalan_transit.create({ data, select: { transit_id: true, urutan: true } });
+
+const findOpenTransitCheckpoint = async (suratJalanId, tx = prisma) =>
+  tx.surat_jalan_transit.findFirst({
+    where: { surat_jalan_id: Number(suratJalanId), berangkat_at: null },
+    orderBy: { urutan: "desc" },
+  });
+
+const findTransitCheckpoints = async (suratJalanId, tx = prisma) =>
+  tx.surat_jalan_transit.findMany({
+    where: { surat_jalan_id: Number(suratJalanId) },
+    orderBy: { urutan: "asc" },
+    include: {
+      gudang: { select: { gudang_id: true, nama_gudang: true, tipe: true, project_id: true } },
+      tiba_oleh: { select: { user_id: true, nama: true } },
+      berangkat_oleh: { select: { user_id: true, nama: true } },
+    },
+  });
+
+// Kurangi stok transit yang terkait dengan checkpoint terbuka.
+// Pilihan (a): TIDAK mengunci zona — ambil baris stok di gudang transit
+// apa adanya (generic maupun yang sudah di-putaway ke zona), tetap batasi
+// tiap baris dengan qty >= yang akan diambil lewat decrement atomik.
+const deductTransitStock = async ({ checkpoint, items, projectId, actorId }, tx = prisma) => {
+  const transitItems = Array.isArray(items) && items.length > 0 ? items : checkpoint.items;
+  const clusterCache = new Map();
+
+  for (const deposited of transitItems) {
+    const itemId = Number(deposited.item_id);
+    const barangId = Number(deposited.barang_id);
+    const kondisi = deposited.kondisi || "baik";
+    const qtyDiminta = Number(deposited.qty || 0);
+    if (!Number.isInteger(itemId) || itemId <= 0 || !Number.isInteger(barangId) || barangId <= 0 || qtyDiminta <= 0) {
+      throw new AppError("Data barang titipan di Gudang Transit tidak valid.", 400);
+    }
+
+    let sisa = qtyDiminta;
+    const kandidat = await tx.stok_gudang.findMany({
+      where: {
+        gudang_id: Number(checkpoint.gudang_id),
+        barang_id: barangId,
+        project_id: projectId,
+        kondisi,
+      },
+      orderBy: [{ zona_id: "asc" }, { stok_id: "asc" }],
+      select: { stok_id: true, qty: true, zona_id: true },
+    });
+
+    for (const stok of kandidat) {
+      if (sisa <= 0) break;
+      const tersedia = Number(stok.qty || 0);
+      const qtyAmbil = Math.min(sisa, tersedia);
+      if (qtyAmbil <= 0) continue;
+
+      const updated = await tx.stok_gudang.updateMany({
+        where: { stok_id: stok.stok_id, qty: { gte: qtyAmbil } },
+        data: { qty: { decrement: qtyAmbil }, updated_at: new Date() },
+      });
+      if (updated.count !== 1) {
+        throw new AppError("Stok Gudang Transit berubah saat diproses. Muat ulang data sebelum melanjutkan.", 409);
+      }
+
+      const setelah = await tx.stok_gudang.findUnique({
+        where: { stok_id: stok.stok_id },
+        select: { qty: true },
+      });
+      const saldo = Number(setelah?.qty || 0);
+      if (!setelah || saldo <= 0) {
+        await tx.stok_gudang.deleteMany({ where: { stok_id: stok.stok_id, qty: { lte: 0 } } });
+      }
+
+      let clusterId = clusterCache.get(checkpoint.surat_jalan_id);
+      if (clusterId === undefined) {
+        const fromSj = await tx.surat_jalan.findUnique({
+          where: { surat_jalan_id: Number(checkpoint.surat_jalan_id) },
+          select: { cluster_id: true },
+        });
+        clusterId = fromSj?.cluster_id || null;
+        clusterCache.set(checkpoint.surat_jalan_id, clusterId);
+      }
+
+      await tx.stok_ledger.create({
+        data: {
+          surat_jalan_item_id: itemId,
+          barang_id: barangId,
+          cluster_id: clusterId,
+          jenis_mutasi: "out",
+          qty: qtyAmbil,
+          saldo_setelah: Math.max(0, saldo),
+        },
+      });
+      sisa -= qtyAmbil;
+
+      await capacityService.recalculateZonaStatus(tx, Number(checkpoint.gudang_id), stok.zona_id, actorId);
+    }
+
+    if (sisa > 0) {
+      throw new AppError(
+        `Stok transit barang ${barangId} tidak mencukupi untuk Surat Jalan ini (Tersedia: ${qtyDiminta - sisa}, Dibutuhkan: ${qtyDiminta}).`,
+        400
+      );
+    }
+  }
+};
+const updateTransitDeparture = async (transitId, actorId, catatan, tx = prisma) => {
+  const result = await tx.surat_jalan_transit.updateMany({
+    where: { transit_id: Number(transitId), berangkat_at: null },
+    data: {
+      berangkat_at: new Date(),
+      berangkat_by: BigInt(actorId),
+      catatan_berangkat: catatan || null,
+    },
+  });
+  return result.count === 1;
+};
+
+/**
+ * Menambah stok masuk ke sebuah gudang (default: gudang tujuan Surat Jalan).
+ *
+ * Dipakai dua jalur dengan implementasi yang sama, jangan dibuat paralel:
+ *  1. approval inbound          -> addInboundStock(shipment, tx)
+ *  2. titipan di Gudang Transit -> addInboundStock(shipment, tx, { gudangId, items })
+ *
+ * `gudangId` : tujuan penambahan (gudang transit pada jalur 2).
+ * `items`    : daftar item yang dimasukkan. Default memakai item Surat Jalan;
+ *              jalur transit mengirim sendiri karena qty/kondisi dilaporkan
+ *              staf di lapangan dan bisa berbeda dari yang tercatat di SJ.
+ *              Bentuk per item: { item_id, barang_id, qty, kondisi }.
+ *
+ * Selalu menulis stok generic (zona_id = null) + ledger `in`, sama seperti
+ * alur inbound — penempatan ke zona mengikuti putaway seperti biasanya.
+ */
+const addInboundStock = async (suratJalan, tx = prisma, options = {}) => {
+  const gudangTujuanId = Number(
+    options.gudangId !== undefined && options.gudangId !== null
+      ? options.gudangId
+      : suratJalan.gudang_tujuan_id
+  );
+
+  const daftarItem =
+    Array.isArray(options.items) && options.items.length > 0
+      ? options.items
+      : suratJalan.items;
 
   if (!gudangTujuanId) {
     throw new AppError("Gudang tujuan tidak tersedia untuk penambahan stok.", 400);
   }
 
-  for (const item of suratJalan.items) {
+  for (const item of daftarItem) {
     const qty = Number(item.qty || 0);
 
     if (qty <= 0) {
@@ -561,8 +937,8 @@ const addInboundStock = async (suratJalan, tx = prisma) => {
         barang_id: item.barang_id,
         kondisi: item.kondisi || "baik",
         zona_id: null,
-        project_id: suratJalan.project_id,
       },
+      orderBy: { stok_id: "asc" },
     });
 
     if (existingStock) {
@@ -582,6 +958,7 @@ const addInboundStock = async (suratJalan, tx = prisma) => {
         data: {
           surat_jalan_item_id: item.item_id,
           barang_id: item.barang_id,
+          cluster_id: item.cluster_id || null,
           jenis_mutasi: "in",
           qty: qty,
           saldo_setelah: newQty,
@@ -592,7 +969,7 @@ const addInboundStock = async (suratJalan, tx = prisma) => {
         data: {
           gudang_id: gudangTujuanId,
           barang_id: item.barang_id,
-          project_id: suratJalan.project_id,
+          project_id: null,
           kondisi: item.kondisi || "baik",
           qty: qty,
           zona_id: null,
@@ -603,6 +980,7 @@ const addInboundStock = async (suratJalan, tx = prisma) => {
         data: {
           surat_jalan_item_id: item.item_id,
           barang_id: item.barang_id,
+          cluster_id: item.cluster_id || null,
           jenis_mutasi: "in",
           qty: qty,
           saldo_setelah: Number(newStock.qty),
@@ -785,6 +1163,7 @@ const deductOutboundStock = async (suratJalan, tx = prisma) => {
       data: {
         surat_jalan_item_id: item.item_id,
         barang_id: item.barang_id,
+        cluster_id: item.cluster_id || null,
         jenis_mutasi: "out",
         qty: qty,
         saldo_setelah: updatedQty,
@@ -795,6 +1174,39 @@ const deductOutboundStock = async (suratJalan, tx = prisma) => {
     // Jika item.zona_id null (stok generic) → fungsi skip otomatis.
     await capacityService.recalculateZonaStatus(tx, gudangAsalId, item.zona_id ?? null);
   }
+};
+
+// Ketersediaan stok untuk approve outbound (tidak memotong stok).
+// Stok outbound yang sebenarnya dipotong saat picking, jadi di tahap approve
+// fungsi ini hanya menjadi penjaga: surat jalan tidak boleh disetujui kalau
+// stok di gudang asal tidak mencukupi.
+const getStokTersediaOutbound = async (suratJalan, tx = prisma) => {
+  const gudangAsalId = Number(suratJalan.gudang_asal_id);
+
+  if (!gudangAsalId) {
+    throw new AppError(
+      "Gudang asal belum terisi pada surat jalan ini, ketersediaan stok tidak dapat diperiksa.",
+      400
+    );
+  }
+
+  const grouped = await tx.stok_gudang.groupBy({
+    by: ["barang_id", "kondisi"],
+    where: { gudang_id: gudangAsalId },
+    _sum: { qty: true },
+  });
+
+  const stokPerBarang = new Map();
+  for (const row of grouped) {
+    const key = `${row.barang_id}|${String(row.kondisi || "baik").toLowerCase()}`;
+    stokPerBarang.set(key, (stokPerBarang.get(key) || 0) + Number(row._sum.qty || 0));
+  }
+
+  return {
+    gudangAsalId,
+    gudangAsalNama: suratJalan.gudang_asal?.nama_gudang || `Gudang ID ${gudangAsalId}`,
+    stokPerBarang,
+  };
 };
 
 const reduceBoqAllocation = async (suratJalan, tx = prisma) => {
@@ -816,6 +1228,14 @@ const reduceBoqAllocation = async (suratJalan, tx = prisma) => {
       (bi) => Number(bi.barang_id) === Number(barangId)
     );
     if (!boqItem) continue;
+
+    const boqStatus = String(suratJalan.boq?.status || "").toLowerCase();
+    if (boqStatus !== "aktif" && boqStatus !== "selesai") {
+      console.warn(
+        `reduceBoqAllocation dilewati: surat_jalan_id=${suratJalan.surat_jalan_id}, boq_id=${suratJalan.boq_id}, status=${boqStatus}`
+      );
+      continue;
+    }
 
     const currentQty = Number(boqItem.qty_rencana || 0);
     const newQty = currentQty - totalQty;
@@ -1168,15 +1588,16 @@ module.exports = {
   findInboundList,
   findById,
   findOutboundDetail,
-  findVerificationQueue,
   findOutboundForApproval,
   findOutboundForDelivery,
   updateStatus,
-  updateInboundItems,
   deductOutboundStock,
+  getStokTersediaOutbound,
+  claimApproveOutbound,
   addInboundStock,
   createApprovalLog,
   reduceBoqAllocation,
+  createAdhocBarang,
   updateDeliveryStatus,
   addItemFoto,
   updateItemVerification,
@@ -1187,4 +1608,10 @@ module.exports = {
   getApprovalVerification,
   getBatchApprovalVerifications,
   claimPicking,
+  claimStatusTransit,
+  createTransitCheckpoint,
+  findOpenTransitCheckpoint,
+  findTransitCheckpoints,
+  deductTransitStock,
+  updateTransitDeparture,
 };

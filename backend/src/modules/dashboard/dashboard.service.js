@@ -2,8 +2,10 @@ const dashboardRepository = require("./dashboard.repository");
 const prisma = require("../../config/prisma");
 const AppError = require("../../shared/errors");
 const reconciliationUtils = require("../reconciliation/reconciliation.utils");
+const { isMosEligibleInbound } = require("../reconciliation/reconciliation.utils");
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
+const additionalRepository = require("../additional/additional.repository");
 
 const getStats = async (actor = null) => {
   return await dashboardRepository.getStats(actor);
@@ -18,17 +20,20 @@ const getApprovalQueue = async (actor) => {
   const userId = Number(actor?.id || 0);
 
   const whereInbound = {
-    status: { in: ["menunggu_verifikasi", "ready_putaway"] },
+    status: { in: ["menunggu_verifikasi"] },
     tipe: "inbound",
   };
 
   const whereOutbound = {
-    status: { in: ["draft_diajukan", "diterima_didistribusikan"] },
+    status: { in: ["draft_diajukan"] },
     tipe: "outbound",
   };
 
   const whereVerification = {
-    status: { in: ["draft_diajukan", "menunggu_verifikasi"] },
+    OR: [
+      { status: "menunggu_verifikasi", tipe: "inbound" },
+      { status: "draft_diajukan", tipe: "outbound" },
+    ],
   };
 
   const whereDiscrepancy = {
@@ -185,7 +190,7 @@ const getHardwareReconciliation = async (filters = {}) => {
   const { warehouseId = "all", projectId = "all", search = "" } = filters;
 
   const whereBoq = {
-    boq: { status: { in: ["draft", "aktif", "selesai"] } },
+    boq: { status: { in: ["aktif", "selesai"] } },
   };
 
   if (warehouseId !== "all") {
@@ -193,7 +198,7 @@ const getHardwareReconciliation = async (filters = {}) => {
   }
 
   if (projectId !== "all") {
-    whereBoq.boq.tiket = { project_id: BigInt(projectId) };
+    whereBoq.boq.cluster = { project_id: BigInt(projectId) };
   }
 
   const boqItems = await prisma.boq_item.findMany({
@@ -253,7 +258,8 @@ const getHardwareReconciliation = async (filters = {}) => {
     shipmentWhere.surat_jalan.project_id = BigInt(projectId);
   }
 
-  const shipmentItems = await prisma.surat_jalan_item.findMany({
+  // Query outbound items (existing)
+  const outboundShipmentItems = await prisma.surat_jalan_item.findMany({
     where: shipmentWhere,
     include: {
       surat_jalan: {
@@ -267,28 +273,87 @@ const getHardwareReconciliation = async (filters = {}) => {
     },
   });
 
-  const inboundByProjectBarang = new Map();
+  // Query inbound items with approved statuses
+  const inboundShipmentWhere = {
+    surat_jalan: {
+      status: { in: ["ready_putaway", "disetujui", "diterima_didistribusikan"] },
+      tipe: "inbound",
+    },
+  };
+
+  if (projectId !== "all") {
+    inboundShipmentWhere.surat_jalan.project_id = BigInt(projectId);
+  }
+
+  const inboundShipmentItems = await prisma.surat_jalan_item.findMany({
+    where: inboundShipmentWhere,
+    include: {
+      surat_jalan: {
+        select: {
+          tipe: true,
+          project_id: true,
+          cluster_id: true,
+          tipe_pengirim: true,
+          gudang_asal_id: true,
+          gudang_tujuan_id: true,
+          boq_id: true,
+          tujuan_tipe: true,
+        },
+      },
+    },
+  });
+
   const outboundByProjectBarang = new Map();
   const additionalByProjectBarang = new Map();
-  const mosByProjectBarang = new Map();
+  const inboundMosByProjectBarang = new Map();
 
-  for (const item of shipmentItems) {
+  const projectIdsForAdditional =
+    projectId !== "all"
+      ? [BigInt(projectId)]
+      : Array.from(
+          new Set(
+            outboundShipmentItems
+              .map((item) => item.surat_jalan?.project_id)
+              .filter((id) => id != null)
+          )
+        );
+
+  const additionalTotalsByProject =
+    projectIdsForAdditional.length > 0
+      ? await additionalRepository.getAdditionalTotalsByProject(
+          projectIdsForAdditional.map((id) => Number(id))
+        )
+      : new Map();
+
+  // Build inbound MOS map using isMosEligibleInbound
+  for (const item of inboundShipmentItems) {
     const projectIdNum = Number(item.surat_jalan?.project_id);
     const barangId = String(item.barang_id);
     const qty = Number(item.qty || 0);
     const key = `${projectIdNum}-${barangId}`;
 
-    if (item.surat_jalan?.tipe === "inbound") {
-      if (item.is_kelebihan) {
-        additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + qty);
-      } else {
-        inboundByProjectBarang.set(key, (inboundByProjectBarang.get(key) || 0) + qty);
-      }
+    if (isMosEligibleInbound(item.surat_jalan)) {
+      inboundMosByProjectBarang.set(key, (inboundMosByProjectBarang.get(key) || 0) + qty);
     }
+  }
+
+  // Build outbound map (for Used/other calculations, NOT for MOS)
+  for (const item of outboundShipmentItems) {
+    const projectIdNum = Number(item.surat_jalan?.project_id);
+    const barangId = String(item.barang_id);
+    const qty = Number(item.qty || 0);
+    const key = `${projectIdNum}-${barangId}`;
+
     if (item.surat_jalan?.tipe === "outbound" && item.surat_jalan?.tujuan_tipe !== "gudang") {
       outboundByProjectBarang.set(key, (outboundByProjectBarang.get(key) || 0) + qty);
-      mosByProjectBarang.set(key, (mosByProjectBarang.get(key) || 0) + qty);
     }
+  }
+
+  // MOS = inbound only (external vendor inbound)
+  const mosByProjectBarang = inboundMosByProjectBarang;
+
+  for (const [key, val] of additionalTotalsByProject) {
+    additionalByProjectBarang.set(key, (additionalByProjectBarang.get(key) || 0) + val);
   }
 
   const aggregatedMap = new Map();
@@ -409,7 +474,7 @@ const getHardwareReconciliation = async (filters = {}) => {
     for (const item of boqItems) {
       const tiket = item.boq?.tiket;
       const project = tiket?.project;
-      if (Number(project?.project_id || 0) === projectIdNum) {
+      if (Number(project?.project_id || 0) === projectIdNum && tiket?.tiket_id) {
         projectTickets.add(tiket.tiket_id);
       }
     }
@@ -434,7 +499,7 @@ const getHardwareReconciliation = async (filters = {}) => {
       ? Number(usedByProjectBarang.get(key) || 0)
       : Number(outboundByProjectBarang.get(key) || 0);
     const approvedReturnQty = Number(approvedReturnByProjectBarang.get(key) || 0);
-    const remains = reconciliationUtils.computeRemains(mos, agg.boq, additional, used, approvedReturnQty);
+    const remains = reconciliationUtils.computeRemains(mos, agg.boq, additional);
 
     const recStatus = reconciliationUtils.computeReconciliationStatus(
       remains,

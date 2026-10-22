@@ -1,12 +1,27 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { PackagePlus, AlertTriangle, ArrowLeft, FileDown, Loader2, AlertCircle, ExternalLink, Upload, X, Image as ImageIcon } from "lucide-react";
-import Link from "next/link";
+import {
+  AlertCircle,
+  AlertTriangle,
+  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  FileDown,
+  FileText,
+  Loader2,
+  PackagePlus,
+  Upload,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useApi } from "@/lib/api";
+import { useApi, ensureOk } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { safeUrl } from "@/lib/safe-url";
+import { summarizeKondisiUnits } from "@/lib/kondisi-barang";
+import { getSuratJalanStatusLabel } from "@/lib/surat-jalan-status";
 import type { InboundSuratJalan as InboundPdfShape } from "@/lib/staff/inbound-pdf";
 
 // ---------------------------------------------------------------------------
@@ -25,10 +40,14 @@ type ApiSuratJalanItem = {
   item_id: number;
   barang_id: number;
   qty: number;
+  qty_diterima?: number | string | null;
+  qty_ditolak?: number | string | null;
+  alasan_penolakan?: string | null;
   kondisi?: string | null;
   serial_number?: string | null;
   catatan?: string | null;
   is_kelebihan?: boolean;
+  units?: ApiUnitRow[];
   barang?: ApiBarang;
   zona?: {
     zona_id: number;
@@ -57,13 +76,26 @@ type ApiSuratJalan = {
   gudang_tujuan?: { nama_gudang: string } | null;
   kendaraan?: { jenis_kendaraan: string; merk?: string; no_polisi: string } | null;
   personil_pengantar?: { nama: string } | null;
+  // Kolom teks bebas (sudah di-fallback-kan di backend, lihat surat-jalan.repository.js)
+  kendaraan_teks?: string | null;
+  no_polisi_teks?: string | null;
+  driver_teks?: string | null;
+  kendaraan_label?: string | null;
+  driver_label?: string | null;
   project?: { nama_project: string } | null;
+  cluster?: { cluster_id?: string; nama_cluster?: string } | null;
+  cluster_id?: string | null;
   creator?: { nama?: string; name?: string } | null;
+  surat_jalan_url?: string | null;
+  document_url?: string | null;
+  attachment?: string | null;
   boq_id?: number | string | null;
   boq?: {
-    boq_id: number;
+    boq_id: number | string;
     boq_number?: string;
+    cluster_id?: string | null;
     tiket?: { kode_tiket: string };
+    items?: Array<{ cluster_id?: string | null }> | null;
   } | null;
   tujuan_tipe?: string | null;
   titik_lapangan?: { nama_lokasi?: string } | null;
@@ -74,13 +106,25 @@ type ApiSuratJalan = {
 // Baris yang staf edit di layar — qtyRencana disnapshot SEKALI pas fetch,
 // sebelum staf mulai ubah qty (backend nggak nyimpen qty rencana terpisah,
 // begitu di-submit field `qty` yang sama ditimpa jadi qty aktual).
+// Penilaian kondisi per unit (dipakai saat qty diterima > 1).
+type UnitInput = {
+  nomorUnit: number;
+  kondisi: string;
+  catatan: string;
+};
+
 type EditableItem = {
   itemId: number;
   kodeBarang: string;
   namaBarang: string;
   qtyRencana: number;
   qtyDiterima: number;
+  // qtyDitolak selalu = qtyRencana - qtyDiterima (aturan diterima + ditolak
+  // harus sama dengan qty surat jalan); disimpan eksplisit supaya jelas di UI.
+  qtyDitolak: number;
+  alasanPenolakan: string;
   kondisi: string;
+  units: UnitInput[];
   serialNumber: string;
   isKelebihan: boolean;
   catatanKelebihan: string;
@@ -119,6 +163,166 @@ const KONDISI_TONE: Record<string, string> = {
   doa: "bg-gray-100 text-gray-600 border-gray-300",
 };
 
+type ApiUnitRow = {
+  unit_id?: number | string;
+  nomor_unit?: number;
+  kondisi?: string | null;
+  catatan?: string | null;
+};
+
+// ---------------------------------------------------------------------------
+// Pratinjau lampiran surat jalan (PDF/gambar). URL bisa absolut maupun relatif
+// ke backend, jadi dinormalkan dulu. Base64 Data URL dikonversi ke Blob URL
+// karena tidak bisa dipakai apa adanya di iframe pada beberapa browser.
+// ---------------------------------------------------------------------------
+const apiBaseUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
+
+type AttachmentKind = "pdf" | "image" | "other";
+
+function resolveAttachmentUrl(url?: string | null): string | null {
+  if (!url) return null;
+  const trimmed = String(url).trim();
+  if (!trimmed || trimmed === "null" || trimmed === "undefined") return null;
+  if (
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("data:") ||
+    trimmed.startsWith("blob:")
+  ) {
+    return trimmed;
+  }
+  return `${apiBaseUrl}${trimmed.startsWith("/") ? "" : "/"}${trimmed}`;
+}
+
+function getAttachmentKind(url?: string | null): AttachmentKind | null {
+  const resolved = resolveAttachmentUrl(url);
+  if (!resolved) return null;
+  const normalized = resolved.split("?")[0].split("#")[0].toLowerCase();
+  if (normalized.startsWith("data:image/")) return "image";
+  if (normalized.startsWith("data:application/pdf") || normalized.includes("application/pdf")) return "pdf";
+  if (normalized.endsWith(".pdf")) return "pdf";
+  if (/\.(jpg|jpeg|png|webp|gif|bmp|svg)$/.test(normalized)) return "image";
+  return "other";
+}
+
+function sanitizeFileNameBase(value: string) {
+  return (
+    value
+      .replace(/[^a-zA-Z0-9-_]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "") || "surat-jalan"
+  );
+}
+
+function getAttachmentFileName(url?: string | null, fallbackBase = "surat-jalan"): string {
+  const resolved = resolveAttachmentUrl(url);
+  if (!resolved) return "dokumen";
+  const base = sanitizeFileNameBase(fallbackBase);
+
+  if (resolved.startsWith("data:")) {
+    const kind = getAttachmentKind(resolved);
+    const ext = kind === "pdf" ? "pdf" : kind === "image" ? "jpg" : "bin";
+    return `${base}.${ext}`;
+  }
+
+  try {
+    const name = new URL(resolved).pathname.split("/").filter(Boolean).pop();
+    return name ? decodeURIComponent(name) : "dokumen";
+  } catch {
+    return "dokumen";
+  }
+}
+
+// Data URL dikonversi sekali menjadi Blob URL supaya PDF/gambar tetap dirender.
+function useAttachmentViewUrl(rawUrl?: string | null): string | null {
+  const raw = rawUrl ?? null;
+  const isInline = Boolean(raw?.startsWith("data:"));
+
+  // Data URL tidak bisa dipakai apa adanya di iframe/tab baru pada beberapa
+  // browser, jadi dikonversi menjadi Blob URL. Hasilnya murni turunan dari
+  // `raw`, jadi dihitung lewat useMemo (bukan state + effect).
+  const blobUrl = useMemo(() => {
+    if (!raw || !isInline) return null;
+    try {
+      const commaIndex = raw.indexOf(",");
+      const meta = raw.slice(0, commaIndex);
+      const payload = raw.slice(commaIndex + 1);
+      const mime = /data:([^;,]+)/i.exec(meta)?.[1] || "application/pdf";
+      const binary = /;base64/i.test(meta) ? atob(payload) : decodeURIComponent(payload);
+      const bytes = new Uint8Array(binary.length);
+      for (let j = 0; j < binary.length; j += 1) bytes[j] = binary.charCodeAt(j);
+      return URL.createObjectURL(new Blob([bytes], { type: mime }));
+    } catch {
+      return null;
+    }
+  }, [raw, isInline]);
+
+  // Lepaskan Blob URL lama supaya tidak menumpuk memori saat lampiran berganti.
+  const previousBlobRef = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = previousBlobRef.current;
+    if (previous && previous !== blobUrl) URL.revokeObjectURL(previous);
+    previousBlobRef.current = blobUrl;
+  }, [blobUrl]);
+
+  if (!raw) return null;
+  if (isInline) return blobUrl;
+  return resolveAttachmentUrl(raw);
+}
+
+function tampilkanNilai(value: unknown, fallback: unknown = "-") {
+  if (value === null || value === undefined) return String(fallback);
+  const s = String(value).trim();
+  return s.length > 0 ? s : String(fallback);
+}
+
+function buildUnitRows(total: number): UnitInput[] {
+  const count = Math.max(0, Math.floor(Number(total) || 0));
+  return Array.from({ length: count }, (_, i) => ({
+    nomorUnit: i + 1,
+    kondisi: "",
+    catatan: "",
+  }));
+}
+
+// Samakan daftar unit dengan qty terbaru tanpa menghapus penilaian yang
+// sudah diisi staf.
+function syncUnitRows(existing: UnitInput[] | undefined, total: number): UnitInput[] {
+  const rows = buildUnitRows(total);
+  const previous = existing || [];
+  return rows.map((row) => {
+    const kept = previous.find((u) => u.nomorUnit === row.nomorUnit);
+    return kept ? { ...row, kondisi: kept.kondisi, catatan: kept.catatan } : row;
+  });
+}
+
+// Data per unit dari server (item lama tidak punya array ini).
+function mapUnitRowsFromApi(units: ApiUnitRow[] | undefined, total: number): UnitInput[] {
+  const rows = buildUnitRows(total);
+  if (!Array.isArray(units) || units.length === 0) return rows;
+  const byNomor = new Map<number, ApiUnitRow>();
+  for (const unit of units) {
+    const nomor = Number(unit.nomor_unit);
+    if (Number.isFinite(nomor)) byNomor.set(nomor, unit);
+  }
+  return rows.map((row) => {
+    const found = byNomor.get(row.nomorUnit);
+    if (!found) return row;
+    return {
+      nomorUnit: row.nomorUnit,
+      kondisi: found.kondisi || "",
+      catatan: found.catatan || "",
+    };
+  });
+}
+
+function summarizeUnitConditions(units: UnitInput[]): { label: string; tone: string }[] {
+  return summarizeKondisiUnits(units).map((entry) => ({
+    label: `${entry.label} ${entry.total}`,
+    tone: KONDISI_TONE[entry.value] || "bg-gray-100 text-gray-600 border-gray-300",
+  }));
+}
+
 export default function InboundDetailPage() {
   const params = useParams<{ suratJalanId: string }>();
   const router = useRouter();
@@ -132,13 +336,56 @@ export default function InboundDetailPage() {
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [uploadingFoto, setUploadingFoto] = useState<Record<number, boolean>>({});
   const [fotoErrors, setFotoErrors] = useState<Record<number, string | null>>({});
+  const [fotoPreviews, setFotoPreviews] = useState<Record<number, string>>({});
+  const fotoPreviewRef = useRef<Record<number, string>>({});
   const [showFotoSuccessModal, setShowFotoSuccessModal] = useState(false);
   const [showFotoErrorModal, setShowFotoErrorModal] = useState(false);
   const [fotoModalMessage, setFotoModalMessage] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
-  const [showExcessModal, setShowExcessModal] = useState(false);
-  const [excessNotesDraft, setExcessNotesDraft] = useState<Record<number, string>>({});
+  // Panel daftar unit per item (indexer baris, bukan item_id).
+  const [unitPanelOpen, setUnitPanelOpen] = useState<Record<number, boolean>>({});
+  // Nilai dari tombol "Set semua unit ke ..." per item.
+  const [bulkUnitCondition, setBulkUnitCondition] = useState<Record<number, string>>({});
+
+  // Lampiran surat jalan yang di-upload staf (PDF/gambar) — dipanggil SEKARANG,
+  // sebelum early return apa pun, supaya aturan React Hooks tetap terpenuhi.
+  const attachmentRaw = data?.surat_jalan_url || data?.document_url || data?.attachment || null;
+  const attachmentViewUrl = useAttachmentViewUrl(attachmentRaw);
+  const attachmentKind = getAttachmentKind(attachmentRaw);
+  const attachmentIsInline = Boolean(attachmentRaw?.startsWith("data:"));
+  const attachmentNomor = sanitizeFileNameBase(tampilkanNilai(data?.nomor_surat_jalan, "surat-jalan"));
+  const attachmentFileName = getAttachmentFileName(attachmentRaw, attachmentNomor);
+  const attachmentIsPdf = attachmentKind === "pdf";
+  const attachmentIsImage = attachmentKind === "image";
+
+  useEffect(() => {
+    return () => {
+      Object.values(fotoPreviewRef.current).forEach((url) => URL.revokeObjectURL(url));
+      fotoPreviewRef.current = {};
+    };
+  }, []);
+
+  function setFotoPreview(index: number, url: string | null) {
+    const previous = fotoPreviewRef.current[index];
+    if (previous && previous !== url) {
+      URL.revokeObjectURL(previous);
+    }
+    if (url) {
+      fotoPreviewRef.current[index] = url;
+    } else {
+      delete fotoPreviewRef.current[index];
+    }
+    setFotoPreviews((prev) => {
+      const next = { ...prev };
+      if (url) {
+        next[index] = url;
+      } else {
+        delete next[index];
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (!toast) return;
@@ -158,7 +405,7 @@ export default function InboundDetailPage() {
           setData(null);
           return;
         }
-        if (!res.ok) throw new Error("Gagal mengambil detail Surat Jalan Inbound.");
+        await ensureOk(res, "Gagal mengambil detail Surat Jalan Inbound.");
 
         const json = await res.json();
         const record: ApiSuratJalan | undefined = json?.data;
@@ -169,24 +416,42 @@ export default function InboundDetailPage() {
 
         setData(record);
         // Snapshot qty rencana SEKARANG, sebelum staf mulai edit apa pun.
+        // Item yang sudah pernah diterima memakai nilai tersimpan
+        // (qty_diterima/qty_ditolak/alasan_penolakan); item baru default
+        // diterima penuh (ditolak 0).
         setItems(
-          record.items.map((it) => ({
-            itemId: it.item_id,
-            kodeBarang: it.barang?.kode_perangkat || "-",
-            namaBarang: it.barang?.nama_barang || "-",
-            qtyRencana: it.qty,
-            qtyDiterima: it.qty,
-            kondisi: it.kondisi || "",
-            serialNumber: it.serial_number || "",
-            isKelebihan: false,
-            catatanKelebihan: it.catatan || "",
-            wajibSn: Boolean(it.barang?.wajib_sn),
-            fotos: (it.fotos || []).map((f) => ({
-              foto_id: f.foto_id,
-              url: f.url,
-              filename: f.filename,
-            })),
-          })),
+          record.items.map((it) => {
+            const qtyRencana = it.qty;
+            const storedReceived =
+              it.qty_diterima !== null && it.qty_diterima !== undefined
+                ? Number(it.qty_diterima)
+                : null;
+            const qtyDiterima = storedReceived ?? qtyRencana;
+            const qtyDitolak =
+              it.qty_ditolak !== null && it.qty_ditolak !== undefined
+                ? Number(it.qty_ditolak)
+                : qtyRencana - qtyDiterima;
+            return {
+              itemId: it.item_id,
+              kodeBarang: it.barang?.kode_perangkat || "-",
+              namaBarang: it.barang?.nama_barang || "-",
+              qtyRencana,
+              qtyDiterima,
+              qtyDitolak,
+              alasanPenolakan: it.alasan_penolakan || "",
+              kondisi: it.kondisi || "",
+              units: mapUnitRowsFromApi(it.units, qtyDiterima),
+              serialNumber: it.serial_number || "",
+              isKelebihan: false,
+              catatanKelebihan: it.catatan || "",
+              wajibSn: Boolean(it.barang?.wajib_sn),
+              fotos: (it.fotos || []).map((f) => ({
+                foto_id: f.foto_id,
+                url: f.url,
+                filename: f.filename,
+              })),
+            };
+          }),
         );
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : "Terjadi kesalahan mengambil data.");
@@ -230,24 +495,81 @@ export default function InboundDetailPage() {
   function updateItem(index: number, patch: Partial<EditableItem>) {
     setItems((prev) => {
       const next = [...prev];
-      next[index] = { ...next[index], ...patch };
+      const merged = { ...next[index], ...patch };
+      // Jumlah unit selalu mengikuti qty diterima agar tidak pernah
+      // tidak sinkron dengan yang akan dikirim ke backend.
+      if (patch.qtyDiterima !== undefined) {
+        merged.units = syncUnitRows(merged.units, patch.qtyDiterima);
+      }
+      next[index] = merged;
+      return next;
+    });
+  }
+
+  function setUnitCondition(index: number, nomorUnit: number, value: string) {
+    setItems((prev) => {
+      const next = [...prev];
+      const row = next[index];
+      next[index] = {
+        ...row,
+        units: row.units.map((u) => (u.nomorUnit === nomorUnit ? { ...u, kondisi: value } : u)),
+      };
+      return next;
+    });
+  }
+
+  function setUnitCatatan(index: number, nomorUnit: number, value: string) {
+    setItems((prev) => {
+      const next = [...prev];
+      const row = next[index];
+      next[index] = {
+        ...row,
+        units: row.units.map((u) => (u.nomorUnit === nomorUnit ? { ...u, catatan: value } : u)),
+      };
+      return next;
+    });
+  }
+
+  function setAllUnitConditions(index: number, kondisi: string) {
+    setBulkUnitCondition((prev) => ({ ...prev, [index]: kondisi }));
+    setItems((prev) => {
+      const next = [...prev];
+      const row = next[index];
+      next[index] = {
+        ...row,
+        units: row.units.map((u) => ({ ...u, kondisi })),
+      };
       return next;
     });
   }
 
   function handleQtyDiterimaChange(index: number, value: number) {
-    const qty = Math.max(0, value);
     const item = items[index];
-    if (qty <= item.qtyRencana && item.isKelebihan) {
-      updateItem(index, { qtyDiterima: qty, isKelebihan: false, catatanKelebihan: "" });
-    } else {
-      updateItem(index, { qtyDiterima: qty });
+    // Batasi 0..qtyRencana supaya diterima + ditolak selalu = qty surat jalan.
+    const qty = Math.min(item.qtyRencana, Math.max(0, value));
+    const patch: Partial<EditableItem> = {
+      qtyDiterima: qty,
+      qtyDitolak: item.qtyRencana - qty,
+    };
+    if (qty > item.qtyRencana && item.isKelebihan) {
+      patch.isKelebihan = false;
+      patch.catatanKelebihan = "";
     }
+    if (patch.qtyDitolak === 0) {
+      // Tidak ada penolakan -> alasan tidak relevan.
+      patch.alasanPenolakan = "";
+    }
+    updateItem(index, patch);
+  }
+
+  function handleAlasanPenolakanChange(index: number, value: string) {
+    updateItem(index, { alasanPenolakan: value });
   }
 
   async function handleFotoUpload(index: number, file: File) {
     setFotoErrors((prev) => ({ ...prev, [index]: null }));
     setUploadingFoto((prev) => ({ ...prev, [index]: true }));
+    setFotoPreview(index, URL.createObjectURL(file));
 
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -303,6 +625,7 @@ export default function InboundDetailPage() {
       setFotoModalMessage(err instanceof Error ? err.message : "Upload foto gagal, silakan coba lagi.");
       setShowFotoErrorModal(true);
     } finally {
+      setFotoPreview(index, null);
       setUploadingFoto((prev) => ({ ...prev, [index]: false }));
     }
   }
@@ -330,14 +653,31 @@ export default function InboundDetailPage() {
     }
   }
 
-  const allKondisiFilled = items.every((i) => i.qtyDiterima === 0 || i.kondisi !== "");
-  const unresolvedExcessIndexes = items
+// Item dengan qty diterima > 1 wajib dinilai per unit; qty 1 tetap satu
+  // pilihan kondisi biasa.
+  const unitRowsMissingIndexes = items
     .map((i, idx) => ({ i, idx }))
-    .filter(({ i }) => i.qtyDiterima > i.qtyRencana && !i.isKelebihan)
+    .filter(({ i }) => i.qtyDiterima > 1 && i.units.some((u) => !u.kondisi))
     .map(({ idx }) => idx);
-  const hasUnresolvedExcess = unresolvedExcessIndexes.length > 0;
+  const hasMissingUnitConditions = unitRowsMissingIndexes.length > 0;
+
+  const allKondisiFilled = items.every(
+    (i) => i.qtyDiterima === 0 || (i.qtyDiterima > 1 ? true : i.kondisi !== ""),
+  );
   const serialRequiredMissing = items.some((i) => i.qtyDiterima > 0 && i.wajibSn && !i.serialNumber.trim());
-  const canSubmit = allKondisiFilled && items.some((i) => i.qtyDiterima > 0) && !serialRequiredMissing;
+  // Aturan penerimaan: diterima + ditolak = qty surat jalan (dijaga oleh
+  // handleQtyDiterimaChange), dan alasan wajib bila ada penolakan.
+  const missingAlasanIndexes = items
+    .map((i, idx) => ({ i, idx }))
+    .filter(({ i }) => i.qtyDitolak > 0 && !i.alasanPenolakan.trim())
+    .map(({ idx }) => idx);
+  const hasMissingAlasan = missingAlasanIndexes.length > 0;
+  const canSubmit =
+    allKondisiFilled &&
+    !hasMissingUnitConditions &&
+    !hasMissingAlasan &&
+    items.some((i) => i.qtyDiterima > 0) &&
+    !serialRequiredMissing;
 
   const tujuanLabel =
     data?.tujuan_tipe === "lapangan"
@@ -362,33 +702,7 @@ export default function InboundDetailPage() {
       return;
     }
 
-    if (hasUnresolvedExcess) {
-      const defaults: Record<number, string> = {};
-      unresolvedExcessIndexes.forEach((idx) => {
-        defaults[idx] = excessNotesDraft[idx] || `Kelebihan kiriman dari Surat Jalan #${data.nomor_surat_jalan}`;
-      });
-      setExcessNotesDraft(defaults);
-      setShowExcessModal(true);
-      return;
-    }
-
     doSave(items);
-  }
-
-  function handleConfirmExcessAndSave() {
-    const updated = items.map((item, idx) => {
-      if (unresolvedExcessIndexes.includes(idx)) {
-        return {
-          ...item,
-          isKelebihan: true,
-          catatanKelebihan: (excessNotesDraft[idx] || "").trim(),
-        };
-      }
-      return item;
-    });
-    setItems(updated);
-    setShowExcessModal(false);
-    doSave(updated);
   }
 
   async function doSave(finalItems: EditableItem[]) {
@@ -396,16 +710,25 @@ export default function InboundDetailPage() {
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
       const payload = {
-        items: finalItems
-          .filter((i) => i.qtyDiterima > 0)
-          .map((i) => ({
-            item_id: i.itemId,
-            qty: i.qtyDiterima,
-            kondisi: i.kondisi || null,
-            serial_number: i.serialNumber || null,
-            catatan: i.catatanKelebihan || null,
-            is_kelebihan: i.isKelebihan,
-          })),
+        items: finalItems.map((i) => ({
+          item_id: i.itemId,
+          qty: i.qtyDiterima,
+          qty_diterima: i.qtyDiterima,
+          qty_ditolak: i.qtyDitolak,
+          alasan_penolakan: i.qtyDitolak > 0 ? i.alasanPenolakan.trim() || null : null,
+          kondisi: i.qtyDiterima > 1 ? null : i.kondisi || null,
+          units:
+            i.qtyDiterima > 1
+              ? i.units.map((u) => ({
+                  nomor_unit: u.nomorUnit,
+                  kondisi: u.kondisi,
+                  catatan: u.catatan.trim() || null,
+                }))
+              : null,
+          serial_number: i.serialNumber || null,
+          catatan: i.catatanKelebihan || null,
+          is_kelebihan: i.isKelebihan,
+        })),
       };
 
       const res = await post(`${baseUrl}/api/surat-jalan/${params.suratJalanId}/receive-inbound`, payload);
@@ -423,7 +746,7 @@ export default function InboundDetailPage() {
         return;
       }
 
-      router.push("/staff/inbound");
+      router.push(`/staff/putaway/${params.suratJalanId}`);
     } catch (err) {
       setToast({ message: err instanceof Error ? err.message : "Terjadi kesalahan saat menyimpan.", type: "error" });
     } finally {
@@ -447,8 +770,8 @@ export default function InboundDetailPage() {
         asalGudang: pengirimLabel,
         tujuanGudang: data.gudang_tujuan?.nama_gudang || "-",
         kendaraan: kendaraanLabel,
-        noPolisi: data.kendaraan?.no_polisi || "-",
-        namaDriver: data.personil_pengantar?.nama || "-",
+        noPolisi: noPolisiLabel,
+        namaDriver: driverLabel,
         namaPicPemohon: data.creator?.nama || data.creator?.name || "-",
         tanggal: data.tanggal
           ? new Date(data.tanggal).toLocaleDateString("id-ID", {
@@ -462,10 +785,10 @@ export default function InboundDetailPage() {
           namaBarang: i.namaBarang,
           qtyDiminta: i.qtyRencana,
           qtyDiterima: i.qtyDiterima,
-          kondisi: i.kondisi as any,
+          kondisi: i.qtyDiterima > 1 ? summarizeUnitConditions(i.units).map((c) => c.label).join(", ") : i.kondisi,
           serialNumbers: i.serialNumber ? [i.serialNumber] : [],
         })),
-        status: "MENUNGGU_VERIFIKASI",
+        status: "TERVERIFIKASI",
       };
 
       await downloadInboundPdf(pdfShape, user?.name ?? "Staf Gudang");
@@ -473,8 +796,6 @@ export default function InboundDetailPage() {
       setDownloadingPdf(false);
     }
   }
-
-  const excessNoteFilled = unresolvedExcessIndexes.every((idx) => (excessNotesDraft[idx] || "").trim().length > 0);
 
   // Helper untuk menentukan label pengirim (internal: gudang_asal, external: pengirim_eksternal_nama)
   const pengirimLabel = data
@@ -485,14 +806,42 @@ export default function InboundDetailPage() {
         : data.gudang_asal?.nama_gudang || "-"
     : "-";
 
-  // Helper untuk format kendaraan: "Merk - Tipe Kendaraan"
-  const kendaraanLabel = data
-    ? data.kendaraan
-      ? data.kendaraan.merk && data.kendaraan.merk.trim()
-        ? `${data.kendaraan.merk} - ${data.kendaraan.jenis_kendaraan}`
-        : data.kendaraan.jenis_kendaraan
-      : "-"
-    : "-";
+  // Fallback ke kolom teks bebas (isi manual / vendor eksternal) yang sudah
+  // difallback-kan di backend. Kolom `kendaraan_nama_teks` / `kendaraan_no_polisi_teks` /
+  // `driver_nama_teks` jadi sumber utama, `kendaraan` & `personil_pengantar` hanya cadangan.
+  const kendaraanLabel =
+    data?.kendaraan_teks
+      || (data?.kendaraan
+        ? data.kendaraan.merk && data.kendaraan.merk.trim()
+          ? `${data.kendaraan.merk} - ${data.kendaraan.jenis_kendaraan}`
+          : data.kendaraan.jenis_kendaraan
+        : null)
+      || "-";
+
+  const noPolisiLabel = data?.no_polisi_teks || data?.kendaraan?.no_polisi || "-";
+  const driverLabel = data?.driver_teks || data?.personil_pengantar?.nama || "-";
+
+  // Lima data ringkas untuk halaman detail. Urutan sumber mengikuti relasi
+  // di schema.prisma: surat_jalan.cluster_id (langsung) -> boq.cluster_id,
+  // dan nomor tiket lewat relasi boq -> tiket_material.
+  const clusterIdValue = tampilkanNilai(
+    data?.cluster_id || data?.cluster?.cluster_id || data?.boq?.cluster_id
+  );
+  const clusterNameValue = tampilkanNilai(
+    data?.cluster?.nama_cluster,
+    data?.cluster_id || data?.cluster?.cluster_id || data?.boq?.cluster_id
+  );
+  const projectNameValue = tampilkanNilai(data?.project?.nama_project);
+  const boqIdValue = tampilkanNilai(
+    data?.boq_id !== null && data?.boq_id !== undefined && data?.boq_id !== ""
+      ? String(data.boq_id)
+      : data?.boq?.boq_id !== null &&
+          data?.boq?.boq_id !== undefined &&
+          data?.boq?.boq_id !== ""
+        ? String(data.boq.boq_id)
+        : null
+  );
+  const nomorTiketValue = tampilkanNilai(data?.boq?.tiket?.kode_tiket);
 
   if (!data) {
     return (
@@ -540,52 +889,185 @@ export default function InboundDetailPage() {
                 })
               : "-"}
           </p>
+          <p className="mt-1 flex items-center gap-2 text-sm">
+            <span className="text-gray-500">Status:</span>
+            <span className="rounded-full border border-gray-200 bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
+              {getSuratJalanStatusLabel(data.status)}
+            </span>
+          </p>
         </div>
       </div>
 
-      {/* BOQ / Tiket info */}
-      <div className="mb-6 rounded-2xl border border-[#F3D9C7] bg-white p-4">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">BOQ / Tiket</p>
-        {data.boq_id ? (
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <Link
-              href="/dashboard/boq"
-              className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
-            >
-              <ExternalLink size={12} />
-              {data.boq?.boq_number || `BOQ #${data.boq_id}`}
-            </Link>
-            <span className="text-xs text-slate-500">
-              Tiket: {data.boq?.tiket?.kode_tiket || "-"}
-            </span>
+      {/* Layout 2 kolom: dokumen surat jalan (kiri) + informasi & tabel barang (kanan).
+          Di layar sempit tumpuk jadi 1 kolom dengan dokumen di atas. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.15fr_1fr] lg:items-start">
+        {/* KOLOM KIRI: Surat jalan yang di-upload */}
+        <div className="flex flex-col overflow-hidden rounded-2xl border border-[#F3D9C7] bg-white">
+          <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-4">
+            <FileText size={16} className="text-gray-500" />
+            <h2 className="text-xs font-bold uppercase tracking-wider text-gray-600">
+              Surat Jalan Terunggah
+            </h2>
+            {attachmentRaw && (
+              <>
+                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
+                  {attachmentIsPdf ? "PDF" : attachmentIsImage ? "Gambar" : "File"}
+                </span>
+                {attachmentViewUrl && (
+                  <a
+                    href={attachmentViewUrl}
+                    {...(attachmentIsInline ? {} : { target: "_blank", rel: "noopener noreferrer" })}
+                    download={attachmentFileName || undefined}
+                    className="ml-auto inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-600 shadow-sm transition hover:bg-gray-50"
+                  >
+                    <ExternalLink size={12} />
+                    {attachmentIsPdf ? "Buka PDF / Unduh" : attachmentIsImage ? "Buka Gambar" : "Buka File"}
+                  </a>
+                )}
+              </>
+            )}
           </div>
-        ) : (
-          <span className="text-xs text-slate-400">Tidak terhubung ke BOQ/Tiket</span>
-        )}
-      </div>
 
-      {/* Tabel pencocokan barang */}
-      <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
-        <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Cocokkan Barang & Catat Kondisi</p>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
-              <th className="pb-3 pr-4 font-semibold">Kode Barang</th>
-              <th className="pb-3 pr-4 font-semibold">Nama Barang</th>
-              <th className="pb-3 pr-4 font-semibold text-right">Qty Rencana</th>
-              <th className="pb-3 pr-6 font-semibold text-right">Qty Diterima</th>
-              <th className="pb-3 pr-4 font-semibold">Kondisi</th>
-              <th className="pb-3 pr-4 font-semibold">Lokasi/Zona</th>
-              <th className="pb-3 font-semibold">Serial Number</th>
-              <th className="pb-3 font-semibold">Foto</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item, index) => {
+          {!attachmentRaw ? (
+            <div className="p-5">
+              <div className="flex h-[560px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50">
+                <FileText size={30} className="text-gray-300" />
+                <p className="mt-2 text-xs text-gray-400">Tidak ada surat jalan yang di-upload</p>
+              </div>
+            </div>
+          ) : !attachmentViewUrl ? (
+            <div className="p-5">
+              <div className="flex h-[560px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-6 text-center">
+                <FileText size={30} className="text-gray-300" />
+                <div>
+                  <p className="text-sm font-semibold text-gray-600">{attachmentFileName}</p>
+                  <p className="mt-1 text-xs text-gray-400">Lampiran tidak dapat dibuka.</p>
+                </div>
+              </div>
+            </div>
+          ) : attachmentIsPdf ? (
+            <div className="relative h-[580px] w-full bg-gray-100 p-2">
+              <iframe
+                src={attachmentViewUrl}
+                title="Surat Jalan PDF"
+                width="100%"
+                height="100%"
+                className="h-[564px] w-full rounded-lg border-0 bg-white"
+              />
+            </div>
+          ) : attachmentIsImage ? (
+            <div className="h-[580px] w-full overflow-hidden bg-gray-100 p-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={attachmentViewUrl}
+                alt={`Surat jalan ${data.nomor_surat_jalan}`}
+                className="h-full w-full rounded-lg border border-gray-200 bg-white object-contain"
+              />
+            </div>
+          ) : (
+            <div className="p-5">
+              <div className="flex h-[560px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-6 text-center">
+                <FileText size={30} className="text-gray-300" />
+                <div>
+                  <p className="text-sm font-semibold text-gray-600">{attachmentFileName}</p>
+                  <p className="mt-1 text-xs text-gray-400">
+                    Pratinjau tidak tersedia untuk format file ini.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* KOLOM KANAN: informasi transaksi + tabel barang */}
+        <div className="space-y-6">
+          {/* Informasi ringkas — label kecil abu-abu, nilai di bawahnya */}
+          <div className="rounded-2xl border border-[#F3D9C7] bg-white p-5">
+            <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Informasi Surat Jalan
+            </p>
+
+            <div className="grid grid-cols-1 gap-x-6 gap-y-3.5 sm:grid-cols-2">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Cluster ID</p>
+                <p className="mt-0.5 break-all font-mono text-xs text-gray-800">{clusterIdValue}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Cluster Name</p>
+                <p className="mt-0.5 text-sm break-words text-gray-800">{clusterNameValue}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Project Name</p>
+                <p className="mt-0.5 text-sm break-words text-gray-800">{projectNameValue}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">BOQ ID</p>
+                <p className="mt-0.5 font-mono text-xs text-gray-800">{boqIdValue}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Nomor Tiket</p>
+                <p className="mt-0.5 break-all font-mono text-xs text-gray-800">{nomorTiketValue}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Pengirim</p>
+                <p className="mt-0.5 text-sm break-words text-gray-800">{pengirimLabel}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Tujuan</p>
+                <p className="mt-0.5 text-sm break-words text-gray-800">
+                  {tujuanLabel} {tujuanBadge}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Kendaraan</p>
+                <p className="mt-0.5 text-sm break-words text-gray-800">{kendaraanLabel}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">No Polisi</p>
+                <p className="mt-0.5 text-sm break-words text-gray-800">{noPolisiLabel}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Driver</p>
+                <p className="mt-0.5 text-sm break-words text-gray-800">{driverLabel}</p>
+              </div>
+            </div>
+
+            {data.boq_id && (
+              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4 text-sm">
+                {/* Staf Gudang tidak punya akses ke modul BOQ (K7): nomor BOQ
+                    ditampilkan sebagai teks, tanpa tautan ke halaman manajemen. */}
+                <span className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-600">
+                  {data.boq?.boq_number || `BOQ #${data.boq_id}`}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Tabel pencocokan barang */}
+          <div className="rounded-2xl border border-[#F3D9C7] bg-white p-6">
+            <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Cocokkan Barang & Catat Kondisi</p>
+<table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+            <th className="pb-3 pr-4 font-semibold text-center w-12">No</th>
+            <th className="pb-3 pr-4 font-semibold">Kode Barang</th>
+            <th className="pb-3 pr-4 font-semibold">Nama Barang</th>
+            <th className="pb-3 pr-4 font-semibold text-right">Qty Surat Jalan</th>
+            <th className="pb-3 pr-6 font-semibold text-right">Qty Diterima / Ditolak</th>
+            <th className="pb-3 pr-4 font-semibold">Kondisi</th>
+            <th className="pb-3 pr-4 font-semibold">Lokasi/Zona</th>
+            <th className="pb-3 font-semibold">Serial Number</th>
+            <th className="pb-3 font-semibold">Foto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, index) => {
               const selisih = item.qtyDiterima - item.qtyRencana;
               const adaKelebihan = selisih > 0;
               return (
-                <tr key={item.itemId} className="border-b border-gray-50 last:border-0 align-top">
+                <Fragment key={item.itemId}>
+                <tr className="border-b border-gray-50 last:border-0 align-top">
+                  <td className="py-3 pr-4 text-center text-xs text-slate-500">{index + 1}</td>
                   <td className="py-3 pr-4 font-medium text-gray-800">{item.kodeBarang}</td>
                   <td className="py-3 pr-4 text-gray-600">{item.namaBarang}</td>
                   <td className="py-3 pr-4 text-right text-gray-500">{item.qtyRencana}</td>
@@ -593,10 +1075,34 @@ export default function InboundDetailPage() {
                     <input
                       type="number"
                       min={0}
+                      max={item.qtyRencana}
                       value={item.qtyDiterima}
                       onChange={(e) => handleQtyDiterimaChange(index, Number(e.target.value))}
                       className="w-20 rounded-md border border-gray-200 px-2 py-1.5 text-right text-sm focus:border-[#E8632C] focus:outline-none"
                     />
+                    <div className="mt-1 text-[11px] text-gray-500">
+                      Ditolak:{" "}
+                      <span className={item.qtyDitolak > 0 ? "font-semibold text-rose-600" : "font-semibold text-gray-700"}>
+                        {item.qtyDitolak}
+                      </span>
+                    </div>
+                    {item.qtyDitolak > 0 && (
+                      <div className="mt-1.5">
+                        <input
+                          value={item.alasanPenolakan}
+                          onChange={(e) => handleAlasanPenolakanChange(index, e.target.value)}
+                          placeholder="Alasan penolakan (wajib)"
+                          className={`w-44 rounded-md border px-2 py-1.5 text-xs focus:outline-none ${
+                            item.alasanPenolakan.trim()
+                              ? "border-gray-200 focus:border-[#E8632C]"
+                              : "border-rose-300 focus:border-rose-400"
+                          }`}
+                        />
+                        {!item.alasanPenolakan.trim() && (
+                          <span className="mt-1 block text-[11px] font-medium text-rose-600">Alasan wajib diisi.</span>
+                        )}
+                      </div>
+                    )}
                     {adaKelebihan && (
                       <div className="mt-1.5">
                         {item.isKelebihan ? (
@@ -613,19 +1119,54 @@ export default function InboundDetailPage() {
                     )}
                   </td>
                   <td className="py-3 pr-4">
-                    <select
-                      value={item.kondisi}
-                      onChange={(e) => updateItem(index, { kondisi: e.target.value })}
-                      disabled={item.qtyDiterima === 0}
-                      className={`rounded-md border px-2 py-1.5 text-xs font-medium focus:outline-none disabled:opacity-40 ${item.kondisi ? KONDISI_TONE[item.kondisi] : "border-gray-200 text-gray-500"}`}
-                    >
-                      <option value="">Pilih kondisi...</option>
-                      {KONDISI_OPTIONS.map((k) => (
-                        <option key={k.value} value={k.value}>
-                          {k.label}
-                        </option>
-                      ))}
-                     </select>
+                    {item.qtyDiterima > 1 ? (
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex flex-wrap gap-1">
+                          {summarizeUnitConditions(item.units).map((chip) => (
+                            <span
+                              key={chip.label}
+                              className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${chip.tone}`}
+                            >
+                              {chip.label}
+                            </span>
+                          ))}
+                          {item.units.every((u) => !u.kondisi) && (
+                            <span className="text-[11px] text-gray-400">Belum dinilai</span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setUnitPanelOpen((prev) => ({ ...prev, [index]: !prev[index] }))
+                          }
+                          className="inline-flex w-fit items-center gap-1 text-[11px] font-semibold text-[#E8632C] hover:underline"
+                        >
+                          {unitPanelOpen[index] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                          Nilai {item.qtyDiterima} unit
+                        </button>
+                        <span
+                          className={`text-[11px] font-medium ${
+                            unitRowsMissingIndexes.includes(index) ? "text-rose-600" : "text-gray-400"
+                          }`}
+                        >
+                          {item.qtyDiterima - item.units.filter((u) => u.kondisi).length}/{item.qtyDiterima} dinilai
+                        </span>
+                      </div>
+                    ) : (
+                      <select
+                        value={item.kondisi}
+                        onChange={(e) => updateItem(index, { kondisi: e.target.value })}
+                        disabled={item.qtyDiterima === 0}
+                        className={`rounded-md border px-2 py-1.5 text-xs font-medium focus:outline-none disabled:opacity-40 ${item.kondisi ? KONDISI_TONE[item.kondisi] : "border-gray-200 text-gray-500"}`}
+                      >
+                        <option value="">Pilih kondisi...</option>
+                        {KONDISI_OPTIONS.map((k) => (
+                          <option key={k.value} value={k.value}>
+                            {k.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                    <td className="py-3 pr-4 text-xs text-gray-600">
                      {item.zona ? (
@@ -659,9 +1200,17 @@ export default function InboundDetailPage() {
                   <td className="py-3">
                     <div className="flex flex-col gap-2">
                       <div className="flex flex-wrap gap-1.5">
+                        {fotoPreviews[index] && (
+                          <div className="relative h-14 w-14 overflow-hidden rounded-lg border border-[#E8632C]">
+                            <img src={fotoPreviews[index]} alt="Pratinjau foto" className="h-full w-full object-cover" />
+                            <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-[9px] font-medium text-white">
+                              Mengunggah
+                            </span>
+                          </div>
+                        )}
                         {item.fotos?.map((foto) => (
                           <div key={foto.foto_id} className="relative h-14 w-14 overflow-hidden rounded-lg border border-gray-200">
-                            <img src={foto.url} alt={foto.filename || "Foto barang"} className="h-full w-full object-cover" />
+                            <img src={safeUrl(foto.url) ?? "#"} alt={foto.filename || "Foto barang"} className="h-full w-full object-cover" />
                             <button
                               type="button"
                               onClick={() => handleFotoDelete(index, foto.foto_id)}
@@ -673,24 +1222,28 @@ export default function InboundDetailPage() {
                           </div>
                         ))}
                       </div>
-                      <div>
-                        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:border-[#E8632C] hover:text-[#E8632C]">
-                          <Upload size={12} />
-                          {uploadingFoto[index] ? "Uploading..." : "Upload Foto"}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            disabled={uploadingFoto[index]}
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                handleFotoUpload(index, file);
-                              }
-                              e.target.value = "";
-                            }}
-                          />
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <label
+                          htmlFor={`foto-${index}`}
+                          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:border-[#E8632C] hover:text-[#E8632C] ${uploadingFoto[index] ? "pointer-events-none opacity-50" : ""}`}
+                        >
+                          {uploadingFoto[index] ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                          Upload Foto
                         </label>
+                        <input
+                          id={`foto-${index}`}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={uploadingFoto[index]}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              handleFotoUpload(index, file);
+                            }
+                            e.target.value = "";
+                          }}
+                        />
                       </div>
                       {fotoErrors[index] && (
                         <p className="text-[11px] text-rose-600">{fotoErrors[index]}</p>
@@ -698,6 +1251,60 @@ export default function InboundDetailPage() {
                     </div>
                   </td>
                 </tr>
+                {item.qtyDiterima > 1 && unitPanelOpen[index] && (
+                  <tr key={`units-${item.itemId}`} className="border-b border-gray-50 bg-gray-50/50">
+                    <td colSpan={8} className="px-4 py-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs font-semibold text-gray-700">
+                          Kondisi per unit — {item.kodeBarang}
+                        </p>
+                        <label className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                          Set semua unit
+                          <select
+                            value={bulkUnitCondition[index] || ""}
+                            onChange={(e) => setAllUnitConditions(index, e.target.value)}
+                            className="rounded-md border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-700 focus:outline-none"
+                          >
+                            <option value="">Pilih kondisi...</option>
+                            {KONDISI_OPTIONS.map((k) => (
+                              <option key={k.value} value={k.value}>
+                                {k.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                        {item.units.map((unit) => (
+                          <div key={unit.nomorUnit} className="rounded-lg border border-gray-200 bg-white p-2.5">
+                            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                              Unit {unit.nomorUnit}
+                            </p>
+                            <select
+                              value={unit.kondisi}
+                              onChange={(e) => setUnitCondition(index, unit.nomorUnit, e.target.value)}
+                              className={`w-full rounded-md border px-2 py-1.5 text-xs font-medium focus:outline-none ${unit.kondisi ? KONDISI_TONE[unit.kondisi] : "border-gray-200 text-gray-500"}`}
+                            >
+                              <option value="">Pilih kondisi...</option>
+                              {KONDISI_OPTIONS.map((k) => (
+                                <option key={k.value} value={k.value}>
+                                  {k.label}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              value={unit.catatan}
+                              onChange={(e) => setUnitCatatan(index, unit.nomorUnit, e.target.value)}
+                              placeholder="Catatan unit (opsional)"
+                              className="mt-1.5 w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-[#E8632C] focus:outline-none"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>
@@ -705,51 +1312,20 @@ export default function InboundDetailPage() {
       </div>
 
       <Button disabled={!canSubmit || submitting} onClick={handleSubmitClick} className="mt-5 h-auto rounded-xl bg-[#E8632C] px-6 py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40">
-        {submitting ? "Menyimpan..." : "Simpan & Ajukan Verifikasi"}
+        {submitting ? "Menyimpan..." : "Simpan Penerimaan & Lanjut Putaway"}
       </Button>
-
-      {/* Modal gabungan catatan kelebihan */}
-      {showExcessModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowExcessModal(false)}>
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6" onClick={(e) => e.stopPropagation()}>
-            <p className="mb-1 flex items-center gap-2 text-sm font-semibold text-gray-900">
-              <PackagePlus size={16} className="text-[#E8632C]" />
-              Catat Kelebihan Barang
-            </p>
-            <p className="mb-4 text-xs text-gray-500">Ada {unresolvedExcessIndexes.length} barang yang qty diterimanya melebihi rencana. Isi catatan kelebihan buat masing-masing sebelum bisa disimpan.</p>
-
-            <div className="max-h-80 space-y-4 overflow-y-auto pr-1">
-              {unresolvedExcessIndexes.map((idx) => {
-                const item = items[idx];
-                const selisih = item.qtyDiterima - item.qtyRencana;
-                return (
-                  <div key={item.itemId} className="rounded-xl border border-gray-100 p-3">
-                    <p className="text-sm font-semibold text-gray-800">{item.namaBarang}</p>
-                    <p className="mb-2 text-xs text-gray-500">
-                      Diterima {item.qtyDiterima} unit, rencana {item.qtyRencana} unit — selisih <span className="font-semibold text-gray-900">{selisih} unit</span>
-                    </p>
-                    <textarea
-                      value={excessNotesDraft[idx] || ""}
-                      onChange={(e) => setExcessNotesDraft((prev) => ({ ...prev, [idx]: e.target.value }))}
-                      rows={2}
-                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
-                    />
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setShowExcessModal(false)} className="rounded-full border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">
-                Batal
-              </button>
-              <Button onClick={handleConfirmExcessAndSave} disabled={!excessNoteFilled || submitting} className="h-auto rounded-full bg-[#E8632C] px-5 py-2 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40">
-                {submitting ? "Menyimpan..." : "Simpan & Ajukan Verifikasi"}
-              </Button>
-            </div>
-          </div>
-        </div>
+      {hasMissingUnitConditions && (
+        <p className="mt-2 text-xs text-rose-600">
+          Masih ada {unitRowsMissingIndexes.length} barang dengan unit yang belum dinilai kondisinya. Buka tombol Nilai unit pada masing-masing barang.
+        </p>
       )}
+      {hasMissingAlasan && (
+        <p className="mt-2 text-xs text-rose-600">
+          Masih ada {missingAlasanIndexes.length} barang yang ditolak sebagian tanpa alasan penolakan. Isi alasan pada kolom Qty Diterima/Ditolak.
+        </p>
+      )}
+        </div>
+      </div>
 
       {showFotoSuccessModal && (
         <div

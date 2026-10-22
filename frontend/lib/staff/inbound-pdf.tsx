@@ -7,7 +7,9 @@ export type InboundItem = {
   namaBarang: string;
   qtyDiminta: number;
   qtyDiterima: number;
-  kondisi: KondisiPerangkat | "";
+  // Satu label kondisi untuk qty 1, atau ringkasan "Baik 6, Rusak Berat 2"
+  // kalau kondisi dinilai per unit.
+  kondisi: KondisiPerangkat | (string & {});
   serialNumbers: string[];
   kelebihan?: {
     qty: number;
@@ -165,7 +167,7 @@ export async function downloadInboundPdf(data: InboundSuratJalan, penerimaName: 
                 <Text style={styles.infoValue}>{data.tanggal}</Text>
               </View>
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Nama PIC Pemohon</Text>
+                <Text style={styles.infoLabel}>Nama PIC Penerima</Text>
                 <Text style={styles.infoColon}>:</Text>
                 <Text style={styles.infoValue}>{data.namaPicPemohon}</Text>
               </View>
@@ -222,7 +224,7 @@ export async function downloadInboundPdf(data: InboundSuratJalan, penerimaName: 
               </View>
             </View>
             <View style={styles.signCol}>
-              <Text style={styles.signLabel}>PIC Pemohon</Text>
+              <Text style={styles.signLabel}>PIC Penerima</Text>
               <View style={styles.signLine}>
                 <Text style={styles.signName}>{data.namaPicPemohon}</Text>
               </View>

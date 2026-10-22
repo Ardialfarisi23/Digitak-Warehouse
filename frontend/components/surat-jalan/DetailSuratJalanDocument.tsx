@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
-import { getKondisiLabel } from "@/lib/kondisi-barang";
+import { getKondisiLabel, getKondisiUnitRows, formatRingkasanKondisiUnits, type KondisiUnit } from "@/lib/kondisi-barang";
+import { useAuth } from "@/lib/auth-context";
+import { canAccessBoqModule } from "@/lib/navigation";
 
 export interface DetailSuratJalanItem {
   item_id?: number | string;
@@ -15,6 +17,8 @@ export interface DetailSuratJalanItem {
   qty?: number | string;
   satuan?: { kode_satuan?: string };
   kondisi?: string;
+  // Penilaian kondisi per unit dari proses inbound (relasi `units`).
+  units?: KondisiUnit[] | null;
   serial_number?: string;
   catatan?: string;
   is_di_luar_boq?: boolean;
@@ -31,6 +35,10 @@ export interface DetailSuratJalanData {
   gudang_tujuan?: { nama_gudang?: string };
   personil_pengantar?: { nama?: string };
   kendaraan?: { jenis_kendaraan?: string; merk?: string; no_polisi?: string } | null;
+  // Kolom teks bebas (inbound), sudah di-fallback-kan di backend
+  kendaraan_teks?: string | null;
+  no_polisi_teks?: string | null;
+  driver_teks?: string | null;
   creator?: { nama?: string };
   boq_id?: number | string | null;
   boq?: {
@@ -55,10 +63,9 @@ interface InfoRowProps {
 
 function InfoRow({ label, value }: InfoRowProps) {
   return (
-    <div className="grid grid-cols-[130px_10px_1fr] items-start leading-snug">
-      <span className="text-gray-500">{label}</span>
-      <span className="text-gray-500">:</span>
-      <span className="font-semibold text-gray-900">{value}</span>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-2 gap-y-1 items-start leading-snug text-gray-900">
+      <span className="text-xs text-gray-500 sm:text-sm sm:font-medium sm:text-gray-900">{label}</span>
+      <span className="min-w-0 break-words overflow-wrap-break-word font-semibold sm:font-normal">{value}</span>
     </div>
   );
 }
@@ -88,6 +95,21 @@ function tampilkan(value: unknown, fallback = "-") {
   return s.length > 0 ? s : fallback;
 }
 
+function formatNomorSuratWithWbr(value: string) {
+  if (!value) return "-";
+  const parts = value.split('/');
+  if (parts.length <= 1) return value;
+  const result: React.ReactNode[] = [];
+  parts.forEach((part, index) => {
+    if (index > 0) {
+      result.push('/', <wbr key={`wbr-${index}`} />, part);
+    } else {
+      result.push(part);
+    }
+  });
+  return result;
+}
+
 export interface DetailSuratJalanDocumentProps {
   data: DetailSuratJalanData | null | undefined;
   variant?: "full" | "compact";
@@ -105,6 +127,8 @@ export function DetailSuratJalanDocument({
   hideTujuanBadge = false,
   stockStatusByItemId,
 }: DetailSuratJalanDocumentProps) {
+  const { user } = useAuth();
+
   if (!data) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
@@ -119,15 +143,24 @@ export function DetailSuratJalanDocument({
   const namaGudangAsal = tampilkan(data.gudang_asal?.nama_gudang);
   const namaGudangTujuan = tampilkan(data.gudang_tujuan?.nama_gudang);
   const namaProject = tampilkan(data.project?.nama_project);
+  // Kolom teks bebas (inbound) diprioritaskan; relasi master data jadi cadangan.
+  // Outbound tidak pernah mengisi kolom teks, jadi perilakunya tidak berubah.
+  const namaKendaraanTeks = tampilkan(data.kendaraan_teks);
+  const noPolisiTeks = tampilkan(data.no_polisi_teks);
+  const driverTeks = tampilkan(data.driver_teks);
   const jenisKendaraan = tampilkan(data.kendaraan?.jenis_kendaraan);
   const merkKendaraan = tampilkan(data.kendaraan?.merk);
-  const noPolisi = tampilkan(data.kendaraan?.no_polisi);
-  const namaDriver = tampilkan(data.personil_pengantar?.nama);
-  const namaMaterialHandler = tampilkan(data.creator?.nama);
+  const noPolisi = noPolisiTeks !== "-" ? noPolisiTeks : tampilkan(data.kendaraan?.no_polisi);
+  const namaDriver = driverTeks !== "-" ? driverTeks : tampilkan(data.personil_pengantar?.nama);
 
-  const kendaraanLabel = merkKendaraan && merkKendaraan !== "-"
-    ? `${merkKendaraan} - ${jenisKendaraan}`
-    : jenisKendaraan;
+  const kendaraanLabel =
+    namaKendaraanTeks !== "-"
+      ? namaKendaraanTeks
+      : merkKendaraan && merkKendaraan !== "-"
+        ? `${merkKendaraan} - ${jenisKendaraan}`
+        : jenisKendaraan;
+
+  const namaMaterialHandler = tampilkan(data.creator?.nama);
 
   const tujuanLabel =
     data.tujuan_tipe === "lapangan"
@@ -136,9 +169,9 @@ export function DetailSuratJalanDocument({
 
   const tujuanBadge =
     data.tujuan_tipe === "lapangan" ? (
-      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Lapangan</span>
+       <span className="ml-2 whitespace-nowrap rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">Lapangan</span>
     ) : data.tujuan_tipe === "gudang" && !hideTujuanBadge ? (
-      <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Gudang</span>
+       <span className="ml-2 whitespace-nowrap rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">Gudang</span>
     ) : null;
 
   const pengirimLabel =
@@ -153,222 +186,234 @@ export function DetailSuratJalanDocument({
 
   const pengirimBadge =
     data.tipe_pengirim === "internal" ? (
-      <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">Internal</span>
+       <span className="ml-2 whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">Internal</span>
     ) : data.tipe_pengirim === "external" ? (
-      <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">External</span>
+       <span className="ml-2 whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">External</span>
     ) : null;
 
-  const hasBoq = data.boq_id !== null && data.boq_id !== undefined && data.boq_id !== "";
-  const boqValue = hasBoq ? (
-    <span className="inline-flex items-center gap-2">
-      <Link
-        href="/dashboard/boq"
-        className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
-      >
-        <ExternalLink size={12} />
-        {tampilkan(data.boq?.boq_number, "BOQ Tidak Diketahui")}
-      </Link>
-      <span className="text-xs text-slate-500">
-        Tiket: {tampilkan(data.boq?.tiket?.kode_tiket)}
-      </span>
-    </span>
-  ) : (
-    <span className="text-xs text-slate-400">Tidak terhubung ke BOQ/Tiket</span>
-  );
+   const hasBoq = data.boq_id !== null && data.boq_id !== undefined && data.boq_id !== "";
+   // Staf Gudang tidak punya akses ke modul BOQ (K7) → nomor BOQ ditampilkan
+   // sebagai teks biasa, tanpa tautan ke halaman manajemen.
+   const canOpenBoq = canAccessBoqModule(user?.role);
+   const boqValue = hasBoq ? (
+     <span className="inline-flex flex-nowrap items-center gap-2">
+       {canOpenBoq ? (
+         <Link
+           href="/dashboard/boq"
+           className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
+         >
+           <ExternalLink size={12} />
+           {tampilkan(data.boq?.boq_number, "BOQ Tidak Diketahui")}
+         </Link>
+       ) : (
+         <span className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600">
+           {tampilkan(data.boq?.boq_number, "BOQ Tidak Diketahui")}
+         </span>
+       )}
+       <span className="text-xs text-slate-500">
+         Tiket: {tampilkan(data.boq?.tiket?.kode_tiket)}
+       </span>
+     </span>
+   ) : (
+     <span className="text-slate-400">-</span>
+   );
 
   const items = Array.isArray(data.items) ? data.items : [];
   const showAksi = showItemAction ?? Boolean(renderItemAction);
-  const emptyColSpan = showAksi ? 7 : 6;
+   const emptyColSpan = showAksi ? 6 : 5;
 
   return (
-    <div
-      id="surat-jalan-document"
-      className="w-full rounded-2xl border border-[#F3D9C7] bg-white p-10 print:rounded-none print:border-0 print:p-0"
+       <div
+       id="surat-jalan-document"
+       className="w-full rounded-2xl border border-[#F3D9C7] bg-white p-4 sm:p-8 print:rounded-none print:border-0 print:p-0"
     >
       {/* Kop surat dengan logo */}
-      <div className="mb-8 flex items-start justify-between border-b-2 border-[#E8632C] pb-6">
+      <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between border-b-2 border-[#E8632C] pb-6">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/logo-digitak-gradasi.png"
           alt="Digitak Studio — PT Metanouva Informatika"
-          className="h-16 w-auto object-contain"
+          className="h-12 w-auto object-contain sm:h-12 md:h-14"
         />
-        <div className="flex flex-col items-end">
-          <h1 className="text-3xl font-bold tracking-wide text-gray-900">SURAT JALAN</h1>
-          <p className="mt-1 text-xs text-gray-500">Surat Jalan Internal — Digitak Studio</p>
-          <div className="mt-2 text-right">
-            <p className="text-xs font-bold text-[#E8632C]">PT Metanouva Informatika</p>
-            <p className="text-[10px] text-gray-400">Digitak Studio</p>
+        <div className="flex flex-col items-start sm:items-end text-center sm:text-right">
+           <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold tracking-wide text-gray-900">SURAT JALAN</h1>
+          <p className="mt-1 text-xs sm:text-sm text-gray-500 break-words">Surat Jalan Internal — Digitak Studio</p>
+          <div className="mt-2 text-center sm:text-right">
+             <p className="text-xs font-bold text-[#E8632C]">PT Metanouva Informatika</p>
+             <p className="text-xs text-gray-400">Digitak Studio</p>
           </div>
         </div>
       </div>
 
       {/* Info grid — responsive */}
-      <div className="mb-8 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-xs">
+      <div className="mb-8 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 md:gap-x-8 text-xs sm:text-sm print:gap-x-8 print:text-xs">
         <div className="space-y-3">
-          <InfoRow label="No Surat Jalan" value={<span className="break-all font-semibold">{tampilkan(data.nomor_surat_jalan)}</span>} />
+           <InfoRow 
+             label="No Surat Jalan" 
+             value={<span className="min-w-0 break-words font-semibold">{formatNomorSuratWithWbr(tampilkan(data.nomor_surat_jalan))}</span>} 
+           />
           <InfoRow label="Tipe" value={tipeLabel} />
           <InfoRow label="Project" value={namaProject} />
-          <InfoRow
-            label="Gudang Asal"
-            value={
-              <span>
-                {pengirimLabel}
-                {pengirimBadge}
-              </span>
-            }
-          />
+           <InfoRow
+             label="Gudang Asal"
+             value={
+               <span className="flex flex-wrap items-center gap-2 min-w-0 break-words">
+                 <span className="min-w-0 break-words">{pengirimLabel}</span>
+                 {pengirimBadge}
+               </span>
+             }
+           />
         </div>
         <div className="space-y-3">
           <InfoRow label="Tanggal" value={tanggalLabel} />
-          <InfoRow
-            label="Gudang Tujuan"
-            value={
-              <span>
-                {tujuanLabel}
-                {tujuanBadge}
-              </span>
-            }
-          />
+           <InfoRow
+             label="Gudang Tujuan"
+             value={
+               <span className="flex flex-wrap items-center gap-2 min-w-0 break-words">
+                 <span className="min-w-0 break-words">{tujuanLabel}</span>
+                 {tujuanBadge}
+               </span>
+             }
+           />
           <InfoRow label="Kendaraan" value={kendaraanLabel} />
           <InfoRow label="No Polisi" value={noPolisi} />
           <InfoRow label="Driver" value={namaDriver} />
-          <InfoRow label="BOQ / Tiket" value={boqValue} />
+          <InfoRow label="Cluster & BOQ" value={boqValue} />
         </div>
       </div>
 
       {variant === "full" && (
         <>
-          {/* Tabel item */}
-          <table className="w-full table-fixed border-collapse text-xs">
-            <colgroup>
-              <col className="w-[8%]" />
-              <col className="w-[22%]" />
-              <col className="w-[32%]" />
-              <col className="w-[8%]" />
-              <col className="w-[8%]" />
-              <col className="w-[14%]" />
-              {showAksi && <col className="w-[8%]" />}
-            </colgroup>
-            <thead>
-              <tr className="bg-[#FFF7ED]">
-                <th className="border p-1 text-center font-semibold whitespace-nowrap">No</th>
-                <th className="border p-1 text-center font-semibold whitespace-nowrap">Kode Barang</th>
-                <th className="border p-1 text-left font-semibold whitespace-nowrap">Nama Barang</th>
-                <th className="border p-1 text-center font-semibold whitespace-nowrap">QTY</th>
-                <th className="border p-1 text-center font-semibold whitespace-nowrap">UOM</th>
-                <th className="border p-1 text-center font-semibold whitespace-nowrap">Kondisi</th>
-                {showAksi && (
-                  <th className="border p-1 text-center font-semibold whitespace-nowrap">Aksi</th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={emptyColSpan}
-                    className="border p-1 text-center text-slate-400"
-                  >
-                    Belum ada item barang.
-                  </td>
-                </tr>
-              ) : (
-                items.map((item, i) => (
-                  <tr key={item.item_id ?? i} className="even:bg-gray-50">
-                    <td className="border p-1 text-center">{i + 1}</td>
-                    <td className="border p-1 text-center">{tampilkan(item.barang?.kode_perangkat)}</td>
-                    <td className="border p-1 text-left truncate">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate">{tampilkan(item.barang?.nama_barang)}</span>
-                        {item.barang?.kategori?.is_kritis && (
-                          <span className="shrink-0 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">
-                            Kritis
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="border p-1 text-center font-semibold">{Number(item.qty || 0)}</td>
-                    <td className="border p-1 text-center">{tampilkan(item.satuan?.kode_satuan ?? item.barang?.satuan_default?.kode_satuan)}</td>
-                     <td className="border p-1 text-center">
-                       <div>
-                         {item.kondisi != null && <div>{getKondisiLabel(item.kondisi)}</div>}
-                         {item.catatan && <div className="text-xs text-slate-500 italic">{item.catatan}</div>}
-                         {item.is_di_luar_boq && (
-                           <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
-                             Di luar BOQ
-                           </span>
-                         )}
-                         {item.kondisi == null && !item.catatan && !item.is_di_luar_boq && tampilkan(null)}
-                       </div>
-                       {stockStatusByItemId && (() => {
-                         const stokStatus = stockStatusByItemId[Number(item.item_id)];
-                         if (!stokStatus) return null;
-                         const tone =
-                           stokStatus.status === "Cukup"
-                             ? "bg-emerald-50 text-emerald-700"
-                             : stokStatus.status === "Kurang"
-                               ? "bg-amber-50 text-amber-700"
-                               : "bg-red-50 text-red-700";
-                         return (
-                           <div className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${tone}`}>
-                             {stokStatus.status === "Cukup" && `Cukup (${stokStatus.availableQty})`}
-                             {stokStatus.status === "Kurang" && `Kurang (tersedia: ${stokStatus.availableQty})`}
-                             {stokStatus.status === "Tidak Tersedia" && "Tidak Tersedia"}
-                             {stokStatus.otherConditions && stokStatus.status !== "Cukup" && (
-                               <span className="ml-1 text-slate-500">· {stokStatus.otherConditions}</span>
-                             )}
-                           </div>
-                         );
-                       })()}
-                     </td>
+{/* Tabel item — desktop & print */}
+            <div className="w-full overflow-x-auto overscroll-x-contain print:block">
+               <table className="w-full border-collapse text-xs">
+               <thead>
+                 <tr className="bg-[#FFF7ED]">
+                    <th className="border px-1 py-1 text-center font-semibold whitespace-nowrap text-xs">No</th>
+
+                    <th className="border px-1 py-1 text-left font-semibold text-xs">Nama Barang</th>
+                    <th className="border px-1 py-1 text-center font-semibold whitespace-nowrap text-xs">QTY</th>
+                    <th className="border px-1 py-1 text-center font-semibold whitespace-nowrap text-xs">UOM</th>
+                   <th className="border px-2 py-1.5 text-left font-semibold text-xs">Kondisi</th>
                     {showAksi && (
-                      <td className="border p-1 text-center">{renderItemAction ? renderItemAction(item, i) : null}</td>
+                      <th className="border px-1 py-1 text-center font-semibold whitespace-nowrap print:hidden">Aksi</th>
                     )}
-                  </tr>
-                ))
-              )}
+                 </tr>
+               </thead>
+            <tbody>
+          {items.length === 0 ? (
+            <tr>
+              <td
+                colSpan={emptyColSpan}
+                className="border px-2 py-1.5 text-center text-slate-400"
+              >
+                Belum ada item barang.
+              </td>
+            </tr>
+          ) : (
+            items.map((item, i) => (
+              <tr key={item.item_id ?? i} className="even:bg-gray-50">
+                  <td className="border px-1 py-1 text-center text-xs">{i + 1}</td>
+                  <td className="border px-1 py-1 text-left text-xs break-words">
+                   <div className="block">
+                     <span className="block" title={tampilkan(item.barang?.nama_barang)}>
+                       {tampilkan(item.barang?.nama_barang)}
+                     </span>
+                     {item.barang?.kode_perangkat && (
+                       <span className="block text-xs mt-1" title={tampilkan(item.barang?.kode_perangkat)}>
+                         {tampilkan(item.barang?.kode_perangkat)}
+                       </span>
+                     )}
+                   </div>
+                   {item.barang?.kategori?.is_kritis && (
+                     <span className="ml-2 inline-block whitespace-nowrap rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-600">
+                       Kritis
+                     </span>
+                   )}
+                 </td>
+                 <td className="border px-1 py-1 text-center text-xs font-semibold">{Number(item.qty || 0)}</td>
+                 <td className="border px-1 py-1 text-center text-xs">{tampilkan(item.satuan?.kode_satuan ?? item.barang?.satuan_default?.kode_satuan)}</td>
+                 <td className="border px-1 py-1 text-left text-xs">
+                  <div>
+                    {(() => {
+                      const barisUnit = getKondisiUnitRows(item.units);
+                      if (barisUnit.length > 0) {
+                        return (
+                          <div className="space-y-0.5">
+                            <div className="font-medium">
+                              {formatRingkasanKondisiUnits(item.units)}
+                            </div>
+                            {barisUnit.map((row) => (
+                              <div
+                                key={row.nomor}
+                                       className="text-xs leading-tight text-slate-500"
+                              >
+Unit {row.nomor}: {getKondisiLabel(row.kondisi)}
+                                      {row.catatan ? ` (${row.catatan})` : ""}
+                                    </div>
+                              ))}
+                            {item.catatan && (
+                              <div className="text-xs text-slate-500 italic">{item.catatan}</div>
+                            )}
+                          </div>
+                        );
+                      }
+                      return (
+                        <>
+                          {item.kondisi != null && <div>{getKondisiLabel(item.kondisi)}</div>}
+                          {item.catatan && <div className="text-xs text-slate-500 italic">{item.catatan}</div>}
+                          {item.kondisi == null && !item.catatan && !item.is_di_luar_boq && tampilkan(null)}
+                        </>
+                      );
+                    })()}
+                    {item.is_di_luar_boq && (
+                             <span className="inline-block whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-600">
+                        Di luar BOQ
+                      </span>
+                    )}
+                  </div>
+                </td>
+                 {showAksi && (
+                   <td className="border px-1 py-1 text-center print:hidden">{renderItemAction ? renderItemAction(item, i) : null}</td>
+                 )}
+              </tr>
+            ))
+          )}
             </tbody>
           </table>
-
-          {/* Tanda tangan */}
-          <div className="mb-8 grid grid-cols-3 gap-6 text-center text-sm">
-            <div className="flex flex-col justify-between h-32">
-              <span className="font-medium text-gray-700 min-h-[32px] flex items-center justify-center">
-                Material Handler
-              </span>
-              <div>
-                <div className="border-t border-gray-400 pt-1">
-                  <p className="font-semibold text-gray-900">{namaMaterialHandler}</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-col justify-between h-32">
-              <span className="font-medium text-gray-700 min-h-[32px] flex items-center justify-center">
-                Driver
-              </span>
-              <div>
-                <div className="border-t border-gray-400 pt-1">
-                  <p className="font-semibold text-gray-900">{namaDriver}</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-col justify-between h-32">
-              <span className="font-medium text-gray-700 min-h-[32px] flex items-center justify-center">
-                PIC Pemohon (Penerima)
-              </span>
-              <div>
-                <div className="border-t border-gray-400 pt-1">
-                  <p className="font-semibold text-gray-900">{tampilkan(data.pic_pemohon_nama)}</p>
-                </div>
-              </div>
-            </div>
           </div>
+
+
+
+           {/* Tanda tangan */}
+           <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4 print:grid-cols-3 text-center text-sm">
+             <div className="border border-gray-200 rounded-md p-3 sm:border-0 sm:p-0">
+               <div className="flex flex-col items-center">
+                 <span className="block text-xs text-gray-500 mb-2">Material Handler</span>
+                 <div className="h-16 w-12 border-b border-gray-400 mb-2"></div>
+                 <p className="font-semibold text-gray-900 text-sm">{namaMaterialHandler}</p>
+               </div>
+             </div>
+             <div className="border border-gray-200 rounded-md p-3 sm:border-0 sm:p-0">
+               <div className="flex flex-col items-center">
+                 <span className="block text-xs text-gray-500 mb-2">Driver</span>
+                 <div className="h-16 w-12 border-b border-gray-400 mb-2"></div>
+                 <p className="font-semibold text-gray-900 text-sm">{namaDriver}</p>
+               </div>
+             </div>
+             <div className="border border-gray-200 rounded-md p-3 sm:border-0 sm:p-0">
+               <div className="flex flex-col items-center">
+                 <span className="block text-xs text-gray-500 mb-2">PIC Penerima (Penerima)</span>
+                 <div className="h-16 w-12 border-b border-gray-400 mb-2"></div>
+                 <p className="font-semibold text-gray-900 text-sm">{tampilkan(data.pic_pemohon_nama)}</p>
+               </div>
+             </div>
+           </div>
         </>
       )}
 
       {/* Footer dokumen */}
-      <div className="flex items-center justify-between border-t border-gray-200 pt-3 text-[10px] text-gray-400">
+       <div className="flex items-center justify-between border-t border-gray-200 pt-3 text-xs text-gray-400">
         <span>Dokumen ini digenerate secara otomatis oleh sistem Digitak Studio.</span>
         <span>
           {tampilkan(data.nomor_surat_jalan)} | {tanggalLabel}

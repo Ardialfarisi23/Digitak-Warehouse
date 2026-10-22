@@ -11,9 +11,27 @@ tmp-*.js
 _tmp_*.js
 temp_*.js
 
+# Output diagnostik/verifikasi B1 (diabaikan dari commit)
+tmp/
+
 # TypeScript build info
 tsbuildinfo
 
+# Kilo
+.kilo/
+
 # Uploads (already ignored in backend/.gitignore)
+playwright-report/
+test-results/
+.tmp/
+*.bak
+*.orig
+*.patch
 
 node_modules/
+.env
+.env.*
+.next/
+dist/
+
+*.err

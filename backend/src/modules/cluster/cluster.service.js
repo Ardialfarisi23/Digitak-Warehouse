@@ -2,16 +2,45 @@ const clusterRepository = require("./cluster.repository");
 const AppError = require("../../shared/errors");
 const prisma = require("../../config/prisma");
 
-const findByProjectId = async (projectId) => {
+const findByProjectId = async (projectId, status = "aktif") => {
   if (!projectId) {
     throw new AppError("Project ID wajib diisi.", 400);
   }
-
-  return await clusterRepository.findByProjectId(projectId);
+  const allowed = ["all", "aktif", "nonaktif"];
+  if (!allowed.includes(status)) {
+    throw new AppError("Status filter tidak valid. Gunakan 'all', 'aktif', atau 'nonaktif'.", 400);
+  }
+  return await clusterRepository.findByProjectId(projectId, status);
 };
 
-const findAll = async () => {
-  return await clusterRepository.findAll();
+const findAll = async (query = {}) => {
+  const { status } = query;
+  const allowed = ["all", "aktif", "nonaktif"];
+  if (status !== undefined && !allowed.includes(status)) {
+    throw new AppError("Status filter tidak valid. Gunakan 'all', 'aktif', atau 'nonaktif'.", 400);
+  }
+  return await clusterRepository.findAll(query);
+};
+
+/**
+ * Daftar cluster read-only (untuk dropdown form staf).
+ * Hanya field minimal: id, kode, nama.
+ */
+const findOptions = async (query = {}) => {
+  const { project_id: projectId, status = "aktif", search } = query;
+  const allowed = ["all", "aktif", "nonaktif"];
+  if (!allowed.includes(status)) {
+    throw new AppError("Status filter tidak valid. Gunakan 'all', 'aktif', atau 'nonaktif'.", 400);
+  }
+
+  const rows = await clusterRepository.findOptions({ projectId, status, search });
+
+  return rows.map((row) => ({
+    cluster_id: row.cluster_id,
+    nama_cluster: row.nama_cluster,
+    project_id: row.project_id,
+    project_name: row.project?.nama_project || "",
+  }));
 };
 
 const create = async (data, userId) => {
@@ -41,6 +70,7 @@ const create = async (data, userId) => {
     ...data,
     cluster_id: normalizedClusterId,
     project_id: Number(data.project_id),
+    status_aktif: data.status_aktif === undefined || data.status_aktif === null ? true : Boolean(data.status_aktif),
     created_by: Number(userId),
     updated_by: Number(userId),
   };
@@ -57,6 +87,7 @@ const update = async (clusterId, data) => {
     nama_cluster: data.nama_cluster,
     cluster_type: data.cluster_type,
     alamat_lengkap: data.alamat_lengkap,
+    homepass_plan: data.homepass_plan,
   };
 
   return await clusterRepository.update(clusterId, updateData);
@@ -87,10 +118,43 @@ const toggleStatus = async (clusterId) => {
   return cluster;
 };
 
+const deleteCluster = async (clusterId) => {
+  if (!clusterId) {
+    throw new AppError("Cluster ID wajib diisi.", 400);
+  }
+
+  const existing = await prisma.cluster.findUnique({
+    where: { cluster_id: clusterId },
+    select: { cluster_id: true, nama_cluster: true },
+  });
+
+  if (!existing) {
+    throw new AppError("Cluster tidak ditemukan.", 404);
+  }
+
+  const relatedBoq = await prisma.boq.findFirst({
+    where: { cluster_id: clusterId },
+    select: { boq_id: true, status: true },
+  });
+
+  if (relatedBoq) {
+    throw new AppError(`Cluster tidak dapat dihapus karena masih digunakan pada data BOQ (status: ${relatedBoq.status}). Nonaktifkan cluster jika diperlukan.`, 409);
+  }
+
+  await prisma.cluster.update({
+    where: { cluster_id: clusterId },
+    data: { status_aktif: false },
+  });
+
+  return { message: "Cluster berhasil dihapus." };
+};
+
 module.exports = {
   findByProjectId,
   findAll,
+  findOptions,
   create,
   update,
   toggleStatus,
+  deleteCluster,
 };

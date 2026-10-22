@@ -28,6 +28,7 @@ const reportsRoutes = require("./modules/reports/reports.routes");
 const reconciliationRoutes = require("./modules/reconciliation/reconciliation.routes");
 const notificationRoutes = require("./modules/notifications/notifications.routes");
 const settingsRoutes = require("./modules/settings/settings.routes");
+const additionalRoutes = require("./modules/additional/additional.routes");
 const errorMiddleware = require("./middlewares/error.middleware");
 
 const app = express();
@@ -51,7 +52,29 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 app.use(morgan("dev"));
+
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+
+// Security headers (dasar, tanpa dependensi baru)
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
+
+// trust proxy setting
+const trustProxy = process.env.TRUST_PROXY;
+if (trustProxy !== undefined) {
+  let parsed = trustProxy;
+  if (/^\d+$/.test(trustProxy)) {
+    parsed = parseInt(trustProxy, 10);
+  } else if (trustProxy.toLowerCase() === 'true') {
+    parsed = true;
+  } else if (trustProxy.toLowerCase() === 'false') {
+    parsed = false;
+  }
+  app.set('trust proxy', parsed);
+}
 
 app.use((req, res, next) => {
   const originalJson = res.json.bind(res);
@@ -100,6 +123,7 @@ app.use("/api/reports", reportsRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/reconciliation", reconciliationRoutes);
+app.use("/api/additional-adjustments", additionalRoutes);
 
 // Error Handler (HARUS PALING BAWAH)
 app.use(errorMiddleware);

@@ -1,6 +1,10 @@
 ﻿const prisma = require("../../config/prisma");
 
-const DEFAULT_LIMIT = 10;
+// Halaman form surat jalan (inbound/outbound) memuat seluruh gudang untuk mengisi
+// dropdown tujuan. Nilai lama 10 membuat gudang terpotong diam-diam sehingga
+// gudang dadakan/transit milik project tertentu bisa tidak pernah muncul.
+const DEFAULT_LIMIT = 100;
+const MAX_LIMIT = 1000;
 const DEFAULT_PAGE = 1;
 
 const ALLOWED_SORT_FIELDS = [
@@ -46,15 +50,19 @@ const findAll = async ({
   sortOrder = "desc",
   is_aktif,
   is_internal,
+  tipe,
 } = {}) => {
   const sanitizedPage = Math.max(
     parseInt(page, 10) || DEFAULT_PAGE,
     DEFAULT_PAGE
   );
 
-  const sanitizedLimit = Math.max(
-    parseInt(limit, 10) || DEFAULT_LIMIT,
-    1
+  const sanitizedLimit = Math.min(
+    Math.max(
+      parseInt(limit, 10) || DEFAULT_LIMIT,
+      1
+    ),
+    MAX_LIMIT
   );
 
   const orderField = ALLOWED_SORT_FIELDS.includes(sortBy)
@@ -79,6 +87,10 @@ const findAll = async ({
     where.is_internal = true;
   } else if (is_internal === "false") {
     where.is_internal = false;
+  }
+
+  if (tipe) {
+    where.tipe = tipe;
   }
 
   if (search) {
@@ -193,7 +205,6 @@ const getPickingStockAvailability = async (gudang_id, items = [], projectId = nu
   const stockWhere = {
     gudang_id: Number(gudang_id),
     barang_id: { in: barangIds },
-    ...(projectId ? { project_id: Number(projectId) } : {}),
   };
 
   const stocks = await prisma.stok_gudang.findMany({
@@ -228,10 +239,26 @@ const getPickingStockAvailability = async (gudang_id, items = [], projectId = nu
     byBarang.get(entry.barang_id).push(entry);
   }
 
-  return Array.from(byBarang.entries()).map(([barang_id, zonas]) => ({
-    barang_id: Number(barang_id),
-    zonas,
-  }));
+  const result = [];
+  const barangDenganStok = new Set();
+  for (const [barang_id, zonas] of byBarang.entries()) {
+    barangDenganStok.add(barang_id);
+    result.push({
+      barang_id: Number(barang_id),
+      zonas,
+    });
+  }
+
+  for (const barangId of barangIds) {
+    if (!barangDenganStok.has(barangId)) {
+      result.push({
+        barang_id: Number(barangId),
+        zonas: [],
+      });
+    }
+  }
+
+  return result;
 };
 
 const getPickingAvailability = async (gudang_id, items = [], projectId = null) => {
@@ -261,7 +288,6 @@ const getPickingAvailability = async (gudang_id, items = [], projectId = null) =
       gudang_id: Number(gudang_id),
       barang_id: barangId,
       zona_id: zonaId,
-      ...(projectId ? { project_id: Number(projectId) } : {}),
     };
 
     const requestedStock = await prisma.stok_gudang.findFirst({

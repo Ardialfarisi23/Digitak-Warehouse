@@ -39,8 +39,17 @@ const update = async (req, res, next) => {
 
 const remove = async (req, res, next) => {
   try {
-    const result = await vehicleService.remove(req.params.kendaraan_id, req.user.id);
-    return response.success(res, "Vehicle berhasil dihapus.", result);
+    await vehicleService.softDelete(req.params.kendaraan_id, req.user.id);
+    return response.success(res, "Kendaraan berhasil dinonaktifkan.", null, 200);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const restore = async (req, res, next) => {
+  try {
+    await vehicleService.restore(req.params.kendaraan_id, req.user.id);
+    return response.success(res, "Kendaraan berhasil diaktifkan kembali.", null, 200);
   } catch (err) {
     next(err);
   }
@@ -52,4 +61,5 @@ module.exports = {
   findByNoPolisi,
   update,
   remove,
+  restore,
 };

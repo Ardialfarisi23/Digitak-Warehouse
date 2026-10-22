@@ -3,29 +3,45 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Download, ArrowLeft, ExternalLink, Loader2, X } from "lucide-react";
+import { Download, ArrowLeft, Loader2, X } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { KRITIS_THRESHOLD, MENIPIS_THRESHOLD } from "@/lib/constants/stok";
+import { getSuratJalanStatusLabel } from "@/lib/surat-jalan-status";
 
-const STATUS_META: Record<string, { label: string; tone: string }> = {
-  draft_diajukan: { label: "Menunggu Persetujuan Supervisor", tone: "bg-amber-50 text-amber-700" },
-  menunggu_verifikasi: { label: "Menunggu Verifikasi", tone: "bg-amber-50 text-amber-700" },
-  ready_putaway: { label: "Siap Putaway", tone: "bg-blue-50 text-blue-600" },
-  disetujui: { label: "Disetujui — Siap Picking", tone: "bg-emerald-50 text-emerald-600" },
-  digenerate: { label: "Digenerate", tone: "bg-blue-50 text-blue-600" },
-  diterima_didistribusikan: { label: "Terkirim", tone: "bg-gray-100 text-gray-500" },
-  sedang_dikirim: { label: "Sedang Dikirim", tone: "bg-amber-50 text-amber-600" },
-  ditolak: { label: "Ditolak", tone: "bg-rose-50 text-rose-600" },
+// Warna badge per status (tetap per-halaman), label-nya diambil dari helper
+// bersama supaya tidak ada lagi kode mentah yang tampil ke pengguna.
+const STATUS_TONE: Record<string, string> = {
+  draft_diajukan: "bg-amber-50 text-amber-700",
+  menunggu_verifikasi: "bg-amber-50 text-amber-700",
+  ready_putaway: "bg-blue-50 text-blue-600",
+  disetujui: "bg-emerald-50 text-emerald-600",
+  digenerate: "bg-blue-50 text-blue-600",
+  diterima_didistribusikan: "bg-gray-100 text-gray-500",
+  sedang_dikirim: "bg-amber-50 text-amber-600",
+  tiba_di_transit: "bg-purple-50 text-purple-700",
+  tiba_menunggu_konfirmasi: "bg-blue-50 text-blue-600",
+  ditolak: "bg-rose-50 text-rose-600",
 };
+
+function getStatusMeta(status: string, pickingSelesai?: boolean) {
+  const tone = STATUS_TONE[String(status || "").toLowerCase()] || "bg-gray-100 text-gray-600";
+
+  // Picking yang sudah selesai punya penanda khusus selain label status.
+  if (status === "disetujui" && pickingSelesai) {
+    return { label: "Picking Selesai — Siap Distribusi", tone: "bg-blue-50 text-blue-600" };
+  }
+  return { label: getSuratJalanStatusLabel(status), tone };
+}
 
 interface SuratJalanItem {
   item_id: number;
   barang_id: number;
   qty: number;
   satuan_id: number;
+  foto_url?: string | null;
   barang?: {
     nama_barang: string;
     kode_perangkat: string;
@@ -50,6 +66,12 @@ interface SuratJalan {
   project?: { nama_project: string };
   kendaraan?: { jenis_kendaraan: string; no_polisi: string };
   personil_pengantar?: { nama: string };
+  kendaraan_teks?: string | null;
+  kendaraan_jenis_teks?: string | null;
+  no_polisi_teks?: string | null;
+  kendaraan_label?: string | null;
+  driver_teks?: string | null;
+  driver_label?: string | null;
   boq?: {
     boq_id: number;
     boq_number?: string;
@@ -63,19 +85,28 @@ interface SuratJalan {
   pengirim_eksternal_nama?: string | null;
   alamat_lapangan?: string | null;
   picking_selesai?: boolean;
+  // Checkpoint Gudang Transit (0..n) — dari tabel surat_jalan_transit.
+  riwayat_perjalanan?: Array<{
+    transit_id: number | string;
+    urutan: number;
+    tiba_at: string;
+    berangkat_at?: string | null;
+    catatan_tiba?: string | null;
+    catatan_berangkat?: string | null;
+    gudang?: { nama_gudang?: string } | null;
+    tiba_oleh?: { nama?: string } | null;
+    berangkat_oleh?: { nama?: string } | null;
+    items?: Array<{ item_id: number; qty: number; kondisi?: string | null }>;
+  }>;
 }
 
-// Baris label:nilai yang selalu sejajar, berapa pun panjang labelnya.
-// FIX: value dikasih min-w-0 + break-all — sebelumnya teks panjang tanpa
-// spasi (mis. nomor surat jalan "298990/SJ/OUT/DIGITAK/VIII/2026") nggak
-// mau wrap dan overflow nabrak ke kolom sebelah, karena grid item secara
-// default nggak mau nyusut di bawah lebar konten aslinya (min-width: auto).
-function InfoRow({ label, value }: { label: string; value: ReactNode }) {
+// Baris bernomor kecil di atas, nilai di bawahnya — sama seperti halaman
+// detail Inbound supaya visual kedua halaman konsisten.
+function InfoField({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="grid grid-cols-[130px_10px_1fr] items-start leading-snug">
-      <span className="text-gray-500">{label}</span>
-      <span className="text-gray-500">:</span>
-      <span className="min-w-0 break-all font-semibold text-gray-900">{value}</span>
+    <div>
+      <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
+      <div className="min-w-0 text-sm break-words text-gray-800">{value}</div>
     </div>
   );
 }
@@ -182,6 +213,7 @@ export default function SuratJalanDetailPage() {
       namaBarang: item.barang?.nama_barang || "-",
       qty: item.qty,
       uom: item.satuan?.kode_satuan || item.barang?.satuan_default?.kode_satuan || "Unit",
+      fotoUrl: item.foto_url || null,
       keterangan: null,
       isKritis: kritisLevel === "kritis",
       isMenipis: kritisLevel === "menipis",
@@ -195,9 +227,9 @@ export default function SuratJalanDetailPage() {
     tanggal,
     projectName: suratJalan.project?.nama_project || "-",
     namaPicPemohon: suratJalan.pic_pemohon_nama || "-",
-    kendaraan: suratJalan.kendaraan?.jenis_kendaraan || "-",
-    noPolisi: suratJalan.kendaraan?.no_polisi || "-",
-    namaDriver: suratJalan.personil_pengantar?.nama || "-",
+    kendaraan: suratJalan.kendaraan_label || suratJalan.kendaraan?.jenis_kendaraan || "-",
+    noPolisi: suratJalan.no_polisi_teks || suratJalan.kendaraan?.no_polisi || "-",
+    namaDriver: suratJalan.driver_label || suratJalan.driver_teks || suratJalan.personil_pengantar?.nama || "-",
     items: mappedItems,
     alamatLapangan: suratJalan.alamat_lapangan || undefined,
   };
@@ -234,19 +266,19 @@ export default function SuratJalanDetailPage() {
 
   return (
     <div className="px-8 py-6">
-      {/* Toolbar — hilang saat print */}
-      <div className="mb-6 flex items-center justify-between print:hidden">
-        <div className="flex items-center gap-3">
+      {/* Toolbar — tombol aksi dikumpulkan di satu tempat, hilang saat print */}
+      <div className="mb-6 flex flex-col gap-3 print:hidden lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
           <button onClick={() => router.push("/staff/outbound")} className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-700">
             <ArrowLeft size={16} />
             Kembali
           </button>
-          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_META[suratJalan.status]?.tone || "bg-gray-100 text-gray-600"}`}>
-            {STATUS_META[suratJalan.status]?.label || suratJalan.status}
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusMeta(suratJalan.status, suratJalan.picking_selesai).tone}`}>
+            {getStatusMeta(suratJalan.status, suratJalan.picking_selesai).label}
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          {suratJalan.status === "disetujui" && (
+        <div className="flex flex-wrap items-center gap-2">
+          {suratJalan.status === "disetujui" && suratJalan.picking_selesai !== true && (
             <Link
               href={`/staff/outbound/${suratJalan.surat_jalan_id}/picking`}
               className="rounded-xl border border-[#F3D9C7] bg-white px-4 py-2.5 text-sm font-semibold text-[#E8632C] hover:bg-[#FDECE1]"
@@ -254,7 +286,17 @@ export default function SuratJalanDetailPage() {
               Picking
             </Link>
           )}
-          {(suratJalan.status === "disetujui" || suratJalan.status === "sedang_dikirim") && (
+          {suratJalan.status === "disetujui" && suratJalan.picking_selesai === true && (
+            <button
+              disabled
+              className="cursor-not-allowed rounded-xl border border-[#F3D9C7] bg-white px-4 py-2.5 text-sm font-semibold text-gray-400 opacity-70"
+            >
+              Picking sudah selesai
+            </button>
+          )}
+          {(suratJalan.status === "disetujui" ||
+            suratJalan.status === "sedang_dikirim" ||
+            suratJalan.status === "tiba_di_transit") && (
             <div>
               {(suratJalan.status === "disetujui" && suratJalan.picking_selesai === true) ? (
                 <Link
@@ -263,7 +305,7 @@ export default function SuratJalanDetailPage() {
                 >
                   Distribusi
                 </Link>
-              ) : suratJalan.status === "sedang_dikirim" ? (
+              ) : suratJalan.status === "sedang_dikirim" || suratJalan.status === "tiba_di_transit" ? (
                 <Link
                   href={`/staff/outbound/${suratJalan.surat_jalan_id}/distribution`}
                   className="rounded-xl border border-[#F3D9C7] bg-white px-4 py-2.5 text-sm font-semibold text-[#E8632C] hover:bg-[#FDECE1]"
@@ -367,6 +409,65 @@ export default function SuratJalanDetailPage() {
         </div>
       )}
 
+      {/* Kronologi titipan Gudang Transit (0..n checkpoint). Kosong berarti
+          pengiriman langsung ke tujuan akhir tanpa titipan. */}
+      {(suratJalan.riwayat_perjalanan?.length ?? 0) > 0 && (
+        <div className="mx-auto mb-8 max-w-3xl rounded-2xl border border-purple-100 bg-purple-50/40 p-6">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-purple-700">
+            Riwayat Perjalanan — Gudang Transit
+          </p>
+          <ol className="space-y-3">
+            {(suratJalan.riwayat_perjalanan || []).map((c) => {
+              const totalQty = (c.items || []).reduce((sum, it) => sum + Number(it.qty || 0), 0);
+              const sudahBerangkat = Boolean(c.berangkat_at);
+              return (
+                <li key={String(c.transit_id)} className="rounded-xl border border-purple-100 bg-white p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-purple-800">
+                      #{c.urutan} · {c.gudang?.nama_gudang || "Gudang Transit"}
+                    </p>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                        sudahBerangkat ? "bg-emerald-50 text-emerald-700" : "bg-purple-100 text-purple-700"
+                      }`}
+                    >
+                      {sudahBerangkat ? "Sudah berangkat" : "Masih dititipkan"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-600">
+                    Tiba: {new Date(c.tiba_at).toLocaleString("id-ID")}
+                    {c.tiba_oleh?.nama ? ` · oleh ${c.tiba_oleh.nama}` : ""} · {totalQty} unit
+                  </p>
+                  {sudahBerangkat && c.berangkat_at && (
+                    <p className="mt-1 text-xs text-gray-600">
+                      Berangkat: {new Date(c.berangkat_at).toLocaleString("id-ID")}
+                      {c.berangkat_oleh?.nama ? ` · oleh ${c.berangkat_oleh.nama}` : ""}
+                    </p>
+                  )}
+                  {c.catatan_tiba && (
+                    <p className="mt-1 text-xs italic text-purple-700">Catatan: {c.catatan_tiba}</p>
+                  )}
+                  {c.catatan_berangkat && (
+                    <p className="mt-1 text-xs italic text-gray-600">
+                      Catatan berangkat: {c.catatan_berangkat}
+                    </p>
+                  )}
+                  {(c.items || []).length > 0 && (
+                    <ul className="mt-2 space-y-1 border-t border-purple-100 pt-2">
+                      {(c.items || []).map((it) => (
+                        <li key={it.item_id} className="text-xs text-gray-700">
+                          Item #{it.item_id}: {it.qty} unit · {it.kondisi || "baik"}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      )}
+
       {suratJalan.status !== "draft_diajukan" && suratJalan.status !== "ditolak" && (
         <div id="surat-jalan-document" className="mx-auto max-w-3xl rounded-2xl border border-[#F3D9C7] bg-white p-10 print:rounded-none print:border-0 print:p-0">
         {/* Kop surat dengan logo */}
@@ -383,69 +484,71 @@ export default function SuratJalanDetailPage() {
           </div>
         </div>
 
-        {/* Info grid — 2 kolom */}
-        <div className="mb-8 grid grid-cols-2 gap-x-12 gap-y-3 text-sm">
-          <div className="min-w-0 space-y-3">
-            <InfoRow label="No Surat Jalan" value={displaySJ.nomor} />
-            <InfoRow label="Pengirim" value={<span>{pengirimLabel} {pengirimBadge}</span>} />
-            <InfoRow label="Tujuan" value={<span>{tujuanLabel} {tujuanBadge}</span>} />
+        {/* Info grid — label kecil abu-abu di atas, nilai di bawahnya */}
+        <div className="mb-8">
+          <div className="grid grid-cols-1 gap-x-8 gap-y-3.5 sm:grid-cols-2">
+          <div className="min-w-0 space-y-3.5">
+            <InfoField label="No Surat Jalan" value={<span className="font-mono break-all text-gray-900">{displaySJ.nomor}</span>} />
+            <InfoField label="Pengirim" value={<span>{pengirimLabel} {pengirimBadge}</span>} />
+            <InfoField label="Tujuan" value={<span>{tujuanLabel} {tujuanBadge}</span>} />
             {suratJalan.tujuan_tipe === "lapangan" && suratJalan.alamat_lapangan && (
-              <InfoRow label="Alamat Lapangan" value={suratJalan.alamat_lapangan} />
+              <InfoField label="Alamat Lapangan" value={suratJalan.alamat_lapangan} />
             )}
-            <InfoRow label="Project" value={displaySJ.projectName || "-"} />
+            <InfoField label="Project" value={displaySJ.projectName || "-"} />
           </div>
-          <div className="min-w-0 space-y-3">
-            <InfoRow label="Tanggal" value={displaySJ.tanggal} />
-            <InfoRow label="Nama PIC Pemohon" value={displaySJ.namaPicPemohon} />
-            <InfoRow label="Kendaraan" value={displaySJ.kendaraan} />
-            <InfoRow label="No Polisi" value={displaySJ.noPolisi} />
-            <InfoRow label="Nama Driver" value={displaySJ.namaDriver} />
+          <div className="min-w-0 space-y-3.5">
+            <InfoField label="Tanggal" value={displaySJ.tanggal} />
+            <InfoField label="Nama PIC Penerima" value={displaySJ.namaPicPemohon} />
+            <InfoField label="Kendaraan" value={displaySJ.kendaraan} />
+            <InfoField label="No Polisi" value={displaySJ.noPolisi} />
+            <InfoField label="Nama Driver" value={displaySJ.namaDriver} />
             {suratJalan.boq_id ? (
-              <InfoRow
-                label="BOQ / Tiket"
+              <InfoField
+                label="Cluster & BOQ"
                 value={
-                  <span className="inline-flex items-center gap-2">
-                    <Link
-                      href="/dashboard/boq"
-                      className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
-                    >
-                      <ExternalLink size={12} />
+                  <span className="flex flex-wrap items-center gap-2">
+                    {/* Staf Gudang tidak punya akses ke modul BOQ (K7): nomor BOQ
+                        ditampilkan sebagai teks, tanpa tautan ke halaman manajemen. */}
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600">
                       {suratJalan.boq?.boq_number || `BOQ #${suratJalan.boq_id}`}
-                    </Link>
-                    <span className="text-xs text-slate-500">
+                    </span>
+                    <span className="text-xs text-gray-500">
                       Tiket: {suratJalan.boq?.tiket?.kode_tiket || "-"}
                     </span>
                   </span>
                 }
               />
             ) : (
-              <InfoRow
-                label="BOQ / Tiket"
-                value={<span className="text-xs text-slate-400">Tidak terhubung ke BOQ/Tiket</span>}
+              <InfoField
+                label="Cluster & BOQ"
+                value={<span className="text-xs text-gray-400">Tidak terhubung ke Cluster & BOQ</span>}
               />
             )}
+          </div>
           </div>
         </div>
 
         {/* Tabel item */}
-        <table className="mb-10 w-full border-collapse text-sm">
+        <div className="overflow-x-auto overscroll-x-contain">
+        <table className="mb-10 min-w-[640px] w-full border-collapse text-sm">
           <thead>
             <tr className="bg-[#FFF7ED]">
-              <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">No</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Kode Barang</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Nama Barang</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">QTY</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-center font-semibold text-[#9a3412]">UOM</th>
-              <th className="border border-[#F3D9C7] px-3 py-2 text-left font-semibold text-[#9a3412]">Kondisi</th>
+              <th className="border border-[#F3D9C7] px-3 py-2.5 text-left font-semibold text-[#9a3412]">No</th>
+              <th className="border border-[#F3D9C7] px-3 py-2.5 text-left font-semibold text-[#9a3412]">Kode Barang</th>
+              <th className="border border-[#F3D9C7] px-3 py-2.5 text-left font-semibold text-[#9a3412]">Nama Barang</th>
+              <th className="border border-[#F3D9C7] px-3 py-2.5 text-right font-semibold text-[#9a3412]">QTY</th>
+              <th className="border border-[#F3D9C7] px-3 py-2.5 text-center font-semibold text-[#9a3412]">UOM</th>
+              <th className="border border-[#F3D9C7] px-3 py-2.5 text-left font-semibold text-[#9a3412]">Kondisi</th>
+              <th className="border border-[#F3D9C7] px-3 py-2.5 text-center font-semibold text-[#9a3412]">Foto</th>
             </tr>
           </thead>
           <tbody>
             {mappedItems.map((item, i) => (
               <tr key={item.kodeBarang} className="even:bg-gray-50">
-                <td className="border border-gray-200 px-3 py-2.5">{i + 1}</td>
-                <td className="border border-gray-200 px-3 py-2.5 font-medium">{item.kodeBarang}</td>
+                <td className="border border-gray-200 px-3 py-2.5 text-gray-500">{i + 1}</td>
+                <td className="border border-gray-200 px-3 py-2.5 font-mono text-xs text-gray-600">{item.kodeBarang}</td>
                 <td className="border border-gray-200 px-3 py-2.5">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 text-gray-700">
                     <span>{item.namaBarang}</span>
                     {item.isKritis && (
                       <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">Kritis</span>
@@ -455,21 +558,36 @@ export default function SuratJalanDetailPage() {
                     )}
                   </div>
                 </td>
-                <td className="border border-gray-200 px-3 py-2.5 text-center font-semibold">{item.qty}</td>
-                <td className="border border-gray-200 px-3 py-2.5 text-center">{item.uom}</td>
+                <td className="border border-gray-200 px-3 py-2.5 text-right text-gray-800">{item.qty}</td>
+                <td className="border border-gray-200 px-3 py-2.5 text-center text-gray-600">{item.uom}</td>
                 <td className="border border-gray-200 px-3 py-2.5 text-gray-500">{item.keterangan || "-"}</td>
+                <td className="border border-gray-200 px-3 py-2.5 text-center">
+                  {item.fotoUrl ? (
+                    <a
+                      href={item.fotoUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs font-semibold text-[#E8632C] hover:underline"
+                    >
+                      Lihat Foto
+                    </a>
+                  ) : (
+                    <span className="text-xs text-gray-400">-</span>
+                  )}
+                </td>
               </tr>
             ))}
             {Array.from({ length: Math.max(0, 3 - mappedItems.length) }).map((_, i) => (
               <tr key={`empty-${i}`}>
-                <td className="border border-gray-200 px-3 py-6" colSpan={6} />
+                <td className="border border-gray-200 px-3 py-6" colSpan={7} />
               </tr>
             ))}
-          </tbody>
-        </table>
+           </tbody>
+         </table>
+         </div>
 
         {/* Tanda tangan */}
-        <div className="mb-8 grid grid-cols-3 gap-6 text-center text-sm">
+        <div className="mb-8 grid grid-cols-1 gap-6 text-center text-sm sm:grid-cols-3">
           <div>
             <p className="mb-16 font-medium text-gray-700">Material Handler</p>
             <div className="border-t border-gray-400 pt-1">
@@ -483,7 +601,7 @@ export default function SuratJalanDetailPage() {
             </div>
           </div>
           <div>
-            <p className="mb-16 font-medium text-gray-700">PIC Pemohon (Penerima)</p>
+            <p className="mb-16 font-medium text-gray-700">PIC Penerima (Penerima)</p>
             <div className="border-t border-gray-400 pt-1">
               <p className="font-semibold text-gray-900">{displaySJ.namaPicPemohon}</p>
             </div>

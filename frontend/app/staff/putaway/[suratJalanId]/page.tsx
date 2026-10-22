@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, PackagePlus, Loader2, AlertCircle, MapPin, X } from "lucide-react";
+import { ArrowLeft, PackagePlus, Loader2, AlertCircle, MapPin, X, Image as ImageIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { KondisiBadge } from "@/components/common/KondisiBadge";
-import { useApi } from "@/lib/api";
+import { KondisiUnitSummary } from "@/components/common/KondisiUnitSummary";
+import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
+import { hasKondisiUnit, type KondisiUnit } from "@/lib/kondisi-barang";
+import { useApi, ensureOk } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
 // Bentuk respons GET /api/surat-jalan/:id dan GET /api/zones (sudah include
@@ -14,9 +17,18 @@ import { useApi } from "@/lib/api";
 type ApiSuratJalanItem = {
   item_id: number;
   qty: number;
+  qty_diterima?: number | string | null;
+  qty_ditolak?: number | string | null;
+  alasan_penolakan?: string | null;
+  catatan?: string | null;
   kondisi?: string | null;
+  // Penilaian kondisi per unit dari proses inbound (relasi `units`).
+  units?: KondisiUnit[] | null;
   is_kelebihan?: boolean;
   barang?: { kode_perangkat?: string; nama_barang?: string };
+  // Foto dokumentasi barang yang diunggah saat proses Inbound.
+  fotos?: Array<{ foto_id: number | string; url: string; filename?: string }> | null;
+  foto_url?: string | null;
   zona?: {
     zona_id: number;
     kode_zona: string;
@@ -45,6 +57,11 @@ type ApiZona = {
   tipe_zona?: string | null;
 };
 
+function zonaLabel(z: ApiZona): string {
+  const nama = z.nama_zona || z.kode_zona;
+  return z.tipe_zona ? `${nama} — ${z.tipe_zona}` : nama;
+}
+
 type ConfirmModalProps = {
   open: boolean;
   onClose: () => void;
@@ -54,11 +71,6 @@ type ConfirmModalProps = {
   zonas: ApiZona[];
   zonaByItem: Record<number, string>;
 };
-
-function zonaLabel(z: ApiZona): string {
-  const nama = z.nama_zona || z.kode_zona;
-  return z.tipe_zona ? `${nama} — ${z.tipe_zona}` : nama;
-}
 
 function ConfirmModal({
   open,
@@ -86,7 +98,7 @@ function ConfirmModal({
       const zona = zonas.find((z) => String(z.zona_id) === String(zid));
       return { item: it, zona };
     })
-    .filter((row) => row.zona);
+    .filter((row) => row.zona && Number(row.item.qty_diterima ?? row.item.qty) > 0);
 
   return (
     <div
@@ -139,7 +151,9 @@ function ConfirmModal({
                     </div>
                     <div className="text-right">
                       <div className="font-medium text-slate-700">{zonaLabel(zona!)}</div>
-                      <div className="text-xs text-slate-400">Qty: {item.qty}</div>
+                      <div className="text-xs text-slate-400">
+                        Qty: {Number(item.qty_diterima ?? item.qty)}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -182,11 +196,36 @@ export default function PutawayDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   // Simpan pilihan zona per item — dikirim sebagai zona_id saat submit.
   const [zonaByItem, setZonaByItem] = useState<Record<number, string>>({});
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [qtyAktualByItem, setQtyAktualByItem] = useState<Record<number, string>>({});
+  const [catatanByItem, setCatatanByItem] = useState<Record<number, string>>({});
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successModalMessage, setSuccessModalMessage] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Preview foto barang Inbound (klik thumbnail → perbesar).
+  const [previewFoto, setPreviewFoto] = useState<{ urls: string[]; index: number } | null>(null);
+
+  useEffect(() => {
+    if (!previewFoto) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setPreviewFoto(null);
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [previewFoto]);
+
+  function openPreview(urls: string[], index: number) {
+    if (urls.length === 0) return;
+    setPreviewFoto({ urls, index });
+  }
+
+  function stepPreview(step: number) {
+    setPreviewFoto((prev) => {
+      if (!prev || prev.urls.length === 0) return prev;
+      const nextIndex = (prev.index + step + prev.urls.length) % prev.urls.length;
+      return { ...prev, index: nextIndex };
+    });
+  }
 
   useEffect(() => {
     return () => {
@@ -210,8 +249,8 @@ export default function PutawayDetailPage() {
           setData(null);
           return;
         }
-        if (!sjRes.ok) throw new Error("Gagal mengambil detail Surat Jalan.");
-        if (!zonaRes.ok) throw new Error("Gagal mengambil daftar Zona.");
+        await ensureOk(sjRes, "Gagal mengambil detail Surat Jalan.");
+        await ensureOk(zonaRes, "Gagal mengambil daftar Zona.");
 
         const sjJson = await sjRes.json();
         const zonaJson = await zonaRes.json();
@@ -299,7 +338,17 @@ export default function PutawayDetailPage() {
 
   const isSelesai = data.status === "diterima_didistribusikan";
 
-  const allAssigned = data.items.every((it) => !!zonaByItem[it.item_id]);
+  // Qty yang ditempatkan = qty diterima dari penerimaan (bukan qty surat
+  // jalan). Item yang ditolak penuh (diterima 0) tidak perlu ditempatkan.
+  const qtyDiterimaOf = (item: ApiSuratJalanItem) => {
+    if (item.qty_diterima !== null && item.qty_diterima !== undefined) {
+      return Number(item.qty_diterima);
+    }
+    return Number(item.qty);
+  };
+  const itemsToPlace = data.items.filter((it) => qtyDiterimaOf(it) > 0);
+
+  const allAssigned = itemsToPlace.every((it) => !!zonaByItem[it.item_id]);
 
   function showToast(message: string, type: "success" | "error") {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -309,19 +358,18 @@ export default function PutawayDetailPage() {
 
   async function handleSubmit() {
     if (!allAssigned || !data) return;
-    setShowConfirmModal(true);
+    await confirmSubmit();
   }
 
   async function confirmSubmit() {
     if (!allAssigned || !data) return;
 
-    const resolvedItems = data.items.map((it) => {
+    const resolvedItems = itemsToPlace.map((it) => {
       const zonaId = zonaByItem[it.item_id];
-      return { item_id: it.item_id, zona_id: Number(zonaId), qty_ditempatkan: Number(it.qty) };
+      return { item_id: it.item_id, zona_id: Number(zonaId), qty_ditempatkan: qtyDiterimaOf(it) };
     });
 
     setSubmitting(true);
-    setShowConfirmModal(false);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
       const payload = { items: resolvedItems };
@@ -336,7 +384,7 @@ export default function PutawayDetailPage() {
         throw new Error(err?.message || "Gagal menyimpan penempatan barang.");
       }
 
-      const successDetails = data.items.map((it) => {
+      const successDetails = itemsToPlace.map((it) => {
         const zona = zonas.find((z) => String(z.zona_id) === String(zonaByItem[it.item_id]));
         const name = it.barang?.nama_barang || it.barang?.kode_perangkat || `Item #${it.item_id}`;
         const zoneName = zona ? zonaLabel(zona) : `Zona ${zonaByItem[it.item_id]}`;
@@ -394,18 +442,29 @@ export default function PutawayDetailPage() {
           {isSelesai ? "Zona Penyimpanan" : "Tentukan Zona Penyimpanan per Barang"}
         </p>
 
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto overscroll-x-contain">
+        <table className="min-w-[640px] w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+              <th className="pb-3 pr-4 font-semibold text-center w-12">No</th>
               <th className="pb-3 pr-4 font-semibold">Barang</th>
+              <th className="pb-3 pr-4 font-semibold">Foto Barang</th>
               <th className="pb-3 pr-4 font-semibold">Kondisi</th>
-              <th className="pb-3 pr-4 font-semibold text-right">Qty</th>
+              <th className="pb-3 pr-4 font-semibold text-right">QTY SURAT JALAN</th>
+              <th className="pb-3 pr-4 font-semibold text-right">QTY AKTUAL</th>
+              <th className="pb-3 pr-4 font-semibold">CATATAN</th>
               <th className="pb-3 font-semibold">Zona</th>
             </tr>
           </thead>
           <tbody>
-            {data.items.map((item) => (
+            {data.items.map((item, idx) => {
+              const fotoUrls = getItemFotoUrls(item);
+              const extraFoto = Math.max(fotoUrls.length - 1, 0);
+              const diterima = qtyDiterimaOf(item);
+              const ditolakPenuh = diterima <= 0;
+              return (
               <tr key={item.item_id} className="border-b border-gray-50 last:border-0 align-top">
+                <td className="py-3 pr-4 text-center text-xs text-slate-500">{idx + 1}</td>
                 <td className="py-3 pr-4">
                   <p className="font-medium text-gray-800">{item.barang?.nama_barang || "-"}</p>
                   <p className="text-xs text-gray-400">{item.barang?.kode_perangkat || "-"}</p>
@@ -416,10 +475,63 @@ export default function PutawayDetailPage() {
                     </span>
                   )}
                 </td>
-                <td className="py-3 pr-4"><KondisiBadge value={item.kondisi} /></td>
-                <td className="py-3 pr-4 text-right text-gray-600">{item.qty}</td>
+                <td className="py-3 pr-4">
+                  {fotoUrls.length === 0 ? (
+                    <span className="text-sm text-gray-300">-</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => openPreview(fotoUrls, 0)}
+                      title="Perbesar foto"
+                      className="group relative block h-14 w-14 overflow-hidden rounded-lg border border-gray-200"
+                    >
+                      <img
+                        src={fotoUrls[0]}
+                        alt={item.barang?.nama_barang ? `Foto ${item.barang.nama_barang}` : "Foto barang"}
+                        className="h-full w-full object-cover"
+                      />
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/0 text-white opacity-0 transition group-hover:bg-black/40 group-hover:opacity-100">
+                        <ImageIcon size={16} />
+                      </span>
+                      {extraFoto > 0 && (
+                        <span className="absolute bottom-0 right-0 rounded-tl-md bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                          +{extraFoto}
+                        </span>
+                      )}
+                    </button>
+                  )}
+                </td>
+                <td className="py-3 pr-4">
+                  {hasKondisiUnit(item.units) ? (
+                    <KondisiUnitSummary units={item.units} />
+                  ) : (
+                    <KondisiBadge value={item.kondisi} />
+                  )}
+                </td>
+                <td className="py-3 pr-4 text-right text-gray-600">
+                  {Number(item.qty || 0)}
+                </td>
+                <td className="py-3 pr-4 text-right text-gray-600">
+                  {ditolakPenuh ? (
+                    <span className="font-semibold text-rose-600">0</span>
+                  ) : (
+                    <>
+                      {diterima}
+                      {Number(item.qty) !== diterima && (
+                        <span className="ml-1 text-xs text-gray-400">/{item.qty}</span>
+                      )}
+                    </>
+                  )}
+                </td>
+                <td className="py-3 pr-4 text-gray-600">
+                  {item.catatan || item.alasan_penolakan || "-"}
+                </td>
                 <td className="py-3">
-                  {isSelesai ? (
+                  {ditolakPenuh ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-600">
+                      Ditolak penuh — tidak ditempatkan
+                    </span>
+                  ) : isSelesai ? (
                     item.zona ? (
                       <span className="text-sm text-gray-700">
                         {item.zona.gudang?.nama_gudang ?? "-"} / {item.zona.nama_zona || item.zona.kode_zona}
@@ -450,10 +562,12 @@ export default function PutawayDetailPage() {
                   )}
                 </td>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+              );
+            })}
+           </tbody>
+         </table>
+         </div>
+       </div>
 
       {!isSelesai && (
         <Button
@@ -461,19 +575,9 @@ export default function PutawayDetailPage() {
           onClick={handleSubmit}
           className="mt-5 h-auto rounded-xl bg-[#E8632C] px-6 py-3 text-sm font-semibold text-white hover:bg-[#D9591F] disabled:opacity-40"
         >
-          {submitting ? "Menyimpan..." : "Konfirmasi Penempatan"}
+          {submitting ? "Menyimpan..." : "Simpan & Selesaikan Putaway"}
         </Button>
       )}
-
-      <ConfirmModal
-        open={showConfirmModal}
-        onClose={() => setShowConfirmModal(false)}
-        onConfirm={confirmSubmit}
-        submitting={submitting}
-        data={data}
-        zonas={zonas}
-        zonaByItem={zonaByItem}
-      />
 
       {toast && (
         <div
@@ -522,7 +626,7 @@ export default function PutawayDetailPage() {
           onClick={handleSuccessModalClose}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-white shadow-xl"
+            className="w-[calc(100vw-1.5rem)] max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex flex-col items-center px-6 py-8 text-center">
@@ -541,6 +645,58 @@ export default function PutawayDetailPage() {
                 OK
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {previewFoto && previewFoto.urls.length > 0 && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-slate-900/70 p-4"
+          onClick={() => setPreviewFoto(null)}
+        >
+          <div className="flex w-full max-w-3xl items-center justify-between px-1 text-xs text-white/80">
+            <span>
+              Foto barang {previewFoto.index + 1} dari {previewFoto.urls.length}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPreviewFoto(null)}
+              className="rounded-full p-1.5 text-white/80 hover:bg-white/10 hover:text-white"
+              title="Tutup"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div
+            className="relative flex w-[calc(100vw-1.5rem)] max-w-3xl max-h-[calc(100dvh-2rem)] items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={previewFoto.urls[previewFoto.index]}
+              alt={`Foto barang ${previewFoto.index + 1}`}
+              className="max-h-[75vh] w-auto max-w-full rounded-xl bg-white object-contain shadow-2xl"
+            />
+            {previewFoto.urls.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => stepPreview(-1)}
+                  className="absolute left-2 flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70"
+                  title="Foto sebelumnya"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => stepPreview(1)}
+                  className="absolute right-2 flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70"
+                  title="Foto berikutnya"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -30,7 +30,7 @@ const findByPersonilId = async (req, res, next) => {
 
 const update = async (req, res, next) => {
   try {
-    const result = await personnelService.update(req.params.personil_id, req.body, req.user.id);
+    const result = await personnelService.update(req.params.personil_id, req.body, { id: req.user.id, role: req.user.role });
     return response.success(res, "Personnel berhasil diperbarui.", result);
   } catch (err) {
     next(err);
@@ -39,8 +39,17 @@ const update = async (req, res, next) => {
 
 const remove = async (req, res, next) => {
   try {
-    const result = await personnelService.remove(req.params.personil_id, req.user.id);
-    return response.success(res, "Personnel berhasil dihapus permanen.", result);
+    await personnelService.softDelete(req.params.personil_id, req.user.id);
+    return response.success(res, "Personil berhasil dinonaktifkan.", null, 200);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const restore = async (req, res, next) => {
+  try {
+    await personnelService.restore(req.params.personil_id, req.user.id);
+    return response.success(res, "Personil berhasil diaktifkan kembali.", null, 200);
   } catch (err) {
     next(err);
   }
@@ -52,4 +61,5 @@ module.exports = {
   findByPersonilId,
   update,
   remove,
+  restore,
 };

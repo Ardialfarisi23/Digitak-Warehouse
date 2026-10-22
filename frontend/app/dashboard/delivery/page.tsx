@@ -1,16 +1,35 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Search, Eye, X, ArrowUpRight, ArrowDownLeft, CheckCircle2, Clock, FileText, Loader2, AlertCircle, PackageCheck, Truck, ChevronDown } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense } from "react";
 
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
 import { DetailSuratJalanDocument, DetailSuratJalanData } from "@/components/surat-jalan/DetailSuratJalanDocument";
 import { getItemFotoUrls } from "@/lib/surat-jalan-item-foto";
+import { getSuratJalanStatusLabel, SURAT_JALAN_STATUS_VALUES } from "@/lib/surat-jalan-status";
 import { Button } from "@/components/ui/button";
+import TablePagination from "@/components/TablePagination";
+import {
+  FileText,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Search,
+  ChevronDown,
+  AlertCircle,
+  Clock,
+  CheckCircle2,
+  Truck,
+  Eye,
+  X,
+  Loader2,
+} from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const PAGE_SIZE = 10;
 
 type TipeSuratJalan = "INBOUND" | "OUTBOUND";
 
@@ -38,6 +57,10 @@ interface SuratJalanRecord {
     jenis_kendaraan: string;
     no_polisi: string;
   };
+  // Kolom teks bebas, sudah di-fallback-kan di backend
+  kendaraan_teks?: string | null;
+  no_polisi_teks?: string | null;
+  driver_teks?: string | null;
   creator?: {
     nama: string;
   };
@@ -78,29 +101,37 @@ interface SuratJalanRecord {
   }[];
 }
 
-const STATUS_META: Record<string, { label: string; bg: string; text: string }> = {
-  draft_diajukan: { label: "Draft Diajukan", bg: "bg-slate-100", text: "text-slate-700" },
-  menunggu_verifikasi: { label: "Menunggu Verifikasi", bg: "bg-amber-50", text: "text-amber-700" },
-  disetujui: { label: "Disetujui", bg: "bg-emerald-50", text: "text-emerald-700" },
-  digenerate: { label: "Digenerate", bg: "bg-blue-50", text: "text-blue-700" },
-  tiba_menunggu_konfirmasi: { label: "Menunggu Konfirmasi", bg: "bg-blue-50", text: "text-blue-700" },
-  diterima_didistribusikan: { label: "Diterima / Didistribusikan", bg: "bg-emerald-50", text: "text-emerald-700" },
-  sedang_dikirim: { label: "Sedang Dikirim", bg: "bg-amber-50", text: "text-amber-700" },
-  ditolak: { label: "Ditolak", bg: "bg-rose-50", text: "text-rose-700" },
+// Warna badge per status (tetap per-halaman); label dari helper bersama
+// supaya tidak ada lagi kode mentah seperti "ready_putaway" yang tampil.
+const STATUS_TONE: Record<string, { bg: string; text: string }> = {
+  draft_diajukan: { bg: "bg-slate-100", text: "text-slate-700" },
+  menunggu_verifikasi: { bg: "bg-amber-50", text: "text-amber-700" },
+  disetujui: { bg: "bg-emerald-50", text: "text-emerald-700" },
+  digenerate: { bg: "bg-blue-50", text: "text-blue-700" },
+  tiba_menunggu_konfirmasi: { bg: "bg-blue-50", text: "text-blue-700" },
+  diterima_didistribusikan: { bg: "bg-emerald-50", text: "text-emerald-700" },
+  sedang_dikirim: { bg: "bg-amber-50", text: "text-amber-700" },
+  ditolak: { bg: "bg-rose-50", text: "text-rose-700" },
 };
 
 type TabType = "SEMUA" | "INBOUND" | "OUTBOUND";
 
-export default function AdminDeliveryPage() {
+function AdminDeliveryPageContent() {
   const { user } = useAuth();
   const { get, put } = useApi();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const validTabs: TabType[] = ["SEMUA", "INBOUND", "OUTBOUND"];
+  const initialTab = validTabs.includes(searchParams.get("tab") as TabType) ? (searchParams.get("tab") as TabType) : "SEMUA";
 
-  const [activeTab, setActiveTab] = useState<TabType>("SEMUA");
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [searchQuery, setSearchQuery] = useState("");
   const [allRecords, setAllRecords] = useState<SuratJalanRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<SuratJalanRecord | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [gudangFilter, setGudangFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -111,6 +142,14 @@ export default function AdminDeliveryPage() {
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [catatanKonfirmasi, setCatatanKonfirmasi] = useState("");
+  const [page, setPage] = useState(1);
+  const tableRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", activeTab);
+    router.replace(`/dashboard/delivery?${params.toString()}`, { scroll: false });
+  }, [activeTab]);
 
   useEffect(() => {
     if (!user) return;
@@ -134,7 +173,7 @@ export default function AdminDeliveryPage() {
 
   useEffect(() => {
     get(`${API_BASE}/api/warehouses?limit=100`).then((r) => r.json()).then((json) => {
-      setWarehouses(Array.isArray(json?.data) ? json.data.map((w: any) => ({ ...w, nama_gudang: w.nama_gudang + (w.tipe === "dadakan" ? " (Dadakan)" : "") })) : []);
+      setWarehouses(Array.isArray(json?.data) ? json.data.map((w: any) => ({ ...w, nama_gudang: w.nama_gudang + (w.tipe === "dadakan" ? " (Transit)" : "") })) : []);
     }).catch(() => {
       setWarehouses([]);
     });
@@ -197,6 +236,16 @@ export default function AdminDeliveryPage() {
     if (!user) return;
     fetchData();
   }, [user, gudangFilter, statusFilter, startDate, endDate]);
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (selectedRecord || selectedItem) {
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [selectedRecord, selectedItem]);
 
   const filteredRecords = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -262,9 +311,9 @@ export default function AdminDeliveryPage() {
         namaProject: selectedRecord.project?.nama_project || "-",
         asalGudang: selectedRecord.gudang_asal?.nama_gudang || "-",
         tujuanGudang: selectedRecord.gudang_tujuan?.nama_gudang || "-",
-        kendaraan: selectedRecord.kendaraan?.jenis_kendaraan || "-",
-        noPolisi: selectedRecord.kendaraan?.no_polisi || "-",
-        namaDriver: selectedRecord.personil_pengantar?.nama || "-",
+        kendaraan: selectedRecord.kendaraan_teks || selectedRecord.kendaraan?.jenis_kendaraan || "-",
+        noPolisi: selectedRecord.no_polisi_teks || selectedRecord.kendaraan?.no_polisi || "-",
+        namaDriver: selectedRecord.driver_teks || selectedRecord.personil_pengantar?.nama || "-",
         namaPicPemohon: (selectedRecord as any).pic_pemohon_nama || "-",
         tanggal: selectedRecord.tanggal
           ? new Date(selectedRecord.tanggal).toLocaleDateString("id-ID", {
@@ -322,6 +371,31 @@ export default function AdminDeliveryPage() {
     }
   };
 
+  const handleOpenDetail = async (record: SuratJalanRecord) => {
+    setSelectedRecord(record);
+    setDetailLoading(true);
+    setDetailError(null);
+    try {
+      const resp = await get(`${API_BASE}/api/surat-jalan/${record.surat_jalan_id}`);
+      const json = await resp.json();
+      if (!resp.ok) {
+        throw new Error(json?.message || "Gagal memuat detail surat jalan.");
+      }
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : "Gagal memuat detail surat jalan.");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const totalPages = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedRecords = filteredRecords.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, searchQuery, gudangFilter, statusFilter, startDate, endDate]);
+
   return (
       <div>
       <div className="flex flex-1 flex-col p-6">
@@ -334,8 +408,8 @@ export default function AdminDeliveryPage() {
         </header>
 
         {/* Tabs & Search */}
-        <div className="mb-6 flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap items-center gap-2 bg-slate-100 p-1.5 rounded-2xl">
+        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="flex w-full max-w-full md:w-auto flex-nowrap items-center gap-2 bg-slate-100 p-1.5 rounded-2xl overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {[
               { key: "SEMUA", label: "Semua" },
               { key: "INBOUND", label: `Inbound (${inboundCount})` },
@@ -344,14 +418,14 @@ export default function AdminDeliveryPage() {
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as TabType)}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${activeTab === tab.key ? "bg-[#FF5500] text-white shadow-md shadow-orange-500/20" : "text-slate-600 hover:text-slate-900 hover:bg-white"}`}
+                className={`flex shrink-0 whitespace-nowrap min-h-10 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${activeTab === tab.key ? "bg-[#FF5500] text-white shadow-md shadow-orange-500/20" : "text-slate-600 hover:text-slate-900 hover:bg-white"}`}
               >
                 {tab.label}
               </button>
             ))}
           </div>
 
-          <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+          <div className="flex flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
             <Search size={16} className="shrink-0 text-slate-400" />
             <input
               type="text"
@@ -364,12 +438,12 @@ export default function AdminDeliveryPage() {
         </div>
 
         {/* Filters */}
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="relative">
+        <div className="mb-4 grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
+          <div className="relative min-w-0">
             <select
               value={gudangFilter}
               onChange={(e) => setGudangFilter(e.target.value)}
-              className="appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2 pr-9 text-sm font-medium text-slate-700 outline-none focus:border-orange-400"
+              className="w-full md:w-auto min-w-0 truncate appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2 pr-9 text-sm font-medium text-slate-700 outline-none focus:border-orange-400"
             >
               <option value="all">Semua Gudang</option>
               {warehouses.map((w) => (
@@ -381,38 +455,38 @@ export default function AdminDeliveryPage() {
             <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
 
-          <div className="relative">
+          <div className="relative min-w-0">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2 pr-9 text-sm font-medium text-slate-700 outline-none focus:border-orange-400"
+              className="w-full md:w-auto min-w-0 truncate appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2 pr-9 text-sm font-medium text-slate-700 outline-none focus:border-orange-400"
             >
               <option value="all">Semua Status</option>
-              {Object.entries(STATUS_META).map(([key, meta]) => (
+              {SURAT_JALAN_STATUS_VALUES.map((key) => (
                 <option key={key} value={key}>
-                  {meta.label}
+                  {getSuratJalanStatusLabel(key)}
                 </option>
               ))}
             </select>
             <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="col-span-2 grid grid-cols-1 gap-2 md:col-span-1 md:flex md:items-center md:w-auto">
             <div className="relative">
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 outline-none focus:border-orange-400"
+                className="w-full min-w-0 md:w-auto rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 outline-none focus:border-orange-400"
               />
             </div>
-            <span className="text-slate-400 text-sm">sampai</span>
+            <span className="text-slate-400 text-sm hidden md:inline">sampai</span>
             <div className="relative">
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 outline-none focus:border-orange-400"
+                className="w-full min-w-0 md:w-auto rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 outline-none focus:border-orange-400"
               />
             </div>
             {(startDate || endDate) && (
@@ -427,17 +501,18 @@ export default function AdminDeliveryPage() {
         </div>
 
         {/* Table */}
-        <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-[1000px] w-full text-left text-sm">
+        <div ref={tableRef} className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="overflow-x-auto overscroll-x-contain">
+            <table className="w-full md:min-w-[1000px] text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tipe</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">No. Surat Jalan</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tanggal</th>
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
-                  <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aksi</th>
+                  <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
+                  <th className="px-2 py-3 md:px-6 md:py-4 text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap hidden md:table-cell">Tipe</th>
+                  <th className="px-2 py-3 md:px-6 md:py-4 text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-full md:w-auto">No. Surat Jalan</th>
+                  <th className="px-2 py-3 md:px-6 md:py-4 text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap hidden md:table-cell">Project</th>
+                  <th className="px-2 py-3 md:px-6 md:py-4 text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap hidden md:table-cell">Tanggal</th>
+                  <th className="px-2 py-3 md:px-6 md:py-4 text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap hidden md:table-cell">Status</th>
+                  <th className="px-2 py-3 md:px-4 md:py-4 text-right text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap w-12 md:w-auto">Aksi</th>
                 </tr>
               </thead>
 
@@ -445,8 +520,8 @@ export default function AdminDeliveryPage() {
                 {isLoading ? (
                   Array.from({ length: 5 }).map((_, rowIndex) => (
                     <tr key={rowIndex}>
-                      {Array.from({ length: 6 }).map((_, colIndex) => (
-                        <td key={colIndex} className="px-6 py-4">
+                      {Array.from({ length: 7 }).map((_, colIndex) => (
+                        <td key={colIndex} className="px-3 py-3 md:px-6 md:py-4">
                           <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
                         </td>
                       ))}
@@ -454,39 +529,53 @@ export default function AdminDeliveryPage() {
                   ))
                 ) : error ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-16 text-center text-sm text-rose-500">
+                    <td colSpan={7} className="px-3 py-3 md:px-6 md:py-16 text-center text-sm text-rose-500">
                       {error}
                     </td>
                   </tr>
                 ) : filteredRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-16 text-center">
+                    <td colSpan={7} className="px-3 py-3 md:px-6 md:py-16 text-center">
                       <FileText size={28} className="mx-auto text-slate-300" />
                       <p className="mt-3 text-sm font-medium text-slate-600">Tidak ada data surat jalan</p>
                       <p className="mt-1 text-xs text-slate-400">Coba ubah filter atau kata pencarian.</p>
                     </td>
                   </tr>
                 ) : (
-                  filteredRecords.map((record) => {
-                    const statusMeta = STATUS_META[record.status] || { label: record.status, bg: "bg-slate-100", text: "text-slate-600" };
+                  pagedRecords.map((record, index) => {
+                    const statusTone = STATUS_TONE[String(record.status || "").toLowerCase()] || { bg: "bg-slate-100", text: "text-slate-600" };
+                    const statusLabel = getSuratJalanStatusLabel(record.status);
                     const totalQty = record.items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
                     const isOutbound = (record.tipe || "").toLowerCase() === "outbound";
+                    const rowNumber = (safePage - 1) * PAGE_SIZE + index + 1;
 
                     return (
                       <tr key={record.surat_jalan_id} className="group transition-colors hover:bg-slate-50">
-                        <td className="px-6 py-4">
+                        <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500">{rowNumber}</td>
+                        <td className="px-2 py-3 md:px-6 md:py-4 hidden md:table-cell">
                           <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${isOutbound ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>
                             {isOutbound ? <ArrowUpRight size={12} /> : <ArrowDownLeft size={12} />}
                             {isOutbound ? "Outbound" : "Inbound"}
                           </span>
                         </td>
 
-                        <td className="px-6 py-4">
-                          <p className="font-medium text-slate-900">{record.nomor_surat_jalan}</p>
+                        <td className="px-2 py-3 md:px-6 md:py-4 w-full md:w-auto break-words">
+                          <p className="text-sm md:text-base font-medium text-slate-900 break-words">{record.nomor_surat_jalan}</p>
                           <p className="text-xs text-slate-400">{record.gudang_asal?.nama_gudang || record.gudang_tujuan?.nama_gudang || "-"}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 md:hidden">
+                            <span className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${isOutbound ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>
+                              {isOutbound ? <ArrowUpRight size={10} /> : <ArrowDownLeft size={10} />}
+                              {isOutbound ? "Outbound" : "Inbound"}
+                            </span>
+                            <span className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusTone.bg} ${statusTone.text}`}>
+                              {statusLabel}
+                            </span>
+                            <span>{record.project?.nama_project || "-"}</span>
+                            <span>{record.tanggal ? new Date(record.tanggal).toLocaleDateString("id-ID") : "-"}</span>
+                          </div>
                         </td>
 
-                        <td className="px-6 py-4">
+                        <td className="px-2 py-3 md:px-6 md:py-4 hidden md:table-cell">
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-slate-800">{record.project?.nama_project || "-"}</span>
                             {record.project?.status_aktif === false && (
@@ -501,10 +590,10 @@ export default function AdminDeliveryPage() {
                           </p>
                         </td>
 
-                        <td className="px-6 py-4 text-slate-500">{record.tanggal ? new Date(record.tanggal).toLocaleDateString("id-ID") : "-"}</td>
+                        <td className="px-2 py-3 md:px-6 md:py-4 hidden md:table-cell text-slate-500">{record.tanggal ? new Date(record.tanggal).toLocaleDateString("id-ID") : "-"}</td>
 
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusMeta.bg} ${statusMeta.text}`}>
+                        <td className="px-2 py-3 md:px-6 md:py-4 hidden md:table-cell">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusTone.bg} ${statusTone.text}`}>
                             {record.status === "draft_diajukan" && <Clock size={14} />}
                             {record.status === "menunggu_verifikasi" && <Clock size={14} />}
                             {record.status === "disetujui" && <CheckCircle2 size={14} />}
@@ -513,15 +602,21 @@ export default function AdminDeliveryPage() {
                             {record.status === "diterima_didistribusikan" && <CheckCircle2 size={14} />}
                             {record.status === "sedang_dikirim" && <Truck size={14} />}
                             {record.status === "ditolak" && <AlertCircle size={14} />}
-                            {statusMeta.label}
+                            {statusLabel}
                           </span>
                         </td>
 
-                        <td className="px-4 py-4">
+                        <td className="px-1 py-3 md:px-6 md:py-4 w-12 md:w-auto">
                           <div className="flex items-center justify-end gap-1">
-                            <button type="button" onClick={() => setSelectedRecord(record)} title="Lihat detail" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
-                              <Eye size={15} />
-                            </button>
+{(record.tipe || "").toLowerCase() === "inbound" ? (
+  <Link href={`/dashboard/delivery/inbound/${record.surat_jalan_id}`} title="Lihat detail" className="min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+    <Eye size={15} />
+  </Link>
+) : (
+  <button type="button" onClick={() => handleOpenDetail(record)} title="Lihat detail" className="min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+    <Eye size={15} />
+  </button>
+)}
                           </div>
                         </td>
                       </tr>
@@ -531,39 +626,67 @@ export default function AdminDeliveryPage() {
               </tbody>
             </table>
           </div>
+          <TablePagination
+            page={safePage}
+            pageSize={PAGE_SIZE}
+            total={filteredRecords.length}
+            onPageChange={(p) => {
+              setPage(p);
+              tableRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+            }}
+          />
         </div>
 
-        {/* Detail Modal */}
+{/* Detail Modal */}
         {selectedRecord && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setSelectedRecord(null)}>
-            <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
-              {/* Toolbar — hilang saat print */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 print:hidden">
-                <div>
-                  <h2 className="text-base font-semibold text-slate-900">Detail Surat Jalan</h2>
-                  <p className="text-xs text-slate-500">{selectedRecord.nomor_surat_jalan}</p>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-0 sm:p-3 md:p-4" onClick={() => setSelectedRecord(null)}>
+              <div className="w-full h-[100dvh] max-h-[100dvh] w-[calc(100vw-1rem)] sm:w-[min(92vw,720px)] sm:max-h-[calc(100dvh-1.5rem)] sm:rounded-xl md:max-w-6xl lg:max-w-6xl md:h-auto md:max-h-[calc(100dvh-1rem)] md:rounded-2xl overflow-y-auto overscroll-contain bg-white shadow-xl pb-6" onClick={(e) => e.stopPropagation()}>
+              {/* Toolbar — hilang saat print, sticky di mobile */}
+              <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-100 bg-white print:hidden">
+                <div className="min-w-0">
+                  <h2 className="text-base sm:text-lg md:text-xl font-semibold text-slate-900">Detail Surat Jalan</h2>
+                  <p className="break-all text-xs text-slate-500">{selectedRecord.nomor_surat_jalan}</p>
                 </div>
-                <button type="button" onClick={() => setSelectedRecord(null)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <button type="button" onClick={() => setSelectedRecord(null)} className="flex-shrink-0 min-h-[40px] min-w-[40px] rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
                   <X size={16} />
                 </button>
               </div>
 
               {/* Dokumen Surat Jalan — untuk tampilan di layar */}
-              <div className="p-6">
-                <DetailSuratJalanDocument
-                  data={selectedRecord as DetailSuratJalanData | null | undefined}
-                  variant="full"
-                  renderItemAction={(item) => (
+              <div className="p-3 sm:p-4 md:p-8 pb-[env(safe-area-inset-bottom)]">
+                {detailLoading ? (
+                  <div className="p-8 flex flex-col items-center justify-center gap-2 text-slate-500">
+                    <Loader2 size={20} className="animate-spin" />
+                    <p className="text-sm">Memuat detail surat jalan...</p>
+                  </div>
+                ) : detailError ? (
+                  <div className="p-8 flex flex-col items-center justify-center gap-2 text-rose-500">
+                    <AlertCircle size={20} />
+                    <p className="text-sm">{detailError}</p>
                     <button
                       type="button"
-                      onClick={() => setSelectedItem(item)}
-                      title="Lihat dokumentasi barang"
-                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      onClick={() => setDetailError(null)}
+                      className="text-xs text-[#E8632C] hover:underline"
                     >
-                      <Eye size={15} />
+                      Coba lagi
                     </button>
-                  )}
-                />
+                  </div>
+                ) : selectedRecord ? (
+                  <DetailSuratJalanDocument
+                    data={selectedRecord as DetailSuratJalanData | null | undefined}
+                    variant="full"
+                    renderItemAction={(item) => (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedItem(item)}
+                        title="Lihat dokumentasi barang"
+                        className="min-h-[40px] min-w-[40px] rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      >
+                        <Eye size={15} />
+                      </button>
+                    )}
+                  />
+                ) : null}
               </div>
 
               {selectedRecord?.status === "tiba_menunggu_konfirmasi" && (
@@ -607,15 +730,15 @@ export default function AdminDeliveryPage() {
               )}
 
               {/* Actions */}
-              <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4 print:hidden">
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 px-4 py-3 sm:px-6 sm:py-4 print:hidden">
                 {selectedRecord?.status === "tiba_menunggu_konfirmasi" && (
-                  <div className="mr-auto flex flex-col gap-2">
+                  <div className="mr-auto flex flex-col gap-2 min-w-[200px]">
                     <p className="text-xs font-semibold text-slate-500">Konfirmasi Penerimaan (SPV)</p>
                     <textarea
                       value={catatanKonfirmasi}
                       onChange={(e) => setCatatanKonfirmasi(e.target.value)}
                       placeholder="Catatan konfirmasi (wajib jika ada selisih)"
-                      className="w-80 rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
+                      className="w-full sm:w-80 rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-[#E8632C] focus:outline-none"
                       rows={2}
                     />
                     <Button
@@ -760,3 +883,12 @@ export default function AdminDeliveryPage() {
   </div>
 );
 }
+
+export default function AdminDeliveryPage() {
+  return (
+    <Suspense fallback={<div className="p-6" />}>
+      <AdminDeliveryPageContent />
+    </Suspense>
+  );
+}
+

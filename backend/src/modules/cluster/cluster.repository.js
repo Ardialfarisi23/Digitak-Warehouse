@@ -1,8 +1,16 @@
 const prisma = require("../../config/prisma");
 
-const findByProjectId = async (projectId) => {
+const findByProjectId = async (projectId, status = "aktif") => {
+  const where = { project_id: Number(projectId) };
+  if (status === "aktif") {
+    where.status_aktif = true;
+  } else if (status === "nonaktif") {
+    where.status_aktif = false;
+  }
+  // "all" => tanpa filter status_aktif
+
   return await prisma.cluster.findMany({
-    where: { project_id: Number(projectId), status_aktif: true },
+    where,
     select: {
       cluster_id: true,
       nama_cluster: true,
@@ -13,14 +21,61 @@ const findByProjectId = async (projectId) => {
       no_tiket_release: true,
       vendor: true,
       alamat_lengkap: true,
+      homepass_plan: true,
+      pic_id: true,
+      pic: {
+        select: {
+          personil_id: true,
+          nama: true,
+        },
+      },
     },
     orderBy: { nama_cluster: "asc" },
   });
 };
 
-const findAll = async () => {
+const findAll = async ({ search, status_aktif, project_id, status } = {}) => {
+  let normalizedSearch = "";
+  if (typeof search === "string") {
+    normalizedSearch = search.trim();
+  } else if (Array.isArray(search) && typeof search[0] === "string") {
+    normalizedSearch = search[0].trim();
+  }
+
+  const where = {};
+
+  if (project_id !== undefined && project_id !== null && project_id !== "") {
+    where.project_id = Number(project_id);
+  }
+
+  // Support both "status" (new) and "status_aktif" (legacy) query params
+  const effectiveStatus = status !== undefined ? status : status_aktif;
+  if (effectiveStatus === "all") {
+    // tanpa filter status_aktif
+  } else if (effectiveStatus === "true" || effectiveStatus === "aktif") {
+    where.status_aktif = true;
+  } else if (effectiveStatus === "false" || effectiveStatus === "nonaktif") {
+    where.status_aktif = false;
+  } else if (effectiveStatus === undefined) {
+    where.status_aktif = true;
+  }
+  // nilai selain di atas: tidak set filter (dialihkan validasi ke service)
+
+  if (normalizedSearch) {
+      where.OR = [
+        { nama_cluster: { contains: normalizedSearch, mode: "insensitive" } },
+        { cluster_id: { contains: normalizedSearch, mode: "insensitive" } },
+        { cluster_type: { contains: normalizedSearch, mode: "insensitive" } },
+        { alamat_lengkap: { contains: normalizedSearch, mode: "insensitive" } },
+        { vendor: { contains: normalizedSearch, mode: "insensitive" } },
+        { no_tiket_release: { contains: normalizedSearch, mode: "insensitive" } },
+        { kso_partner: { contains: normalizedSearch, mode: "insensitive" } },
+        { project: { nama_project: { contains: normalizedSearch, mode: "insensitive" } } },
+      ];
+  }
+
   return await prisma.cluster.findMany({
-    where: { status_aktif: true },
+    where,
     include: {
       project: {
         select: {
@@ -29,8 +84,61 @@ const findAll = async () => {
           area: true,
         },
       },
+      pic: {
+        select: {
+          personil_id: true,
+          nama: true,
+        },
+      },
     },
     orderBy: [{ project_id: "asc" }, { nama_cluster: "asc" }],
+  });
+};
+
+/**
+ * Data minimal cluster untuk endpoint read-only (dropdown/picker).
+ *
+ * Hanya mengembalikan field yang benar-benar dipakai form (id, kode, nama),
+ * tanpa data manajemen (PIC, KSO, vendor, alamat, dsb).
+ */
+const findOptions = async ({ projectId, status = "aktif", search } = {}) => {
+  const conditions = [];
+
+  if (projectId !== undefined && projectId !== null && projectId !== "") {
+    const projectIdNum = Number(projectId);
+    if (Number.isFinite(projectIdNum) && projectIdNum > 0) {
+      conditions.push({ project_id: projectIdNum });
+    }
+  }
+
+  if (status === "aktif") {
+    conditions.push({ status_aktif: true });
+  } else if (status === "nonaktif") {
+    conditions.push({ status_aktif: false });
+  }
+
+  const normalizedSearch = typeof search === "string" ? search.trim() : "";
+  if (normalizedSearch) {
+    conditions.push({
+      OR: [
+        { nama_cluster: { contains: normalizedSearch, mode: "insensitive" } },
+        { cluster_id: { contains: normalizedSearch, mode: "insensitive" } },
+      ],
+    });
+  }
+
+  const where = conditions.length ? { AND: conditions } : {};
+
+  return await prisma.cluster.findMany({
+    where,
+    select: {
+      cluster_id: true,
+      nama_cluster: true,
+      project_id: true,
+      project: { select: { nama_project: true } },
+    },
+    orderBy: [{ project_id: "asc" }, { nama_cluster: "asc" }],
+    take: 500,
   });
 };
 
@@ -38,6 +146,10 @@ const update = async (clusterId, data) => {
   return await prisma.cluster.update({
     where: { cluster_id: clusterId },
     data,
+    include: {
+      project: { select: { project_id: true, nama_project: true } },
+      pic: { select: { personil_id: true, nama: true } },
+    },
   });
 };
 
@@ -81,6 +193,7 @@ const create = async (data) => {
 module.exports = {
   findByProjectId,
   findAll,
+  findOptions,
   update,
   toggleStatus,
   create,

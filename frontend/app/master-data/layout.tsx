@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { CompactSidebar } from "@/components/CompactSidebar";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole } from "@/lib/navigation";
@@ -33,14 +35,34 @@ export default function MasterDataLayout({
 }) {
   const { user, isLoading } = useAuth();
   const { width } = useSidebar();
+  const router = useRouter();
 
   const userRole = mapRole(user?.role);
+
+  // Route guard (K7): Master Data (termasuk tab Cluster) hanya untuk Admin &
+  // Supervisor. Staf Gudang yang membuka URL langsung diarahkan ke beranda staf.
+  useEffect(() => {
+    if (isLoading) return;
+    if (!user) {
+      router.push("/");
+    } else if (userRole === "staff") {
+      router.replace("/staff/dashboard");
+    }
+  }, [isLoading, user, userRole, router]);
+
+  if (isLoading || !user || userRole === "staff") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#FAF8F5] text-slate-500">
+        Memuat...
+      </div>
+    );
+  }
 
   return (
     <ProtectedRoute>
       <div className="flex min-h-screen bg-[#FAF8F5] overflow-visible">
         {isLoading || !user ? <SidebarSkeleton /> : <CompactSidebar userRole={userRole} />}
-        <main className="flex-1 mt-16 p-6 overflow-y-auto transition-all duration-300" style={{ marginLeft: `${width}px` }}>
+        <main className="flex-1 mt-16 p-4 sm:p-6 overflow-y-auto transition-all duration-300 ml-0 md:ml-[var(--sidebar-w)]" style={{ "--sidebar-w": `${width}px` } as React.CSSProperties}>
           {children}
         </main>
       </div>

@@ -1,11 +1,14 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Search, Plus, UserCheck, UserX, X, Clock3, Eye, Pencil, ShieldAlert, AlertCircle } from "lucide-react";
+import { Search, Plus, UserCheck, UserX, X, Clock3, Eye, Pencil, ShieldAlert, AlertCircle, Key } from "lucide-react";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { mapRole, formatRole } from "@/lib/navigation";
+import { safeUrl } from "@/lib/safe-url";
 import { Button } from "@/components/ui/button";
+import TablePagination from "@/components/TablePagination";
+import { MobileCardList, type MobileCardField, type MobileCardItem } from "@/components/MobileCardList";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
@@ -65,6 +68,7 @@ export default function UsersPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "aktif" | "nonaktif">("all");
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -108,6 +112,14 @@ export default function UsersPage() {
   const [showTempPasswordModal, setShowTempPasswordModal] = useState(false);
   const [tempPassword, setTempPassword] = useState("");
 
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetUrl, setResetUrl] = useState<string | null>(null);
+  const [resetExpiresAt, setResetExpiresAt] = useState<string | null>(null);
+  const [confirmReset, setConfirmReset] = useState<{
+    open: boolean;
+    record: any | null;
+  }>({ open: false, record: null });
+
    /* =========================================================
       CEK ROLE ADMIN
    ========================================================= */
@@ -144,7 +156,7 @@ export default function UsersPage() {
 
     try {
       const response = await get(
-        `${API_BASE}/api/users?page=1&limit=100`
+        `${API_BASE}/api/users?page=1&limit=100&include_inactive=true`
       );
 
       const json = await response.json();
@@ -199,7 +211,7 @@ export default function UsersPage() {
       .then((json) => {
         if (cancelled) return;
         const list = Array.isArray(json?.data) ? json.data : Array.isArray(json?.data?.data) ? json.data.data : Array.isArray(json) ? json : [];
-        setWarehouseOptions(list.map((w: any) => ({ id: String(w.gudang_id), nama: w.nama_gudang + (w.tipe === "dadakan" ? " (Dadakan)" : ""), tipe: w.tipe })));
+        setWarehouseOptions(list.map((w: any) => ({ id: String(w.gudang_id), nama: w.nama_gudang + (w.tipe === "dadakan" ? " (Transit)" : ""), tipe: w.tipe })));
       })
       .catch(() => {
         if (!cancelled) setWarehouseOptions([]);
@@ -223,13 +235,21 @@ export default function UsersPage() {
   }, [searchInput]);
 
   const filteredUsers = useMemo(() => {
+    let result = users;
+
+    if (statusFilter === "aktif") {
+      result = result.filter((record) => record.is_aktif);
+    } else if (statusFilter === "nonaktif") {
+      result = result.filter((record) => !record.is_aktif);
+    }
+
     if (!search.trim()) {
-      return users;
+      return result;
     }
 
     const query = search.toLowerCase();
 
-    return users.filter((record) =>
+    return result.filter((record) =>
       [
         record.nama,
         record.email,
@@ -242,7 +262,7 @@ export default function UsersPage() {
         .toLowerCase()
         .includes(query)
     );
-  }, [search, users]);
+  }, [search, users, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / itemsPerPage));
 
@@ -250,6 +270,108 @@ export default function UsersPage() {
     const start = (currentPage - 1) * itemsPerPage;
     return filteredUsers.slice(start, start + itemsPerPage);
   }, [filteredUsers, currentPage]);
+
+  const mobileItems = useMemo<MobileCardItem[]>(() => {
+    return paginatedUsers.map((record) => {
+      const userId = record.user_id ?? record.id;
+      const isSelf = !!user?.id && String(userId) === String(user.id);
+      const roleLabel = getRoleLabel(record.role);
+      const statusLabel = record.is_aktif ? "Aktif" : "Nonaktif";
+      const statusTone = record.is_aktif
+        ? "bg-emerald-50 text-emerald-600"
+        : "bg-slate-100 text-slate-500";
+
+      const actions = (
+        <div className="grid grid-cols-4 gap-2">
+          <button
+            type="button"
+            aria-label="Lihat detail pengguna"
+            onClick={() => setSelectedUser(record)}
+            className="flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-orange-600"
+          >
+            <Eye size={16} />
+          </button>
+          <button
+            type="button"
+            aria-label="Edit pengguna"
+            onClick={() => handleOpenEdit(record)}
+            className="flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-orange-600"
+          >
+            <Pencil size={16} />
+          </button>
+          <button
+            type="button"
+            disabled={isSaving || isSelf}
+            aria-label={record.is_aktif ? "Nonaktifkan akun" : "Aktifkan akun"}
+            onClick={() =>
+              setConfirmToggle({
+                open: true,
+                record,
+                nextStatus: !record.is_aktif,
+              })
+            }
+            className="flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {record.is_aktif ? <UserX size={16} /> : <UserCheck size={16} />}
+          </button>
+          {mapRole(user?.role) === "admin" && record.is_aktif && (
+            <button
+              type="button"
+              disabled={isSaving}
+              aria-label="Buat link reset password"
+              onClick={() =>
+                setConfirmReset({
+                  open: true,
+                  record,
+                })
+              }
+              className="flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Key size={16} />
+            </button>
+          )}
+        </div>
+      );
+
+      const fields: MobileCardField[] = [
+        { label: "Email", value: <span className="break-all text-slate-600">{record.email || "-"}</span> },
+        { label: "No. Telepon", value: record.no_telepon || "-" },
+        { label: "Role", value: roleLabel },
+        { label: "Gudang", value: record.gudangNama || "-" },
+      ];
+
+      return {
+        key: String(userId),
+        title: (
+          <span className="flex items-center gap-2">
+            {getPhotoUrl(record.foto) ? (
+                <img
+                  src={safeUrl(getPhotoUrl(record.foto)) ?? "#"}
+                alt={record.nama}
+                className="h-8 w-8 shrink-0 rounded-full border border-slate-200 object-cover"
+              />
+            ) : (
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
+                {record?.nama
+                  ? record?.nama.charAt(0).toUpperCase()
+                  : "?"}
+              </span>
+            )}
+            <span className="truncate">{record?.nama}</span>
+          </span>
+        ),
+        badge: (
+          <div className="flex flex-col items-end gap-1">
+            <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${statusTone}`}>
+              {statusLabel}
+            </span>
+          </div>
+        ),
+        fields,
+        actions,
+      };
+    });
+  }, [paginatedUsers, user, isSaving]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -310,6 +432,42 @@ export default function UsersPage() {
         caughtError instanceof Error
           ? caughtError.message
           : "Terjadi kesalahan saat memperbarui status."
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  /* =========================================================
+     BUAT LINK RESET PASSWORD
+  ========================================================= */
+
+  const handleCreateResetLink = async (record: any) => {
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const response = await post(
+        `${API_BASE}/api/users/${record.user_id ?? record.id}/reset-link`
+      );
+
+      const json = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          json?.message || "Gagal membuat link reset password."
+        );
+      }
+
+      setConfirmReset({ open: false, record: null });
+      setShowResetModal(true);
+      setResetUrl(json?.data?.resetUrl ?? null);
+      setResetExpiresAt(json?.data?.expiresAt ?? null);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Terjadi kesalahan saat membuat link reset."
       );
     } finally {
       setIsSaving(false);
@@ -543,8 +701,8 @@ export default function UsersPage() {
     <div className="flex flex-1 flex-col">
       <div className="w-full">
         {/* HEADER */}
-        <header className="mb-6 flex items-start justify-between">
-          <div>
+        <header className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
             <h1 className="text-2xl font-bold text-slate-900">
               Manajemen Pengguna
             </h1>
@@ -555,8 +713,8 @@ export default function UsersPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="relative w-72">
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center md:w-auto">
+            <div className="relative w-full sm:w-72">
               <Search
                 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
               />
@@ -572,10 +730,22 @@ export default function UsersPage() {
               />
             </div>
 
+            <select
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(event.target.value as "all" | "aktif" | "nonaktif")
+              }
+              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100 sm:w-48"
+            >
+              <option value="all">Semua Status</option>
+              <option value="aktif">Aktif</option>
+              <option value="nonaktif">Nonaktif</option>
+            </select>
+
             <Button
               type="button"
               onClick={handleAdd}
-              className="inline-flex items-center gap-2 bg-orange-500 text-white hover:bg-orange-600"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 whitespace-nowrap bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 min-h-10"
             >
               <Plus size={16} />
               Tambah Pengguna
@@ -585,59 +755,87 @@ export default function UsersPage() {
 
         {/* TABLE */}
         <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm text-slate-700">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Nama
-                  </th>
+          {/* MOBILE CARD LIST */}
+          <div className="md:hidden">
+            {isLoading ? (
+              <div className="space-y-3 p-4">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-slate-100" />
+                      <div className="min-w-0 flex-1">
+                        <div className="h-4 w-2/3 animate-pulse rounded bg-slate-100" />
+                        <div className="mt-1.5 h-3 w-1/2 animate-pulse rounded bg-slate-100" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : filteredUsers.length === 0 ? (
+              <div className="px-6 py-16 text-center text-sm text-slate-400">
+                Tidak ada pengguna yang cocok.
+              </div>
+            ) : (
+              <MobileCardList items={mobileItems} />
+            )}
+          </div>
 
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Email
-                  </th>
+          {/* DESKTOP TABLE */}
+          <div className="hidden md:block">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm text-slate-700">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50">
+                    <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
+                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      Nama
+                    </th>
 
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    No. Telepon
-                  </th>
+                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      Email
+                    </th>
 
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Role
-                  </th>
+                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      No. Telepon
+                    </th>
 
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Gudang
-                  </th>
+                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      Role
+                    </th>
 
-                  <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Status
-                  </th>
+                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      Gudang
+                    </th>
 
-                  <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Aksi
-                  </th>
-                </tr>
-              </thead>
+                    <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      Status
+                    </th>
 
-              <tbody className="divide-y divide-slate-50">
-                {isLoading ? (
-                  Array.from({ length: 7 }).map((_, rowIndex) => (
-                    <tr key={rowIndex}>
-                      {Array.from({ length: 7 }).map((_, colIndex) => (
-                        <td key={colIndex} className="px-6 py-4">
-                          <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
-                        </td>
-                      ))}
-                    </tr>
-                  ))
-                ) : filteredUsers.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-16 text-center text-sm text-slate-400">
-                      Tidak ada pengguna yang cocok.
-                    </td>
+                    <th className="px-4 py-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      Aksi
+                    </th>
                   </tr>
-                ) : (
-                  paginatedUsers.map((record) => {
+                </thead>
+
+                <tbody className="divide-y divide-slate-50">
+                  {isLoading ? (
+                    Array.from({ length: 7 }).map((_, rowIndex) => (
+                      <tr key={rowIndex}>
+                        {Array.from({ length: 8 }).map((_, colIndex) => (
+                          <td key={colIndex} className="px-6 py-4">
+                            <div className="h-4 animate-pulse rounded-lg bg-slate-100" />
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  ) : filteredUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-6 py-16 text-center text-sm text-slate-400">
+                        Tidak ada pengguna yang cocok.
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedUsers.map((record, index) => {
                     const photoUrl =
                       getPhotoUrl(record.foto);
 
@@ -647,17 +845,19 @@ export default function UsersPage() {
                       !!user?.id &&
                       String(userId) ===
                         String(user.id);
+                    const rowNumber = (currentPage - 1) * itemsPerPage + index + 1;
 
                     return (
                       <tr
                         key={userId}
-                        className="group transition-colors hover:bg-slate-50"
+                        className={`group transition-colors hover:bg-slate-50 ${!record.is_aktif ? "opacity-70" : ""}`}
                       >
+                        <td className="px-3 py-4 whitespace-nowrap text-center text-xs text-slate-500">{rowNumber}</td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             {photoUrl ? (
-                              <img
-                                src={photoUrl}
+                                <img
+                                  src={safeUrl(photoUrl) ?? "#"}
                                 alt={record.nama}
                                 className="h-10 w-10 shrink-0 rounded-full border border-slate-200 object-cover"
                                 onError={(event) => {
@@ -683,20 +883,20 @@ export default function UsersPage() {
                           </div>
                         </td>
 
-                        <td className="px-6 py-4 text-slate-500">
-                          {record.email}
+                        <td className="max-w-[220px] px-6 py-4 text-slate-500">
+                          <span className="block truncate" title={record.email}>{record.email}</span>
                         </td>
 
-                        <td className="px-6 py-4 text-slate-500">
-                          {record.no_telepon || "-"}
+                        <td className="max-w-[140px] px-6 py-4 text-slate-500">
+                          <span className="block truncate" title={record.no_telepon || "-"}>{record.no_telepon || "-"}</span>
                         </td>
 
                         <td className="px-6 py-4 text-slate-500">
                           {getRoleLabel(record.role)}
                         </td>
 
-                        <td className="px-6 py-4 text-slate-500">
-                          {record.gudang_nama || "-"}
+<td className="max-w-[180px] px-6 py-4 text-slate-500">
+                          <span className="block truncate" title={record.gudangNama || "-"}>{record.gudangNama || "-"}</span>
                         </td>
 
                         <td className="px-6 py-4">
@@ -752,10 +952,28 @@ export default function UsersPage() {
                              >
                               {record.is_aktif ? (
                                 <UserX size={14} />
-                              ) : (
+                              )                               : (
                                 <UserCheck size={14} />
                               )}
                             </button>
+
+                              {mapRole(user?.role) === "admin" && record.is_aktif && (
+                                <button
+                                  type="button"
+                                  disabled={isSaving}
+                                  onClick={() =>
+                                    setConfirmReset({
+                                      open: true,
+                                      record,
+                                    })
+                                  }
+                                  title="Buat link reset password"
+                                  aria-label="Buat link reset password"
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  <Key size={14} />
+                                </button>
+                              )}
                           </div>
                         </td>
                       </tr>
@@ -763,60 +981,26 @@ export default function UsersPage() {
                   })
                 )}
               </tbody>
-            </table>
+</table>
           </div>
-
-          {error && (
-            <div className="mx-6 mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-              {error}
-            </div>
-          )}
-
-          {filteredUsers.length > 0 && (
-            <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4">
-              <div className="text-sm text-slate-500">
-                Menampilkan {(currentPage - 1) * itemsPerPage + 1}–
-                {Math.min(currentPage * itemsPerPage, filteredUsers.length)} dari {filteredUsers.length} pengguna
-              </div>
-
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 disabled:opacity-30"
-                >
-                  &lt;
-                </button>
-
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <button
-                    key={page}
-                    type="button"
-                    onClick={() => setCurrentPage(page)}
-                    className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition-colors ${
-                      currentPage === page
-                        ? "bg-slate-900 text-white"
-                        : "text-slate-600 hover:bg-slate-100"
-                    }`}
-                  >
-                    {page}
-                  </button>
-                ))}
-
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 disabled:opacity-30"
-                >
-                  &gt;
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
+    </div>
+
+      {error && (
+        <div className="mx-6 mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
+
+      {filteredUsers.length > 0 && (
+        <TablePagination
+          page={currentPage}
+          pageSize={itemsPerPage}
+          total={filteredUsers.length}
+          onPageChange={setCurrentPage}
+        />
+      )}
 
       {/* =====================================================
           MODAL DETAIL PENGGUNA
@@ -829,9 +1013,9 @@ export default function UsersPage() {
         >
           <div className="flex min-h-full items-center justify-center">
             <div
-              className="relative flex w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+              className="relative flex w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
               style={{
-                maxHeight: "calc(100vh - 32px)",
+                maxHeight: "calc(100dvh - 2rem)",
               }}
               onClick={(event) =>
                 event.stopPropagation()
@@ -864,7 +1048,7 @@ export default function UsersPage() {
                 <div className="flex flex-col items-center">
                   {getPhotoUrl(selectedUser.foto) ? (
                     <img
-                      src={getPhotoUrl(selectedUser.foto)!}
+                      src={safeUrl(getPhotoUrl(selectedUser.foto)) ?? "#"}
                       alt={selectedUser.nama}
                       className="h-24 w-24 rounded-full border-4 border-slate-100 object-cover shadow-sm"
                     />
@@ -990,7 +1174,7 @@ export default function UsersPage() {
           }}
         >
           <div
-            className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-xl"
+            className="w-[calc(100vw-1.5rem)] max-w-sm max-h-[calc(100dvh-2rem)] overflow-hidden rounded-2xl bg-white shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="border-b border-slate-100 px-6 py-4">
@@ -1084,10 +1268,7 @@ export default function UsersPage() {
           }}
         >
           <div
-            className="w-full max-w-[540px] overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl"
-            style={{
-              maxHeight: "calc(100vh - 24px)",
-            }}
+            className="w-[calc(100vw-1.5rem)] max-w-[540px] max-h-[calc(100dvh-2rem)] overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl"
             onClick={(event) =>
               event.stopPropagation()
             }
@@ -1125,7 +1306,7 @@ export default function UsersPage() {
                 ISI MODAL
             ================================================= */}
 
-            <div className="max-h-[calc(100vh-105px)] overflow-y-auto px-5 py-4">
+              <div className="max-h-[calc(100dvh-105px)] overflow-y-auto px-5 py-4">
               {/* =================================================
                   IDENTITAS
               ================================================= */}
@@ -1387,8 +1568,172 @@ export default function UsersPage() {
               </div>
             </div>
           </div>
-         </div>
-       )}
+        </div>
+      )}
+
+      {/* =====================================================
+          MODAL KONFIRMASI BUAT LINK RESET
+      ===================================================== */}
+
+      {confirmReset.open && confirmReset.record && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/40 p-4"
+          onClick={() => {
+            if (!isSaving) {
+              setConfirmReset({ open: false, record: null });
+            }
+          }}
+        >
+          <div
+            className="w-[calc(100vw-1.5rem)] max-w-sm max-h-[calc(100dvh-2rem)] overflow-hidden rounded-2xl bg-white shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="border-b border-slate-100 px-6 py-4">
+              <h2 className="text-base font-semibold text-slate-900">
+                Konfirmasi Buat Link Reset
+              </h2>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Link lama untuk user ini akan tidak berlaku. Lanjutkan?
+              </p>
+            </div>
+
+            <div className="px-6 py-5">
+              <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-700">
+                  {confirmReset.record.nama?.charAt(0).toUpperCase()}
+                </div>
+
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-900">
+                    {confirmReset.record.nama}
+                  </p>
+
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {getRoleLabel(confirmReset.record.role)}
+                  </p>
+                </div>
+              </div>
+
+              {error && (
+                <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-[10px] leading-relaxed text-rose-600">
+                  {error}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={() =>
+                  setConfirmReset({ open: false, record: null })
+                }
+                className="h-8 rounded-lg border border-slate-200 bg-white px-3.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-40"
+              >
+                Batal
+              </button>
+
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={() => {
+                  if (confirmReset.record) {
+                    handleCreateResetLink(confirmReset.record);
+                    setConfirmReset({ open: false, record: null });
+                  }
+                }}
+                className="h-8 rounded-lg bg-slate-900 px-3.5 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSaving ? "Membuat..." : "Ya, Buat Link"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================
+          MODAL HASIL LINK RESET
+      ===================================================== */}
+
+      {showResetModal && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/40 p-4"
+          onClick={() => setShowResetModal(false)}
+        >
+          <div
+            className="w-[calc(100vw-1.5rem)] max-w-sm max-h-[calc(100dvh-2rem)] overflow-hidden rounded-2xl bg-white shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="border-b border-slate-100 px-6 py-4">
+              <h2 className="text-base font-semibold text-slate-900">
+                Link Reset Password
+              </h2>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Salin link ini dan kirimkan kepada user melalui jalur aman.
+              </p>
+            </div>
+
+            <div className="px-6 py-5">
+              <div className="mt-4 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5 text-[10px] leading-relaxed text-amber-700">
+                <Key size={14} className="shrink-0 text-amber-500" />
+                <span className="ml-1.5">
+                  Link hanya berlaku sekali dan tidak akan ditampilkan kembali
+                  setelah modal ditutup.
+                </span>
+              </div>
+
+              {resetExpiresAt && (
+                <div className="mt-3 flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5 text-xs text-slate-600">
+                  <Clock3 size={14} className="shrink-0" />
+                  <span className="font-semibold">Berlaku hingga:</span>
+                  <span className="ml-1">{resetExpiresAt}</span>
+                </div>
+              )}
+
+              <div className="mt-4">
+                <label className="mb-1.5 block text-[11px] font-medium text-slate-700">
+                  Link Reset
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={resetUrl ?? ""}
+                    className="h-9 flex-1 rounded-lg border border-slate-200 bg-[#FAF8F5] px-3 text-xs text-slate-700 outline-none break-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (resetUrl) {
+                        navigator.clipboard.writeText(resetUrl);
+                      }
+                    }}
+                    className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-medium text-slate-600 transition hover:bg-slate-50"
+                  >
+                    Salin
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-0 flex justify-end gap-2 border-t border-slate-200 px-6 py-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowResetModal(false);
+                  setResetUrl(null);
+                  setResetExpiresAt(null);
+                }}
+                className="h-8 rounded-lg bg-slate-900 px-3.5 text-[10px] font-semibold text-white transition hover:bg-slate-800"
+              >
+                Saya sudah menyimpan link
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
        {/* =====================================================
            MODAL EDIT PENGGUNA
@@ -1404,11 +1749,8 @@ export default function UsersPage() {
              }
            }}
          >
-           <div
-             className="w-full max-w-[540px] overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl"
-             style={{
-               maxHeight: "calc(100vh - 24px)",
-             }}
+<div
+              className="w-[calc(100vw-1.5rem)] max-w-[540px] max-h-[calc(100dvh-2rem)] overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl"
              onClick={(event) =>
                event.stopPropagation()
              }
@@ -1442,7 +1784,7 @@ export default function UsersPage() {
 
              {/* BODY */}
 
-             <div className="max-h-[calc(100vh-105px)] overflow-y-auto px-5 py-4">
+            <div className="max-h-[calc(100dvh-105px)] overflow-y-auto px-5 py-4">
                {/* IDENTITAS */}
 
                <div>
@@ -1678,7 +2020,7 @@ export default function UsersPage() {
             onClick={() => setShowTempPasswordModal(false)}
           >
             <div
-              className="w-full max-w-[480px] overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl"
+              className="w-[calc(100vw-1.5rem)] max-w-[480px] max-h-[calc(100dvh-2rem)] overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
@@ -1737,7 +2079,7 @@ export default function UsersPage() {
  
          {toast && (
          <div
-           className={`fixed right-6 top-6 z-[130] flex items-center gap-3 rounded-xl border px-4 py-3 shadow-lg transition-all ${
+           className={`fixed right-4 top-4 sm:right-6 sm:top-6 z-[130] flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-xl border px-4 py-3 shadow-lg transition-all ${
              toast.type === "success"
                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
                : "border-rose-200 bg-rose-50 text-rose-800"
@@ -1746,8 +2088,8 @@ export default function UsersPage() {
            <AlertCircle size={17} className="shrink-0" />
            <span className="text-[13px] font-semibold">{toast.message}</span>
          </div>
-       )}
-     </div>
-   );
- }
+)}
+    </div>
+  );
+}
 

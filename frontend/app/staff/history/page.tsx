@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useApi } from "@/lib/api";
@@ -139,9 +140,55 @@ export default function StaffHistoryPage() {
             Belum ada aktivitas tercatat untuk akun Anda.
           </p>
         ) : (
-          <table className="w-full text-sm">
+          <>
+            {/* Mobile card view */}
+            <div className="space-y-3 md:hidden">
+              {items.map((row) => {
+                const sj = row.surat_jalan;
+                const waktu = formatDateTime(row.created_at);
+                const aksi = AKSI_LABEL[row.aksi] || row.aksi;
+                const tipeTone = sj?.tipe === "inbound" ? "safe" : sj?.tipe === "outbound" ? "warning" : "neutral";
+                const statusTone = sj?.status === "ditolak" ? "warning" : "neutral";
+                const targetHref =
+                  sj?.tipe === "outbound"
+                    ? `/staff/outbound/${sj?.surat_jalan_id}`
+                    : sj?.tipe === "inbound"
+                      ? `/staff/putaway/${sj?.surat_jalan_id}`
+                      : null;
+
+                return (
+                  <Link
+                    key={`card-${row.audit_id}`}
+                    href={targetHref || "#"}
+                    className={`block rounded-xl border border-[#F3D9C7] bg-white p-4 ${targetHref ? "hover:bg-[#FDECE1]/30" : "opacity-70"}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-gray-800">{aksi}</p>
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${tipeTone === "safe" ? "bg-emerald-50 text-emerald-700" : tipeTone === "warning" ? "bg-orange-50 text-orange-700" : "bg-slate-50 text-slate-600"}`}>
+                        {sj?.tipe || "—"}
+                      </span>
+                    </div>
+                    <div className="mt-3 space-y-1 text-sm text-gray-600">
+                      <p><span className="text-gray-400">Waktu:</span> {waktu}</p>
+                      <p><span className="text-gray-400">Nomor SJ:</span> {sj?.nomor_surat_jalan || "Surat jalan sudah dihapus"}</p>
+                      <p><span className="text-gray-400">Status:</span> {sj?.status?.replace(/_/g, " ") || "—"}</p>
+                    </div>
+                    {targetHref && (
+                      <div className="mt-3 flex min-h-11 items-center justify-center rounded-lg bg-[#E8632C] text-sm font-semibold text-white hover:bg-[#D9591F]">
+                        Lihat Detail
+                      </div>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+
+            {/* Desktop table view */}
+            <div className="hidden md:block overflow-x-auto overscroll-x-contain">
+            <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+                <th className="px-3 py-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-12 text-center">No</th>
                 <th className="pb-3 font-semibold">Waktu</th>
                 <th className="pb-3 font-semibold">Aksi</th>
                 <th className="pb-3 font-semibold">Tipe</th>
@@ -150,10 +197,12 @@ export default function StaffHistoryPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((row) => {
+              {items.map((row, index) => {
                 const sj = row.surat_jalan;
+                const rowNumber = (page - 1) * pageSize + index + 1;
                 return (
                   <tr key={String(row.audit_id)} className="border-b border-gray-50 last:border-0 hover:bg-[#FDECE1]/30">
+                    <td className="px-3 py-3 whitespace-nowrap text-center text-xs text-slate-500">{rowNumber}</td>
                     <td className="py-3 pr-4 text-gray-500">{formatDateTime(row.created_at)}</td>
                     <td className="py-3 pr-4 font-medium text-gray-800">
                       {AKSI_LABEL[row.aksi] || row.aksi}
@@ -174,7 +223,7 @@ export default function StaffHistoryPage() {
                             router.push(
                               sj.tipe === "outbound"
                                 ? `/staff/outbound/${sj.surat_jalan_id}`
-                                : `/staff/inbound/${sj.surat_jalan_id}`,
+                                : `/staff/putaway/${sj.surat_jalan_id}`,
                             )
                           }
                           className="font-semibold text-[#E8632C] hover:underline"
@@ -197,8 +246,10 @@ export default function StaffHistoryPage() {
                   </tr>
                 );
               })}
-            </tbody>
-          </table>
+             </tbody>
+           </table>
+           </div>
+         </>
         )}
 
         {!isLoading && !error && items.length > 0 && (

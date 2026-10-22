@@ -472,6 +472,7 @@ const findAll = async ({
   search,
   sortBy = "updated_at",
   sortOrder = "desc",
+  include_inactive,
 } = {}) => {
   /* =======================================================
      PAGINATION
@@ -498,9 +499,9 @@ const findAll = async ({
 
   const orderDirection =
     ["asc", "desc"].includes(
-      String(sortOrder || "").toLowerCase()
+      (sortOrder || "").toLowerCase()
     )
-      ? String(sortOrder).toLowerCase()
+      ? sortOrder.toLowerCase()
       : "desc";
 
   /* =======================================================
@@ -508,6 +509,11 @@ const findAll = async ({
   ======================================================= */
 
   const where = {};
+
+  // Default: hanya user aktif. include_inactive=true untuk menampilkan semua.
+  if (include_inactive !== "true") {
+    where.is_aktif = true;
+  }
 
   if (
     search &&
@@ -627,7 +633,8 @@ const findAll = async ({
  */
 const update = async (
   user_id,
-  data
+  data,
+  actorId
 ) => {
   const {
     no_telepon,
@@ -693,6 +700,10 @@ const update = async (
       if (userData.role && userData.role !== user.role) {
         updateData.posisi = roleToPosisi(userData.role);
         updateData.jenis = roleToJenis(userData.role);
+      }
+
+      if (userData.is_aktif !== undefined) {
+        updateData.is_aktif = userData.is_aktif;
       }
 
       personil = await tx.personil.update({

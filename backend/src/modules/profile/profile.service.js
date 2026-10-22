@@ -2,10 +2,28 @@ const profileRepository = require("./profile.repository");
 const AppError = require("../../shared/errors");
 const passwordHelper = require("../../shared/password");
 const prisma = require("../../config/prisma");
+const { resolveGudangIds } = require("../../middlewares/gudang-scope.middleware");
 
-const toProfileResponse = (userAccount) => {
+/**
+ * `gudang_ids` = daftar lengkap gudang yang ditugaskan ke user ini, hasil union
+ * tabel `user_gudang`, `personil.gudang_id`, dan `gudang.pic_id` (lihat
+ * resolveGudangIds). Semua nilai dikirim sebagai string supaya konsisten dengan
+ * `gudang_id` lama yang juga string (BigInt).
+ *
+ * `gudang_utama_id` = gudang yang dipakai halaman staff sebagai bawaan. Nilainya
+ * `personil.gudang_id` bila masih terisi, supaya `gudang_utama_id` selalu sama
+ * dengan `gudang_id` lama untuk data yang sudah ada.
+ */
+const toProfileResponse = (userAccount, gudangIds = []) => {
   const personil = userAccount?.personils ?? null;
   const gudang = personil?.gudang || null;
+  const gudangIdsStr = gudangIds.map((id) => String(id));
+  const gudangUtamaId =
+    personil?.gudang_id !== null && personil?.gudang_id !== undefined
+      ? String(personil.gudang_id)
+      : gudangIdsStr.length > 0
+        ? gudangIdsStr[0]
+        : null;
 
   return {
     id: userAccount?.user_id ? String(userAccount.user_id) : null,
@@ -20,6 +38,8 @@ const toProfileResponse = (userAccount) => {
     gudang_id: personil?.gudang_id ? String(personil.gudang_id) : null,
     gudang_nama: gudang?.nama_gudang || null,
     gudang_alamat: gudang?.alamat || null,
+    gudang_ids: gudangIdsStr,
+    gudang_utama_id: gudangUtamaId,
     created_at: personil?.created_at ? personil.created_at.toISOString() : null,
     updated_at: personil?.updated_at ? personil.updated_at.toISOString() : null,
   };
@@ -32,7 +52,9 @@ const getProfile = async (id) => {
     throw new AppError("User tidak ditemukan.", 404);
   }
 
-  return toProfileResponse(userAccount);
+  const gudangIds = await resolveGudangIds(id, userAccount.role);
+
+  return toProfileResponse(userAccount, gudangIds);
 };
 
 const updateProfile = async (id, data) => {

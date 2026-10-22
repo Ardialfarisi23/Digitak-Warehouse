@@ -41,66 +41,66 @@ export async function downloadSuratJalanPdf(
   const { Document, Page, View, Text, Image, StyleSheet, pdf } = await import("@react-pdf/renderer");
 
   const styles = StyleSheet.create({
-    page: { padding: 40, fontSize: 10, fontFamily: "Helvetica" },
+    page: { padding: 30, fontSize: 11, fontFamily: "Helvetica" },
     headerRow: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "flex-start",
-      borderBottomWidth: 2,
+      borderBottomWidth: 1.5,
       borderBottomColor: "#E8632C",
-      paddingBottom: 16,
-      marginBottom: 20,
+      paddingBottom: 12,
+      marginBottom: 16,
     },
-    logo: { width: 140, height: 50, objectFit: "contain", resizeMode: "contain" },
+    logo: { width: 120, height: 42, objectFit: "contain", resizeMode: "contain" },
     titleBlock: { alignItems: "flex-end" },
-    title: { fontSize: 20, fontWeight: 700, color: "#1f2937" },
-    subtitle: { fontSize: 9, color: "#6b7280", marginTop: 2 },
+    title: { fontSize: 11, fontWeight: 700, color: "#1f2937" },
+    subtitle: { fontSize: 11, color: "#6b7280", marginTop: 2 },
     companyBlock: {
-      marginTop: 8,
+      marginTop: 6,
       alignItems: "flex-end",
     },
     companyName: { fontSize: 11, fontWeight: 700, color: "#E8632C" },
-    companyInfo: { fontSize: 8, color: "#6b7280", textAlign: "right" },
-    infoGrid: { flexDirection: "row", justifyContent: "space-between", marginBottom: 24 },
+    companyInfo: { fontSize: 11, color: "#6b7280", textAlign: "right" },
+    infoGrid: { flexDirection: "row", justifyContent: "space-between", marginBottom: 18 },
     infoCol: { width: "48%" },
-    infoRow: { flexDirection: "row", marginBottom: 8 },
-    infoLabel: { width: 110, color: "#6b7280", fontSize: 9 },
-    infoColon: { width: 8, color: "#6b7280" },
-    infoValue: { flex: 1, fontWeight: 700, fontSize: 10 },
-    table: { borderWidth: 1, borderColor: "#e5e7eb", marginBottom: 40 },
+    infoRow: { flexDirection: "row", marginBottom: 6 },
+    infoLabel: { width: 120, color: "#6b7280", fontSize: 11 },
+    infoColon: { width: 8, color: "#6b7280", fontSize: 11 },
+    infoValue: { flex: 1, fontWeight: 700, fontSize: 11 },
+    table: { borderWidth: 1, borderColor: "#e5e7eb", marginBottom: 30 },
     tableRow: { flexDirection: "row" },
     tableHeaderCell: {
       backgroundColor: "#FFF7ED",
-      padding: 8,
+      padding: 6,
       fontWeight: 700,
       borderRightWidth: 1,
       borderRightColor: "#F3D9C7",
       borderBottomWidth: 1,
       borderBottomColor: "#F3D9C7",
-      fontSize: 9,
+      fontSize: 11,
       color: "#9a3412",
     },
     tableCell: {
-      padding: 8,
+      padding: 6,
       borderRightWidth: 1,
       borderRightColor: "#f3f4f6",
       borderBottomWidth: 1,
       borderBottomColor: "#f3f4f6",
-      fontSize: 10,
+      fontSize: 11,
     },
-    signRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 40 },
+    signRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 30 },
     signCol: { width: "30%", alignItems: "center" },
-    signLabel: { marginBottom: 60, fontSize: 10, color: "#374151", fontWeight: 600 },
+    signLabel: { marginBottom: 45, fontSize: 11, color: "#374151", fontWeight: 600 },
     signLine: { borderTopWidth: 1, borderTopColor: "#9ca3af", paddingTop: 6, width: "100%", alignItems: "center" },
-    signName: { fontSize: 10, fontWeight: 700, color: "#111827" },
+    signName: { fontSize: 11, fontWeight: 700, color: "#111827" },
     footer: {
-      marginTop: 30,
+      marginTop: 20,
       borderTopWidth: 1,
       borderTopColor: "#e5e7eb",
-      paddingTop: 10,
+      paddingTop: 8,
       flexDirection: "row",
       justifyContent: "space-between",
-      fontSize: 8,
+      fontSize: 11,
       color: "#9ca3af",
     },
   });
@@ -171,7 +171,7 @@ export async function downloadSuratJalanPdf(
                 <Text style={styles.infoValue}>{data.tanggal}</Text>
               </View>
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Nama PIC Pemohon</Text>
+                <Text style={styles.infoLabel}>Nama PIC Penerima</Text>
                 <Text style={styles.infoColon}>:</Text>
                 <Text style={styles.infoValue}>{data.namaPicPemohon}</Text>
               </View>
@@ -234,7 +234,7 @@ export async function downloadSuratJalanPdf(
               </View>
             </View>
             <View style={styles.signCol}>
-              <Text style={styles.signLabel}>PIC Pemohon (Penerima)</Text>
+              <Text style={styles.signLabel}>PIC Penerima (Penerima)</Text>
               <View style={styles.signLine}>
                 <Text style={styles.signName}>{data.namaPicPemohon}</Text>
               </View>

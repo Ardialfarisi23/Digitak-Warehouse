@@ -84,6 +84,9 @@ const findAll = async ({
   sortBy = "updated_at",
   sortOrder = "desc",
   bisa_menyetir,
+  posisi,
+  gudang_id,
+  is_aktif,
 } = {}) => {
   const isDriverFilter = bisa_menyetir === true || bisa_menyetir === "true";
 
@@ -113,6 +116,23 @@ const findAll = async ({
 
   if (isDriverFilter) {
     where.bisa_menyetir = true;
+  }
+
+  if (posisi) {
+    where.posisi = posisi;
+  }
+
+  if (gudang_id !== undefined && gudang_id !== null && gudang_id !== "") {
+    where.gudang_id = Number(gudang_id);
+  }
+
+  // Default: hanya personil aktif. is_aktif="true"/"false" untuk filter eksplisit.
+  if (is_aktif === "true") {
+    where.is_aktif = true;
+  } else if (is_aktif === "false") {
+    where.is_aktif = false;
+  } else {
+    where.is_aktif = true;
   }
 
   if (search) {
@@ -184,21 +204,55 @@ const update = async (personil_id, data) => {
   });
 };
 
-const remove = async (personil_id) => {
-  try {
-    return await prisma.personil.delete({
-      where: { personil_id: Number(personil_id) },
-    });
-  } catch (err) {
-    if (err && err.code === "P2003") {
-      return await prisma.personil.update({
-        where: { personil_id: Number(personil_id) },
-        data: { is_aktif: false },
-      });
-    }
+const softDelete = async (personil_id, userId) => {
+  const existing = await prisma.personil.findUnique({
+    where: { personil_id: Number(personil_id) },
+    select: { personil_id: true, is_aktif: true },
+  });
 
-    throw err;
+  if (!existing) {
+    return null;
   }
+
+  const now = new Date();
+  await prisma.personil.update({
+    where: { personil_id: Number(personil_id) },
+    data: {
+      is_aktif: false,
+      deleted_at: now,
+      deleted_by: Number(userId),
+      deleter: { connect: { user_id: Number(userId) } },
+    },
+  });
+
+  return { blocked: false };
+};
+
+const restore = async (personil_id, userId) => {
+  const existing = await prisma.personil.findUnique({
+    where: { personil_id: Number(personil_id) },
+    select: { personil_id: true, is_aktif: true },
+  });
+
+  if (!existing) {
+    return null;
+  }
+
+  if (existing.is_aktif) {
+    return { blocked: false, alreadyActive: true };
+  }
+
+  await prisma.personil.update({
+    where: { personil_id: Number(personil_id) },
+    data: {
+      is_aktif: true,
+      deleted_at: null,
+      deleted_by: null,
+      deleter: { disconnect: true },
+    },
+  });
+
+  return { blocked: false };
 };
 
 module.exports = {
@@ -209,5 +263,6 @@ module.exports = {
   findByEmail,
   findAll,
   update,
-  remove,
+  softDelete,
+  restore,
 };

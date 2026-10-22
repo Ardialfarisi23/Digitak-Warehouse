@@ -20,6 +20,10 @@ const findByProjectId = async (projectId, options = {}) => {
   if (options.includeInactive) {
     return await prisma.project.findUnique({
       where: { project_id: id },
+      include: {
+        creator: { select: { nama: true } },
+        updater: { select: { nama: true } },
+      },
     });
   }
 
@@ -27,6 +31,10 @@ const findByProjectId = async (projectId, options = {}) => {
     where: {
       project_id: id,
       status_aktif: true,
+    },
+    include: {
+      creator: { select: { nama: true } },
+      updater: { select: { nama: true } },
     },
   });
 };
@@ -77,6 +85,8 @@ const findAll = async ({
     skip: all ? undefined : (sanitizedPage - 1) * sanitizedLimit,
     take: all ? undefined : sanitizedLimit,
     include: {
+      creator: { select: { nama: true } },
+      updater: { select: { nama: true } },
       _count: {
         select: {
           clusters: true,
@@ -85,12 +95,32 @@ const findAll = async ({
     },
   });
 
+  const projectIds = data.map((p) => p.project_id);
+  let activeMap = {};
+  if (projectIds.length > 0) {
+    const activeCounts = await prisma.cluster.groupBy({
+      by: ["project_id"],
+      where: {
+        project_id: { in: projectIds },
+        status_aktif: true,
+      },
+      _count: { _all: true },
+    });
+    activeMap = Object.fromEntries(
+      activeCounts.map((g) => [g.project_id.toString(), g._count._all])
+    );
+  }
+  const result = data.map((p) => ({
+    ...p,
+    cluster_aktif_count: activeMap[p.project_id.toString()] ?? 0,
+  }));
+
   if (all) {
-    return { data, meta: null };
+    return { data: result, meta: null };
   }
 
   return {
-    data,
+    data: result,
     meta: {
       total,
       page: sanitizedPage,
@@ -104,7 +134,10 @@ const update = async (projectId, data) => {
   const id = BigInt(projectId);
   return await prisma.project.update({
     where: { project_id: id },
-    data,
+    data: {
+      ...data,
+      updated_at: new Date(),
+    },
   });
 };
 
@@ -125,13 +158,10 @@ const restore = async (projectId) => {
 };
 
 const remove = async (projectId) => {
-  const idNum = Number(projectId);
-  if (!idNum || Number.isNaN(idNum)) {
-    throw new Error("ID tidak valid");
-  }
-
-  return await prisma.project.delete({
-    where: { project_id: idNum },
+  const id = BigInt(projectId);
+  return await prisma.project.update({
+    where: { project_id: id },
+    data: { status_aktif: false },
   });
 };
 
