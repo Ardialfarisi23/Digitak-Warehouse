@@ -1,7 +1,7 @@
 const prisma = require("../../config/prisma");
 const returnRepository = require("../return/return.repository");
 const { getApprovedReturnsAfterSnapshot, getLatestPhysicalSnapshot } = returnRepository;
-const { computeRemains, computeReconciliationStatus, buildPickSummary, buildItemPickSummary, buildInboundMosMap } = require("./reconciliation.utils");
+const { computeMosSistem, computeRemains, computeReconciliationStatus, buildPickSummary, buildItemPickSummary, buildInboundMosMap } = require("./reconciliation.utils");
 const { surat_jalan_status, boq_status } = require("@prisma/client");
 const additionalRepository = require("../additional/additional.repository");
 const { getBusinessDate, toPrismaDecimal } = require("../return/return.utils");
@@ -911,7 +911,7 @@ const getInventory = async (filters = {}, actor = null) => {
       const key = isUnassigned ? `unassigned-${agg.project_id}-${agg.barang_id}` : `${agg.cluster_id}-${agg.barang_id}`;
       const importVals = importValuesByCluster.get(key) || { additional: 0, mos: 0, used: 0 };
       const additional = Number(additionalByClusterBarang.get(key) || 0) + Number(additionalByClusterBarangFromAdjustment.get(key) || 0) + importVals.additional;
-      const mos = Number(mosByClusterBarang.get(key) || 0) + importVals.mos;
+      const mos = computeMosSistem(mosByClusterBarang.get(key) || 0, importVals.mos);
       const used = Number(usedByClusterBarang.get(key) || 0) + importVals.used;
       const approvedReturnQty = Number(approvedReturnByClusterBarang.get(key) || 0);
 const remains = computeRemains(mos, agg.boq, additional);

@@ -37,10 +37,10 @@ const { Decimal } = require("@prisma/client");
  * ini supaya angka MOS pada tabel rekonsiliasi, ringkasan, dan riwayat laporan
  * mitra tidak pernah berbeda.
  */
-const MOS_INBOUND_STATUSES = ["disetujui", "diterima_didistribusikan"];
+const MOS_INBOUND_STATUSES = ["diterima_didistribusikan"];
 
 const MOS_SISTEM_DEFINITION =
-  "MOS Sistem (K5) = inbound vendor eksternal (status disetujui/diterima) + saldo awal (import qty_mos); " +
+  "MOS Sistem (K5) = inbound vendor eksternal (status diterima_didistribusikan, yaitu putaway selesai) + saldo awal (import qty_mos); " +
   "Used = input laporan mitra; Remains = MOS - (BOQ Plan + Additional).";
 
 /** Bulatkan ke 2 desimal & hilangkan "-0". */
@@ -190,6 +190,36 @@ function buildInboundMosMap(shipmentItems, getKey) {
   return mosMap;
 }
 
+/**
+ * Ambil baris terbaru per kunci (semantik snapshot laporan mitra).
+ *
+ * `laporan_mitra` berisi snapshot per tanggal laporan, bukan akumulasi. Satu
+ * (tiket, barang) bisa punya beberapa baris bila mitra meng-upload laporan
+ * lebih dari sekali, sehingga MOS/Used harus diambil dari snapshot TERAKHIR,
+ * bukan dijumlahkan (mengavoid penghitungan ganda).
+ *
+ * @param {Array<object>} rows
+ * @param {(row: object) => string} keyFn
+ * @param {(row: object) => number} dateFn
+ * @returns {Map<string, object>}
+ */
+function pickLatestPerKey(rows, keyFn, dateFn) {
+  const latest = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const key = keyFn(row);
+    if (key === null || key === undefined || key === "") continue;
+    const current = latest.get(key);
+    if (!current) {
+      latest.set(key, row);
+      continue;
+    }
+    const currentTime = Number(dateFn(current) || 0);
+    const rowTime = Number(dateFn(row) || 0);
+    if (rowTime >= currentTime) latest.set(key, row);
+  }
+  return latest;
+}
+
 module.exports = {
   MOS_INBOUND_STATUSES,
   MOS_SISTEM_DEFINITION,
@@ -202,4 +232,5 @@ module.exports = {
   buildItemPickSummary,
   isMosEligibleInbound,
   buildInboundMosMap,
+  pickLatestPerKey,
 };
