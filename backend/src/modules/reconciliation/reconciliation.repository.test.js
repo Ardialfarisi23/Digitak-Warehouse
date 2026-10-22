@@ -48,7 +48,7 @@ const { getInventory } = require("./reconciliation.repository");
 describe("reconciliation.repository", () => {
   it("RECONCILIATION_SHIPMENT_STATUSES includes tiba_menunggu_konfirmasi dan sedang_dikirim", async () => {
     // Kita tidak bisa akses constant langsung karena tidak di-export.
-    // Verifikasi indirect: getInventory dengan mock minimal harus memanggil prisma dengan where.status in array yang包含 tiba_menunggu_konfirmasi.
+    // Verifikasi indirect: getInventory dengan mock minimal harus memanggil prisma dengan where.status in array yang mencakup tiba_menunggu_konfirmasi.
     // Untuk verifikasi langsung, kita baca ulang source file.
     const fs = require("fs");
     const path = require("path");
@@ -170,7 +170,7 @@ describe("reconciliation.repository", () => {
     surat_jalan: {
       surat_jalan_id: 100,
       tipe: "inbound",
-      status: "disetujui",
+      status: "ready_putaway",
       tipe_pengirim: "external",
       project_id: 17,
       cluster_id: "NET-H-004396",
@@ -246,30 +246,21 @@ describe("reconciliation.repository", () => {
     assert.equal(row.mos, 10, "MOS harus 10 untuk inbound external lama");
   });
 
-<<<<<<< HEAD
-  it("MOS: inbound status ready_putaway (belum disetujui/diterima) -> MOS tidak bertambah", async () => {
-=======
   it("MOS: inbound ready_putaway (belum di-putaway) -> MOS 0", async () => {
->>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
     mockPrisma.surat_jalan_item.findMany = async () => [makeShipmentItem({ status: "ready_putaway" })];
     const result = await getInventory({ projectId: "17", groupBy: "cluster", clusterId: "all" });
     const row = result.data.find((r) => r.cluster_id === "NET-H-004396" && r.barang_id === "218");
     if (row) {
-<<<<<<< HEAD
-      assert.equal(row.mos, 0, "MOS harus 0 untuk inbound ready_putaway");
+      assert.equal(row.mos, 0, "MOS harus 0 untuk inbound belum di-putaway (ready_putaway)");
     }
   });
 
-  it("MOS: inbound status diterima_didistribusikan -> MOS bertambah", async () => {
-    mockPrisma.surat_jalan_item.findMany = async () => [makeShipmentItem({ status: "diterima_didistribusikan" })];
+  it("MOS: inbound status disetujui (belum putaway) -> MOS 0", async () => {
+    mockPrisma.surat_jalan_item.findMany = async () => [makeShipmentItem({ status: "disetujui" })];
     const result = await getInventory({ projectId: "17", groupBy: "cluster", clusterId: "all" });
     const row = result.data.find((r) => r.cluster_id === "NET-H-004396" && r.barang_id === "218");
     if (row) {
-      assert.equal(row.mos, 10, "MOS harus 10 untuk inbound diterima_didistribusikan");
-    }
-  });
-=======
-      assert.equal(row.mos, 0, "MOS harus 0 untuk inbound belum di-putaway (ready_putaway)");
+      assert.equal(row.mos, 0, "MOS harus 0 untuk inbound status disetujui (belum di-putaway)");
     }
   });
 
@@ -315,5 +306,4 @@ describe("reconciliation.repository", () => {
     assert.ok(row, "row harus ada dari BOQ");
     assert.equal(row.mos, 5, "MOS harus 5 dari saldo awal qty_mos import");
   });
->>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
 });

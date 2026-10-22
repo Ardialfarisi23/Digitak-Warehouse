@@ -6,21 +6,16 @@ const {
   computeRemains,
   roundQty,
   pickLatestPerKey,
+  buildInboundMosMap,
   MOS_INBOUND_STATUSES,
   MOS_SISTEM_DEFINITION,
 } = require("./reconciliation.utils");
 
 describe("reconciliation.utils - MOS helpers", () => {
   describe("isMosEligibleInbound", () => {
-<<<<<<< HEAD
-    it("returns true for valid external inbound with project_id", () => {
-      const sj = { tipe: "inbound", status: "disetujui", tipe_pengirim: "external", project_id: 17, cluster_id: "CL001", gudang_asal_id: null, gudang_tujuan_id: 5 };
-      assert.equal(isMosEligibleInbound(sj), true);
-=======
     it("returns false for inbound ready_putaway (belum di-putaway)", () => {
       const sj = { tipe: "inbound", status: "ready_putaway", tipe_pengirim: "external", project_id: 17, cluster_id: "CL001", gudang_asal_id: null, gudang_tujuan_id: 5 };
       assert.equal(isMosEligibleInbound(sj), false);
->>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
     });
 
     it("returns false for inbound disetujui (belum di-putaway)", () => {
@@ -75,8 +70,8 @@ describe("reconciliation.utils - MOS helpers", () => {
   });
 
   describe("definisi MOS Sistem (K5)", () => {
-    it("hanya menyertakan status disetujui & diterima_didistribusikan", () => {
-      assert.deepEqual(MOS_INBOUND_STATUSES, ["disetujui", "diterima_didistribusikan"]);
+    it("hanya menyertakan status diterima_didistribusikan", () => {
+      assert.deepEqual(MOS_INBOUND_STATUSES, ["diterima_didistribusikan"]);
     });
 
     it("memiliki definisi tertulis yang menjadi acuan tunggal", () => {
@@ -92,7 +87,7 @@ describe("reconciliation.utils - MOS helpers", () => {
       assert.equal(roundQty(10), 10);
     });
 
-    it("mengubah -0 menjadi 0 dan值为 bukan angka menjadi 0", () => {
+    it("mengubah -0 menjadi 0 dan nilai bukan angka menjadi 0", () => {
       assert.equal(roundQty(-0.001), 0);
       assert.equal(roundQty("abc"), 0);
       assert.equal(roundQty(null), 0);
@@ -117,6 +112,18 @@ describe("reconciliation.utils - MOS helpers", () => {
 
     it("menghasilkan 0 (bukan -0) saat hasil tepat nol", () => {
       assert.equal(Object.is(computeRemains(10, 7, 3), 0), true);
+    });
+  });
+
+  describe("buildInboundMosMap", () => {
+    it("builds map by key from eligible inbound items", () => {
+      const items = [
+        { surat_jalan: { tipe: "inbound", status: "diterima_didistribusikan", tipe_pengirim: "external", project_id: 1 }, qty: 5 },
+        { surat_jalan: { tipe: "inbound", status: "ready_putaway", tipe_pengirim: "external", project_id: 1 }, qty: 3 },
+        { surat_jalan: { tipe: "inbound", status: "diterima_didistribusikan", tipe_pengirim: "internal", project_id: 1 }, qty: 2 },
+      ];
+      const map = buildInboundMosMap(items, (item) => item.surat_jalan.project_id);
+      assert.equal(map.get(1), 5);
     });
   });
 
@@ -147,12 +154,9 @@ describe("reconciliation.utils - MOS helpers", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Skenario uji ulang (BUG-06): BB-REK-07, BB-REK-08, BB-REK-09
-  // ---------------------------------------------------------------------------
   describe("BB-REK-07/08/09 - penyelarasan MOS Mitra & MOS Sistem", () => {
     it("BB-REK-07: MOS tabel rekonsiliasi = MOS yang tersimpan pada laporan mitra (sumber tunggal)", () => {
-      // Skenario: 1 cluster + 1 barang, inbound vendor eksternal disetujui 10,
+      // Skenario: 1 cluster + 1 barang, inbound vendor eksternal diterima_didistribusikan 10,
       // saldo awal import 2. MOS Sistem = 12.
       const inbound = 10;
       const openingBalance = 2;
@@ -165,7 +169,13 @@ describe("reconciliation.utils - MOS helpers", () => {
     });
 
     it("BB-REK-08: MOS tidak boleh terhitung ganda saat mitra upload laporan lebih dari sekali", () => {
-      // Skenario: 2 baris laporan untuk (tiket, barang) yang sama -> MOS snapshot
+      const items = [
+        { surat_jalan: { tipe: "inbound", status: "diterima_didistribusikan", tipe_pengirim: "external", project_id: 1 }, qty: 12 },
+      ];
+      const map = buildInboundMosMap(items, (item) => "T1-1");
+      assert.equal(map.get("T1-1"), 12);
+
+      // Skenario snapshot: 2 baris laporan untuk (tiket, barang) yang sama -> MOS snapshot
       // dipakai baris TERAKHIR, bukan dijumlahkan.
       const rows = [
         { key: "T1-1", time: 100, mos: 12, used: 3 },
@@ -193,14 +203,14 @@ describe("reconciliation.utils - MOS helpers", () => {
         { tipe: "inbound", status: "ready_putaway", tipe_pengirim: "external", project_id: 17, cluster_id: "CL001" },
         { tipe: "inbound", status: "disetujui", tipe_pengirim: "internal", project_id: 17, cluster_id: "CL001" },
         { tipe: "inbound", status: "disetujui", tipe_pengirim: "external", project_id: null, cluster_id: null },
+        { tipe: "inbound", status: "disetujui", tipe_pengirim: "external", project_id: 17, cluster_id: "CL001" },
       ];
       for (const sj of bukanMos) {
         assert.equal(isMosEligibleInbound(sj), false);
       }
 
-      // Yang boleh dihitung: inbound vendor eksternal yang sudah disetujui/diterima.
+      // Yang boleh dihitung: inbound vendor eksternal yang sudah diterima & didistribusikan (putaway selesai).
       const boleh = [
-        { tipe: "inbound", status: "disetujui", tipe_pengirim: "external", project_id: 17, cluster_id: "CL001" },
         { tipe: "inbound", status: "diterima_didistribusikan", tipe_pengirim: "external", project_id: 17, cluster_id: "CL001" },
       ];
       for (const sj of boleh) {
@@ -209,3 +219,4 @@ describe("reconciliation.utils - MOS helpers", () => {
     });
   });
 });
+

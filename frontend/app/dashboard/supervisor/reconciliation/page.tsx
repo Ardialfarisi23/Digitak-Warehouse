@@ -18,11 +18,8 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 const RECONCILIATION_ENDPOINT = `${API_BASE}/api/reconciliation/inventory`;
 const FILTER_OPTIONS_ENDPOINT = `${API_BASE}/api/reconciliation/filter-options`;
-<<<<<<< HEAD
-=======
 // Riwayat input laporan mitra (read-only) boleh diakses Admin & Supervisor (K12).
 // Endpoint lama "/api/reports/reconciliation/history" tidak terdaftar di backend sehingga selalu 404.
->>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
 const HISTORY_ENDPOINT = `${API_BASE}/api/reports/reconciliation-upload-logs`;
 
 interface ReconciliationRecord {
@@ -308,42 +305,19 @@ export default function SupervisorReconciliationPage() {
       }
 
       const json = await res.json();
-<<<<<<< HEAD
-      // Endpoint riwayat mengembalikan { data: { data: [...], meta: {...} } }.
-      const payload = json?.data ?? [];
-      const list: any[] = Array.isArray(payload)
-        ? payload
-        : Array.isArray(payload?.data)
-          ? payload.data
-          : Array.isArray(payload?.logs)
-            ? payload.logs
-            : [];
-      setHistoryRecords(
-        list.map((item: any) => ({
-          id: String(item.id ?? item.upload_id ?? ""),
-          filename: item.filename ?? "laporan_mitra.xlsx",
-          actor_nama: item.actor_nama ?? item.actor?.name ?? item.uploaded_by_nama ?? "-",
-          created_at: item.created_at ?? item.uploaded_at ?? new Date().toISOString(),
-          total_items: Number(item.total_items ?? item.total ?? item.total_rows ?? 0),
-          success_count: Number(item.success_count ?? item.berhasil ?? item.success_rows ?? item.total_items ?? 0),
-          failed_count: Number(item.failed_count ?? item.gagal ?? item.failed_rows ?? 0),
-          status: item.status ?? "processed",
-        })),
-=======
-      // Backend membalas { success, message, data: { data: [...], meta } }.
       const payload = json?.data?.data ?? json?.data ?? [];
       const list: any[] = Array.isArray(payload) ? payload : [];
       setHistoryRecords(
         list.map((item: any) => {
-          const successCount = Number(item.success_rows ?? item.success_count ?? 0);
-          const failedCount = Number(item.failed_rows ?? item.failed_count ?? 0);
+          const successCount = Number(item.success_rows ?? item.success_count ?? item.berhasil ?? item.success_rows ?? 0);
+          const failedCount = Number(item.failed_rows ?? item.failed_count ?? item.gagal ?? item.failed_rows ?? 0);
           return {
             id: String(item.upload_id ?? item.id ?? ""),
             filename:
               item.filename === "manual-input"
                 ? "Input Manual"
                 : item.filename ?? "laporan_mitra.xlsx",
-            actor_nama: item.uploaded_by_nama ?? item.actor_nama ?? item.actor?.nama ?? "-",
+            actor_nama: item.uploaded_by_nama ?? item.actor_nama ?? item.actor?.nama ?? item.actor?.name ?? "-",
             created_at: item.uploaded_at ?? item.created_at ?? new Date().toISOString(),
             total_items: Number(item.total_rows ?? item.total_items ?? item.total ?? 0),
             success_count: successCount,
@@ -356,7 +330,6 @@ export default function SupervisorReconciliationPage() {
                   : "completed",
           };
         }),
->>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
       );
     } catch (err) {
       console.error("Gagal mengambil riwayat input mitra:", err);
@@ -571,15 +544,9 @@ export default function SupervisorReconciliationPage() {
              <div className="mb-6 grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
                <KpiCard title="BOQ" value={formatNumber(summary.boq)} description="Rencana awal" icon={ClipboardCheck} tone="slate" />
                <KpiCard title="Additional" value={formatNumber(summary.additional)} description="Tambahan di luar BOQ" icon={Package} tone="slate" />
-<<<<<<< HEAD
-               <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material On Site (sistem): inbound vendor eksternal + saldo awal" icon={PackageCheck} tone="slate" />
-               <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan (input laporan mitra)" icon={PackageMinus} tone="slate" />
-               <KpiCard title="Sisa Lapangan" value={formatNumber(summary.remains)} description="Rumus: MOS − (BOQ Plan + Additional)" icon={Wallet} tone={summary.remains < 0 ? "rose" : "slate"} />
-=======
-                <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material on Site (barang inbound sudah di-putaway staf)" icon={PackageCheck} tone="slate" />
+               <KpiCard title="MOS" value={formatNumber(summary.mos)} description="Material On Site (sistem): inbound vendor eksternal + saldo awal import" icon={PackageCheck} tone="slate" />
                <KpiCard title="Used" value={formatNumber(summary.used)} description="Sudah digunakan" icon={PackageMinus} tone="slate" />
                <KpiCard title="Sisa Lapangan" value={formatNumber(summary.remains)} description="Sisa di lapangan setelah dikurangi BOQ, Additional, Used, dan Return" icon={Wallet} tone={summary.remains < 0 ? "rose" : "slate"} />
->>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
              </div>
 
             {/* Filters */}
@@ -857,11 +824,7 @@ export default function SupervisorReconciliationPage() {
                 </div>
                 <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
                   <p className="text-xs font-semibold text-blue-800">MOS</p>
-<<<<<<< HEAD
-                   <p className="mt-1 text-[11px] leading-relaxed text-blue-700">Material On Site (Sistem): inbound vendor eksternal yang sudah disetujui/diterima, ditambah saldo awal import. Angka ini dihitung sistem dan menjadi satu-satunya acuan MOS (dipakai juga pada riwayat laporan mitra).</p>
-=======
-                    <p className="mt-1 text-[11px] leading-relaxed text-blue-700">Barang inbound yang sudah di-putaway staf (diterima_didistribusikan) + saldo awal import.</p>
->>>>>>> c5036e8 (Fix:Beres Beres error dan Bug)
+                   <p className="mt-1 text-[11px] leading-relaxed text-blue-700">Material On Site (Sistem): inbound vendor eksternal yang sudah di-putaway (diterima & didistribusikan), ditambah saldo awal import. Angka ini dihitung sistem dan menjadi satu-satunya acuan MOS (dipakai juga pada riwayat laporan mitra).</p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-xs font-semibold text-slate-800">Used</p>
@@ -869,7 +832,7 @@ export default function SupervisorReconciliationPage() {
                 </div>
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
                   <p className="text-xs font-semibold text-emerald-800">Remains</p>
-                   <p className="mt-1 text-[11px] leading-relaxed text-emerald-700">Rumus: MOS − (BOQ Plan + Additional). Menghitung sisi pengiriman, bukan pemakaian di lapangan.</p>
+                   <p className="mt-1 text-[11px] leading-relaxed text-emerald-700">Rumus: MOS - (BOQ Plan + Additional). Menghitung sisi pengiriman, bukan pemakaian di lapangan.</p>
                 </div>
               </div>
             </div>

@@ -52,7 +52,7 @@ interface ClusterOption {
   nama_cluster?: string;
 }
 
-// Bentuk row BOQ dari GET /api/boqs (transformBoq menambahkan alias camelCase).
+// Bentuk row BOQ dari GET /api/boqs/options (transformBoq menambahkan alias camelCase).
 interface ApiBoqRow {
   boq_id?: number | string;
   id?: string | number;
